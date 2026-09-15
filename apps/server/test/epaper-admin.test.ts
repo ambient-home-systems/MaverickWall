@@ -455,7 +455,7 @@ describe('the eInk Displays page', () => {
      * card, and no link to its page.
      */
     const after = await (await h.call(`${B}/admin/walls`)).text();
-    expect(after).not.toContain('<div class="grid g3">');
+    expect(after).not.toContain('<div class="grid g2">');
     expect(after).not.toContain(`href="admin/epaper/${id}/design"`);
     expect(after).toContain('<summary>1 unpaired wall kept for the record</summary>');
     expect(after).toContain('<b>Gone</b>');

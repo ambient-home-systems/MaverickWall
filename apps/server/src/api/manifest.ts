@@ -295,16 +295,8 @@ const unit = (value: number, fallback: number): number =>
  * The type check comes first, so a row of an unknown type cannot make it as far
  * as the "would this leave nothing?" guard and keep a canvas the wall could not
  * draw anyway.
- *
- * Exported for one other caller, the Walls list's card previews (RFC 016
- * phase 2), which draw a wall's canvas through the wall's own renderer and so
- * have to hand it the *same* widgets the manifest would — the omission, the
- * clamps and the to-do handle rewrite included. A card that read the rows raw
- * would draw a weather box the wall leaves out and key a to-do list by an
- * entity id the renderer does not know, which is two renderers disagreeing
- * about one canvas in the quietest form it takes.
  */
-export function placeCanvas(
+function placeCanvas(
   widgets: readonly PlacedWidgetRow[],
   setUp: HouseholdSetUp,
 ): Manifest['layout']['portrait']['widgets'] {
@@ -327,8 +319,7 @@ export function placeCanvas(
     .sort((a, b) => a.z - b.z);
 }
 
-/** A stored aspect, or the orientation's nominal one when the column is empty or nonsense. */
-export const aspectOf = (value: number, fallback: number): number =>
+const aspectOf = (value: number, fallback: number): number =>
   Number.isFinite(value) && value > 0 ? value : fallback;
 
 /**

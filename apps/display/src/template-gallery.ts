@@ -13,8 +13,8 @@
  */
 
 import { renderFreeform } from './render.js';
-import { buildModel, localTime, type DisplayModel } from './viewmodel.js';
-import { applyTheme, daytimeActive } from './theme.js';
+import { buildModel, type DisplayModel } from './viewmodel.js';
+import { applyTheme } from './theme.js';
 import { PREVIEW_ROOT_CLASS, layoutPreviewRoot, previewStylesheet } from './preview-css.js';
 import type { Manifest, ManifestWidget, CanvasBackground } from './manifest.js';
 
@@ -166,168 +166,6 @@ function wireThemeSuggestion(templates: readonly TemplatePreview[]): void {
   mark();
 }
 
-/**
- * One browser wall's card on the Walls list, as the page describes it
- * (RFC 016 §4.1): the canvas the wall is hung for and its widgets exactly as
- * the manifest carries them — the server ran them through the manifest's own
- * placement, so the omission, the clamps and the to-do handle are already
- * applied and this script draws what it is handed.
- */
-interface WallPreview {
-  readonly id: string;
-  readonly aspect: number;
-  readonly widgets: readonly TemplateWidget[];
-  readonly background?: CanvasBackground;
-}
-
-/**
- * The theme a wall is drawing *right now*, applied to its card's root.
- *
- * `main.ts` decides this on every draw — the daylight window is evaluated
- * on the wall, against the wall's own zone, and `manifest.theme.active` is
- * the theme *outside* that window rather than a value the server has already
- * resolved for this minute. A card that applied `active` alone would show a
- * wall on Almanac by day and Panels by night as Panels at noon, which is not
- * what is on the glass. So this is the wall's own arithmetic, the same three
- * arguments in the same order: the window read through `localTime` in the
- * manifest's zone, then the daytime theme, tokens and shape when it is open
- * and the active ones when it is not. A custom theme's tokens travel in the
- * same fields, so a wall wearing one is drawn in it rather than in the
- * built-in the shadow root would otherwise fall back to.
- */
-function applyWallTheme(root: HTMLElement, manifest: Manifest, at: number): void {
-  const theme = manifest.theme;
-  const day = daytimeActive(
-    localTime(at, manifest.timezone),
-    theme.daytime,
-    theme.daytimeStartsAt,
-    theme.daytimeEndsAt,
-  );
-  applyTheme(
-    root,
-    day && theme.daytime !== undefined ? theme.daytime : theme.active,
-    day ? theme.daytimeTokens : theme.activeTokens,
-    day ? theme.daytimeShape : theme.activeShape,
-  );
-}
-
-/**
- * The Walls list's cards (RFC 016 phase 2): every browser wall drawn through
- * the wall's own renderer, against that wall's own manifest, in the canvas it
- * is hung for and the theme it is wearing at this minute.
- *
- * The same mechanism as the template gallery below, pointed at different
- * data — and different in the one way that costs: a gallery draws fourteen
- * templates against **one** manifest, and a Walls list cannot, because zone,
- * density and theme are per wall. So every card that scrolls into view costs
- * one `previewManifest` build on the server and one `renderFreeform` here,
- * which is why the observer is not optional: it bounds the cost to what is on
- * screen. `display.css` is fetched once and shared by every shadow root.
- *
- * Three things it must not become (§4.4). **Not live**: a card is drawn once,
- * from one manifest, and never polls — six previews polling every minute would
- * make the settings page the busiest client in the house. **Not a fallback for
- * the wall**: a fetch that fails or a render that throws leaves the card's
- * name, chip, status and control exactly as the server drew them, and the
- * well empty. **Not authoritative about colour**: the card wears what the
- * wall is wearing now, read the way the wall reads it, and nothing else.
- */
-function bootWallPreviews(mount: HTMLElement): void {
-  let walls: readonly WallPreview[];
-  try {
-    const parsed = JSON.parse(mount.dataset['json'] ?? '{}') as { walls?: unknown };
-    walls = Array.isArray(parsed.walls) ? (parsed.walls as WallPreview[]) : [];
-  } catch {
-    return; // The server-rendered cards stand on their own.
-  }
-  const byId = new Map(walls.map((wall) => [wall.id, wall]));
-  const thumbs = Array.from(document.querySelectorAll<HTMLElement>('.wall-preview[data-wall]'));
-  if (thumbs.length === 0) return;
-
-  // The wall's stylesheet, once, for every card. A failure here is a page of
-  // empty wells rather than a page of broken ones.
-  const stylesheet: Promise<string | undefined> = fetch('assets/display.css')
-    .then((response) => (response.ok ? response.text() : undefined))
-    .catch(() => undefined);
-
-  const draw = async (thumb: HTMLElement): Promise<void> => {
-    const wall = byId.get(thumb.dataset['wall'] ?? '');
-    if (wall === undefined) return;
-    try {
-      const [css, response] = await Promise.all([
-        stylesheet,
-        fetch(`admin/layout/preview.json?screen=${encodeURIComponent(wall.id)}`),
-      ]);
-      if (css === undefined || !response.ok) return;
-      const manifest = (await response.json()) as Manifest;
-      /*
-       * The server's clock, not this browser's. A wall draws from a clock
-       * corrected by the `x-server-time` header on every poll, so "what the
-       * wall is drawing right now" — which day is today, whether an event is
-       * running, whether the daylight window is open — is a fact about the
-       * server's now, and the manifest carries that as `generatedAt`. A phone
-       * with a wrong clock opening this page would otherwise draw every card
-       * a different day from the walls it pictures; measured under the test
-       * harness, whose server is pinned to eleven in the morning, the
-       * browser's own clock put a wall's daytime theme on the wrong side of
-       * its window.
-       */
-      const at = typeof manifest.generatedAt === 'number' ? manifest.generatedAt : Date.now();
-      const model = buildModel({ manifest, now: at, lastConfirmedAt: at, offline: false });
-
-      const rect = thumb.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0) return;
-      // Once. The observer unobserves on the first intersection, but a card
-      // asked twice — a fallback path, a future caller — must not draw over
-      // itself, and `attachShadow` on a host that has one throws.
-      if (thumb.shadowRoot !== null) return;
-
-      const shadow = thumb.attachShadow({ mode: 'open' });
-      const style = document.createElement('style');
-      style.textContent = previewStylesheet(css);
-      const root = document.createElement('div');
-      root.className = PREVIEW_ROOT_CLASS;
-      // At the reference resolution and scaled down, for the reason
-      // `preview-css.ts` gives at length: `rem` cannot be restored inside a
-      // shadow root, so the wall is drawn where the document's own rem is
-      // already one percent of the canvas height. `browser-template-card-
-      // fidelity.test.ts` compares this card against the paired wall.
-      layoutPreviewRoot(root, { width: rect.width, height: rect.height }, rect.width / rect.height);
-      shadow.append(style, root);
-      applyWallTheme(root, manifest, at);
-      // On the admin page, so any image reads media behind the session.
-      renderFreeform(
-        root,
-        model,
-        {
-          aspect: wall.aspect,
-          widgets: placed(wall.widgets),
-          ...(wall.background !== undefined ? { background: wall.background } : {}),
-        },
-        'admin/media/',
-      );
-    } catch {
-      // The card keeps its name, chip, status and control; only the picture is lost.
-    }
-  };
-
-  if (typeof IntersectionObserver === 'function') {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (!entry.isIntersecting) continue;
-          observer.unobserve(entry.target);
-          void draw(entry.target as HTMLElement);
-        }
-      },
-      { rootMargin: '200px' },
-    );
-    for (const thumb of thumbs) observer.observe(thumb);
-  } else {
-    for (const thumb of thumbs) void draw(thumb);
-  }
-}
-
 function boot(): void {
   // Confirm the destructive forms whether or not the preview machinery runs.
   for (const form of Array.from(document.querySelectorAll<HTMLFormElement>('form[data-confirm]'))) {
@@ -335,14 +173,6 @@ function boot(): void {
       const message = form.dataset['confirm'];
       if (message !== undefined && message !== '' && !window.confirm(message)) event.preventDefault();
     });
-  }
-
-  // The Walls list's cards (RFC 016 phase 2): a second mount, and the gallery
-  // path below is untouched by it — a page carries one or the other.
-  const wallsMount = document.getElementById('wall-previews');
-  if (wallsMount !== null) {
-    bootWallPreviews(wallsMount);
-    return;
   }
 
   const mount = document.getElementById('template-gallery');

@@ -1169,29 +1169,6 @@ a.card:active{background:var(--mw-surface-3)}
  * card's own heading is this role), from the role rather than a one-off px. The
  * same holds for a .rname in any card head — the module and store cards. */
 .wall-head .rname,.card-head .rname{font:var(--mw-t-h3);letter-spacing:var(--mw-t-h3-tracking)}
-/* The preview well (RFC 016 phase 2): every card carries a picture of what
- * that wall draws, in a region of one fixed height so a portrait wall and a
- * landscape panel make cards of comparable height. The height is four large
- * steps of the spacing scale rather than a pixel somebody picked, and the
- * well spends nothing on padding of its own -- the card's is the card's. The
- * picture inside it is the wall's own aspect (--wall-ar, declared here with
- * the portrait design's ratio and overridden by the card's inline value, for
- * the dangling-var() reason .tpl-thumb.is-ink gives), as tall as the well or
- * as wide as the card, whichever binds first: the width is the well's height
- * times the ratio, capped at the card, and aspect-ratio does the rest.
- * A browser wall's picture is the wall's own renderer drawing into a shadow
- * root, so the well clips the transformed frame the way .tpl-thumb does. A
- * panel's is one <img> on the frame its own page draws, on a white plate
- * because the medium is physically white in both schemes -- the same
- * exception .tpl-thumb.is-ink and .le-epaper-preview take -- and pixelated,
- * because a 1-bit frame smoothed is a grey one. */
-.wall-preview-well{height:calc(var(--mw-s-7) * 4);display:flex;align-items:center;
-  justify-content:center;overflow:hidden}
-.wall-preview{--wall-ar:0.5625;position:relative;
-  width:min(100%,calc(var(--mw-s-7) * 4 * var(--wall-ar)));aspect-ratio:var(--wall-ar);
-  overflow:hidden;border-radius:var(--mw-r-2);background:var(--mw-surface-3)}
-.wall-preview.is-ink{background:#fff}
-.wall-ink{display:block;width:100%;height:100%;object-fit:contain;image-rendering:pixelated}
 /* The "Open" affordance on a whole-card link: accent, a chevron, no container
  * of its own — decoration inside the card's own <a>, never a nested link. It
  * sets no background and no cursor, so it is not a control the button-state

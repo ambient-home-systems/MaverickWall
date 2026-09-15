@@ -39,8 +39,11 @@ import {
  * `MW_WALLS_BUDGET_MS`, for a machine whose speed somebody knows.
  *
  * Phase 1's page, for the comparison the RFC asks for, is the same file run
- * against a checkout of `main` before phase 2: there it prints the page's
- * own time and nothing else, because there is nothing else to ask for.
+ * against a tree without phase 2: there it prints the page's own time and
+ * nothing else, because there is nothing else to ask for — which is the tree
+ * this file ships on, since the measurement refused phase 2 (RFC 016 §9.1
+ * has the numbers). The structural assertion is live either way: no cards,
+ * no builds; a card, a build.
  */
 
 const SLOW = 180_000;
@@ -199,12 +202,18 @@ describe('the Walls list on a six-wall household', () => {
         await context.close();
       }
 
+      /*
+       * One build per card in view, and not one more — and none at all on a
+       * page with no cards to draw. Live on both trees: on phase 1's page
+       * `cards` is 0 and so is `inView`, and the day a preview comes back
+       * without this measurement beside it is the day one of these goes red.
+       * On phase 2's page every card is in view at this size (two rows of
+       * three, 200px of root margin), so six.
+       */
+      expect(inView).toBe(cards);
+      expect(new Set(requests).size).toBe(inView);
       if (hasPreviews) {
-        // One build per card, and not one more. Every card is in view at this
-        // size (two rows of three, 200px of root margin), so six.
-        expect(cards).toBe(6);
-        expect(inView).toBe(walls.length + panels.length);
-        expect(new Set(requests).size).toBe(inView);
+        expect(cards).toBe(walls.length + panels.length);
         // The opt-in ceiling, for a machine whose speed somebody knows.
         const ceiling = Number(process.env['MW_WALLS_BUDGET_MS']);
         if (Number.isFinite(ceiling) && ceiling > 0) {
