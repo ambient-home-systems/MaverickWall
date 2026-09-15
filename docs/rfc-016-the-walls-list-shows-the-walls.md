@@ -1,6 +1,6 @@
 # RFC 016 — The Walls list shows the walls
 
-Status: **phase 1 shipped** (phase 0 and phase 1 on `main`; Forget, listed below as phase 3, shipped with phase 1) · Owner: — · First drafted 2026-09-14 ·
+Status: **phase 2 built, measured, and refused by its own budget** (phases 0 and 1 on `main`; phase 2 is in one PR's history and reverted in the same PR — §9.1 has the numbers and the decision; Forget, listed below as phase 3, shipped with phase 1) · Owner: — · First drafted 2026-09-14 ·
 Relates to `apps/server/src/http/admin.ts` (`displaysPage`, `wallCard`,
 `displayListCard`, `epaperListCard`, `seenLine`, `wallTemplatePreviews`),
 `apps/display/src/template-gallery.ts`, `apps/display/src/preview-css.ts`,
@@ -434,6 +434,9 @@ what is on screen, and above the fold the count is three.
 - **Not authoritative about colour.** The card draws the wall's theme because
   `applyTheme` writes the manifest's resolved theme onto the preview element
   (§9.3) — see §5.3 for the reason that sentence needs a test behind it.
+  *Built:* "resolved" turned out to mean less than this bullet assumed, and
+  §9.3 records the correction — the daylight window is the wall's own
+  arithmetic, and the card repeats it.
 
 ## 5. The seams that break
 
@@ -580,10 +583,13 @@ the never-paired line — is run before the phase is called done.
 
 **This phase alone closes findings 2.1, 2.2, 2.3, 2.4 and 2.7.**
 
-**Phase 2 — the preview.** The gallery script gains a wall-card entry point
-for browser walls (§4.1), panels are an `<img>` on the existing GET (§4.2), the
-grid becomes `.g3` (§5.4). This is the phase with a cost in it and the one worth
-reverting if §9.1's measurement says so.
+**Phase 2 — the preview. Built, measured, refused.** The gallery script gains
+a wall-card entry point for browser walls (§4.1), panels are an `<img>` on the
+existing GET (§4.2), the grid becomes `.g3` (§5.4). This is the phase with a
+cost in it and the one worth reverting if §9.1's measurement says so — and it
+did. The whole of it, with its tests, is one commit in the PR that reverted
+it, so un-reverting is one `git revert` of the revert; §9.1 says what was
+measured and what the gate turned out to mean.
 
 **Phase 3 — Forget. Shipped with phase 1.** The revoked list gains its delete:
 both orientations' widgets and the row in one transaction, a decided answer for
@@ -667,16 +673,69 @@ divergence this codebase has paid for four times.
 
 ## 9. Open decisions
 
-**9.1 — the render budget.** Six walls on a page opened far more often than
-the template gallery, and the cost is per wall on both sides (§4.3): six
-`previewManifest` builds and six renders, not one manifest and six renders.
-The lazy observer and `loading="lazy"` bound it to what is on screen, and phase
-2 is separable precisely so this can be measured and reverted. **The
-measurement counts server time per page view for a six-wall household as well as
-browser time** — a budget that measures only the browser would pass a page that
-makes the server assemble six manifests on every visit — and **the measurement,
-not an opinion, decides whether phase 2 ships.** If it fails, C is the fallback
-and it is most of the value.
+**9.1 — the render budget. Measured; phase 2 refused.** Six walls on a page
+opened far more often than the template gallery, and the cost is per wall on
+both sides (§4.3): six `previewManifest` builds and six renders, not one
+manifest and six renders. The lazy observer and `loading="lazy"` bound it to
+what is on screen, and phase 2 is separable precisely so this can be measured
+and reverted. **The measurement counts server time per page view for a six-wall
+household as well as browser time** — a budget that measures only the browser
+would pass a page that makes the server assemble six manifests on every visit —
+and **the measurement, not an opinion, decides whether phase 2 ships.** If it
+fails, C is the fallback and it is most of the value.
+
+*The gate, as set for the build:* phase 2 does not ship if the six-wall page
+costs more than **three times the phase-1 page on the server**, or if the
+above-the-fold cards are not drawn within **one second** on the runner.
+
+*Measured, 2026-09-14*, by `apps/server/test/walls-list-budget.test.ts` — four
+browser walls and two 7.5" panels, the three family calendars, a forecast and a
+rota of `browser-harness` (`HOUSEHOLD_CALENDARS`, `equipHousehold`), on an idle
+Apple M5 laptop, the phase-1 figure taken from the same tree with the phase-2
+sources stashed and rebuilt. Server time is over loopback, timed at the
+caller; warm figures are medians of five rounds after one cold round.
+
+| | phase 1 | phase 2 |
+|---|---|---|
+| the page, warm | 2.0ms | 2.3ms |
+| the six builds a page view asks for, warm | — | 18.0–18.4ms (2.5–2.6 per manifest, 3.8–4.0 per 1-bit frame) |
+| page + builds, warm | **2.0ms** | **20.3–20.7ms** |
+| page + builds, the cold first round | 2.2ms | 27.3–28.4ms |
+| browser at 1280x800: `load` | 4ms | 27–29ms |
+| first card drawn, from navigation start | — | 14–18ms |
+| all cards above the fold (six of six, at that size) | — | 91–94ms |
+| builds asked for by one page view | 0 | 6, exactly one per card |
+
+**The server gate fails by a factor of ten** — 20.5ms against 2.0ms — and the
+browser gate passes by a factor of ten. So phase 2 does not ship: it is
+reverted in the PR that built it, with its tests, and the page is phase 1's.
+
+**What the gate turned out to mean is worth one paragraph, because it decides
+whether this is re-opened.** The phase-1 page costs two milliseconds. Three
+times that is six, and a single manifest build is two and a half, so a gate
+written as a ratio against this base admits one preview and refuses two: it is
+not a budget for six previews, it is a decision that the list draws none,
+taken before the base was known. The absolute number the gate was standing in
+for is **twenty-one milliseconds of server time per page view** for a six-wall
+household, which is less than a third of what those six walls already ask of
+the server every minute by polling. The RFC's own concern — a page that makes
+the server assemble six manifests on every visit — is true and is what the
+twenty-one milliseconds are. Whether that is acceptable is a decision, and it
+is one this document declines to take by itself: the gate was set in advance so
+that an opinion would not, and it is applied as set. Re-opening it means
+re-stating the budget as an absolute cost per page view (or per wall), because
+no six-card design can meet the ratio, and the two ways of paying less both
+cost the picture — one manifest for every card is not available, since zone,
+density and theme are per wall, and drawing fewer cards is direction C.
+
+Two things about the measurement itself. `previewManifest` is not injectable,
+so the count is taken at the wire — one `preview.json` per browser card and
+one `preview.png` per panel card, each of which is exactly one build by
+reading both routes — and asserted, not merely printed, because it is the
+structural claim (§4.3) and the one a later change could quietly double. And
+the timings are printed on every run with no ceiling, because a wall-clock
+ceiling measures the runner and this repository has written one down three
+times; a ceiling is opt-in through `MW_WALLS_BUDGET_MS`.
 
 **9.2 — what a household actually has.** Every trade in §5.4 assumes two to six
 walls. Nobody knows: this product has no installation outside the author's own
@@ -685,14 +744,27 @@ decision. If ten-wall households turn out to exist, B is not a rejected
 alternative but the answer, and A becomes what the page does under some count.
 
 **9.3 — whether a preview follows the wall's daylight theme. Decided: it
-draws what the wall is drawing right now.** `GET
-/admin/layout/preview.json?screen=:id` returns that wall's own manifest, and
-`manifest.theme.active` is already resolved for that wall **at now**, daylight
-window included — `buildManifest` does the resolving, for the wall, from the
-wall's row. The card applies exactly that and nothing else, so a wall on Almanac
-by day and Panels by night draws Almanac on its card at noon and Panels at
-midnight, because that is what is on the glass. No control, and no second
-reading of the window in the browser.
+draws what the wall is drawing right now — and the mechanism this section
+named for it was wrong, which building it found.** It said `manifest.theme.active`
+is "already resolved for that wall at now, daylight window included". It is
+not. `buildManifest` resolves the *active* theme and the *daytime* theme each
+to its tokens and shape and carries both, with the window's two clock times
+beside them; the wall decides between them on **every draw**, in `main.ts`,
+with `daytimeActive(localTime(now, manifest.timezone), …)` — because the switch
+to the daylight theme has to wait for the sun and not for a calendar to change.
+A card applying `active` alone would therefore have drawn a wall on Almanac by
+day and Panels by night as Panels at noon, which is precisely what this
+section set out to avoid. So the card repeats the wall's own arithmetic, the
+same three arguments in the same order, and "no second reading of the window
+in the browser" is amended to "the same reading, in the same code, in a second
+browser". The clock it reads is the server's, the manifest's `generatedAt`,
+not the admin browser's — a phone with a wrong clock would otherwise put
+every card on a different day from the walls it pictures, and under the test
+harness, whose server is pinned to eleven in the morning, the browser's own
+clock put a daytime theme on the wrong side of its window. Measured, in
+`browser-walls-previews.test.ts`: a wall on Almanac with Household from 09:00
+to 17:00 draws Household on its card at the harness's hour, and goes red with
+either half of the arithmetic removed. Still no control.
 
 **9.4 — what a revoked wall's card looks like**, if phase 3 gives them a screen.
 They have canvases too, and a preview of a wall nothing can draw is a photograph
