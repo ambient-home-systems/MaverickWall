@@ -420,9 +420,16 @@ describe('a card reads presence() for its state, and the summary line is that fu
     await home.pairWall('Hall');
     home.db.prepare('UPDATE screens SET last_seen_at = ?, last_seen_ip = ? WHERE id = ?')
       .run(home.now() - 30 * DAY, '10.0.0.4', idNamed('Hall'));
-    // And a panel nothing has fetched.
+    // A panel nothing has fetched, and one that fetched its frame a moment ago
+    // — the second is what separates "wall drawing now" from "panel checked
+    // in", which is a distinction one fresh browser wall cannot see.
     const made = await home.post('/admin/epaper', { name: 'Porch', preset: 'seeed-7in5', rotation: '0' });
     expect(made.status).toBe(303);
+    const shed = await home.post('/admin/epaper', { name: 'Shed', preset: 'seeed-7in5', rotation: '0' });
+    const recipes = await (await home.call(shed.headers.get('location') ?? '')).text();
+    const frame = /https?:\/\/[^"<\s]*(\/d\/epaper\/[^"<\s]+)/.exec(recipes)?.[1];
+    if (frame === undefined) throw new Error('no frame URL on the panel’s recipes page');
+    expect((await home.call(frame)).status).toBe(200);
 
     const html = await (await home.call('/admin/walls')).text();
     const grid = gridOf(html);
@@ -450,14 +457,21 @@ describe('a card reads presence() for its state, and the summary line is that fu
     expect(porch).toContain('Waiting for its device');
     expect(porch).toContain(`<a class="btn btn-ghost btn-sm" href="admin/epaper/${idNamed('Porch')}">Set up the device</a>`);
 
+    const shedCard = cardNamed(grid, 'Shed');
+    expect(shedCard).toContain('<article class="card wall-card">');
+    expect(shedCard).toContain('<span class="dot dot-ok pulse"></span>Checked in just now');
+    expect(shedCard).toContain('class="card-go">Open');
+    expect(shedCard).not.toContain('class="btn');
+
     // The whole grid: exactly two controls, both on not-yet-paired cards.
     expect(controlsOf(grid)).toHaveLength(2);
-    expect(grid.match(/class="card-go">Open/g)?.length).toBe(2);
+    expect(grid.match(/class="card-go">Open/g)?.length).toBe(3);
 
-    // And the summary is those four readings counted, in that order.
+    // And the summary is those five readings counted, in that order.
     expect(html).toContain(
       '<p class="wall-summary">' +
         '<span><span class="dot dot-ok"></span>1 wall drawing now</span><span aria-hidden="true">·</span>' +
+        '<span><span class="dot dot-ok"></span>1 panel checked in within the hour</span><span aria-hidden="true">·</span>' +
         '<span><span class="dot dot-idle"></span>1 not paired yet</span><span aria-hidden="true">·</span>' +
         '<span><span class="dot dot-idle"></span>1 panel waiting for its device</span><span aria-hidden="true">·</span>' +
         '<span><span class="dot dot-idle"></span>1 not seen for 30 days</span>' +
