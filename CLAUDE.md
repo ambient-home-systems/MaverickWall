@@ -464,6 +464,19 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
+**3421 tests, over 248 files, and one of them red in the full run.** calendar
+153 (plus 1 skipped) over 10 · core 314 over 9 · display 520 over 29 · server
+2434 over 200, measured on a clone whose tags had been fetched, so
+`changelog-shape.test.ts` compares rather than refusing. Measured for the style
+lane (RFC 014 §4.1): the display grew 12 tests in two new files and the server
+grew 38 in five new files, and the full run's one red —
+`browser-source-colours` finding no span text on a cold first draw, a file the
+lane does not touch — passed alone on the same tree a minute later, which is the
+font race this document already records for a cold boot under load rather than
+a regression, and is written here rather than deducted. The paragraph that
+carried the previous figure follows, unchanged, because its subject is the
+method and not the number:
+
 **3371 tests passing**, over 241 files. calendar 153 (plus 1 skipped) ·
 core 314 · display 508 · server 2396 over 195 files, measured on a clone whose
 tags had been fetched, so `changelog-shape.test.ts` compares rather than
