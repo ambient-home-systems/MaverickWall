@@ -1008,6 +1008,8 @@ export interface AdminScreenRow extends ScreenRow {
   readonly appVersion: string | null;
   /** The canvas gutter step, 0-4; null is today's spacing (RFC 014 §4.4). */
   readonly layoutGutter: number | null;
+  /** The wall's default style lane as stored JSON; null is none (RFC 014 §4.1). */
+  readonly layoutStyle: string | null;
   /** The viewport this screen last reported, for the editor's "match" (RFC 005). */
   readonly reportW: number | null;
   readonly reportH: number | null;
@@ -1037,7 +1039,7 @@ export function readAdminScreens(db: SqliteDatabase): AdminScreenRow[] {
               layout_landscape_aspect AS layoutLandscapeAspect,
               layout_background AS layoutBackground,
               layout_landscape_background AS layoutLandscapeBackground,
-              layout_gutter AS layoutGutter,
+              layout_gutter AS layoutGutter, layout_style AS layoutStyle,
               report_w AS reportW, report_h AS reportH,
               last_seen_at AS lastSeenAt, last_seen_ip AS lastSeenIp,
               last_seen_forwarding AS lastSeenForwarding, app_version AS appVersion
@@ -1107,6 +1109,15 @@ export interface ScreenSettings {
    * existed.
    */
   readonly layoutGutter: number | null;
+  /**
+   * The wall's default style lane, as JSON — the colours, faces, weight,
+   * tracking and inset every widget starts from (RFC 014 §4.1). Null is
+   * "follow the theme", which is what every wall drew before the column
+   * existed; the handler resolves an absent field the way it resolves the
+   * gutter's, to whatever the column already holds, so a page rendered before
+   * the row existed cannot clear a lane nobody touched.
+   */
+  readonly layoutStyle: string | null;
 }
 
 export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSettings): boolean {
@@ -1120,7 +1131,7 @@ export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSet
                 display_today_events = ?, display_next_days = ?, display_horizon_weeks = ?,
                 clock_24 = ?,
                 panel_width_mm = ?, panel_height_mm = ?, read_distance_mm = ?,
-                layout_gutter = ?,
+                layout_gutter = ?, layout_style = ?,
                 updated_at = ?
           WHERE id = ?`,
       )
@@ -1130,7 +1141,7 @@ export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSet
         s.allowDismiss ? 1 : 0, s.allowChores ? 1 : 0, s.allowTodo ? 1 : 0,
         s.displayTodayEvents, s.displayNextDays, s.displayHorizonWeeks,
         s.clock24, s.panelWidthMm, s.panelHeightMm, s.readDistanceMm,
-        s.layoutGutter,
+        s.layoutGutter, s.layoutStyle,
         Date.now(), id,
       ).changes > 0
   );
@@ -1927,6 +1938,11 @@ export interface ScreenRow {
    * and the query never asks for is a silent `undefined` at runtime.
    */
   readonly layoutGutter: number | null;
+  /**
+   * The wall's default style lane as stored JSON, or null (RFC 014 §4.1).
+   * Named in the `SELECT` for the reason the gutter above is.
+   */
+  readonly layoutStyle: string | null;
 }
 
 export function readScreens(db: SqliteDatabase): ScreenRow[] {
@@ -1952,7 +1968,7 @@ export function readScreens(db: SqliteDatabase): ScreenRow[] {
               layout_landscape_aspect AS layoutLandscapeAspect,
               layout_background AS layoutBackground,
               layout_landscape_background AS layoutLandscapeBackground,
-              layout_gutter AS layoutGutter
+              layout_gutter AS layoutGutter, layout_style AS layoutStyle
          FROM screens WHERE revoked_at IS NULL`,
     )
     .all() as ScreenRow[];

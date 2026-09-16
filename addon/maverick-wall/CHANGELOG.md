@@ -16,6 +16,19 @@
 
 ## Unreleased
 
+**A widget can have its own colours and type.** Every widget on a wall has
+always worn the wall's theme, and the only thing you could change on one was
+a card behind it. On the widget's **Style** tab there is a new section,
+**Colours and type**: turn off *Inherit the wall's theme* and the widget's own
+colours appear, filled in with what it is wearing right now — change one and
+only that one changes, and the rest keep following the theme. Its headings
+face, text face, weight, tracking and inset are there too, with the same
+readability guidance the theme builder gives. A wall's **Layout** settings
+carry the same section once, for every widget on it, and a widget's own
+choices still win. On an e-paper panel the inset draws and the rest is left
+to the wall, and the panel's settings say so. Nothing on any wall changes
+until you open the section.
+
 **You can choose how much room a wall leaves between its widgets.** Every wall
 has spent the same amount of itself on the space around each widget, and on a
 small screen that space is a row of the agenda or a name in the month grid. A

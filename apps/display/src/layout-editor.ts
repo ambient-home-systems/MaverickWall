@@ -18,7 +18,18 @@
 
 import { renderFreeform } from './render.js';
 import { buildModel, type DisplayModel } from './viewmodel.js';
-import { applyTheme } from './theme.js';
+import { applyTheme, themeTokens } from './theme.js';
+import {
+  resolveStyleTokens,
+  setStyleValue,
+  styleLayerOf,
+  STYLE_INSET_MAX,
+  STYLE_LANE_TOKENS,
+  STYLE_TRACKINGS,
+  STYLE_WEIGHTS,
+  type StyleLayer,
+} from './widget-style.js';
+import { renderContrast } from './contrast-guidance.js';
 import { PREVIEW_ROOT_CLASS, layoutPreviewRoot, previewStylesheet } from './preview-css.js';
 import type { Manifest } from './manifest.js';
 import {
@@ -236,6 +247,27 @@ function boot(): void {
   let ink: InkTables | undefined;
   let lane: 'wall' | 'ink' = 'wall';
   /**
+   * The bundled faces a style lane may name (RFC 014 §4.1), as the server
+   * lists them — label and the exact stack the schema will accept. Served in
+   * the bootstrap JSON rather than transcribed, because the allowlist is the
+   * server's and a face this editor offered that the schema refused would be
+   * a control that does nothing.
+   */
+  let fonts: readonly { readonly label: string; readonly stack: string }[] = [];
+  /**
+   * Which widgets have "Inherit the wall's theme" switched off *this session*
+   * without having written anything yet.
+   *
+   * The inherited-number pattern seeds a revealed field with the value it was
+   * following, because an empty override is inheritance and the switch would
+   * spring back on. Seeding a whole lane the same way would write eleven
+   * colours into every widget a household merely looked at — and freeze them
+   * there, so the daylight theme never reached that widget again. So the
+   * switch off writes nothing until a control is touched; the stored truth is
+   * what the switch reads on reload, and that is the honest answer.
+   */
+  const styleLaneOpen = new Set<string>();
+  /**
    * Widget id → why the wall leaves it out. Empty when everything is set up.
    *
    * The server's answer at page load. Once `omission` facts arrive beside it
@@ -265,6 +297,7 @@ function boot(): void {
       readonly notDrawn?: unknown;
       readonly omission?: unknown;
       readonly todoLists?: unknown;
+      readonly fonts?: unknown;
     };
     const r = parsed.report;
     if (r !== undefined && typeof r.w === 'number' && typeof r.h === 'number' && r.w > 0 && r.h > 0) {
@@ -334,6 +367,14 @@ function boot(): void {
       Array.isArray(rawInk.ignores)
     ) {
       ink = rawInk;
+    }
+    if (Array.isArray(parsed.fonts)) {
+      fonts = parsed.fonts.filter(
+        (one): one is { label: string; stack: string } =>
+          typeof one === 'object' && one !== null &&
+          typeof (one as { label?: unknown }).label === 'string' &&
+          typeof (one as { stack?: unknown }).stack === 'string',
+      );
     }
     // Start on portrait; landscape waits in the stash (RFC 005). 9:16 and 16:9
     // are the per-orientation defaults when a canvas has no aspect yet.
@@ -1329,7 +1370,10 @@ function boot(): void {
      * other half, and it is why this is now two calls rather than fifteen lines.
      */
     layoutPreviewRoot(previewWall, { width: rect.width, height: rect.height }, state.aspect);
-    applyTheme(previewWall, manifest.theme.active);
+    // With the resolved tokens, so a custom theme previews as itself rather
+    // than as the bundle's fallback — and so the style lane's seeded values
+    // (`styleBase`) and the preview describe the same wall.
+    applyTheme(previewWall, manifest.theme.active, manifest.theme.activeTokens, manifest.theme.activeShape);
 
     // The wall as it will actually draw — always free-form now. It draws straight
     // into the shadow wall: the reused sections measure themselves and scale to
@@ -1688,12 +1732,32 @@ function boot(): void {
    * from what the server handed the picker, never derived: the editor has no
    * opinion about how a handle is made, it only repeats one it was given.
    */
-  const previewWidgets = (): Widget[] =>
+  const previewWidgets = (): (Widget & { styleTokens?: Record<string, string> })[] =>
     drawnWidgets().map((w) => {
       const list = w.type === 'todo' ? todoListOf(w.config) : undefined;
       const known = list === undefined ? undefined : state.todoLists.find((one) => one.id === list);
-      return known === undefined ? { ...w } : { ...w, config: { ...w.config, list: known.key } };
+      const placed = known === undefined ? { ...w } : { ...w, config: { ...w.config, list: known.key } };
+      /*
+       * The style lane, resolved for the preview (RFC 014 §4.1). The wall
+       * reads what the server resolved; an unsaved lane has no server behind
+       * it yet, so the preview resolves it here through the bundle's own
+       * mirror of the derivation — the theme builder's arrangement, one
+       * widget down — against the same base the seeded controls read.
+       */
+      const own = styleLayerOf(w.config?.['style']);
+      const tokens = resolveStyleTokens(styleBase(), styleContext(), own);
+      return tokens === undefined ? placed : { ...placed, styleTokens: tokens };
     });
+
+  /** The wall's theme as colour tokens: what every lane is resolved against. */
+  const styleBase = (): Readonly<Record<string, string>> =>
+    manifest?.theme.activeTokens ?? themeTokens(manifest?.theme.active ?? 'panels');
+
+  /** The wall's default lane, resolved by the server, as the layer under a widget's. */
+  const styleContext = (): readonly StyleLayer[] => {
+    const canvas = styleLayerOf(manifest?.screen?.layoutStyleTokens);
+    return canvas === undefined ? [] : [canvas];
+  };
 
   /**
    * What this editor is arranging, in the household's word for it.
@@ -2730,7 +2794,20 @@ function boot(): void {
      * is about.
      */
     const wall = widget.config ?? {};
-    const ignored = (ink?.ignores ?? []).filter((entry) => wall[entry.key] !== undefined);
+    /*
+     * A key one level down — `style.<key>`, the style lane's spelling in both
+     * honours tables (RFC 014 §4.1) — is looked up inside `style`; anything
+     * else is a top-level key as before. And the lane's entries are folded by
+     * their reason, so a widget with eleven colours set reads one line about
+     * colour rather than eleven.
+     */
+    const isSet = (key: string): boolean => {
+      if (!key.startsWith('style.')) return wall[key] !== undefined;
+      const lane = wall['style'];
+      return typeof lane === 'object' && lane !== null &&
+        (lane as Record<string, unknown>)[key.slice('style.'.length)] !== undefined;
+    };
+    const ignored = (ink?.ignores ?? []).filter((entry) => isSet(entry.key));
     if (ignored.length > 0) {
       const heading = document.createElement('p');
       heading.className = 'hint insp-ink-note';
@@ -2738,9 +2815,15 @@ function boot(): void {
       configPanel.appendChild(heading);
       const list = document.createElement('ul');
       list.className = 'insp-ink-list';
+      const folded = new Map<string, string[]>();
       for (const entry of ignored) {
+        const labels = folded.get(entry.why) ?? [];
+        labels.push(entry.label);
+        folded.set(entry.why, labels);
+      }
+      for (const [why, labels] of folded) {
         const row = document.createElement('li');
-        row.textContent = `${entry.label} — ${entry.why}`;
+        row.textContent = `${labels.join(', ')} — ${why}`;
         list.appendChild(row);
       }
       configPanel.appendChild(list);
@@ -3203,6 +3286,184 @@ function boot(): void {
         ],
         typeof cfg['corners'] === 'string' ? (cfg['corners'] as string) : 'square',
         (value) => setConfig(widget, 'corners', value === 'square' ? undefined : value),
+      ),
+    );
+
+    buildStyleLane(widget, cfg);
+  }
+
+  /**
+   * Merge one option into the widget's style lane (RFC 014 §4.1) — `setConfig`
+   * one level down, writing into `config.style` and never beside it, so the
+   * lane stays the one strict object the server validates.
+   */
+  function setStyle(widget: Widget, key: string, value: string | number | undefined): void {
+    recordRun(`style:${widget.id}:${key}`);
+    const next = setStyleValue(widget.config, key, value);
+    if (next !== undefined) widget.config = next;
+    else delete widget.config;
+    markDirty();
+    renderPreview();
+  }
+
+  /**
+   * Colours and type: the widget's own style lane (RFC 014 §4.1), the ink
+   * lane's twin on the Style tab.
+   *
+   * One switch, "Inherit the wall's theme", on for every widget until a
+   * household says otherwise. Off, it reveals the lane's controls seeded with
+   * the values this widget is inheriting right now — the theme's own colours,
+   * over whatever the wall's default lane set — which is the inherited-number
+   * pattern: the revealed field shows what it was following, so changing one
+   * colour changes one colour and the other ten stay the theme's. Only what is
+   * touched is written, so a widget that sets its accent carries its accent
+   * and nothing else, and the daylight theme still reaches every token it did
+   * not claim.
+   *
+   * The whole section carries one config key, `style`, which no panel lane
+   * offers: `pruneToLane` drops it on the ink lane in one piece, so a panel is
+   * never offered a colour it cannot draw (`PANEL_IGNORES` says why, beside
+   * the wall's own settings). The contrast guidance is the theme builder's,
+   * because a colour is chosen here the same way it is chosen there.
+   */
+  function buildStyleLane(widget: Widget, cfg: Record<string, unknown>): void {
+    const section = document.createElement('div');
+    section.className = 'le-cfg-section le-style';
+    section.dataset['cfgKey'] = 'style';
+    const kicker = document.createElement('p');
+    kicker.className = 'kick';
+    kicker.textContent = 'Colours and type';
+    section.appendChild(kicker);
+
+    const own = styleLayerOf(cfg['style']);
+    const inheriting = own === undefined && !styleLaneOpen.has(widget.id);
+    section.appendChild(
+      switchRow(
+        'Inherit the wall’s theme',
+        'Colours, faces, weight, tracking and inset follow the wall. Off, this widget keeps its own.',
+        inheriting,
+        (checked) => {
+          if (checked) {
+            styleLaneOpen.delete(widget.id);
+            // Every value at once, and a step back for all of them.
+            record();
+            const cfgNow: Record<string, unknown> = { ...(widget.config ?? {}) };
+            delete cfgNow['style'];
+            if (Object.keys(cfgNow).length > 0) widget.config = cfgNow;
+            else delete widget.config;
+            markDirty();
+            renderPreview();
+          } else {
+            styleLaneOpen.add(widget.id);
+          }
+          renderConfigPanel();
+        },
+      ),
+    );
+    configPanel.appendChild(section);
+    if (inheriting) return;
+
+    // What this widget is inheriting: the theme, then the wall's default lane.
+    const effective: Record<string, string> = { ...styleBase() };
+    for (const layer of styleContext()) {
+      for (const token of STYLE_LANE_TOKENS) {
+        const value = layer[token];
+        if (typeof value === 'string') effective[token] = value;
+      }
+    }
+    const current = (token: string): string | undefined => {
+      const mine = own?.[token];
+      return typeof mine === 'string' ? mine : effective[token];
+    };
+
+    const colours: readonly (readonly [string, string])[] = [
+      ['--bg', 'Background'],
+      ['--panel', 'Card'],
+      ['--rule', 'Rule'],
+      ['--ink', 'Text'],
+      ['--muted', 'Muted text'],
+      ['--faint', 'Faint text'],
+      ['--accent', 'Accent'],
+      ['--s-day', 'Day shift'],
+      ['--s-night', 'Night shift'],
+      ['--s-break', 'Rest day'],
+      ['--s-straight', 'Straight shift'],
+    ];
+    const grid = document.createElement('div');
+    grid.className = 'le-style-colours';
+    for (const [token, label] of colours) {
+      const field = cfgField(label);
+      const input = document.createElement('input');
+      input.type = 'color';
+      input.dataset['token'] = token;
+      const value = current(token);
+      if (value !== undefined && /^#[0-9a-fA-F]{6}$/.test(value)) input.value = value;
+      input.addEventListener('change', () => {
+        setStyle(widget, token, input.value);
+        renderContrast(contrast, { ...effective, ...styleLayerOf(widget.config?.['style']) } as Record<string, string>);
+      });
+      field.appendChild(input);
+      grid.appendChild(field);
+    }
+    section.appendChild(grid);
+
+    // The theme builder's guidance, against the ground this widget will sit on.
+    const contrast = document.createElement('div');
+    contrast.className = 'le-style-contrast';
+    renderContrast(contrast, { ...effective, ...own } as Record<string, string>);
+    section.appendChild(contrast);
+
+    for (const [token, label] of [
+      ['--disp', 'Headings face'],
+      ['--f-sans', 'Text face'],
+    ] as const) {
+      const field = cfgField(label);
+      const select = document.createElement('select');
+      select.dataset['token'] = token;
+      const none = document.createElement('option');
+      none.value = '';
+      none.textContent = 'Same as the wall';
+      select.appendChild(none);
+      for (const font of fonts) {
+        const option = document.createElement('option');
+        option.value = font.stack;
+        option.textContent = font.label;
+        select.appendChild(option);
+      }
+      const chosen = current(token);
+      select.value = chosen !== undefined && fonts.some((font) => font.stack === chosen) ? chosen : '';
+      select.addEventListener('change', () => setStyle(widget, token, select.value === '' ? undefined : select.value));
+      field.appendChild(select);
+      section.appendChild(field);
+    }
+
+    const weightNames: Readonly<Record<string, string>> = { regular: 'Regular', medium: 'Medium', bold: 'Bold' };
+    section.appendChild(
+      segControl(
+        'Weight',
+        STYLE_WEIGHTS.map((weight) => [weight, weightNames[weight] ?? weight] as const),
+        typeof own?.weight === 'string' ? own.weight : 'regular',
+        (value) => setStyle(widget, 'weight', value),
+      ),
+    );
+    const trackingNames: Readonly<Record<string, string>> = { tight: 'Tight', normal: 'Normal', wide: 'Wide' };
+    section.appendChild(
+      segControl(
+        'Tracking',
+        STYLE_TRACKINGS.map((tracking) => [tracking, trackingNames[tracking] ?? tracking] as const),
+        typeof own?.tracking === 'string' ? own.tracking : 'normal',
+        (value) => setStyle(widget, 'tracking', value),
+      ),
+    );
+    // The gutter's own words for the same five rungs: step 4 is what every
+    // box draws today, so it is "Normal" here for the reason it is there.
+    const insetNames = ['None', 'Very tight', 'Tight', 'Snug', 'Normal'];
+    section.appendChild(
+      segControl(
+        'Inset',
+        insetNames.slice(0, STYLE_INSET_MAX + 1).map((name, step) => [String(step), name] as const),
+        String(typeof own?.inset === 'number' ? own.inset : STYLE_INSET_MAX),
+        (value) => setStyle(widget, 'inset', Number(value)),
       ),
     );
   }

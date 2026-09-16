@@ -223,8 +223,29 @@ function drawLines(
  * under a hairline twelve down — which on a 13.3" panel is a label nobody can
  * read from the other side of a kitchen. All three come off the ladder now.
  */
+/**
+ * A widget's own inset step (RFC 014 §4.1) as a fraction of the panel's own
+ * `widget.inset`, which is what every widget drew before the lane existed
+ * and is step 4 here as it is on the wall (`STYLE_INSET_CSS`, where step 4 is
+ * `--s4`, today's padding). The rungs below are the wall's spacing scale —
+ * 0, 0.14, 0.28, 0.5 and 0.85 of the event role — as fractions of its top,
+ * so the two media give up room in the same proportions; rounded, because a
+ * 1-bit raster has no half-lit column. Absent, malformed, or off the ladder
+ * is today's inset: a lane this renderer cannot read is no lane (rule nine).
+ */
+const PANEL_INSET_STEPS: readonly number[] = [0, 0.14 / 0.85, 0.28 / 0.85, 0.5 / 0.85, 1];
+
+function panelInset(m: EpaperMetrics, config: Config): number {
+  const lane = config['style'];
+  if (typeof lane !== 'object' || lane === null || Array.isArray(lane)) return m.widget.inset;
+  const step = (lane as Record<string, unknown>)['inset'];
+  if (typeof step !== 'number' || !Number.isInteger(step)) return m.widget.inset;
+  const fraction = PANEL_INSET_STEPS[step];
+  return fraction === undefined ? m.widget.inset : Math.round(m.widget.inset * fraction);
+}
+
 function drawFrame(fb: Framebuffer, m: EpaperMetrics, box: Box, config: Config): Box {
-  const pad = m.widget.inset;
+  const pad = panelInset(m, config);
   fb.strokeRect(box.x, box.y, box.w, box.h, true);
   let inner: Box = { x: box.x + pad, y: box.y + pad, w: box.w - pad * 2, h: box.h - pad * 2 };
   const title = str(config, 'title');

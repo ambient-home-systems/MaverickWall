@@ -117,6 +117,16 @@ export interface ManifestWidget {
   readonly h: number;
   readonly z: number;
   readonly config?: unknown;
+  /**
+   * The widget's style lane, resolved by the server (RFC 014 §4.1): CSS custom
+   * properties and the three plain properties `applyStyleTokens` writes on the
+   * box. `daytimeStyleTokens` is the same lane against the daylight theme,
+   * present only when the wall has one. Both absent on a widget with no lane —
+   * every widget until a household opens the tab — and read defensively,
+   * because a server older or newer than this bundle may send anything here.
+   */
+  readonly styleTokens?: unknown;
+  readonly daytimeStyleTokens?: unknown;
 }
 
 export interface Manifest {
@@ -203,6 +213,13 @@ export interface Manifest {
      * the setting; both draw the spacing the wall always drew.
      */
     readonly layoutGutter?: number;
+    /**
+     * The wall's default style lane, resolved (RFC 014 §4.1), applied on the
+     * canvas so every box inherits it; and the same against the daylight
+     * theme when the wall has one. Absent on a wall nobody has restyled.
+     */
+    readonly layoutStyleTokens?: unknown;
+    readonly layoutDaytimeStyleTokens?: unknown;
   };
   readonly days: readonly ManifestDay[];
   readonly people: readonly ManifestPerson[];

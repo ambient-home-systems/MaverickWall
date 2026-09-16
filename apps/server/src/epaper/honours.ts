@@ -36,6 +36,18 @@
  * ladder is a guard, not a thing to reach for again.
  */
 
+/*
+ * **A key inside the style lane is written `style.<key>`** (RFC 014 §4.1).
+ * `config.style` is one strict object holding a widget's colours, faces,
+ * weight, tracking and inset, and a panel honours exactly one of those —
+ * `inset` moves the frame's own padding and so moves ink. The rest cannot
+ * draw on one bit and are in `PANEL_IGNORES` under the same dotted spelling,
+ * so the sentence a household reads is beside the control they set.
+ * `epaper-ink.test.ts` expands the schema's `style` key into its members the
+ * same way and probes each by *setting it inside `style`* — so `style.inset`
+ * is proved to move ink and `style.--bg` proved not to, by rendering, exactly
+ * as every top-level key is.
+ */
 /**
  * The config keys each widget type's 1-bit draw actually reads.
  *
@@ -45,19 +57,21 @@
  * the renderer reads that is missing here is an option the ink lane cannot
  * offer.
  */
+const STYLE_INSET = 'style.inset';
+
 export const PANEL_HONOURS: Readonly<Record<string, readonly string[]>> = {
-  clock: ['title', 'showTitle', 'align', 'clockFormat', 'showDate'],
-  calendar: ['title', 'showTitle', 'mode', 'cellEvents', 'count', 'calendars'],
-  shift: ['title', 'showTitle', 'people', 'fields', 'shiftName', 'showHours'],
-  weather: ['title', 'showTitle', 'count', 'fields', 'showLow', 'showIcon'],
-  homeassistant: ['title', 'showTitle', 'count', 'fields', 'readings'],
-  external: ['title', 'showTitle', 'count', 'module'],
-  countdown: ['title', 'showTitle', 'target'],
-  notes: ['title', 'showTitle', 'align', 'text'],
+  clock: ['title', 'showTitle', 'align', 'clockFormat', 'showDate', STYLE_INSET],
+  calendar: ['title', 'showTitle', 'mode', 'cellEvents', 'count', 'calendars', STYLE_INSET],
+  shift: ['title', 'showTitle', 'people', 'fields', 'shiftName', 'showHours', STYLE_INSET],
+  weather: ['title', 'showTitle', 'count', 'fields', 'showLow', 'showIcon', STYLE_INSET],
+  homeassistant: ['title', 'showTitle', 'count', 'fields', 'readings', STYLE_INSET],
+  external: ['title', 'showTitle', 'count', 'module', STYLE_INSET],
+  countdown: ['title', 'showTitle', 'target', STYLE_INSET],
+  notes: ['title', 'showTitle', 'align', 'text', STYLE_INSET],
   // `list` and `showDone` are read the way the wall reads them (RFC 012 §6.3):
   // a list absent means the typed items, present means that list's rows.
-  todo: ['title', 'showTitle', 'items', 'list', 'showDone'],
-  image: ['title', 'showTitle', 'image'],
+  todo: ['title', 'showTitle', 'items', 'list', 'showDone', STYLE_INSET],
+  image: ['title', 'showTitle', 'image', STYLE_INSET],
 };
 
 /**
@@ -158,6 +172,51 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
     label: 'Week numbers',
     why: 'the panel draws the date and the titles only.',
   },
+  /*
+   * The style lane (RFC 014 §4.1), member by member, under the `style.<key>`
+   * spelling the note above `PANEL_HONOURS` explains. One reason for the
+   * eleven colours and one each for the faces, the weight and the tracking,
+   * so the editor can fold them into a line apiece rather than fifteen.
+   */
+  ...(
+    [
+      ['--bg', 'Background colour'],
+      ['--panel', 'Card colour'],
+      ['--rule', 'Rule colour'],
+      ['--ink', 'Text colour'],
+      ['--muted', 'Muted text colour'],
+      ['--faint', 'Faint text colour'],
+      ['--accent', 'Accent colour'],
+      ['--s-day', 'Day shift colour'],
+      ['--s-night', 'Night shift colour'],
+      ['--s-break', 'Rest day colour'],
+      ['--s-straight', 'Straight shift colour'],
+    ] as const
+  ).map(([token, label]) => ({
+    key: `style.${token}`,
+    label,
+    why: 'a panel has one colour of ink, so a colour chosen here is the wall’s alone.',
+  })),
+  {
+    key: 'style.--disp',
+    label: 'Heading face',
+    why: 'the panel draws its own bitmap alphabet, at the size its ladder picks.',
+  },
+  {
+    key: 'style.--f-sans',
+    label: 'Text face',
+    why: 'the panel draws its own bitmap alphabet, at the size its ladder picks.',
+  },
+  {
+    key: 'style.weight',
+    label: 'Weight',
+    why: 'the panel’s alphabet has one weight, thickened only where it is reversed out.',
+  },
+  {
+    key: 'style.tracking',
+    label: 'Tracking',
+    why: 'the panel’s alphabet has one advance per face.',
+  },
 ];
 
 /*
@@ -218,6 +277,20 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
  * its short side), so there is nothing for a wall's step to override even when
  * that panel is *following* the wall: it draws its own frame, at its own
  * geometry, from the same canvas.
+ */
+
+/*
+ * **Where the wall's default style lane is, and why it is in neither table**
+ * (RFC 014 §4.1 / §4.4).
+ *
+ * `screens.layout_style` is the gutter's argument two paragraphs up, verbatim:
+ * a column on `screens` with no widget config to set it on, so an entry would
+ * be a key no schema has on a table whose worth is that it is derived by
+ * rendering. A widget's *own* `style.inset` is honoured above, because that
+ * one is in a widget's config and moves the frame's padding on one bit; the
+ * wall-level default is applied on the browser wall's canvas and a panel
+ * following that wall draws its own frame at its own geometry from the same
+ * canvas, exactly as it does for the gutter step.
  */
 
 /**

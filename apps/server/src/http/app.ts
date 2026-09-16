@@ -977,6 +977,8 @@ export function createApp(deps: AppDeps): Hono {
     readonly readDistanceMm?: number | null;
     /** The gutter step, when a household has chosen one (RFC 014 §4.4). */
     readonly layoutGutter?: number | null;
+    /** The wall's default style lane as stored JSON (RFC 014 §4.1). */
+    readonly layoutStyle?: string | null;
   }) => {
     const at = now();
     const household = readHousehold(deps.db);
@@ -1093,6 +1095,9 @@ export function createApp(deps: AppDeps): Hono {
         // Handed over as it is stored; `buildManifest` is what decides whether
         // it is a step at all, and spreads it away when it is not.
         layoutGutter: screenLike.layoutGutter ?? null,
+        // As stored, too; `buildManifest` reads it through `storedStyleLayer`
+        // and a column this process did not write resolves to no lane.
+        layoutStyle: screenLike.layoutStyle ?? null,
         theme: screenLike.theme,
         timezone: screenLike.timezone,
         daytimeTheme: screenLike.daytimeTheme,
@@ -1142,6 +1147,7 @@ export function createApp(deps: AppDeps): Hono {
       panelHeightMm: screen.panelHeightMm,
       readDistanceMm: screen.readDistanceMm,
       layoutGutter: screen.layoutGutter,
+      layoutStyle: screen.layoutStyle,
     });
 
   // The push server, if boot wired one, builds from exactly this — see the dep.

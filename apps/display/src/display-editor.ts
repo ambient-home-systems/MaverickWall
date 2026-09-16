@@ -169,13 +169,17 @@ function boot(): void {
     const field = document.querySelector<HTMLElement>(`[data-inherit-field="${name}"]`);
     if (field === null) continue;
     const input = field.querySelector<HTMLInputElement>('input');
+    // Every control in the group, not the first: the wall's default style
+    // lane (RFC 014 §4.1) is thirteen inputs and three radio rows behind one
+    // switch, and a disabled control is the one that posts nothing.
+    const controls = Array.from(field.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input, select'));
     const sync = (): void => {
       field.hidden = toggle.checked;
-      if (input !== null) input.disabled = toggle.checked;
+      for (const control of controls) control.disabled = toggle.checked;
     };
     toggle.addEventListener('change', () => {
       sync();
-      if (toggle.checked || input === null) return;
+      if (toggle.checked || input === null || field.dataset['inheritDefault'] === undefined) return;
       // An empty override is not an override — the handler reads a blank as
       // "follow the household", so the switch would spring back on at the next
       // save. Seed it with the value it was following.

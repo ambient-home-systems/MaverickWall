@@ -314,6 +314,41 @@ const personBody = z.object({
   color: colour(),
 });
 
+/**
+ * The colours a wall's theme gives it — a custom theme's own tokens, or the
+ * built-in's transcription — which is what the wall's default style lane is
+ * seeded from and diffed against (RFC 014 §4.1). A retired or unknown key
+ * resolves to Panels, exactly as the bundle resolves it.
+ */
+function wallThemeColours(db: SqliteDatabase, ref: string): Readonly<Record<string, string>> {
+  if (ref.startsWith(CUSTOM_PREFIX)) {
+    const theme = readTheme(db, ref.slice(CUSTOM_PREFIX.length));
+    if (theme !== undefined) return theme.tokens as Readonly<Record<string, string>>;
+  }
+  return builtinThemeTokens(ref);
+}
+
+/**
+ * The style lane's tokens as form fields — a token is not a field name a
+ * browser is happy with. Colours first, then the two faces, in the lane's own
+ * order (`STYLE_LANE_TOKENS`).
+ */
+const STYLE_FORM_FIELDS: readonly (readonly [token: string, name: string, label: string])[] = [
+  ['--bg', 'style_bg', 'Background'],
+  ['--panel', 'style_panel', 'Card'],
+  ['--rule', 'style_rule', 'Rule'],
+  ['--ink', 'style_ink', 'Text'],
+  ['--muted', 'style_muted', 'Muted text'],
+  ['--faint', 'style_faint', 'Faint text'],
+  ['--accent', 'style_accent', 'Accent'],
+  ['--s-day', 'style_s_day', 'Day shift'],
+  ['--s-night', 'style_s_night', 'Night shift'],
+  ['--s-break', 'style_s_break', 'Rest day'],
+  ['--s-straight', 'style_s_straight', 'Straight shift'],
+  ['--disp', 'style_disp', 'Headings face'],
+  ['--f-sans', 'style_f_sans', 'Text face'],
+];
+
 const screenBody = z.object({
   name: text('A name for the wall', 80),
   orientation: oneOf('an orientation', ['auto', 'portrait', 'landscape']),
@@ -365,6 +400,21 @@ const screenBody = z.object({
    * column exactly as it found it.
    */
   layout_gutter: optionalText(1),
+  /*
+   * The wall's default style lane (RFC 014 §4.1 / §4.4): the colours, faces,
+   * weight, tracking and inset every widget starts from. `style_form` is the
+   * marker a page rendered with the control always posts — an unticked
+   * checkbox is not sent, so "inherit is off and every field is blank" and
+   * "this page predates the row" would otherwise be one body (the Weather
+   * screen's `weather_form` lesson). The values are short strings here; the
+   * lane's own schema decides what they mean, in the handler.
+   */
+  style_form: optionalText(1),
+  style_inherit: checkbox(),
+  ...Object.fromEntries(STYLE_FORM_FIELDS.map(([, name]) => [name, optionalText(120)])),
+  style_weight: optionalText(10),
+  style_tracking: optionalText(10),
+  style_inset: optionalText(1),
 });
 
 /**
@@ -462,7 +512,15 @@ import { registerEpaperRoutes } from './admin-epaper.js';
 import { displaysPage, registerWallsRoutes } from './admin-walls.js';
 import { offeredTimezones } from './setup.js';
 import { selfHref } from './self.js';
-import { isValidThemeRef, readThemes } from '../api/themes.js';
+import { CUSTOM_PREFIX, FALLBACK_THEME, FONTS, isValidThemeRef, readTheme, readThemes } from '../api/themes.js';
+import { builtinThemeTokens } from '../api/builtin-themes.js';
+import {
+  STYLE_INSET_MAX,
+  STYLE_TRACKINGS,
+  STYLE_WEIGHTS,
+  storedStyleLayer,
+  widgetStyleBody,
+} from '../api/widget-style.js';
 /*
  * The theme table and its card, which used to live in this file (RFC 015 phase
  * 1). Moved so `admin-themes.ts` — the screen actually about colour — can reach
@@ -2742,6 +2800,46 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       layoutGutter = step;
     }
 
+    /*
+     * The wall's default style lane (RFC 014 §4.1 / §4.4).
+     *
+     * Absent marker is **what this wall already has**, the gutter's rule one
+     * group up: a stale tab saving a timezone must not clear a lane nobody
+     * touched. Inherit on is no lane. Otherwise the fields are read against
+     * the theme's own colours and **only what differs is kept** — a colour
+     * input always posts a value, so a form that wrote every field back would
+     * freeze all eleven colours onto the wall the first time somebody changed
+     * one, and the daylight theme would never reach them again. The lane's
+     * own schema is the boundary: a face outside the allowlist or a step off
+     * the ladder is a 400 with its message, never coerced.
+     */
+    let layoutStyle: string | null = stored?.layoutStyle ?? null;
+    if ((shaped.value.style_form ?? '').trim() === '1') {
+      if (shaped.value.style_inherit) {
+        layoutStyle = null;
+      } else {
+        const seed = wallThemeColours(deps.db, theme);
+        const said = shaped.value as Record<string, unknown>;
+        const lane: Record<string, unknown> = {};
+        for (const [token, name] of STYLE_FORM_FIELDS) {
+          const value = typeof said[name] === 'string' ? (said[name] as string).trim() : '';
+          if (value === '') continue;
+          const inherited = seed[token];
+          if (inherited !== undefined && inherited.toLowerCase() === value.toLowerCase()) continue;
+          lane[token] = value;
+        }
+        const weight = (shaped.value.style_weight ?? '').trim();
+        if (weight !== '' && weight !== 'regular') lane['weight'] = weight;
+        const tracking = (shaped.value.style_tracking ?? '').trim();
+        if (tracking !== '' && tracking !== 'normal') lane['tracking'] = tracking;
+        const inset = (shaped.value.style_inset ?? '').trim();
+        if (inset !== '' && inset !== String(STYLE_INSET_MAX)) lane['inset'] = Number(inset);
+        const parsedLane = parse(widgetStyleBody, lane);
+        if (!parsedLane.ok) return c.html(displayDetailPage(id, parsedLane.message, c), 400);
+        layoutStyle = Object.keys(parsedLane.value).length === 0 ? null : JSON.stringify(parsedLane.value);
+      }
+    }
+
     // Density overrides: empty follows the household default, a number is
     // range-checked here beside the theme and zone checks.
     const density = (
@@ -2804,6 +2902,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         panelHeightMm: size.heightMm,
         readDistanceMm: size.distanceMm,
         layoutGutter,
+        layoutStyle,
       })
     ) {
       return c.redirect('/admin/walls', 302);
@@ -4400,6 +4499,100 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * empty override still means "follow the household". The one addition is that
    * inheritance now says what it inherits *and* what that currently is.
    */
+  /**
+   * The wall's default style lane as form fields (RFC 014 §4.1 / §4.4).
+   *
+   * Script-free by construction, and it degrades the way the size fields do:
+   * the group is `hidden` and its inputs `disabled` only while inheriting,
+   * which the page chrome toggles; with script off a household sees every
+   * field and the handler still reads them only when the switch is off.
+   */
+  function styleLaneFields(screen: AdminScreenRow): string {
+    const lane = storedStyleLayer(screen.layoutStyle);
+    const inheriting = lane === undefined;
+    const seed = wallThemeColours(deps.db, screen.theme ?? FALLBACK_THEME);
+    const disabled = inheriting ? 'disabled' : '';
+    const own = (token: string): string | undefined => {
+      const value = lane === undefined ? undefined : (lane as Record<string, unknown>)[token];
+      return typeof value === 'string' ? value : undefined;
+    };
+    const isFace = (token: string): boolean => token === '--disp' || token === '--f-sans';
+    const colours = STYLE_FORM_FIELDS.filter(([token]) => !isFace(token))
+      .map(([token, name, label]) =>
+        `<div>` +
+        textField({
+          label,
+          name,
+          type: 'color',
+          value: own(token) ?? seed[token] ?? '#000000',
+          attrs: `data-token="${escapeHtml(token)}" ${disabled}`,
+        }) +
+        `</div>`,
+      )
+      .join('');
+    const fontOptions = (token: string): string =>
+      `<option value=""${own(token) === undefined ? ' selected' : ''}>Same as the wall</option>` +
+      FONTS.map(
+        (font) =>
+          `<option value="${escapeHtml(font.stack)}"${own(token) === font.stack ? ' selected' : ''}>` +
+          `${escapeHtml(font.label)}</option>`,
+      ).join('');
+    const faces = STYLE_FORM_FIELDS.filter(([token]) => isFace(token))
+      .map(([token, name, label]) =>
+        selectRow({
+          label,
+          name,
+          wide: true,
+          attrs: `data-token="${escapeHtml(token)}" ${disabled}`,
+          optionsHtml: fontOptions(token),
+        }),
+      )
+      .join('');
+    const weightNames: Readonly<Record<string, string>> = { regular: 'Regular', medium: 'Medium', bold: 'Bold' };
+    const trackingNames: Readonly<Record<string, string>> = { tight: 'Tight', normal: 'Normal', wide: 'Wide' };
+    return (
+      switchRow({
+        label: 'Inherit the wall’s theme',
+        name: 'style_inherit',
+        checked: inheriting,
+        hint:
+          'Colours, faces, weight, tracking and inset follow the theme. Off, every widget ' +
+          'starts from what you choose here, and a widget’s own settings still win.',
+        attrs: 'data-inherit-toggle="style"',
+      }) +
+      `<input type="hidden" name="style_form" value="1">` +
+      `<div class="rowsub" data-inherit-field="style"${inheriting ? ' hidden' : ''}>` +
+      `<div class="wset-colours">${colours}</div>` +
+      `<div class="rows">${faces}</div>` +
+      segControl({
+        label: 'Weight',
+        name: 'style_weight',
+        selected: lane?.weight ?? 'regular',
+        options: STYLE_WEIGHTS.map((weight) => ({ value: weight, label: weightNames[weight] ?? weight })),
+      }) +
+      segControl({
+        label: 'Tracking',
+        name: 'style_tracking',
+        selected: lane?.tracking ?? 'normal',
+        options: STYLE_TRACKINGS.map((tracking) => ({
+          value: tracking,
+          label: trackingNames[tracking] ?? tracking,
+        })),
+      }) +
+      segControl({
+        label: 'Inset',
+        name: 'style_inset',
+        hint: 'How much of each widget’s box goes to the room inside it. Normal is what the wall draws today.',
+        selected: String(lane?.inset ?? STYLE_INSET_MAX),
+        options: GUTTER_LABELS.slice(0, STYLE_INSET_MAX + 1).map((label, step) => ({
+          value: String(step),
+          label,
+        })),
+      }) +
+      `</div>`
+    );
+  }
+
   function wallSettingsForm(screen: AdminScreenRow): string {
     const household = readHousehold(deps.db);
     const option = (value: string, label: string, selected: boolean): string =>
@@ -4480,6 +4673,15 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             options: GUTTER_LABELS.map((label, step) => ({ value: String(step), label })),
           }),
       ) +
+      /*
+       * The colours, faces, weight, tracking and inset every widget on this
+       * wall starts from (RFC 014 §4.1 / §4.4) — the widget inspector's
+       * "Colours and type" section, once, for the whole wall. The switch is
+       * the inherited-number pattern: on, the fields are hidden and disabled
+       * so nothing posts; off, they show the theme's own values, and the
+       * handler keeps only what differs from them.
+       */
+      wsetGroup('Colours and type', styleLaneFields(screen)) +
       wsetGroup(
         'Theme',
         /*
@@ -5193,6 +5395,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // The watched Home Assistant to-do lists, for the To-do widget's picker
       // (RFC 012). Empty when there are none, and the picker says so.
       todoLists: todoListChoices(deps.db),
+      // The bundled faces a widget's style lane may name (RFC 014 §4.1) — the
+      // server's allowlist, so the inspector cannot offer a face the schema
+      // would refuse.
+      fonts: FONTS,
       // Which widgets the wall will leave out, and what to do about it. The
       // editor keeps the box — it has to be grabbable — and flags it. Keyed by
       // box, over both canvases, and beside it the facts to keep the flags

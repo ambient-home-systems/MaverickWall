@@ -250,7 +250,8 @@ describe('upgrading a database that is already in use', () => {
       .prepare(
         `SELECT name, orientation, rotation, kind,
                 panel_width_mm AS widthMm, panel_height_mm AS heightMm,
-                read_distance_mm AS distanceMm
+                read_distance_mm AS distanceMm,
+                layout_style AS layoutStyle
            FROM screens WHERE id = 'scr-1'`,
       )
       .get() as Record<string, unknown>;
@@ -266,6 +267,9 @@ describe('upgrading a database that is already in use', () => {
       widthMm: null,
       heightMm: null,
       distanceMm: null,
+      // 0048 (RFC 014 §4.1): no default style lane, which is the wall drawing
+      // exactly what it drew — spread out of the manifest, never `{}`.
+      layoutStyle: null,
     });
 
     db.close();

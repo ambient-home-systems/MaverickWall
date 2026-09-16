@@ -280,7 +280,9 @@ function start(): void {
      * "nothing yet" note for that rather than a blank wall.
      */
     const canvas = pickCanvas(manifest.layout, geo.layout);
-    renderFreeform(root, model, canvas);
+    // Which theme is on the glass decides which resolution of a style lane
+    // the boxes wear (RFC 014 §4.1) — the same `day` the root was just themed by.
+    renderFreeform(root, model, canvas, undefined, { daytime: day });
     // What is drawn, said. No-op unless the sentence itself changed.
     announce(announcement(model));
     lastDrawAt = Date.now();

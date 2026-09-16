@@ -69,6 +69,7 @@ const SHELL = [
   '/assets/viewmodel.js',
   '/assets/watchdog.js',
   '/assets/widget-options.js',
+  '/assets/widget-style.js',
   '/assets/widget-tiers.js',
   '/assets/widget-views.js',
 ];

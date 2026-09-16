@@ -14,6 +14,7 @@ import type { PanelData, PanelReading } from './viewmodel.js';
 import type { ManifestWidget, CanvasBackground } from './manifest.js';
 import { glyphNode } from './glyphs.js';
 import { boxRect, gutterStepFor } from './gutter.js';
+import { applyStyleTokens, styleTokensOf } from './widget-style.js';
 import { inkOn, shiftTint } from './theme.js';
 import {
   HOUSE_ROLES,
@@ -1680,8 +1681,20 @@ function hexToRgba(hex: string, alpha: number): string {
  * every type and never changes what the section draws. The server has already
  * validated the shape; this reads it back defensively all the same.
  */
-function applyWidgetFormat(box: HTMLElement, config: unknown): void {
+function applyWidgetFormat(
+  box: HTMLElement,
+  config: unknown,
+  styleTokens: Readonly<Record<string, string>> | undefined,
+): void {
   const c = widgetConfig(config);
+  /*
+   * The style lane (RFC 014 §4.1), already resolved by the server: colours,
+   * faces, weight, tracking and inset as properties on the box, the way
+   * `applyTheme` puts the household's on the root. First, so the Card
+   * background below still wins over the lane's own ground when both are set
+   * — the card is the more explicit of the two controls.
+   */
+  if (styleTokens !== undefined) applyStyleTokens(box, styleTokens, true);
   if (c['align'] === 'center' || c['align'] === 'right' || c['align'] === 'left') {
     box.style.textAlign = c['align'];
   }
@@ -2807,6 +2820,15 @@ export function renderFreeform(
     readonly background?: CanvasBackground;
   },
   mediaBase: string = MEDIA_BASE,
+  /*
+   * Whether the wall is showing its daylight theme right now — which only
+   * `main.ts` knows, since it evaluates the window on every draw. A style
+   * lane's *derived* tokens depend on the ground they were measured against,
+   * so the server resolves each lane twice when a wall has a daylight theme
+   * and this picks the record for the theme actually on the glass. Absent is
+   * the active theme, which is every preview and every wall with no schedule.
+   */
+  options: { readonly daytime?: boolean } = {},
 ): void {
   const takeover = model.interrupts.find((interrupt) => interrupt.takeover);
   if (takeover !== undefined) {
@@ -2837,6 +2859,14 @@ export function renderFreeform(
    */
   const gutter = gutterStepFor(model.layoutGutter);
   if (gutter !== undefined) canvas.style.setProperty('--fw-gutter', gutter.padding);
+  /*
+   * The wall's default style lane (RFC 014 §4.1 / §4.4), on the canvas so
+   * every box inherits it and a widget's own lane overrides it token by
+   * token. Not painted: the canvas has a ground rule of its own and keeps
+   * following its `--panel`, which a lane can move like any other token.
+   */
+  const canvasStyle = options.daytime === true ? model.layoutDaytimeStyle : model.layoutStyle;
+  if (canvasStyle !== undefined) applyStyleTokens(canvas, canvasStyle, false);
   // The canvas background (RFC 005 Phase 3): a solid colour or a gradient behind
   // the widgets. `background` is a shorthand, so it overrides the theme's wall
   // colour on this canvas only; absent leaves the theme showing through.
@@ -2898,9 +2928,15 @@ export function renderFreeform(
     box.style.setProperty('--bw', String(widget.w));
     box.style.setProperty('--bh', String(widget.h));
 
-    // Box-level format the household chose — a background, corners, a shadow,
-    // alignment. Applied whatever the widget draws inside.
-    applyWidgetFormat(box, widget.config);
+    // Box-level format the household chose — a background, corners,
+    // alignment — and the widget's own style lane. Applied whatever the
+    // widget draws inside. The lane is read off the resolved record the
+    // server put beside the config, never off `config.style` itself.
+    applyWidgetFormat(
+      box,
+      widget.config,
+      styleTokensOf(options.daytime === true ? widget.daytimeStyleTokens : widget.styleTokens),
+    );
 
     const body = renderWidget(widget.type, model, widget.config, mediaBase, widget.id);
     if (body === undefined) {

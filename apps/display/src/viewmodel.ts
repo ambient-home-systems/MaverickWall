@@ -7,6 +7,7 @@ import type {
   ManifestShift,
 } from './manifest.js';
 import { isGlyphKey, type GlyphKey } from './glyphs.js';
+import { styleTokensOf } from './widget-style.js';
 export type { ManifestShift };
 export type { GlyphKey };
 
@@ -410,6 +411,16 @@ export interface DisplayModel {
    * on which way up it is hung.
    */
   readonly layoutGutter: number | undefined;
+  /**
+   * The wall's default style lane, resolved by the server (RFC 014 §4.1) —
+   * what every box on the canvas starts from — and the same against the
+   * daylight theme when the wall has one. On the model beside the gutter for
+   * the reason the gutter is: a fact about the screen, one answer for both
+   * orientations. `undefined` on a wall nobody has restyled, which draws what
+   * it always drew.
+   */
+  readonly layoutStyle: Readonly<Record<string, string>> | undefined;
+  readonly layoutDaytimeStyle: Readonly<Record<string, string>> | undefined;
   /**
    * A sentence about a tick that did not happen, by widget id (RFC 012 §7.4).
    *
@@ -1443,6 +1454,9 @@ export function buildModel(options: BuildOptions): DisplayModel {
     // Straight off the document: `gutterValue` is the one place a step becomes
     // a length, and it refuses anything this bundle does not know.
     layoutGutter: manifest.screen?.layoutGutter,
+    // Read through `styleTokensOf`, which keeps only what a lane can carry.
+    layoutStyle: styleTokensOf(manifest.screen?.layoutStyleTokens),
+    layoutDaytimeStyle: styleTokensOf(manifest.screen?.layoutDaytimeStyleTokens),
     todoNotices: options.todoNotices ?? {},
     notices: manifest.notices.map((notice) => ({ level: notice.level, message: notice.message })),
     staleness,
