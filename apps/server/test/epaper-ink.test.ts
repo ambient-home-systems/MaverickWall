@@ -287,13 +287,31 @@ describe('what a panel honours, checked against the panel', () => {
       }
     });
 
+    /*
+     * The other half, and the one that keeps the table honest as the renderer
+     * grows: a key the draws started reading without being added here is an
+     * option the ink lane could never offer.
+     *
+     * Two tests rather than one, for the reason the "draws none of them"
+     * describe below gives at length: the style lane added sixteen members to
+     * SCHEMA_KEYS, and the calendar's month grid is the dearest frame to draw,
+     * so one body walking all of them measured 2.2s in isolation and timed
+     * out at 5s on a CI runner with the browser suite beside it. The render
+     * cost is real and fixed; splitting the lane's members out halves what
+     * either body has to pay, and is the shape this file already uses.
+     */
+    const honoured = new Set(PANEL_HONOURS[type] ?? []);
+    const unhonoured = SCHEMA_KEYS.filter((key) => !honoured.has(key));
     it(`draws nothing else for ${type}`, () => {
-      // The other half, and the one that keeps the table honest as the
-      // renderer grows: a key the draws started reading without being added
-      // here is an option the ink lane could never offer.
-      const honoured = new Set(PANEL_HONOURS[type] ?? []);
-      for (const key of SCHEMA_KEYS) {
-        if (honoured.has(key)) continue;
+      for (const key of unhonoured.filter((key) => !key.startsWith('style.'))) {
+        expect(movesInk(type, key), `${type}.${key} moves ink but is not in PANEL_HONOURS`).toBe(
+          false,
+        );
+      }
+    });
+
+    it(`draws nothing else from the style lane for ${type}`, () => {
+      for (const key of unhonoured.filter((key) => key.startsWith('style.'))) {
         expect(movesInk(type, key), `${type}.${key} moves ink but is not in PANEL_HONOURS`).toBe(
           false,
         );

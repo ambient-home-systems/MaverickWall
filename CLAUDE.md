@@ -464,12 +464,15 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
-**3421 tests, over 248 files, and one of them red in the full run.** calendar
+**3431 tests, over 248 files, and one of them red in the full run.** calendar
 153 (plus 1 skipped) over 10 · core 314 over 9 · display 520 over 29 · server
-2434 over 200, measured on a clone whose tags had been fetched, so
+2444 over 200, measured on a clone whose tags had been fetched, so
 `changelog-shape.test.ts` compares rather than refusing. Measured for the style
 lane (RFC 014 §4.1): the display grew 12 tests in two new files and the server
-grew 38 in five new files, and the full run's one red —
+grew 48 in five new files — ten of them because `epaper-ink`'s "draws nothing
+else" body, walking the lane's sixteen new members through the calendar's
+month grid, timed out at 5s on the CI runner and was split per type the way
+that file already splits its ignores — and the full run's one red —
 `browser-source-colours` finding no span text on a cold first draw, a file the
 lane does not touch — passed alone on the same tree a minute later, which is the
 font race this document already records for a cold boot under load rather than
