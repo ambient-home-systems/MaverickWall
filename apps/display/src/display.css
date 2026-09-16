@@ -2415,7 +2415,15 @@ body {
    * anything airier would spend the widget-box permission above on room
    * between the boxes rather than inside them.
    */
-  padding: calc(var(--fw-gutter, var(--s4)) / 2);
+  /*
+   * `--fw-inset` in front of it is a widget's own style lane (RFC 014 §4.1),
+   * set on the box — or on the canvas, as the wall's default — and it takes
+   * the same ladder the gutter does, steps 0-4, so step 4 *is* today's
+   * padding. Two fallbacks deep and still the identical `calc(var(--s4) / 2)`
+   * when neither property is set, which is every box on every wall until a
+   * household asks.
+   */
+  padding: calc(var(--fw-inset, var(--fw-gutter, var(--s4))) / 2);
   display: flex;
   flex-direction: column;
   min-width: 0;

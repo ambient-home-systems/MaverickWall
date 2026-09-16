@@ -1856,6 +1856,13 @@ pre.code{background:var(--mw-surface-2);
 .le-cfg-field textarea{width:100%;box-sizing:border-box;font:inherit;padding:var(--mw-s-2) var(--mw-s-3);
   border:1px solid var(--rule);border-radius:var(--mw-r-1);background:var(--panel2);color:var(--ink);
   resize:vertical;line-height:1.4}
+.le-cfg-section{margin-top:var(--mw-s-5)}
+.le-cfg-section>.kick{margin:0 0 var(--mw-s-2)}
+.le-style-colours,.wset-colours{display:grid;grid-template-columns:repeat(auto-fill,minmax(calc(var(--mw-touch) * 3),1fr));
+  gap:0 var(--mw-s-3)}
+.le-style-colours input[type=color],.wset-colours input[type=color]{width:100%;min-width:0;height:var(--mw-touch);padding:0;
+  border:1px solid var(--rule);border-radius:var(--mw-r-1);background:var(--panel2)}
+.le-style-contrast{margin-top:var(--mw-s-3)}
 .le-cfg-checks{display:flex;flex-wrap:wrap;gap:var(--mw-s-2) var(--mw-s-4);margin-top:var(--mw-s-1)}
 .le-cfg-check{display:inline-flex;align-items:center;gap:var(--mw-s-2);font-size:var(--mw-t-h4-size);
   color:var(--mw-ink);cursor:pointer;margin:0}

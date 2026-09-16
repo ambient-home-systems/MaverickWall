@@ -1,14 +1,18 @@
 # RFC 014 — Styling and layout flexibility
 
-Status: **proposed; §7 precondition 1, §4.3 and the gutter half of §4.4 are
+Status: **proposed; §7 precondition 1, §4.1, §4.3 and both halves of §4.4 are
 built** — the display serves a Content-Security-Policy
 (`apps/server/src/http/app.ts`, `apps/server/test/display-csp.test.ts`), a
-custom theme can name a shape (`apps/server/src/api/themes.ts`'s
-`resolveTheme`, `apps/server/test/browser-theme-shape.test.ts`), and a wall
-names its own gutter step across both budgets (`screens.layout_gutter`,
-migration `0047`, `apps/server/src/gutter.ts`, `apps/display/src/gutter.ts`,
-`apps/server/test/browser-canvas-gutter.test.ts`); §4.4's *default widget
-style* waits on §4.1, and nothing else here is built ·
+widget carries its own style lane resolved server-side
+(`apps/server/src/api/widget-style.ts`, `apps/display/src/widget-style.ts`,
+`apps/server/test/browser-widget-style.test.ts`), a custom theme can name a
+shape (`apps/server/src/api/themes.ts`'s `resolveTheme`,
+`apps/server/test/browser-theme-shape.test.ts`), a wall names its own gutter
+step across both budgets (`screens.layout_gutter`, migration `0047`,
+`apps/server/src/gutter.ts`, `apps/display/src/gutter.ts`,
+`apps/server/test/browser-canvas-gutter.test.ts`) and its own default widget
+style (`screens.layout_style`, migration `0048`,
+`apps/server/test/wall-style-settings.test.ts`); nothing else here is built ·
 Owner: — · First drafted 2026-09-15 ·
 Arises from the question "could a household style each widget with a CSS
 block?" · Relates to `apps/server/src/api/widget-schema.ts`,
@@ -112,11 +116,65 @@ and the product will be blamed for the result.
 
 ## 4. Styling — four steps before a CSS block
 
-### 4.1 A per-widget style lane (the ink lane's twin)
+### 4.1 A per-widget style lane (the ink lane's twin) — **built**
 
 Let a widget carry its own token set, applied on its box exactly as
 `applyTheme` applies the household's on the root — one element down, so every
 rule under the box inherits it and nothing else on the wall does.
+
+**Built, with two of the four new keys and not the other two, by decision.**
+The lane is `config.style` on `widgetConfigBody` (`api/widget-style.ts`),
+picked from `themeTokensSchema` — the eleven colours and the two faces, all
+optional — plus `weight`, `tracking` and `inset`. It carries **no `--radius`**,
+because the Corners control already exists and two controls for one decision
+is the ink lane's own argument against `showHours`; and **no `scale`**, which
+is deferred rather than declined — it is the one control here that can take a
+run under the reader's angle, and it waits on its own measurement. Shape is
+not per widget. The draft's shape is otherwise what shipped, and the two
+paragraphs it got most right are worth restating as what was measured:
+
+- **The custom-theme derivation runs per widget, on the server**, through the
+  same `withTints` a custom theme goes through, and only for the derived tokens
+  whose inputs the lane moved — so a widget that sets `--accent` alone carries
+  `--accent` and nothing else, and the daylight theme still reaches every token
+  it did not claim. The RFC's own case is the acceptance: a widget with `--bg
+  #FFF8E7` and `--ink #2A2A2A` on a Panels wall draws its date numeral at
+  4.5:1 or better against its own ground, where the theme's scaffold would
+  land at 2.6:1; reverting the re-derivation turns that assertion red. A wall
+  that switches at daylight gets the lane resolved twice, once per ground,
+  and the display applies the record for the theme on the glass.
+- **The manifest carries `styleTokens` and the display never reads `style`**,
+  exactly as the panel reads a merged `ink` and the wall never looks at it.
+  Absent is spread, never emitted empty: an unstyled wall's manifest was
+  compared byte for byte, and by ETag, against a clean build of the commit
+  this landed on, and is identical.
+
+What the draft could not know is where the theme's ground *is*. `applyTheme`
+sets `--bg` on the root and the body paints it; a widget box has no ground
+rule of its own, so a lane's `--bg` would be a colour nothing reads — the
+`options.json` bug in a colour input. The lane paints the box it sets `--bg`
+on, which is also the ground its own `--ink-scaffold` was measured against,
+and that is what makes the contrast promise true rather than declared. The
+wall-level default (§4.4) is applied on the canvas, whose own ground rule
+follows `--panel` as it always has.
+
+Two things the panel taught. `style.inset` is in `PANEL_HONOURS` for every
+type and moves the frame's own padding, on the wall's spacing ladder scaled to
+the panel's own inset; the colours, the faces, weight and tracking are in
+`PANEL_IGNORES` under the same `style.<key>` spelling, each with the sentence
+a household reads. `epaper-ink.test.ts` expands the schema's `style` key into
+its members and probes each by rendering, so `style.inset` is proved to move
+ink and `style.--bg` proved not to, exactly as every top-level key is. And
+because the lane is absent on every widget until a household opens the tab,
+no shipped panel's pixels move and `EPAPER_RENDERER_VERSION` is unmoved.
+
+The editor's "Colours and type" section is the inherited-number pattern one
+widget down, with one correction to it: turning "Inherit the wall's theme" off
+reveals the controls seeded with what the widget is inheriting and **writes
+nothing until a control is touched** — seeding a whole lane the way a single
+number is seeded would freeze eleven colours onto every widget a household
+merely looked at. The whole section carries one config key no panel lane
+offers, so `pruneToLane` drops it on the ink lane in one piece.
 
 ```
 config.style = {
@@ -228,7 +286,7 @@ alongside the borrowed shape, and a theme with no shape chosen measured
 byte-for-byte identical to one carrying a genuine pre-phase `NULL` column.
 Days of work, as the estimate said, and a real gap closed.
 
-### 4.4 Canvas-level styling — the gutter step is **built**
+### 4.4 Canvas-level styling — **built**, both halves
 
 Two things a household reaches for that are about the wall rather than a
 widget: a **gutter step** between boxes (today the canvas spends up to `--s5`
@@ -283,7 +341,22 @@ same distance, but on a theme that draws a widget as a card, padding grows the
 card where an inset opens a gap *between* cards — which is what a household
 asking for an airier wall is actually asking for.
 
-What it is:
+**The default widget style shipped with §4.1**, and it is that lane once, for
+the wall: `screens.layout_style` (migration `0048`, one `ALTER TABLE ADD
+COLUMN`), the same schema, resolved the same way against the wall's theme and
+carried as `layoutStyleTokens` on the manifest's `screen`, applied on the
+canvas so every box inherits it and a widget's own lane overrides it token by
+token — a widget setting `--ink` over a wall whose default set `--bg` gets a
+scaffold measured against the ground it will actually sit on. It is the
+"Colours and type" group on the wall's Layout settings, behind the same
+switch. One thing the form had to decide that the inspector did not: a colour
+input always posts a value, so the handler diffs every field against the
+theme's own colours and **keeps only what differs** — otherwise the first
+saved change would freeze all eleven colours onto the wall and the daylight
+theme would never reach them again. Null and an absent marker leave the column
+as it was, the gutter's rule.
+
+What the gutter step is:
 
 - `screens.layout_gutter`, nullable, migration `0047` — generated and read as
   a single `ALTER TABLE ADD COLUMN`, the `0009` shape. **Null is what the wall
@@ -544,13 +617,16 @@ cannot do.
 Each step ships with the measurement this project counts, not with a test that
 reads a class name.
 
-- **4.1** `browser-widget-style.test.ts`: a widget carrying `--bg` and `--ink`
-  draws its date numeral at 4.5:1 or better against *its* ground, read off the
-  computed colours; every run in a restyled widget is still its role's angle on
-  a measured wall; `scale` at its upper bound takes no run under the floor on
-  the shipped seed at five sizes; a sibling widget's computed tokens are
-  byte-identical with and without the lane. Reverting the per-widget
-  re-derivation must turn the contrast assertion red.
+- **4.1** `browser-widget-style.test.ts` — **built**: a widget carrying `--bg`
+  and `--ink` draws its date numeral at 4.5:1 or better against *its* ground,
+  read off the computed colours; every run in a restyled widget is still its
+  role's angle on a measured wall; a sibling widget's computed tokens are
+  byte-identical with and without the lane; an unstyled wall's document
+  carries no trace and round-trips through styling to the same bytes; and the
+  inspector reveals the controls seeded with the theme's values while the ink
+  lane offers none. Reverting the per-widget re-derivation turns the contrast
+  assertion red (checked, with seven other mutations). The `scale` clause is
+  not built because `scale` is not: it waits on the control.
 - **4.2** One `browser-*` file per variant, the Swiss-mode shape: measured on a
   paired 1080x1920 and 1920x1080 wall, no run under the floor, nothing clipped,
   and the panel frame *different* from the default variant where the honours
@@ -572,6 +648,7 @@ reads a class name.
 
 1. 4.3 and 4.4 — days each, no schema change beyond one column.
 2. 4.1 — the lane, the server-side resolver, the honours table entries.
+   **Built**, with §4.4's default widget style beside it.
 3. 4.2 — one widget at a time, clock first, each with its measurement.
 4. 5.3 substitution, then 5.2, then 5.1 with multi-select, then 5.3 yield as a
    decision on its own.

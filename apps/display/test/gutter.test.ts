@@ -87,8 +87,13 @@ describe('the stylesheet the ladder is written against', () => {
      * spends exactly that and nothing at the canvas, which is what makes "the
      * household has not chosen" and "the household chose Normal" the same
      * pixels — the pair the browser test then measures.
+     *
+     * A widget's own `--fw-inset` stands in front of it (RFC 014 §4.1) and
+     * takes the same ladder, so the chain is two fallbacks deep and still
+     * lands on `--s4` when neither is set — which is every box on every wall
+     * until a household asks.
      */
-    expect(css).toContain('padding: calc(var(--fw-gutter, var(--s4)) / 2);');
+    expect(css).toContain('padding: calc(var(--fw-inset, var(--fw-gutter, var(--s4))) / 2);');
     expect(GUTTER_STEPS[GUTTER_DEFAULT_STEP]).toEqual({ padding: 'var(--s4)', canvas: '0px' });
   });
 

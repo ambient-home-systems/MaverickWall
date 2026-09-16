@@ -1,5 +1,6 @@
 import { z } from '../validation.js';
 import { WIDGET_TYPES } from './manifest.js';
+import { widgetStyleBody } from './widget-style.js';
 
 /**
  * A stored image's own name — 64 hex plus a known extension, the shape
@@ -280,8 +281,16 @@ export const inkOverrideBody = widgetConfigFields
   })
   .strict();
 
+/**
+ * The style lane (RFC 014 §4.1): this widget's own colours, faces, weight,
+ * tracking and inset, resolved server-side and carried to the wall as
+ * `styleTokens` — see `widget-style.ts`, which owns the shape. Beside `ink`
+ * rather than inside `widgetConfigFields`, for the same reason `ink` is: it
+ * is a lane over the widget rather than one of its options, and it must not
+ * be pickable *into* the ink lane (`ink.style` is a rejected key).
+ */
 export const widgetConfigBody = widgetConfigFields
-  .extend({ ink: inkOverrideBody.optional() })
+  .extend({ ink: inkOverrideBody.optional(), style: widgetStyleBody.optional() })
   .strict();
 
 /**

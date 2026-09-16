@@ -337,6 +337,13 @@
       "when": 1789476254592,
       "tag": "0047_organic_rockslide",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "6",
+      "when": 1789551435626,
+      "tag": "0048_widget_style_lane",
+      "breakpoints": true
     }
   ]
 }

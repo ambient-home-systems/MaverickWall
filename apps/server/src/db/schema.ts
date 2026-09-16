@@ -509,6 +509,19 @@ export const screens = sqliteTable(
      * honours table.
      */
     layoutGutter: integer('layout_gutter', { mode: 'number' }),
+    /**
+     * The colours, faces, weight, tracking and inset every widget on this
+     * wall starts from, as JSON in the shape of a widget's own `style` lane
+     * (`api/widget-style.ts`, RFC 014 §4.1 / §4.4). Applied on the canvas so
+     * every box inherits it, and a widget's lane overrides it token by token.
+     *
+     * **Null is what the wall drew before this column existed**, spread out
+     * of the manifest rather than emitted — the `layout_gutter` argument
+     * above, verbatim: `manifestEtag` hashes the serialisation. Read by the
+     * browser wall only; a panel draws one bit at its own geometry and reads
+     * a widget's own `style.inset` alone (see the note at `PANEL_IGNORES`).
+     */
+    layoutStyle: text('layout_style'),
     /** The landscape canvas's aspect; null follows the household (RFC 005). */
     layoutLandscapeAspect: real('layout_landscape_aspect'),
     /** Per-orientation canvas background as JSON; null is none (RFC 005 Phase 3). */

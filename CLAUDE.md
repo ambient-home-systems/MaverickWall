@@ -6740,6 +6740,119 @@ did not list it, so a wall reloading offline would have fetched it from a dead
 server. `sw-shell.test.ts` walks the compiled graph rather than a list, which
 is why that is a line in this paragraph rather than a row in the table above.
 
+**A widget can carry its own colours, faces, weight, tracking and inset, and
+the wall gets the same lane once as a default (RFC 014 §4.1 and the style
+half of §4.4).** `config.style` is one strict object on `widgetConfigBody`,
+picked from `themeTokensSchema` — the eleven colours and the two faces, all
+optional — plus three enums (`api/widget-style.ts`). It carries **no
+`--radius`** (Corners already exists) and **no `scale`** (deferred), by
+decision. Applied on the box exactly as `applyTheme` applies the household's
+theme on the root, one element down: `applyStyleTokens` writes each entry with
+`setProperty`, so every rule under the box inherits it and nothing else on the
+wall does. `screens.layout_style` (migration `0048`, additive) is the same
+shape for the wall, applied on the canvas so every box inherits it and a
+widget's own lane overrides it token by token.
+
+**Resolution is server-side, like a custom theme, and the display reads
+`styleTokens` and never `style`.** That is the load-bearing half and the RFC's
+own reason for the design: `withTints` derives `--ink-scaffold`, the cell tints
+and the badge tints from the base colours and raises the scaffold mix until it
+clears 4.5:1 against *that* `--bg`, and a lane that set `--bg` and `--ink`
+without re-deriving those would put an invisible date numeral in the one
+widget the household restyled. So `buildManifest` runs each lane through the
+same `withTints` a custom theme goes through — against the wall's theme (a
+custom theme's own tokens, or `api/builtin-themes.ts`, a transcription of the
+bundle's five palettes held to `theme.ts` by `builtin-themes-parity.test.ts`),
+then the wall's default lane, then the widget's — and emits **only what the
+lane moved**: the tokens it set, the derived tokens one of those feeds
+(`STYLE_DERIVED` is the dependency table), and the three enums as
+`font-weight`, `letter-spacing` and `--fw-inset`. A widget that sets its accent
+carries its accent and nothing else, so the theme's hand-tuned scaffold still
+reaches it and a daylight switch still reaches every token it did not claim.
+A wall with a daylight theme gets each lane resolved twice, once per ground
+(`daytimeStyleTokens`), and `renderFreeform` is told which theme is on the
+glass by the same `day` `main.ts` just themed the root with. Absent is spread,
+never emitted empty: **an unstyled wall's manifest was compared byte for byte
+and by ETag against a clean build of `e94652c`, the commit this landed on, and
+is identical.**
+
+**Where the ground is was the thing the RFC could not know.** `--bg` on the
+root is painted by the body, and the canvas paints `--panel`; a widget box has
+no ground rule at all, so a lane's `--bg` would be a colour nothing reads — the
+`options.json` bug in a colour input. The lane paints the box it sets `--bg`
+on, which is also the ground its own scaffold was measured against, and that is
+what makes the contrast promise a fact rather than a declaration. Found by
+measuring: the first draft of the browser test set `--bg` and `--ink` on the
+agenda and read `.dr-num`, and got the theme's **accent** at 2.96:1 — because
+the first numeral is today's, drawn in `--accent`, a colour the household chose
+and the editor's contrast guidance warns about rather than one the lane
+derives. The assertion reads a day that is not today. And on Panels the agenda
+is a card in `--panel` inside the box, so the test sets `--panel` too and walks
+up to the *first painted ancestor* rather than assuming the box; the box paint
+is proved on the clock, whose section has no card, where reverting it puts the
+canvas's slate behind the digits.
+
+**The panel honours the inset and says so about the rest.** `style.inset` is in
+`PANEL_HONOURS` for every type — it moves the frame's own padding, on the
+wall's ladder scaled to the panel's inset, so step 4 is today's frame — and the
+colours, faces, weight and tracking are in `PANEL_IGNORES` under the same
+`style.<key>` spelling, each with a sentence a household reads; the editor
+folds those by reason so eleven colours read as one line. `epaper-ink.test.ts`
+expands the schema's `style` key into its members and probes each *inside*
+`style` by rendering, so `style.inset` is proved to move ink and `style.--bg`
+proved not to, exactly as every top-level key is (the inset is probed at step
+0, because step 4 compares a frame with itself). `layout_style` is in neither
+table, the `layout_gutter` argument verbatim. No shipped panel's pixels move,
+so `EPAPER_RENDERER_VERSION` is unmoved at 9.
+
+**The editor is the inherited-number pattern one widget down, with one
+correction to it.** "Inherit the wall's theme" off reveals the lane's controls
+seeded with what the widget is inheriting — the theme, over the wall's default
+lane — and **writes nothing until a control is touched**: seeding a whole lane
+the way a single number is seeded would write eleven colours into every widget
+a household merely looked at, and freeze them there, so the daylight theme
+never reached that widget again. The switch's off state lives in the editor for
+the session and the stored truth is what it reads on reload. The section
+carries one config key, `style`, which no panel lane offers, so `pruneToLane`
+drops it on the ink lane in one piece; the mutation that shows the test can see
+it is annotating the section with a key the ink lane *does* offer. The preview
+resolves an unsaved lane through `apps/display/src/widget-style.ts`, whose
+tables are the server's between two markers (`style-parity.test.ts`) and whose
+derivation is `customTokens` — the bundle's existing mirror of `withTints`,
+already held character-identical by `themes.test.ts`, so the bundle grows no
+second copy of `scaffoldInk`. The contrast guidance is the theme builder's,
+moved into `contrast-guidance.ts` so both read one set of sentences. The wall's
+own Layout settings carry the same section once, and the form had to decide
+something the inspector did not: a colour input always posts a value, so the
+handler diffs every field against the theme's own colours and keeps only what
+differs — otherwise the first saved change would freeze all eleven colours onto
+the wall.
+
+**Measured, on a real paired Classic wall with three family calendars
+(`browser-widget-style.test.ts`).** A widget with `--bg #FFF8E7`, `--panel`
+the same and `--ink #2A2A2A` draws a date numeral at 4.5:1 or better against
+its computed ground, where Panels' own scaffold reads 2.6:1 on that cream; on
+a 32" television read from 1.2m every run in the restyled agenda — title,
+time, numeral, weekday, rota chip, label — is still its role's cap height in
+arc-minutes to within a twentieth, with weight, tracking and inset all set; the
+month grid beside it computes byte-identical tokens with and without the lane;
+an unstyled wall's document carries no trace and round-trips through styling
+to the same bytes; and in the inspector the switch reveals eleven colour
+inputs seeded at Panels' own values, no face chosen, Regular / Normal /
+Normal, Save still disabled, while the ink lane offers none of it. **Eight
+mutations were checked and all eight are red**: the per-widget derivation
+removed (unit and on the glass), the context layer ignored, the panel's inset
+not read, the box not painted, the `.fw` padding chain reverted, an empty
+record emitted for an unstyled widget, the settings handler writing every
+field back, and the section annotated for the ink lane. One that was tried
+first and *stayed green* is worth the line: removing the section's annotation
+altogether changes nothing, because `pruneToLane` drops the unannotated by
+default — which is the rule working, not the test failing.
+
+**Still unproven where it counts:** nobody has restyled a widget on a real
+kitchen wall or through a real supervisor's sidebar, and no e-paper panel has
+been photographed drawing a lane's inset.
+
 ---
 
 ## Open decisions

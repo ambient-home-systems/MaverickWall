@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { todoListHandle, type Manifest, type ManifestDay } from '../src/api/manifest.js';
 import { inkOverrideBody, widgetConfigBody } from '../src/api/widget-schema.js';
+import { widgetStyleBody } from '../src/api/widget-style.js';
 import type { Framebuffer } from '../src/epaper/framebuffer.js';
 import { INK_KEYS, INK_LANE, PANEL_HONOURS, PANEL_IGNORES, withInk } from '../src/epaper/honours.js';
 import { renderFreeformEpaper, type PlacedEpaperWidget } from '../src/epaper/widgets.js';
@@ -211,7 +212,41 @@ const PROBES: Readonly<Record<string, readonly unknown[]>> = {
   opacity: [40],
   corners: ['rounded'],
   shadow: [true],
+  /*
+   * The style lane's members (RFC 014 §4.1), each probed *inside* `style` —
+   * see `withKey`. Step 0 is the one inset that has to move the frame: the
+   * ladder's top is today's padding, so probing 4 alone would compare a frame
+   * with itself and "prove" that inset is not honoured.
+   */
+  'style.--bg': ['#ff0000'],
+  'style.--panel': ['#ff0000'],
+  'style.--rule': ['#ff0000'],
+  'style.--ink': ['#ff0000'],
+  'style.--muted': ['#ff0000'],
+  'style.--faint': ['#ff0000'],
+  'style.--accent': ['#ff0000'],
+  'style.--s-day': ['#ff0000'],
+  'style.--s-night': ['#ff0000'],
+  'style.--s-break': ['#ff0000'],
+  'style.--s-straight': ['#ff0000'],
+  'style.--disp': ["'Fraunces', Georgia, serif"],
+  'style.--f-sans': ["'Fraunces', Georgia, serif"],
+  'style.weight': ['bold'],
+  'style.tracking': ['wide'],
+  'style.inset': [0, 2],
 };
+
+/**
+ * A config with one key set — a top-level key, or a `style.<key>` member set
+ * inside the lane, which is how the honours tables spell a key one level
+ * down. The lane's other members are kept, so `style.inset` is probed against
+ * whatever the base carried there.
+ */
+function withKey(start: Record<string, unknown>, key: string, value: unknown): Record<string, unknown> {
+  if (!key.startsWith('style.')) return { ...start, [key]: value };
+  const lane = typeof start['style'] === 'object' && start['style'] !== null ? (start['style'] as object) : {};
+  return { ...start, style: { ...lane, [key.slice('style.'.length)]: value } };
+}
 
 /** Does setting this key change what the panel draws for this widget type? */
 function movesInk(type: string, key: string): boolean {
@@ -220,7 +255,7 @@ function movesInk(type: string, key: string): boolean {
     for (const start of [base, { ...base, showTitle: true, title: 'Base' }]) {
       const before = frame(type, start);
       for (const value of values) {
-        if (frame(type, { ...start, [key]: value }) !== before) return true;
+        if (frame(type, withKey(start, key, value)) !== before) return true;
       }
     }
   }
@@ -229,7 +264,18 @@ function movesInk(type: string, key: string): boolean {
 
 const TYPES = Object.keys(BASES);
 const IGNORED = new Set(PANEL_IGNORES.map((entry) => entry.key));
-const SCHEMA_KEYS = Object.keys(widgetConfigBody.shape).filter((key) => key !== 'ink');
+/*
+ * Every stored option, one level down into the style lane: `style` itself is
+ * not a setting a panel can honour or ignore as one thing — its `inset` moves
+ * ink and its colours cannot — so it is expanded into its members under the
+ * `style.<key>` spelling both tables use. Derived from the two schemas rather
+ * than from a list here, so a member added to the lane has to be placed.
+ */
+const SCHEMA_KEYS = Object.keys(widgetConfigBody.shape)
+  .filter((key) => key !== 'ink')
+  .flatMap((key) =>
+    key === 'style' ? Object.keys(widgetStyleBody.shape).map((member) => `style.${member}`) : [key],
+  );
 
 describe('what a panel honours, checked against the panel', () => {
   for (const type of TYPES) {

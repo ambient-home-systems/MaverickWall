@@ -17,6 +17,8 @@ import {
 
 import { canvasGutterStep } from '../gutter.js';
 import { physicalWall } from '../wall-sizes.js';
+import { builtinThemeTokens } from './builtin-themes.js';
+import { resolveStyleTokens, storedStyleLayer, styleLayerOf, type WidgetStyle } from './widget-style.js';
 
 /**
  * The manifest: everything a display needs, in one document.
@@ -297,9 +299,52 @@ const unit = (value: number, fallback: number): number =>
  * as the "would this leave nothing?" guard and keep a canvas the wall could not
  * draw anyway.
  */
+/**
+ * What a style lane is resolved against (RFC 014 §4.1).
+ *
+ * `active` is the wall's theme as colour tokens — a custom theme's own, or
+ * the built-in's transcription — and `daytime` the same for a scheduled
+ * daylight theme, absent when there is none. `canvas` is the wall's default
+ * lane, applied on the canvas and the layer beneath every widget's own.
+ */
+export interface StyleContext {
+  readonly active: Readonly<Record<string, string>>;
+  readonly daytime?: Readonly<Record<string, string>>;
+  readonly canvas?: WidgetStyle;
+}
+
+/** No lanes at all — what every caller that predates the lane gets. */
+const NO_STYLE: StyleContext = { active: builtinThemeTokens(STAND_IN_THEME) };
+
+/**
+ * A widget's own lane, resolved for the active theme and, when the wall
+ * switches at daylight, for that theme too — spread rather than emitted, so
+ * an unstyled widget's row is byte-identical to the one it sent before.
+ *
+ * Two records rather than one because the *derived* half depends on the
+ * ground: a widget that sets `--ink` alone gets a scaffold measured against
+ * the theme's `--bg`, and the daytime theme's `--bg` is a different colour.
+ * The display applies whichever theme it is showing, which only it knows.
+ */
+function widgetStyleFields(
+  config: unknown,
+  styling: StyleContext,
+): { readonly styleTokens?: Record<string, string>; readonly daytimeStyleTokens?: Record<string, string> } {
+  const own = styleLayerOf(typeof config === 'object' && config !== null ? (config as Record<string, unknown>)['style'] : undefined);
+  if (own === undefined) return {};
+  const context = styling.canvas === undefined ? [] : [styling.canvas];
+  const active = resolveStyleTokens(styling.active, context, own);
+  const day = styling.daytime === undefined ? undefined : resolveStyleTokens(styling.daytime, context, own);
+  return {
+    ...(active === undefined ? {} : { styleTokens: active }),
+    ...(day === undefined ? {} : { daytimeStyleTokens: day }),
+  };
+}
+
 function placeCanvas(
   widgets: readonly PlacedWidgetRow[],
   setUp: HouseholdSetUp,
+  styling: StyleContext,
 ): Manifest['layout']['portrait']['widgets'] {
   const drawable = widgets.filter((widget) =>
     (WIDGET_TYPES as readonly string[]).includes(widget.type),
@@ -316,6 +361,9 @@ function placeCanvas(
       z: Number.isFinite(widget.z) ? Math.trunc(widget.z) : 0,
       // Untouched, except that a to-do widget's entity id leaves as a handle.
       config: displayConfig(widget.type, widget.config),
+      // The style lane, resolved (RFC 014 §4.1) — absent for a widget that
+      // carries none, which is every widget until a household opens the tab.
+      ...widgetStyleFields(widget.config, styling),
     }))
     .sort((a, b) => a.z - b.z);
 }
@@ -400,14 +448,22 @@ export function buildLayout(
   landscapeWidgets: readonly PlacedWidgetRow[],
   readyModules: readonly string[] = [],
   watchedTodoLists: readonly string[] = [],
+  /*
+   * What each widget's style lane is resolved against (RFC 014 §4.1).
+   * Defaulted, unlike `readyModules`, because the default is *safe*: a caller
+   * that forgets it resolves any lane against Panels rather than against
+   * nothing, and a widget with no lane — every widget the tests build — is
+   * untouched either way.
+   */
+  styling: StyleContext = NO_STYLE,
 ): Manifest['layout'] {
   const setUp: HouseholdSetUp = {
     modules: readyModules,
     shift: household.shiftEnabled === 1,
     todoLists: watchedTodoLists,
   };
-  const portrait = placeCanvas(portraitWidgets, setUp);
-  const landscape = placeCanvas(landscapeWidgets, setUp);
+  const portrait = placeCanvas(portraitWidgets, setUp, styling);
+  const landscape = placeCanvas(landscapeWidgets, setUp, styling);
 
   // Always free-form: the responsive "auto" layout was retired in favour of a
   // single rendering path. Every wall carries the Classic template's widgets (a
@@ -635,12 +691,12 @@ export interface Manifest {
     readonly mode: 'auto' | 'freeform';
     readonly portrait: {
       readonly aspect: number;
-      readonly widgets: readonly PlacedWidgetRow[];
+      readonly widgets: readonly ManifestPlacedWidget[];
       readonly background?: CanvasBackground;
     };
     readonly landscape: {
       readonly aspect: number;
-      readonly widgets: readonly PlacedWidgetRow[];
+      readonly widgets: readonly ManifestPlacedWidget[];
       readonly background?: CanvasBackground;
     };
   };
@@ -723,6 +779,19 @@ export interface Manifest {
      * writing a value it cannot mean.
      */
     readonly layoutGutter?: number;
+    /**
+     * The wall's default style lane, resolved (RFC 014 §4.1 / §4.4): the
+     * colours, faces, weight, tracking and inset every widget starts from,
+     * applied on the canvas so every box inherits it. `layoutDaytimeStyleTokens`
+     * is the same lane resolved against the daylight theme, present only when
+     * the wall has one — the display applies whichever theme it is showing.
+     *
+     * **Optional, and absent when the household has not chosen**, on the
+     * `layoutGutter` argument above: spread, never emitted empty, so a wall
+     * nobody has restyled sends the document it sent before.
+     */
+    readonly layoutStyleTokens?: Readonly<Record<string, string>>;
+    readonly layoutDaytimeStyleTokens?: Readonly<Record<string, string>>;
   };
   readonly days: readonly ManifestDay[];
   /** Everyone the wall knows about, so a legend can be drawn. */
@@ -828,6 +897,19 @@ export interface PlacedWidgetRow {
   readonly config: unknown;
 }
 
+/**
+ * A placed widget as the manifest carries it: the row, plus its style lane
+ * resolved (RFC 014 §4.1). Both records are absent on a widget with no lane,
+ * which keeps its row byte-identical to what it sent before the lane existed.
+ * `config` still carries the household's `style` object as written — the
+ * display reads `styleTokens` and never `style`, exactly as the panel reads a
+ * merged `ink` and the wall never looks at it.
+ */
+export interface ManifestPlacedWidget extends PlacedWidgetRow {
+  readonly styleTokens?: Readonly<Record<string, string>>;
+  readonly daytimeStyleTokens?: Readonly<Record<string, string>>;
+}
+
 export interface PersonRow {
   readonly id: string;
   readonly name: string;
@@ -918,6 +1000,8 @@ export interface BuildManifestInput {
     readonly readDistanceMm?: number | null;
     /** The gutter step off the row; null until the household chooses one. */
     readonly layoutGutter?: number | null;
+    /** The wall's default style lane, as stored JSON; null until chosen. */
+    readonly layoutStyle?: string | null;
   };
   /**
    * Resolve a theme reference to its shape and (for a custom theme) its tokens.
@@ -1325,6 +1409,24 @@ export function buildManifest(input: BuildManifestInput): Manifest {
   // to bare keys when no resolver was injected.
   const active = input.resolveTheme?.(activeTheme) ?? { shape: activeTheme };
   const day = daytimeTheme !== null ? input.resolveTheme?.(daytimeTheme) : undefined;
+  /*
+   * What the style lanes are resolved against (RFC 014 §4.1): a custom
+   * theme's own tokens, or the built-in's transcription — and the wall's
+   * default lane, read off the row the way the gutter step is and refused
+   * rather than repaired when it is not one.
+   */
+  const canvasStyle = storedStyleLayer(input.screen?.layoutStyle);
+  const styling: StyleContext = {
+    active: active.tokens ?? builtinThemeTokens(activeTheme),
+    ...(daytimeTheme === null
+      ? {}
+      : { daytime: day?.tokens ?? builtinThemeTokens(daytimeTheme) }),
+    ...(canvasStyle === undefined ? {} : { canvas: canvasStyle }),
+  };
+  const canvasStyleTokens = resolveStyleTokens(styling.active, [], canvasStyle);
+  const canvasDaytimeStyleTokens =
+    styling.daytime === undefined ? undefined : resolveStyleTokens(styling.daytime, [], canvasStyle);
+
   const theme = {
     active: activeTheme,
     activeShape: active.shape,
@@ -1393,6 +1495,11 @@ export function buildManifest(input: BuildManifestInput): Manifest {
        * which end of it they meant.
        */
       ...(gutterStep === undefined ? {} : { layoutGutter: gutterStep }),
+      // The wall's default lane, on the same argument again (RFC 014 §4.1).
+      ...(canvasStyleTokens === undefined ? {} : { layoutStyleTokens: canvasStyleTokens }),
+      ...(canvasDaytimeStyleTokens === undefined
+        ? {}
+        : { layoutDaytimeStyleTokens: canvasDaytimeStyleTokens }),
     },
     display: {
       todayEvents: clamp(input.household.displayTodayEvents, 1, 20, 8),
@@ -1411,6 +1518,7 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       input.layoutWidgetsLandscape ?? [],
       input.readyModules ?? [],
       input.watchedTodoLists ?? [],
+      styling,
     ),
     days,
     people: people.map((person) => ({
