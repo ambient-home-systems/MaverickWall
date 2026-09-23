@@ -44,6 +44,7 @@ import { clockVariant } from './clock-face.js';
 import { createHistory, type History } from './history.js';
 import {
   SNAP,
+  inParent,
   moveTo,
   nextZ,
   nudge,
@@ -51,6 +52,17 @@ import {
   setDimension,
   type Box,
 } from './placement.js';
+import {
+  canGroup,
+  canUngroup,
+  canvasBoxOf,
+  cellIndexAt,
+  groupWidgets,
+  moveChildTo,
+  ungroupWidget,
+} from './grouping.js';
+import { MARQUEE_MIN, enclosedBy, marqueeBetween, toggleSelected } from './selection.js';
+import { GROUP_LAYOUTS, groupChildren, groupIsOrdered, parentIdOf, topLevelWidgets } from './group-cells.js';
 import { markTabs, wireTabs } from './tabs.js';
 import {
   canvasKey,
@@ -78,7 +90,7 @@ import {
 } from './omission.js';
 import { inspectorView } from './inspector.js';
 import { TIER_NAMES, type TierName } from './tiers.js';
-import { PALETTE, SWATCH, describeWidget, labelFor } from './widget-labels.js';
+import { PALETTE, SWATCH, describeWidget, describeWidgetIn, labelFor } from './widget-labels.js';
 import {
   HOUSE_FIELDS,
   SHIFT_FIELDS,
@@ -468,7 +480,18 @@ function boot(): void {
   // The wall being edited, as a query for the per-wall endpoints.
   const screenQuery = state.screen === null ? '' : `?screen=${encodeURIComponent(state.screen)}`;
 
-  let selected: string | undefined;
+  /**
+   * Which boxes are selected, in the order they were chosen (RFC 014 §5.1).
+   *
+   * One id was the whole of selection until groups needed two or more. The
+   * first entry is the *primary* selection — what the inspector describes
+   * when it is alone, and where focus returns when the sheet closes — and
+   * `selection.ts` owns the arithmetic (a Shift+click, a marquee).
+   */
+  let selection: string[] = [];
+  const primary = (): string | undefined => selection[0];
+  /** What a box is called, on a layout that may hold groups — the one composition. */
+  const nameOf = (widget: Widget): string => describeWidgetIn(widget, state.widgets);
   let dirty = false;
   /*
    * The ladder lists currently on screen, so the cut marker can be refreshed
@@ -641,7 +664,7 @@ function boot(): void {
     if (typeof parsed.aspect === 'number' && parsed.aspect > 0) state.aspect = parsed.aspect;
     state.widgets = Array.isArray(parsed.widgets) ? (parsed.widgets as Widget[]) : [];
     state.background = bgFrom(parsed.background);
-    if (selected !== undefined && !state.widgets.some((w) => w.id === selected)) selected = undefined;
+    selection = selection.filter((id) => state.widgets.some((w) => w.id === id));
     runKey = '';
     syncAspectSelect();
     draw();
@@ -1041,6 +1064,35 @@ function boot(): void {
     undoLast();
   });
 
+  /**
+   * Group and Ungroup (RFC 014 §5.1), at the end of the row. Each is one
+   * undo step however many boxes it moves, and that is the property a
+   * household relies on when they press one to see what it does.
+   *
+   * Group appears with two or more boxes selected, Ungroup with one group
+   * selected, and neither otherwise: a control that would only ever answer
+   * with a 400 is the `options.json` fault in a button. The arithmetic is
+   * `grouping.ts`; what is decided here is only when each is offered.
+   */
+  const groupButton = document.createElement('button');
+  groupButton.type = 'button';
+  groupButton.className = 'le-tool-btn le-group-btn';
+  groupButton.textContent = 'Group';
+  groupButton.title = 'Put the selected widgets in one group you can move as one';
+  groupButton.hidden = true;
+  groupButton.addEventListener('click', () => groupSelected());
+  const ungroupButton = document.createElement('button');
+  ungroupButton.type = 'button';
+  ungroupButton.className = 'le-tool-btn le-ungroup-btn';
+  ungroupButton.textContent = 'Ungroup';
+  ungroupButton.title = 'Take the group apart, putting its widgets back where they were';
+  ungroupButton.hidden = true;
+  ungroupButton.addEventListener('click', () => ungroupSelected());
+  function refreshGroupButtons(): void {
+    groupButton.hidden = !canGroup(state.widgets, selection);
+    ungroupButton.hidden = !canUngroup(state.widgets, selection);
+  }
+
   // Templates sits beside Add widget as its quieter neighbour: both start a
   // layout, one widget at a time or all at once.
   const templateLink = document.createElement('a');
@@ -1206,11 +1258,17 @@ function boot(): void {
     if (layersOpen) {
       setLayersOpen(false);
       layersButton.focus();
+      return;
     }
     if (canvasOpen) {
       setCanvasOpen(false);
       canvasButton.focus();
+      return;
     }
+    // With nothing else to close, Escape clears the selection (RFC 014 §5.1)
+    // — a marquee's or a run of Shift+clicks' — and leaves focus on the box
+    // it was on. The inspector's own Escape stops here before this sees it.
+    if (modal.hidden && selection.length > 0) clearSelection(true);
   });
 
   // Templates duplicates the page overflow's "Start from a template…" on a
@@ -1240,6 +1298,10 @@ function boot(): void {
     undoButton,
     anchor(layersButton, layersPopover),
     anchor(canvasButton, canvasPopover),
+    // Last, because they come and go: a button that appears in the middle of
+    // a row moves every control after it, and these appear on a selection.
+    groupButton,
+    ungroupButton,
   );
 
   /**
@@ -1940,7 +2002,15 @@ function boot(): void {
   /** Rebuild the overlay boxes from state. Cheap — a box is a div and a label. */
   function drawOverlay(): void {
     overlay.textContent = '';
-    const ordered = [...state.widgets].sort((a, b) => a.z - b.z);
+    // The layout's own boxes back to front, then each group's children in
+    // their own order (RFC 014 §5.1): a child's `z` is relative to its group,
+    // so the two scales are never sorted against each other, and `overlayZ`
+    // is what stacks a child over its parent's box.
+    const children = groupChildren(state.widgets);
+    const ordered: Widget[] = [];
+    for (const widget of topLevelWidgets(state.widgets).sort((a, b) => a.z - b.z)) {
+      ordered.push(widget, ...(children.get(widget.id) ?? []));
+    }
     for (const widget of ordered) overlay.appendChild(overlayNode(widget));
     /*
      * Place the name chips again now the boxes are in the document.
@@ -1957,19 +2027,64 @@ function boot(): void {
         const label = overlay.querySelector<HTMLElement>(
           `.le-widget[data-id="${widget.id}"] > .le-widget-label`,
         );
-        if (label !== null) placeLabel(label, widget);
+        if (label !== null) placeLabel(label, canvasBoxOf(state.widgets, widget));
       }
     }
     hint.style.display = state.widgets.length === 0 ? '' : 'none';
+    refreshGroupButtons();
     renderConfigPanel();
+  }
+
+  /**
+   * A box's stacking on the overlay. A child sits over its group's own box —
+   * which is where a tap has to land on the child and not on the group
+   * behind it — so its value is its parent's rung plus its own place, and a
+   * box on the layout takes a rung of its own. Hundreds apart, so a group of
+   * up to fifty children (the server's whole cap) never reaches the next box.
+   */
+  function overlayZ(widget: Widget): number {
+    const parentId = parentIdOf(widget);
+    const parent = parentId === undefined ? undefined : state.widgets.find((w) => w.id === parentId);
+    return parent === undefined ? widget.z * 100 : parent.z * 100 + 1 + widget.z;
+  }
+
+  /** Every box's rectangle and stacking re-read in place — after a group's layout or order changed. */
+  function repositionAll(): void {
+    for (const box of overlay.querySelectorAll<HTMLElement>('.le-widget')) {
+      const widget = state.widgets.find((one) => one.id === box.dataset['id']);
+      if (widget === undefined) continue;
+      positionBox(box, widget);
+      box.style.zIndex = String(overlayZ(widget));
+    }
+  }
+
+  /**
+   * Take the `z` values of a list `grouping.ts` answered onto the widgets the
+   * overlay's handlers already hold. Those handlers close over the objects in
+   * `state.widgets`, so replacing the list mid-drag would leave a drag writing
+   * into a box that is no longer on the layout; copying the numbers back is
+   * what keeps a reorder in place.
+   */
+  function adoptZ(next: readonly Widget[]): void {
+    const z = new Map(next.map((w) => [w.id, w.z]));
+    for (const widget of state.widgets) {
+      const value = z.get(widget.id);
+      if (value !== undefined) widget.z = value;
+    }
   }
 
   function overlayNode(widget: Widget): HTMLElement {
     const box = document.createElement('div');
-    box.className = 'le-widget' + (widget.id === selected ? ' is-selected' : '');
+    const parentId = parentIdOf(widget);
+    box.className =
+      'le-widget' +
+      (selection.includes(widget.id) ? ' is-selected' : '') +
+      (widget.type === 'group' ? ' is-group' : '') +
+      (parentId === undefined ? '' : ' is-child');
     box.dataset['id'] = widget.id;
+    if (parentId !== undefined) box.dataset['parent'] = parentId;
     positionBox(box, widget);
-    box.style.zIndex = String(widget.z);
+    box.style.zIndex = String(overlayZ(widget));
 
     /*
      * A widget on the canvas is a control, so it is one: a tab stop with a
@@ -1979,11 +2094,13 @@ function boot(): void {
      */
     box.tabIndex = 0;
     box.setAttribute('role', 'button');
-    box.setAttribute('aria-pressed', widget.id === selected ? 'true' : 'false');
+    box.setAttribute('aria-pressed', selection.includes(widget.id) ? 'true' : 'false');
     box.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
-        selectWidget(widget.id);
+        // Shift+Enter is Shift+click for the keyboard: into or out of the set.
+        if (event.shiftKey) toggleInSelection(widget.id);
+        else selectWidget(widget.id);
         return;
       }
       /*
@@ -1997,6 +2114,32 @@ function boot(): void {
       // Alt+Left and Cmd+Left are Back, and Ctrl+Arrow is a word jump or a
       // desktop switch. A nudge is a bare arrow, or Shift for the size.
       if (event.ctrlKey || event.metaKey || event.altKey) return;
+      /*
+       * A child of a row, a column or a grid has no position of its own — its
+       * place is the group's order — so an arrow moves it along that order
+       * instead (RFC 014 §5.1), and the siblings slide over in place.
+       */
+      const parent = parentId === undefined ? undefined : state.widgets.find((w) => w.id === parentId);
+      if (parent !== undefined && groupIsOrdered(parent.config)) {
+        const step =
+          event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1
+          : event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1
+          : 0;
+        if (step === 0) return;
+        event.preventDefault();
+        const siblings = groupChildren(state.widgets).get(parent.id) ?? [];
+        const at = siblings.findIndex((one) => one.id === widget.id);
+        recordRun(`order:${widget.id}`);
+        adoptZ(moveChildTo(state.widgets, widget.id, at + step));
+        repositionAll();
+        drawLayers();
+        if (primary() !== widget.id || selection.length !== 1) selectWidget(widget.id, true);
+        markDirty();
+        schedulePreview();
+        return;
+      }
+      // A child's fractions are of its group, so the same nudge clamps at the
+      // group's edge with no second rule (`placement.ts`).
       const next = nudge(widget, event.key, { resize: event.shiftKey });
       if (next === undefined) return;
       event.preventDefault();
@@ -2009,7 +2152,7 @@ function boot(): void {
        * in place instead of rebuilding the overlay. Rebuilding destroyed the
        * focused element, so the second arrow key went to the document.
        */
-      if (selected !== widget.id) selectWidget(widget.id, true);
+      if (primary() !== widget.id || selection.length !== 1) selectWidget(widget.id, true);
       else syncBoxFields(widget);
       markDirty();
       schedulePreview();
@@ -2022,9 +2165,9 @@ function boot(): void {
      */
     const label = document.createElement('span');
     label.className = 'le-widget-label';
-    label.textContent = describeWidget(widget);
+    label.textContent = nameOf(widget);
     box.appendChild(label);
-    placeLabel(label, widget);
+    placeLabel(label, canvasBoxOf(state.widgets, widget));
 
     /*
      * A box the wall will not draw, said on the box.
@@ -2050,7 +2193,7 @@ function boot(): void {
     // so a flagged box whose name changes is renamed to a screen reader too.
     box.setAttribute(
       'aria-label',
-      boxAriaLabel(describeWidget(widget), omission?.why, surfaceWord(), instead),
+      boxAriaLabel(nameOf(widget), omission?.why, surfaceWord(), instead, widget.type === 'group' ? 'group' : 'widget'),
     );
 
     const handle = document.createElement('span');
@@ -2106,12 +2249,16 @@ function boot(): void {
   }
 
   function positionBox(box: HTMLElement, widget: Widget): void {
-    box.style.left = `${widget.x * 100}%`;
-    box.style.top = `${widget.y * 100}%`;
-    box.style.width = `${widget.w * 100}%`;
-    box.style.height = `${widget.h * 100}%`;
+    // On the layout: a child's own fractions are of its group, and where it
+    // actually sits is `grouping.ts`'s answer — through the group's box, and
+    // through the group's order in a row, a column or a grid.
+    const rect = canvasBoxOf(state.widgets, widget);
+    box.style.left = `${rect.x * 100}%`;
+    box.style.top = `${rect.y * 100}%`;
+    box.style.width = `${rect.w * 100}%`;
+    box.style.height = `${rect.h * 100}%`;
     const label = box.querySelector<HTMLElement>('.le-widget-label');
-    if (label !== null) placeLabel(label, widget);
+    if (label !== null) placeLabel(label, rect);
   }
 
   /*
@@ -2141,7 +2288,7 @@ function boot(): void {
    * canvas and be cut mid-word. Capped to what is left of the canvas, it
    * ellipsises instead — a shortened name, not a sliced one.
    */
-  function placeLabel(label: HTMLElement, widget: Widget): void {
+  function placeLabel(label: HTMLElement, widget: Box): void {
     // A percentage max-width resolves against the *box*, not the canvas, so the
     // canvas fraction to the right of the box's left edge is converted into
     // one. w is at least 0.02 by schema, so this cannot divide by zero.
@@ -2170,15 +2317,24 @@ function boot(): void {
       return;
     }
 
-    for (const widget of [...state.widgets].sort((a, b) => b.z - a.z)) {
-      const row = document.createElement('div');
-      row.className = 'le-layer' + (widget.id === selected ? ' is-selected' : '');
-      row.dataset['id'] = widget.id;
+    /*
+     * Front first on the layout, and under each group its children, front
+     * first among themselves, indented (RFC 014 §5.1). A child's `z` is its
+     * place in its group, so the two lists are two scopes; the grip reorders
+     * within the scope its row is in and never across it.
+     */
+    const children = groupChildren(state.widgets);
+    const row = (widget: Widget, scope: string): void => {
+      const line = document.createElement('div');
+      line.className =
+        'le-layer' + (selection.includes(widget.id) ? ' is-selected' : '') + (scope === '' ? '' : ' le-layer-child');
+      line.dataset['id'] = widget.id;
+      line.dataset['scope'] = scope;
 
       const grip = document.createElement('span');
       grip.className = 'le-layer-grip';
       grip.textContent = '⋮⋮';
-      grip.addEventListener('pointerdown', (event) => startReorder(event, widget));
+      grip.addEventListener('pointerdown', (event) => startReorder(event, widget, scope));
 
       const swatch = document.createElement('span');
       swatch.className = 'le-layer-swatch';
@@ -2186,11 +2342,15 @@ function boot(): void {
 
       const name = document.createElement('span');
       name.className = 'le-layer-name';
-      name.textContent = describeWidget(widget);
+      name.textContent = nameOf(widget);
 
-      row.append(grip, swatch, name);
-      row.addEventListener('click', () => selectWidget(widget.id));
-      layersPanel.appendChild(row);
+      line.append(grip, swatch, name);
+      line.addEventListener('click', () => selectWidget(widget.id));
+      layersPanel.appendChild(line);
+    };
+    for (const widget of topLevelWidgets(state.widgets).sort((a, b) => b.z - a.z)) {
+      row(widget, '');
+      for (const child of (children.get(widget.id) ?? []).slice().sort((a, b) => b.z - a.z)) row(child, widget.id);
     }
   }
 
@@ -2200,16 +2360,20 @@ function boot(): void {
    * so the canvas stacking matches the list. Pointer-based, like the canvas drag,
    * for the same reason — a synthetic pointer and a drag that leaves the row.
    */
-  function startReorder(event: PointerEvent, widget: Widget): void {
+  function startReorder(event: PointerEvent, widget: Widget, scope: string): void {
     event.preventDefault();
     event.stopPropagation();
     // Restacking is a mutation, so it is one step back like any other.
     record();
-    // Front-first working order of ids.
-    let order = [...state.widgets].sort((a, b) => b.z - a.z).map((w) => w.id);
+    // Front-first working order of ids, within this row's scope: the layout's
+    // own boxes, or one group's children (RFC 014 §5.1).
+    const inScope = (w: Widget): boolean => (scope === '' ? parentIdOf(w) === undefined : parentIdOf(w) === scope);
+    let order = state.widgets.filter(inScope).sort((a, b) => b.z - a.z).map((w) => w.id);
 
     const move = (moveEvent: PointerEvent): void => {
-      const rows = Array.from(layersPanel.querySelectorAll<HTMLElement>('.le-layer'));
+      const rows = Array.from(layersPanel.querySelectorAll<HTMLElement>('.le-layer')).filter(
+        (row) => (row.dataset['scope'] ?? '') === scope,
+      );
       // Which row is the pointer over? Insert the dragged id before it.
       let target = order.length;
       for (let index = 0; index < rows.length; index++) {
@@ -2233,7 +2397,7 @@ function boot(): void {
         const w = byId.get(id);
         if (w !== undefined) w.z = order.length - 1 - index;
       });
-      selected = widget.id;
+      selection = [widget.id];
       drawLayers();
     };
     const up = (): void => {
@@ -2373,8 +2537,8 @@ function boot(): void {
    * the widget they came in from, which is a real tab stop on the canvas.
    */
   function clearSelection(restoreFocus: boolean): void {
-    const previous = selected;
-    selected = undefined;
+    const previous = primary();
+    selection = [];
     markSelection();
     renderConfigPanel();
     if (!restoreFocus || previous === undefined) return;
@@ -2395,7 +2559,9 @@ function boot(): void {
     for (const box of overlay.querySelectorAll<HTMLElement>('.le-widget')) {
       const widget = state.widgets.find((one) => one.id === box.dataset['id']);
       if (widget === undefined) continue;
-      const name = describeWidget(widget);
+      // Through `describeWidgetIn`, so a group is renamed when a child changes
+      // its view — the name is composed from what the group holds.
+      const name = nameOf(widget);
       const label = box.querySelector('.le-widget-label');
       if (label !== null) label.textContent = name;
       const omission = omissionOf(widget);
@@ -2438,12 +2604,15 @@ function boot(): void {
        * chosen or switched in the inspector (RFC 014 §5.3) changes this name
        * and nothing a household can see on the box but the flag's words.
        */
-      box.setAttribute('aria-label', boxAriaLabel(name, why, surfaceWord(), instead));
+      box.setAttribute(
+        'aria-label',
+        boxAriaLabel(name, why, surfaceWord(), instead, widget.type === 'group' ? 'group' : 'widget'),
+      );
     }
     for (const row of layersPanel.querySelectorAll<HTMLElement>('.le-layer')) {
       const widget = state.widgets.find((one) => one.id === row.dataset['id']);
       const name = row.querySelector('.le-layer-name');
-      if (widget !== undefined && name !== null) name.textContent = describeWidget(widget);
+      if (widget !== undefined && name !== null) name.textContent = nameOf(widget);
     }
   }
 
@@ -2457,14 +2626,25 @@ function boot(): void {
    * ever was; the boxes themselves have not changed.
    */
   function markSelection(): void {
+    // A set now (RFC 014 §5.1), and still two classes toggled in place: a
+    // Shift+click adds a box without rebuilding the one that has focus.
     for (const box of overlay.querySelectorAll<HTMLElement>('.le-widget')) {
-      const on = box.dataset['id'] === selected;
+      const on = selection.includes(box.dataset['id'] ?? '');
       box.classList.toggle('is-selected', on);
       box.setAttribute('aria-pressed', on ? 'true' : 'false');
     }
     for (const row of layersPanel.querySelectorAll<HTMLElement>('.le-layer')) {
-      row.classList.toggle('is-selected', row.dataset['id'] === selected);
+      row.classList.toggle('is-selected', selection.includes(row.dataset['id'] ?? ''));
     }
+    refreshGroupButtons();
+  }
+
+  /** Shift+click: this box into the selection, or out of it (RFC 014 §5.1). */
+  function toggleInSelection(id: string): void {
+    selection = toggleSelected(selection, id);
+    markSelection();
+    drawLayers();
+    renderConfigPanel(true);
   }
 
   // ---- per-widget config ------------------------------------------------
@@ -2488,6 +2668,8 @@ function boot(): void {
     else delete widget.config;
     // The name carries the view, so any option write may have renamed the box.
     refreshLabels();
+    // A group's layout decides where its children sit, so their boxes follow.
+    if (widget.type === 'group') repositionAll();
     markDirty();
     renderPreview();
   }
@@ -2740,7 +2922,7 @@ function boot(): void {
    * focus, which is right for a tap and wrong for a nudge.
    */
   function selectWidget(id: string, keepFocus = false): void {
-    selected = id;
+    selection = [id];
     markSelection();
     renderConfigPanel(keepFocus);
   }
@@ -2759,19 +2941,40 @@ function boot(): void {
      * body. There is no DOM in this package's test suite, so none of them
      * could be asked without a browser.
      */
+    const chosen = primary();
     const view = inspectorView({
       widgets: state.widgets,
-      selected,
+      selected: chosen,
+      selection,
       lane,
       inkAvailable: ink !== undefined,
       tab: inspectorTab,
       notDrawn: notDrawn(),
       facts: omissionFacts,
       surface: surfaceWord(),
-      ...(selected === undefined ? {} : { drawnTier: drawnTierOf(selected) }),
+      ...(chosen === undefined ? {} : { drawnTier: drawnTierOf(chosen) }),
     });
     if (view.kind === 'empty') {
       closeInspector();
+      return;
+    }
+    /*
+     * Two or more boxes (RFC 014 §5.1): the shared style lane, and nothing
+     * else — no tabs, no lane switch, no Duplicate, no Remove. One colour
+     * chosen here lands on every selected box in one undo step.
+     */
+    if (view.kind === 'multi') {
+      inspectorTitle.textContent = view.title;
+      laneBar.hidden = true;
+      lane = 'wall';
+      inspectorTabs.hidden = true;
+      inspectorActions.hidden = true;
+      inspectorDanger.hidden = true;
+      const targets = view.widgetIds
+        .map((id) => state.widgets.find((w) => w.id === id))
+        .filter((w): w is Widget => w !== undefined);
+      buildStyleLane(targets, targets[0]?.config ?? {});
+      openInspector(keepFocus);
       return;
     }
     // The widget the view describes — the same object, because everything
@@ -2836,6 +3039,15 @@ function boot(): void {
       density.className = 'hint le-density';
       density.textContent = view.density;
       configPanel.appendChild(density);
+    }
+    // A child whose place is its group's order (RFC 014 §5.1): said here, and
+    // the position fields are not drawn — `buildBoxFields` reads this.
+    orderedChildNote = view.placement;
+    if (view.placement !== undefined) {
+      const note = document.createElement('p');
+      note.className = 'hint le-ordered';
+      note.textContent = view.placement;
+      configPanel.appendChild(note);
     }
 
     // Both tabs, always: every widget has a view to state, so neither tab is
@@ -2997,7 +3209,8 @@ function boot(): void {
   /** The type's own controls — the Content tab, and the ink lane's raw material. */
   function buildTypeConfig(widget: Widget, cfg: Record<string, unknown>): void {
     buildViewField(widget, cfg);
-    if (widget.type === 'calendar') buildCalendarConfig(widget, cfg);
+    if (widget.type === 'group') buildGroupConfig(widget, cfg);
+    else if (widget.type === 'calendar') buildCalendarConfig(widget, cfg);
     else if (widget.type === 'homeassistant') buildHaConfig(widget, cfg);
     else if (widget.type === 'countdown') buildCountdownConfig(widget, cfg);
     else if (widget.type === 'external') buildExternalConfig(widget, cfg);
@@ -3009,6 +3222,56 @@ function boot(): void {
     else if (widget.type === 'clock') buildClockConfig(widget, cfg);
     else if (widget.type === 'weather') buildWeatherConfig(widget, cfg);
   }
+
+  /**
+   * A group's own settings (RFC 014 §5.1): how it lays its children out, and
+   * how many across when that is a grid. `free` keeps each child where it
+   * was; the other three place from the group's order, which is the Layers
+   * list's order and what an arrow key or a drag on a child changes.
+   *
+   * Written out in full rather than as an absence — `row` is what an absent
+   * layout means, but a household who chose it has chosen it, and a group
+   * made by Group is `free` on purpose. Both keys are annotated, which is the
+   * default every control here takes; whether the ink lane *offers* them is
+   * the server's table (`INK_LANE`), which lists nothing for a group today —
+   * a panel lays a group out exactly as its wall does — so `pruneToLane`
+   * drops both there until that table says otherwise.
+   */
+  function buildGroupConfig(widget: Widget, cfg: Record<string, unknown>): void {
+    const layoutNames: Readonly<Record<string, string>> = { free: 'Free', row: 'Row', column: 'Column', grid: 'Grid' };
+    const current = typeof cfg['layout'] === 'string' && (GROUP_LAYOUTS as readonly string[]).includes(cfg['layout'] as string)
+      ? (cfg['layout'] as string)
+      : 'row';
+    configPanel.appendChild(
+      segControl(
+        'Arrange the widgets in it',
+        ['free', 'row', 'column', 'grid'].map((layout) => [layout, layoutNames[layout] ?? layout] as const),
+        current,
+        (value) => setConfig(widget, 'layout', value),
+        'layout',
+      ),
+    );
+    if (current === 'grid') {
+      const columns = typeof cfg['columns'] === 'number' ? String(cfg['columns']) : '2';
+      configPanel.appendChild(
+        segControl(
+          'Across',
+          [['2', '2'], ['3', '3'], ['4', '4']],
+          columns,
+          (value) => setConfig(widget, 'columns', value === '2' ? undefined : Number(value)),
+          'columns',
+        ),
+      );
+    }
+    const hint = document.createElement('p');
+    hint.className = 'hint';
+    hint.textContent =
+      'Colours and type chosen on the Style tab reach every widget in the group unless one sets its own.';
+    configPanel.appendChild(hint);
+  }
+
+  /** The sentence for a child of an ordered group, set per render; the box fields read it. */
+  let orderedChildNote: string | undefined;
 
   /**
    * The ink lane: what this widget says differently in black and white.
@@ -3608,7 +3871,7 @@ function boot(): void {
       ),
     );
 
-    buildStyleLane(widget, cfg);
+    buildStyleLane([widget], cfg);
   }
 
   /**
@@ -3661,6 +3924,28 @@ function boot(): void {
   }
 
   /**
+   * The same write onto every selected box at once (RFC 014 §5.1), as one
+   * undo step: `recordOnce` around the loop, for the reason the ladder uses
+   * it — a snapshot per box would make one colour three Ctrl+Zs.
+   */
+  function setStyleMany(targets: readonly Widget[], key: string, value: string | number | undefined): void {
+    const [first] = targets;
+    if (first !== undefined && targets.length === 1) {
+      setStyle(first, key, value);
+      return;
+    }
+    recordOnce(() => {
+      for (const widget of targets) {
+        const next = setStyleValue(widget.config, key, value);
+        if (next !== undefined) widget.config = next;
+        else delete widget.config;
+      }
+    });
+    markDirty();
+    renderPreview();
+  }
+
+  /**
    * Colours and type: the widget's own style lane (RFC 014 §4.1), the ink
    * lane's twin on the Style tab.
    *
@@ -3680,7 +3965,11 @@ function boot(): void {
    * the wall's own settings). The contrast guidance is the theme builder's,
    * because a colour is chosen here the same way it is chosen there.
    */
-  function buildStyleLane(widget: Widget, cfg: Record<string, unknown>): void {
+  function buildStyleLane(targets: readonly Widget[], cfg: Record<string, unknown>): void {
+    // The controls read the first box and write to all of them: a
+    // multi-selection's lane shows what its primary box carries.
+    const widget = targets[0];
+    if (widget === undefined) return;
     const section = document.createElement('div');
     section.className = 'le-cfg-section le-style';
     section.dataset['cfgKey'] = 'style';
@@ -3699,12 +3988,15 @@ function boot(): void {
         (checked) => {
           if (checked) {
             styleLaneOpen.delete(widget.id);
-            // Every value at once, and a step back for all of them.
+            // Every value at once, on every selected box, and a step back for
+            // all of them.
             record();
-            const cfgNow: Record<string, unknown> = { ...(widget.config ?? {}) };
-            delete cfgNow['style'];
-            if (Object.keys(cfgNow).length > 0) widget.config = cfgNow;
-            else delete widget.config;
+            for (const one of targets) {
+              const cfgNow: Record<string, unknown> = { ...(one.config ?? {}) };
+              delete cfgNow['style'];
+              if (Object.keys(cfgNow).length > 0) one.config = cfgNow;
+              else delete one.config;
+            }
             markDirty();
             renderPreview();
           } else {
@@ -3753,7 +4045,7 @@ function boot(): void {
       const value = current(token);
       if (value !== undefined && /^#[0-9a-fA-F]{6}$/.test(value)) input.value = value;
       input.addEventListener('change', () => {
-        setStyle(widget, token, input.value);
+        setStyleMany(targets, token, input.value);
         renderContrast(contrast, { ...effective, ...styleLayerOf(widget.config?.['style']) } as Record<string, string>);
       });
       field.appendChild(input);
@@ -3786,7 +4078,7 @@ function boot(): void {
       }
       const chosen = current(token);
       select.value = chosen !== undefined && fonts.some((font) => font.stack === chosen) ? chosen : '';
-      select.addEventListener('change', () => setStyle(widget, token, select.value === '' ? undefined : select.value));
+      select.addEventListener('change', () => setStyleMany(targets, token, select.value === '' ? undefined : select.value));
       field.appendChild(select);
       section.appendChild(field);
     }
@@ -3797,7 +4089,7 @@ function boot(): void {
         'Weight',
         STYLE_WEIGHTS.map((weight) => [weight, weightNames[weight] ?? weight] as const),
         typeof own?.weight === 'string' ? own.weight : 'regular',
-        (value) => setStyle(widget, 'weight', value),
+        (value) => setStyleMany(targets, 'weight', value),
       ),
     );
     const trackingNames: Readonly<Record<string, string>> = { tight: 'Tight', normal: 'Normal', wide: 'Wide' };
@@ -3806,7 +4098,7 @@ function boot(): void {
         'Tracking',
         STYLE_TRACKINGS.map((tracking) => [tracking, trackingNames[tracking] ?? tracking] as const),
         typeof own?.tracking === 'string' ? own.tracking : 'normal',
-        (value) => setStyle(widget, 'tracking', value),
+        (value) => setStyleMany(targets, 'tracking', value),
       ),
     );
     // The gutter's own words for the same five rungs: step 4 is what every
@@ -3817,7 +4109,7 @@ function boot(): void {
         'Inset',
         insetNames.slice(0, STYLE_INSET_MAX + 1).map((name, step) => [String(step), name] as const),
         String(typeof own?.inset === 'number' ? own.inset : STYLE_INSET_MAX),
-        (value) => setStyle(widget, 'inset', Number(value)),
+        (value) => setStyleMany(targets, 'inset', Number(value)),
       ),
     );
   }
@@ -3842,10 +4134,16 @@ function boot(): void {
     // detaches the row, and `boxFields` would go on pointing at inputs nothing
     // can see, which a drag would then dutifully write into.
     if (lane === 'ink') return;
+    // Nor for a child whose place is its group's order (RFC 014 §5.1): the
+    // panel already says so, and a field that moved nothing is the fault
+    // this project keeps recording.
+    if (orderedChildNote !== undefined) return;
+    const inGroup = parentIdOf(widget) !== undefined;
     const row = document.createElement('div');
     row.className = 'le-cfg-field le-box';
     const label = document.createElement('span');
-    label.textContent = 'Position and size';
+    // A child's fractions are of its group, and the fields say whose.
+    label.textContent = inGroup ? 'Position and size, within the group' : 'Position and size';
     const grid = document.createElement('div');
     grid.className = 'le-box-grid';
     const inputs: (readonly ['x' | 'y' | 'w' | 'h', HTMLInputElement])[] = [];
@@ -3866,7 +4164,7 @@ function boot(): void {
       input.step = '1';
       input.inputMode = 'numeric';
       input.value = String(Math.round(widget[field] * 100));
-      input.setAttribute('aria-label', `${name}, per cent of the layout`);
+      input.setAttribute('aria-label', inGroup ? `${name}, per cent of the group` : `${name}, per cent of the layout`);
       input.addEventListener('input', () => {
         const typed = Number(input.value);
         // An empty field is a number half-typed, not a widget at zero.
@@ -4456,6 +4754,7 @@ function boot(): void {
    */
   function refreshDensityNote(): void {
     const note = configPanel.querySelector('.le-density');
+    const selected = primary();
     if (!(note instanceof HTMLElement) || selected === undefined) return;
     const widget = state.widgets.find((one) => one.id === selected);
     if (widget === undefined) return;
@@ -4527,11 +4826,21 @@ function boot(): void {
   function startDrag(event: PointerEvent, widget: Widget, box: HTMLElement, resizing: boolean): void {
     event.preventDefault();
     event.stopPropagation();
+    /*
+     * Shift+click adds to the selection, or takes away (RFC 014 §5.1), and
+     * never starts a drag: the whole point of choosing several is to press
+     * Group next, and a press that also moved the box would spend an undo
+     * step on a tap.
+     */
+    if (event.shiftKey && !resizing) {
+      toggleInSelection(widget.id);
+      return;
+    }
     // The canvas as it is before the drag, so putting the box down in the wrong
     // place is one Ctrl+Z. `settle` drops this again if the box came back to
     // where it started, so a grab that moved nothing is not an undo step.
     record();
-    selected = widget.id;
+    selection = [widget.id];
     renderConfigPanel();
     drawLayers();
     markSelection();
@@ -4540,6 +4849,37 @@ function boot(): void {
     const startX = event.clientX;
     const startY = event.clientY;
     const origin = { x: widget.x, y: widget.y, w: widget.w, h: widget.h };
+    const parentId = parentIdOf(widget);
+    const parent = parentId === undefined ? undefined : state.widgets.find((w) => w.id === parentId);
+
+    /*
+     * A child of a row, a column or a grid cannot be dragged to a position —
+     * its place is the group's order — so dragging it reorders (RFC 014
+     * §5.1): the cell the pointer is over is the place it takes, and the
+     * siblings slide over in place. One undo step, like any drag.
+     */
+    if (parent !== undefined && groupIsOrdered(parent.config) && !resizing) {
+      const reorder = (moveEvent: PointerEvent): void => {
+        const point = { x: (moveEvent.clientX - rect.left) / rect.width, y: (moveEvent.clientY - rect.top) / rect.height };
+        const at = cellIndexAt(state.widgets, parent.id, point);
+        if (at === undefined) return;
+        const siblings = groupChildren(state.widgets).get(parent.id) ?? [];
+        if (siblings.findIndex((one) => one.id === widget.id) === at) return;
+        adoptZ(moveChildTo(state.widgets, widget.id, at));
+        repositionAll();
+        drawLayers();
+        markDirty();
+      };
+      const done = (): void => {
+        window.removeEventListener('pointermove', reorder);
+        window.removeEventListener('pointerup', done);
+        settle();
+        renderPreview();
+      };
+      window.addEventListener('pointermove', reorder);
+      window.addEventListener('pointerup', done);
+      return;
+    }
 
     /*
      * Move and up on the window, not the box — a drag routinely leaves the box,
@@ -4563,8 +4903,11 @@ function boot(): void {
     const bringToFront = (): void => {
       if (raised) return;
       raised = true;
-      widget.z = nextZ(state.widgets);
-      box.style.zIndex = String(widget.z);
+      // A child stacks among its siblings and never over another box on the
+      // layout, so its rung is its group's; only a box on the layout is raised.
+      if (parent !== undefined) return;
+      widget.z = nextZ(topLevelWidgets(state.widgets));
+      box.style.zIndex = String(overlayZ(widget));
       drawLayers();
     };
 
@@ -4574,8 +4917,11 @@ function boot(): void {
       bringToFront();
       // Where the box lands is `placement.ts` — snapped, then clamped by the
       // same arithmetic the arrow keys and the inspector's numeric fields use,
-      // so a drag and a nudge stop at the same edge.
-      applyBox(widget, resolveDrag(origin, { dx, dy }, { resize: resizing, snap }));
+      // so a drag and a nudge stop at the same edge. A child's travel is
+      // read in its group's fractions, and the same unit clamp is then the
+      // group's own edge (RFC 014 §5.1).
+      const delta = parent === undefined ? { dx, dy } : inParent({ dx, dy }, parent);
+      applyBox(widget, resolveDrag(origin, delta, { resize: resizing, snap }));
       positionBox(box, widget);
       syncBoxFields(widget);
       markDirty();
@@ -4605,7 +4951,36 @@ function boot(): void {
       h: 0.2,
       z,
     });
-    selected = state.widgets[state.widgets.length - 1]!.id;
+    selection = [state.widgets[state.widgets.length - 1]!.id];
+    draw();
+    markDirty();
+  }
+
+  /**
+   * The selected boxes become one group (RFC 014 §5.1), and the group is what
+   * is selected after. One `record()` for the whole change — three boxes
+   * re-parented and rewritten as fractions of their union is one thing the
+   * household did, and one Ctrl+Z is what takes it back. The arithmetic is
+   * `grouping.ts`; nothing on the glass moves, because the group is `free`.
+   */
+  function groupSelected(): void {
+    if (!canGroup(state.widgets, selection)) return;
+    record();
+    const id = randomId();
+    state.widgets = groupWidgets(state.widgets, selection, id);
+    selection = [id];
+    draw();
+    markDirty();
+  }
+
+  /** The selected group taken apart, its widgets back where they were and selected. */
+  function ungroupSelected(): void {
+    const id = primary();
+    if (id === undefined || !canUngroup(state.widgets, selection)) return;
+    record();
+    const members = (groupChildren(state.widgets).get(id) ?? []).map((child) => child.id);
+    state.widgets = ungroupWidget(state.widgets, id);
+    selection = members;
     draw();
     markDirty();
   }
@@ -4622,22 +4997,31 @@ function boot(): void {
    * looking for the widget they had just made.
    */
   function duplicateSelected(): void {
-    const widget = state.widgets.find((w) => w.id === selected);
+    const widget = state.widgets.find((w) => w.id === primary());
     if (widget === undefined) return;
     record();
-    const copy: Widget = {
-      ...widget,
-      id: randomId(),
-      z: Math.max(0, ...state.widgets.map((w) => w.z)) + 1,
+    const clone = (of: Widget, over: Partial<Widget>): Widget => ({
+      ...of,
+      ...over,
       // A deep copy: sharing the options object would make editing the copy
       // edit the original. `structuredClone` is out under rule two.
-      ...(widget.config !== undefined
-        ? { config: JSON.parse(JSON.stringify(widget.config)) as Record<string, unknown> }
+      ...(of.config !== undefined
+        ? { config: JSON.parse(JSON.stringify(of.config)) as Record<string, unknown> }
         : {}),
-    };
+    });
+    const scope = parentIdOf(widget);
+    const siblings = state.widgets.filter((w) => parentIdOf(w) === scope);
+    const copy = clone(widget, { id: randomId(), z: Math.max(0, ...siblings.map((w) => w.z)) + 1 });
     applyBox(copy, moveTo(copy, copy.x + 0.02, copy.y + 0.02));
     state.widgets.push(copy);
-    selected = copy.id;
+    // A group is copied with what it holds (RFC 014 §5.1), each child linked
+    // to the copy — a group copied empty is a box the wall would leave out.
+    if (widget.type === 'group') {
+      for (const child of groupChildren(state.widgets).get(widget.id) ?? []) {
+        state.widgets.push(clone(child, { id: randomId(), parentId: copy.id }));
+      }
+    }
+    selection = [copy.id];
     draw();
     markDirty();
   }
@@ -4652,11 +5036,12 @@ function boot(): void {
    * and Ctrl+Z puts the widget back exactly where it was, options and all.
    */
   function removeSelected(): void {
-    if (selected === undefined) return;
-    const widget = state.widgets.find((w) => w.id === selected);
+    const widget = state.widgets.find((w) => w.id === primary());
     if (widget === undefined) return;
     record();
-    state.widgets = state.widgets.filter((w) => w.id !== widget.id);
+    // A group goes with its children (RFC 014 §5.1) — the button said so —
+    // rather than leaving them as rows the server would refuse.
+    state.widgets = state.widgets.filter((w) => w.id !== widget.id && parentIdOf(w) !== widget.id);
     clearSelection(false);
     draw();
     markDirty();
@@ -4668,10 +5053,53 @@ function boot(): void {
     draw();
     markDirty();
   });
-  // A pointer on the empty canvas clears the selection, and with it the
-  // inspector — but never steals focus, because this is a tap on the canvas.
-  overlay.addEventListener('pointerdown', () => {
-    clearSelection(false);
+  /*
+   * A pointer on the empty layout starts a marquee (RFC 014 §5.1): released
+   * where it was pressed it is the tap it always was and clears the selection
+   * — never stealing focus — and dragged it selects the boxes it encloses,
+   * on the layout itself. The rectangle is `selection.ts`'s and so is the
+   * enclosure; what is drawn here is only the box the household sees.
+   */
+  overlay.addEventListener('pointerdown', (event) => {
+    if (event.target !== overlay) return;
+    event.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const at = (e: PointerEvent): { x: number; y: number } => ({
+      x: (e.clientX - rect.left) / rect.width,
+      y: (e.clientY - rect.top) / rect.height,
+    });
+    const from = at(event);
+    let marquee: HTMLElement | undefined;
+    const move = (moveEvent: PointerEvent): void => {
+      const box = marqueeBetween(from, at(moveEvent));
+      if (box.w < MARQUEE_MIN && box.h < MARQUEE_MIN) return;
+      if (marquee === undefined) {
+        marquee = document.createElement('div');
+        marquee.className = 'le-marquee';
+        overlay.appendChild(marquee);
+      }
+      marquee.style.left = `${box.x * 100}%`;
+      marquee.style.top = `${box.y * 100}%`;
+      marquee.style.width = `${box.w * 100}%`;
+      marquee.style.height = `${box.h * 100}%`;
+    };
+    const up = (upEvent: PointerEvent): void => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      if (marquee === undefined) {
+        clearSelection(false);
+        return;
+      }
+      marquee.remove();
+      const box = marqueeBetween(from, at(upEvent));
+      const placed = topLevelWidgets(state.widgets).map((w) => ({ ...canvasBoxOf(state.widgets, w), id: w.id }));
+      selection = enclosedBy(placed, box);
+      markSelection();
+      drawLayers();
+      renderConfigPanel(true);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
   });
   window.addEventListener('resize', draw);
 
@@ -4769,7 +5197,7 @@ function boot(): void {
     state.orientation = which;
     state.slot = slot;
     rememberOrientation(state.screen, which);
-    selected = undefined;
+    selection = [];
     markSlotTabs();
 
     // Reflect the switch in the toolbar: the active button, and the aspect
@@ -4806,13 +5234,20 @@ function boot(): void {
     if (typed === null) return;
     const slot = typed.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24);
     if (!SLOT_NAME.test(slot) || state.slots.includes(slot)) return;
-    const copied: Widget[] = state.widgets.map((widget) => ({
-      ...widget,
-      id: randomId(),
-      ...(widget.config !== undefined
-        ? { config: JSON.parse(JSON.stringify(widget.config)) as Record<string, unknown> }
-        : {}),
-    }));
+    // Fresh ids, and a child re-linked to its group's fresh id (RFC 014
+    // §5.1) — copied as-is it would name a group on the layout it came from.
+    const minted = new Map(state.widgets.map((widget) => [widget.id, randomId()]));
+    const copied: Widget[] = state.widgets.map((widget) => {
+      const parent = parentIdOf(widget);
+      return {
+        ...widget,
+        id: minted.get(widget.id) as string,
+        ...(parent === undefined ? {} : { parentId: minted.get(parent) ?? parent }),
+        ...(widget.config !== undefined
+          ? { config: JSON.parse(JSON.stringify(widget.config)) as Record<string, unknown> }
+          : {}),
+      };
+    });
     state.slots.push(slot);
     state.stash[canvasKey(state.orientation, slot)] = {
       aspect: state.aspect,

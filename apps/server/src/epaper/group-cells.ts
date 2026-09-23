@@ -14,8 +14,12 @@
 
 /* ---- transcribed, and nothing else ------------------------------------ */
 
-/** The layouts a group offers, in the order the schema names them. */
-export const GROUP_LAYOUTS = ['row', 'column', 'grid'] as const;
+/**
+ * The layouts a group offers, in the order the schema names them. `free` is
+ * last so nothing that indexed the first three moves; the editor's Group
+ * action writes it out, because an absent layout means `row` (below).
+ */
+export const GROUP_LAYOUTS = ['row', 'column', 'grid', 'free'] as const;
 export type GroupLayout = (typeof GROUP_LAYOUTS)[number];
 
 /** A grid's width in cells when the household has not said; the schema's own bounds. */
@@ -39,7 +43,12 @@ export interface GroupCell {
 export function groupLayoutOf(config: unknown): GroupLayout {
   const raw =
     typeof config === 'object' && config !== null ? (config as Record<string, unknown>)['layout'] : undefined;
-  return raw === 'column' || raw === 'grid' ? raw : 'row';
+  return raw === 'column' || raw === 'grid' || raw === 'free' ? raw : 'row';
+}
+
+/** Whether a group's children take their place from the group's order. */
+export function groupIsOrdered(config: unknown): boolean {
+  return groupLayoutOf(config) !== 'free';
 }
 
 /**
@@ -84,6 +93,33 @@ export function groupCells(config: unknown, count: number): GroupCell[] {
     w: 1 / columns,
     h: 1 / rows,
   }));
+}
+
+/**
+ * The unit square, with a box held inside it: `x`/`y` clamped to 0..1 and
+ * `w`/`h` to what is left. A child's stored fractions are of its group's box
+ * and are written by the editor through the same clamp — but a document this
+ * process did not write this session is read defensively, and a child hanging
+ * out of its group would be drawn over a neighbour the household never put it
+ * near.
+ */
+function insideUnit(box: GroupCell): GroupCell {
+  const unit = (n: number): number => (Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0);
+  const x = unit(box.x);
+  const y = unit(box.y);
+  return { x, y, w: Math.min(unit(box.w), 1 - x), h: Math.min(unit(box.h), 1 - y) };
+}
+
+/**
+ * Where each of a group's children goes, given the children themselves in `z`
+ * order: the ordered layouts answer from `groupCells` and read nothing of the
+ * children but how many there are; `free` answers each child's own stored
+ * fractions. One function for both renderers, so the wall and the panel ask
+ * the same question and cannot read a `free` group two ways.
+ */
+export function childCells(config: unknown, children: readonly GroupCell[]): GroupCell[] {
+  if (groupLayoutOf(config) !== 'free') return groupCells(config, children.length);
+  return children.map(insideUnit);
 }
 
 /** A widget that sits inside a group, read defensively off any document. */

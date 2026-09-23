@@ -7147,6 +7147,10 @@ compared as text rather than passed against the ratchet: identical, every
 number, so Classic's `BASELINE` is unmoved by measurement and not by the
 gate happening to stay green.
 
+> **The paragraph that follows described the editor's half as not built, and
+> is kept as history** because what it records is the fault the half had to
+> close first: a save that flattened a group.
+
 **What is not built is the editor's half, and it is written down because it
 loses data.** Multi-select, the Group action and an ungroup are the next
 session; until then the editor shows a grouped wall's children as top-level
@@ -7155,9 +7159,63 @@ draws the group correctly beneath them, and `widgetsForSave` posts no
 `parentId`, so a Save on that wall flattens the group into three boxes at
 those fractions. The template is opt-in and the wall draws either way, so
 this is a gap rather than a brick — but carrying the link through the save
-is the next session's first item, ahead of any control. **Still unproven
-where it counts:** nobody has looked at a kitchen wall drawing a group, and no
-e-paper panel has been photographed drawing one.
+is the next session's first item, ahead of any control.
+
+**The editor makes groups now, and it needed a fourth layout to do it (RFC
+014 §5.1, second half).** `boot()` was not rewritten: the selection became a
+set (`selection.ts` — Shift+click toggles, a marquee over empty layout
+selects what it *encloses* and never what it brushes, Escape clears), Group
+and Ungroup became arithmetic on the list (`grouping.ts` — the union, the
+children rewritten as fractions of it to three places, `z` renumbered per
+scope, and the inverse), and `placement.ts` gained a parent space in two
+functions: a child's fractions are of its group, so the unit square every
+clamp there already works in *is* the group's box, and only the drag's
+travel has to be translated. `placement.test` holds a drag and a hundred
+arrow presses on a child to one box exactly as it does on the layout.
+`selectWidget`'s rule — two classes toggled in place, never a rebuild —
+extends to the set, and a group's name is the one composition
+(`describeWidgetIn`, "Group of 3: clock, weather, shift", each child named
+view and all), so `refreshLabels` renames a group in place when a child
+changes view; `boxAriaLabel` takes it with a `group` noun and adds nothing.
+The bootstrap JSON carries `parentId` and `widgetsForSave` posts it, parents
+first and each child's `z` among its siblings — the round trip the paragraph
+above named first.
+
+**The fourth layout is `free`, and the reason is what a Group *must not*
+do.** Every layout a group had placed its children from order, so there was
+no layout in which a child could be dragged to a position — in a row, a
+column or a grid its place is the order, and dragging it reorders instead,
+which the inspector says in place of the position fields — and, more to the
+point, no layout in which making a group left the wall alone. `free` draws
+each child at its own stored fractions of the group's inner box, which is
+exactly where it was: Group writes it, the wall is byte-for-byte the same
+picture before and after, and choosing a row is a second, visible step.
+Ungroup restores those fractions whatever the layout became, which is what
+the fractions were kept for. `childCells` is the one reading on both media,
+transcribed into `epaper/group-cells.ts` and held by the parity test; the
+stability contract is untouched in the only way it is stated, a child's
+rectangle being a function of the arrangement and never of the events.
+
+**Three things came out of driving it.** The Group button was *visible with
+nothing to do*: `.le-tool-btn` declares `display:inline-flex`, an author
+display rule beats the `hidden` attribute — the `.le-slots[hidden]` trap one
+control along — and the assertion that Group is gone with one group selected
+is what said so. A group's own box is under its children's, so a tap on its
+corner reaches the child that covers it; Layers is how a covered group is
+reached, and the tests select one there. And the style lane's Weight,
+Tracking and Inset sit behind "Inherit the wall's theme", so the starvation
+sweep over a group's controls measured two controls and called it four until
+it switched the lane on. `browser-editor.test.ts` §11 measures the rest:
+both `aria-pressed` after a Shift+click, the group's name off the attribute,
+the posted rows, one Ctrl+Z back to the pixel with the save bar reading
+clean — `canvas-state` is the comparison, so a dirty bar is a round trip that
+lost something — Ungroup the same, a child stopping at its group's edge by
+drag and by a hundred and twenty arrows alike, and a rename on the same
+element. Two mutations, both red: a second `record()` inside Group, and a
+child drawn at its own fractions read as the layout's. **Still unproven
+where it counts:** nobody has grouped anything on a real phone or in a real
+supervisor's sidebar, and no e-paper panel has been photographed drawing a
+group a household made.
 
 ---
 

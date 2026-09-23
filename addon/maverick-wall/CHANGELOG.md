@@ -16,6 +16,24 @@
 
 ## Unreleased
 
+**You can group widgets on a wall's layout.** Choose two or more boxes —
+click one, then Shift+click the others, or drag a rectangle over empty layout
+around them — and press **Group** on the toolbar. The boxes become one group
+you can move, size and style as one, and nothing on the wall moves when you
+do: each widget stays exactly where it was until you open the group and
+choose to arrange its widgets in a **row**, a **column** or a **grid**, which
+then places them from the order they are in. Inside a group a widget drags
+and nudges as before and stops at the group's edge; in a row, a column or a
+grid, dragging a widget past its neighbour swaps their places instead, and
+its settings say so. **Ungroup** puts the widgets back where they were, and
+Group and Ungroup are each one step of Undo. A group is named by what it
+holds — "Group of 3: clock, weather, shift" — on its box, in the Layers list
+(where its widgets sit indented under it) and to a screen reader, and the
+name follows a widget that changes its view. With several boxes chosen, the
+widget settings show the colours and type they share, and a colour chosen
+there lands on all of them. Colours and type chosen on a group reach every
+widget in it unless one has its own.
+
 **A wall's layout can hold a group.** A group is one box that holds other
 widgets and lays them out for you — in a row, a column or a grid — so a strip
 of the clock, the forecast and the rota badge is one thing to move and size
@@ -25,10 +43,7 @@ one strip above the calendar and the agenda, which stay exactly where Classic
 puts them. An e-paper panel following a wall draws the same group in the same
 place, and a group's boxes never move when the calendar changes, so a panel
 that refreshes part of its screen still can. Nothing changes on any wall until
-you pick the new layout. Making a group of your own — selecting two or more
-widgets and pressing **Group** — is the next step and is not in this release;
-the editor does not yet know about groups, so a layout that carries one is
-best left to the gallery until it does.
+you pick the new layout.
 
 **A wall can show a different layout at certain hours.** On a wall's Layout
 tab, press **New layout** to start a second arrangement from the one you

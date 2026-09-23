@@ -5549,6 +5549,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         h: widget.h,
         z: widget.z,
         config: widget.config,
+        // The group a child sits inside (RFC 014 §5.1), spread so a canvas
+        // with no group serialises as it always did. Without it the editor
+        // showed a grouped wall's children as boxes on the layout and its
+        // save flattened the group — the round trip §5.1 names first.
+        ...(widget.parentId !== undefined && widget.parentId !== null ? { parentId: widget.parentId } : {}),
       }));
     // The named canvases (RFC 014 §5.2), each on both orientations, and the
     // schedule — so the editor can offer them beside the orientation tabs and

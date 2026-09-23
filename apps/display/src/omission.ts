@@ -289,9 +289,14 @@ export function boxAriaLabel(
   why: string | undefined,
   surface: Surface,
   instead?: string,
+  kind: 'widget' | 'group' = 'widget',
 ): string {
-  if (why === undefined) return `${name} widget`;
+  // A group's name already says what it is — "Group of 3: clock, weather,
+  // shift" (RFC 014 §5.1) — so it carries no noun after it; a widget's is
+  // its type, and "widget" is what tells "Clock" from the clock it draws.
+  const subject = kind === 'group' ? name : `${name} widget`;
+  if (why === undefined) return subject;
   return instead === undefined
-    ? `${name} widget — not on the ${surface}. ${why}`
-    : `${name} widget — not on the ${surface}, shows ${instead} instead. ${why}`;
+    ? `${subject} — not on the ${surface}. ${why}`
+    : `${subject} — not on the ${surface}, shows ${instead} instead. ${why}`;
 }

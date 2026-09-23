@@ -21,6 +21,7 @@
  * is hidden" is a contradiction a reader can see.
  */
 
+import { groupIsOrdered, parentIdOf } from './group-cells.js';
 import { inkOf } from './ink.js';
 import {
   fallbackChoices,
@@ -43,12 +44,20 @@ export interface InspectableWidget {
   readonly id: string;
   readonly type: string;
   readonly config?: Record<string, unknown> | undefined;
+  /** The group this box sits inside (RFC 014 §5.1), read defensively. */
+  readonly parentId?: unknown;
 }
 
 export interface InspectorInput {
   readonly widgets: readonly InspectableWidget[];
-  /** The selected widget's id, or nothing. */
+  /** The selected widget's id, or nothing — the *primary* selection. */
   readonly selected: string | undefined;
+  /**
+   * Every selected id, in selection order, when more than one is chosen
+   * (RFC 014 §5.1). The first is `selected`. Absent or a single id is the
+   * ordinary one-widget inspector.
+   */
+  readonly selection?: readonly string[] | undefined;
   /** Which lane the person last chose. Ignored when no panel follows. */
   readonly lane: InspectorLane;
   /** Whether a panel follows this canvas, so an override would be read. */
@@ -86,6 +95,19 @@ export interface InspectorInput {
  */
 export interface EmptyInspector {
   readonly kind: 'empty';
+}
+
+/**
+ * Two or more boxes selected (RFC 014 §5.1): the shared Style controls and
+ * nothing else. The Content tab is each widget's own and means nothing across
+ * a clock and a calendar; Duplicate and Remove are one box's; the ink lane is
+ * one box's. What every widget shares is its style lane, and that is what a
+ * multi-selection is for — one colour onto three boxes at once.
+ */
+export interface MultiInspector {
+  readonly kind: 'multi';
+  readonly widgetIds: readonly string[];
+  readonly title: string;
 }
 
 export interface WidgetInspector {
@@ -128,15 +150,33 @@ export interface WidgetInspector {
    * short list, so two tabs over them would be two mostly-empty tabs.
    */
   readonly tab?: InspectorTab | undefined;
+  /**
+   * A child of a row, a column or a grid takes its place from the group's
+   * order (RFC 014 §5.1), so the position fields would be two controls that do
+   * nothing and a drag is a reorder. Said in the panel, above the box fields'
+   * place, and the fields are not drawn. Absent for every other box.
+   */
+  readonly placement?: string | undefined;
 }
 
-export type InspectorView = EmptyInspector | WidgetInspector;
+export type InspectorView = EmptyInspector | WidgetInspector | MultiInspector;
+
+/** The sentence a child of an ordered group reads in place of its position fields. */
+export const ORDERED_CHILD_NOTE =
+  'This box takes its place from the group’s order. Drag it past a neighbour, or use the arrow keys, to reorder.';
 
 export function inspectorView(input: InspectorInput): InspectorView {
+  const several = (input.selection ?? []).filter((id) => input.widgets.some((one) => one.id === id));
+  if (several.length > 1) {
+    return { kind: 'multi', widgetIds: several, title: `${several.length} widgets selected` };
+  }
   const widget = input.widgets.find((one) => one.id === input.selected);
   if (widget === undefined) return { kind: 'empty' };
 
   const name = labelFor(widget.type);
+  const parentId = parentIdOf(widget);
+  const parent = parentId === undefined ? undefined : input.widgets.find((one) => one.id === parentId);
+  const ordered = parent !== undefined && groupIsOrdered(parent.config);
   // The lane the person chose only survives when there is a panel to override.
   const lane: InspectorLane = input.inkAvailable ? input.lane : 'wall';
   const base = {
@@ -144,7 +184,12 @@ export function inspectorView(input: InspectorInput): InspectorView {
     widgetId: widget.id,
     type: widget.type,
     title: `${name} widget`,
-    removeLabel: `Remove this ${name.toLowerCase()} widget`,
+    // A group goes with what it holds, and the button says so before it is
+    // pressed: three widgets is more than "this widget" promises to destroy.
+    removeLabel:
+      widget.type === 'group'
+        ? 'Remove this group and the widgets in it'
+        : `Remove this ${name.toLowerCase()} widget`,
     laneBarVisible: input.inkAvailable,
     lane,
     hasInkOverrides: Object.keys(inkOf(widget.config)).length > 0,
@@ -175,6 +220,7 @@ export function inspectorView(input: InspectorInput): InspectorView {
         }
       : {}),
     ...(density === undefined ? {} : { density }),
+    ...(ordered ? { placement: ORDERED_CHILD_NOTE } : {}),
     tab: input.tab,
   };
 }

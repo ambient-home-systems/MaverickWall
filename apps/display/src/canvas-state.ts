@@ -21,6 +21,7 @@
  * the functions below and from nothing else, so they cannot.
  */
 
+import { groupChildren, parentIdOf, topLevelWidgets } from './group-cells.js';
 import { MIN_SIZE } from './placement.js';
 
 export type CanvasBackground =
@@ -36,6 +37,12 @@ export interface EditorWidget {
   w: number;
   h: number;
   z: number;
+  /**
+   * The group this widget sits inside (RFC 014 §5.1), or absent for a box on
+   * the layout itself. When set, `x`/`y`/`w`/`h` are fractions of that group's
+   * box and `z` is its place among the group's children.
+   */
+  parentId?: string | undefined;
   /** The widget's own options. Shape validated server-side (widgetConfigBody). */
   config?: Record<string, unknown>;
 }
@@ -55,6 +62,7 @@ export interface SavedWidget {
   readonly w: number;
   readonly h: number;
   readonly z: number;
+  readonly parentId?: string;
   readonly config?: Record<string, unknown>;
 }
 
@@ -84,23 +92,45 @@ export function postedBackground(
  * `z` is rewritten as the index, so the numbers a canvas happens to be carrying
  * (0, 1, 2, 3, 5 after a drag raised one box) never reach the server and never
  * reach the snapshot either — what means anything is the order.
+ *
+ * Per scope (RFC 014 §5.1): the layout's own boxes first, 0..n in their
+ * order, then each group's children 0..m in theirs, each carrying its
+ * `parentId`. A child's `z` is relative to its group — the server reads rows
+ * parents first for exactly this reason — so the two scales are never sorted
+ * against each other. A child whose group is not on this list is posted
+ * without its link rather than as a row the server would refuse whole.
  */
 export function widgetsForSave(widgets: readonly EditorWidget[]): SavedWidget[] {
-  return [...widgets]
-    .sort((a, b) => a.z - b.z)
-    .map((w, index) => ({
-      id: w.id,
-      type: w.type,
-      x: round3(clamp01(w.x)),
-      y: round3(clamp01(w.y)),
-      w: round3(Math.max(MIN_SIZE, Math.min(1, w.w))),
-      h: round3(Math.max(MIN_SIZE, Math.min(1, w.h))),
-      z: index,
-      // Only when it holds something, so an untouched widget stores no config
-      // row and the server sees a clean absence rather than `{}`.
-      ...(w.config !== undefined && Object.keys(w.config).length > 0 ? { config: w.config } : {}),
-    }));
+  const one = (w: EditorWidget, z: number, parentId: string | undefined): SavedWidget => ({
+    id: w.id,
+    type: w.type,
+    x: round3(clamp01(w.x)),
+    y: round3(clamp01(w.y)),
+    w: round3(Math.max(MIN_SIZE, Math.min(1, w.w))),
+    h: round3(Math.max(MIN_SIZE, Math.min(1, w.h))),
+    z,
+    ...(parentId === undefined ? {} : { parentId }),
+    // Only when it holds something, so an untouched widget stores no config
+    // row and the server sees a clean absence rather than `{}`.
+    ...(w.config !== undefined && Object.keys(w.config).length > 0 ? { config: w.config } : {}),
+  });
+  const groups = new Set(widgets.filter((w) => w.type === 'group' && parentIdOf(w) === undefined).map((w) => w.id));
+  const top = widgets
+    .filter((w) => {
+      const parent = parentIdOf(w);
+      return parent === undefined || !groups.has(parent);
+    })
+    .sort((a, b) => a.z - b.z);
+  const children = groupChildren(widgets);
+  const out = top.map((w, index) => one(w, index, undefined));
+  for (const group of top) {
+    (children.get(group.id) ?? []).forEach((child, index) => out.push(one(child, index, group.id)));
+  }
+  return out;
 }
+
+/** The layout's own boxes — `topLevelWidgets`, re-exported so the editor asks one module. */
+export { topLevelWidgets };
 
 /** The canvas as it would be saved, as one string. */
 export function canvasSnapshot(canvas: CanvasShape): string {

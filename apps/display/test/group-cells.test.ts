@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   GROUP_COLUMNS_DEFAULT,
+  childCells,
   groupCells,
+  groupIsOrdered,
   groupChildren,
   groupColumnsOf,
   groupLayoutOf,
@@ -108,5 +110,34 @@ describe('groupChildren and topLevelWidgets', () => {
     // A `parentId` that is not a string is no parent — a document from a server
     // this bundle did not ship with is read, never trusted.
     expect(topLevelWidgets([{ id: 'x', type: 'clock', parentId: 7 }]).map((w) => w.id)).toEqual(['x']);
+  });
+});
+
+describe('a free group', () => {
+  it('places each child at its own stored fractions, held inside the unit box', () => {
+    const children = [
+      { x: 0.1, y: 0.2, w: 0.3, h: 0.4 },
+      { x: 0.8, y: 0.9, w: 0.5, h: 0.5 },
+      { x: -1, y: Number.NaN, w: 2, h: 0.5 },
+    ];
+    const cells = childCells({ layout: 'free' }, children);
+    expect(cells[0]).toEqual({ x: 0.1, y: 0.2, w: 0.3, h: 0.4 });
+    expect(cells[1]?.x).toBe(0.8);
+    expect(cells[1]?.w).toBeCloseTo(0.2, 12);
+    expect(cells[1]?.h).toBeCloseTo(0.1, 12);
+    expect(cells[2]).toEqual({ x: 0, y: 0, w: 1, h: 0.5 });
+    expect(groupLayoutOf({ layout: 'free' })).toBe('free');
+    expect(groupIsOrdered({ layout: 'free' })).toBe(false);
+    expect(groupIsOrdered({})).toBe(true);
+  });
+
+  it('is the ordered table for every other layout, reading only how many children there are', () => {
+    const children = [
+      { x: 0.9, y: 0.9, w: 0.1, h: 0.1 },
+      { x: 0, y: 0, w: 1, h: 1 },
+    ];
+    expect(childCells({ layout: 'row' }, children)).toEqual(groupCells({ layout: 'row' }, 2));
+    expect(childCells({}, children)).toEqual(groupCells({}, 2));
+    expect(childCells({ layout: 'grid', columns: 2 }, children)).toEqual(groupCells({ layout: 'grid', columns: 2 }, 2));
   });
 });

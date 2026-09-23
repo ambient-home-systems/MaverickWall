@@ -1233,6 +1233,9 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
         h: w.h,
         z: w.z,
         config: w.config,
+        // The group a child sits inside (RFC 014 §5.1), as the wall's page
+        // sends it, so a panel's designer draws a group as one and saves it.
+        ...(w.parentId !== undefined && w.parentId !== null ? { parentId: w.parentId } : {}),
       })),
       background: undefined,
     });
