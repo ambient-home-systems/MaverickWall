@@ -16,6 +16,19 @@
 
 ## Unreleased
 
+**A wall can show a different layout at certain hours.** On a wall's Layout
+tab, press **New layout** to start a second arrangement from the one you
+have — a school-morning layout with the week's events large and the clock
+where the children can see it, say — and give it a name. Then, under Wall
+settings › Layout, add a rule: from 06:30 until 08:30, show *morning*. The
+wall changes over on its own at the minute, and back again, even while it
+cannot reach this server; a rule may run past midnight. Outside every rule
+the wall shows its everyday layout, which is untouched by any of this. Up to
+four extra layouts per wall. An e-paper panel following a wall keeps showing
+the wall's everyday layout at every hour, because a panel that sleeps
+through most of an hour cannot promise to change at a minute. Nothing
+changes on any wall until you add a rule.
+
 **An empty box can show something else instead.** When a widget has nothing
 to show — a Weather box before you have set a location, a rota badge with no
 rota — your wall has left a gap where you put it. Select that box in the

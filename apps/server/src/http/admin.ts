@@ -29,7 +29,11 @@ import {
   readLayoutWidgets,
   panelCanvasOwner,
   clearLayout,
+  deleteLayoutSlot,
+  readLayoutSchedule,
+  readLayoutSlots,
   replaceLayout,
+  replaceLayoutSchedule,
   revokeScreen,
   writeDisplaySettings,
   rotateScreenToken,
@@ -42,6 +46,14 @@ import {
 } from '../api/queries.js';
 import { countWatchedZones, hasWeatherLocation } from '../api/rules.js';
 import { readWeatherSettings } from '../api/queries.js';
+import {
+  MAX_LAYOUT_SLOTS,
+  MAX_SCHEDULE_ROWS,
+  SLOT_NAME,
+  isHhmm,
+  isSlotName,
+  type ScheduleRow,
+} from '../api/layout-slots.js';
 import { randomBytes } from 'node:crypto';
 import {
   formatShortCode,
@@ -415,6 +427,22 @@ const screenBody = z.object({
   style_weight: optionalText(10),
   style_tracking: optionalText(10),
   style_inset: optionalText(1),
+  /*
+   * When to draw which named layout (RFC 014 §5.2): `MAX_SCHEDULE_ROWS` rows
+   * of a slot, a from and a to, and `schedule_form` as the marker a page that
+   * rendered them always posts — the `style_form` argument above, verbatim,
+   * since a page cached from before the rows existed posts none of them and
+   * must leave the schedule exactly as it found it. Short strings here; what
+   * a row *means* is decided in the handler against `layout-slots.ts`.
+   */
+  schedule_form: optionalText(1),
+  ...Object.fromEntries(
+    Array.from({ length: MAX_SCHEDULE_ROWS }, (_, i) => i + 1).flatMap((n) => [
+      [`schedule_slot_${n}`, optionalText(24)],
+      [`schedule_from_${n}`, optionalText(5)],
+      [`schedule_to_${n}`, optionalText(5)],
+    ]),
+  ),
 });
 
 /**
@@ -500,6 +528,17 @@ const layoutBody = z.object({
   // The canvas background (RFC 005 Phase 3): a solid colour or a gradient, or
   // null for none. Absent is treated as null so an older editor still saves.
   background: backgroundSchema.nullable().optional(),
+  // Which named canvas this save is (RFC 014 §5.2). Absent is the default
+  // canvas, so an editor that predates slots still writes the one it knows.
+  // The name's shape is the boundary; how many a wall may hold is counted in
+  // the handler, which can see the rows.
+  slot: z.string().regex(SLOT_NAME, 'A layout name is a short word: letters, digits and dashes.').optional(),
+});
+
+/** Removing a named canvas: the wall and the slot, as JSON from the editor. */
+const removeSlotBody = z.object({
+  screen: z.string().min(1).max(64),
+  slot: z.string().regex(SLOT_NAME),
 });
 
 import { registerHaRoutes } from './admin-ha.js';
@@ -2840,6 +2879,61 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       }
     }
 
+    /*
+     * When to draw which named layout (RFC 014 §5.2).
+     *
+     * Absent marker is **what this wall already has**, the style lane's rule
+     * one group up. Otherwise the rows are the schedule, whole: a row with
+     * nothing chosen is not a row; a layout chosen with one time and not the
+     * other is half a thought, refused with the interrupt window's own
+     * sentence rather than honoured as a window nobody can see; a window of
+     * no length would never switch; and a layout the wall does not hold is a
+     * stale page. Two windows that overlap are let through — the wall draws
+     * the first — because a 400 there costs a settings page for a case the
+     * wall resolves perfectly well.
+     */
+    let schedule: readonly ScheduleRow[] | undefined;
+    if ((shaped.value.schedule_form ?? '').trim() === '1') {
+      const said = shaped.value as Record<string, unknown>;
+      const held = readLayoutSlots(deps.db, id);
+      const rows: ScheduleRow[] = [];
+      for (let n = 1; n <= MAX_SCHEDULE_ROWS; n += 1) {
+        const field = (name: string): string =>
+          typeof said[`${name}_${n}`] === 'string' ? (said[`${name}_${n}`] as string).trim() : '';
+        const slot = field('schedule_slot');
+        const from = field('schedule_from');
+        const to = field('schedule_to');
+        if (slot === '' && from === '' && to === '') continue;
+        if (slot === '') {
+          return c.html(displayDetailPage(id, `Row ${n}: choose which layout to show between those times.`, c), 400);
+        }
+        if (!isSlotName(slot) || !held.includes(slot)) {
+          return c.html(displayDetailPage(id, `Row ${n}: that layout is not on this wall any more. Reload the page.`, c), 400);
+        }
+        if ((from === '') !== (to === '')) {
+          return c.html(
+            displayDetailPage(
+              id,
+              `Row ${n}: give both times, or leave the row empty. From 06:30 to 08:30 shows that layout every morning.`,
+              c,
+            ),
+            400,
+          );
+        }
+        if (from === '') {
+          return c.html(displayDetailPage(id, `Row ${n}: give the times to show that layout between.`, c), 400);
+        }
+        if (!isHhmm(from) || !isHhmm(to) || from === to) {
+          return c.html(
+            displayDetailPage(id, `Row ${n}: those times are not a window. Use HH:MM, and make them different.`, c),
+            400,
+          );
+        }
+        rows.push({ slot, from, to });
+      }
+      schedule = rows;
+    }
+
     // Density overrides: empty follows the household default, a number is
     // range-checked here beside the theme and zone checks.
     const density = (
@@ -2907,6 +3001,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     ) {
       return c.redirect('/admin/walls', 302);
     }
+    // The schedule, after the row it belongs to has been confirmed to exist.
+    if (schedule !== undefined) replaceLayoutSchedule(deps.db, id, schedule);
     // Back to the wall's own page; it picks the change up on its next poll.
     return savedRedirect(c, `/admin/walls/${encodeURIComponent(id)}`, 'screen-settings');
   });
@@ -3213,13 +3309,64 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     if (owner === undefined) {
       return c.json({ ok: false, message: 'That wall is no longer there.' }, 404);
     }
-    replaceLayout(deps.db, owner, shaped.value.orientation ?? 'portrait', {
-      mode: shaped.value.mode,
-      aspect: shaped.value.aspect,
-      widgets: shaped.value.widgets,
-      // Stored as JSON; null when the canvas has no background.
-      background: shaped.value.background != null ? JSON.stringify(shaped.value.background) : null,
-    });
+    /*
+     * A named canvas (RFC 014 §5.2) is bounded per wall, and the bound is
+     * counted here rather than declared in the schema because a `CHECK`
+     * cannot count rows. A slot that already has widgets is a save, not a
+     * new slot; a fifth *new* name is refused with the number, and never
+     * silently dropped onto the default canvas. A panel holds no slots at
+     * all — its editor never offers one — so a hand-posted slot at a panel
+     * is refused for the reason `apply-template` refuses a wall's card there.
+     */
+    const slot = shaped.value.slot ?? null;
+    if (slot !== null) {
+      if (isEpaperOwner(owner)) {
+        return c.json({ ok: false, message: 'A panel draws one layout, so it cannot hold a scheduled one.' }, 400);
+      }
+      const existing = readLayoutSlots(deps.db, owner);
+      if (!existing.includes(slot) && existing.length >= MAX_LAYOUT_SLOTS) {
+        return c.json(
+          { ok: false, message: `A wall can hold ${MAX_LAYOUT_SLOTS} extra layouts. Remove one to add another.` },
+          400,
+        );
+      }
+    }
+    replaceLayout(
+      deps.db,
+      owner,
+      shaped.value.orientation ?? 'portrait',
+      {
+        mode: shaped.value.mode,
+        aspect: shaped.value.aspect,
+        widgets: shaped.value.widgets,
+        // Stored as JSON; null when the canvas has no background.
+        background: shaped.value.background != null ? JSON.stringify(shaped.value.background) : null,
+      },
+      slot,
+    );
+    return c.json({ ok: true });
+  });
+
+  /**
+   * Remove a named canvas — both orientations and every schedule row naming
+   * it (RFC 014 §5.2). JSON from the editor, like the save; the default
+   * canvas has no name and so cannot be removed this way, which is the
+   * shape refusing rather than a clause.
+   */
+  app.post('/admin/layout/remove-slot', async (c: Context) => {
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ ok: false, message: 'That was not readable as JSON.' }, 400);
+    }
+    const shaped = parse(removeSlotBody, raw);
+    if (!shaped.ok) return c.json({ ok: false, message: shaped.message }, 400);
+    const owner = resolveOwner(shaped.value.screen);
+    if (owner === undefined) {
+      return c.json({ ok: false, message: 'That wall is no longer there.' }, 404);
+    }
+    deleteLayoutSlot(deps.db, owner, shaped.value.slot);
     return c.json({ ok: true });
   });
 
@@ -4445,6 +4592,68 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   }
 
   /**
+   * When to draw which named layout (RFC 014 §5.2): one `listRow` per rule,
+   * *from – to – which layout*, inside the settings form's one Save.
+   *
+   * The rows exist only once the wall holds a second layout, because a
+   * schedule with nothing to choose between is a control that does nothing —
+   * so a wall with one layout gets one sentence saying where the second one
+   * is made. `schedule_form` is the marker the handler reads the rows by, and
+   * it is posted only with the rows, so a page that never drew them leaves
+   * the schedule alone. Every rendered row is posted, filled or not: the
+   * handler reads an all-blank row as no rule, which is what lets a household
+   * clear one by emptying it.
+   */
+  function scheduleRows(screenId: string): string {
+    const option = (value: string, label: string, selected: boolean): string =>
+      `<option value="${escapeHtml(value)}"${selected ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+    const slots = readLayoutSlots(deps.db, screenId);
+    const intro =
+      `<p class="hint">Show a different layout at certain hours — a school-morning ` +
+      `layout from 06:30 to 08:30, say. The wall changes over on its own, ` +
+      `even while it cannot reach this server.</p>`;
+    if (slots.length === 0) {
+      return (
+        intro +
+        `<p class="hint">Make a second layout first: on the Layout tab, press ` +
+        `<b>New layout</b> to start one from what is there now.</p>`
+      );
+    }
+    const stored = readLayoutSchedule(deps.db, screenId);
+    const rows: string[] = [];
+    for (let n = 1; n <= MAX_SCHEDULE_ROWS; n += 1) {
+      const row = stored[n - 1];
+      const chosen = row?.slot ?? '';
+      const control =
+        `<span class="sched-row">` +
+        `<label class="sched-field"><span>From</span>` +
+        `<input type="time" name="schedule_from_${n}" value="${escapeHtml(row?.from ?? '')}"></label>` +
+        `<label class="sched-field"><span>Until</span>` +
+        `<input type="time" name="schedule_to_${n}" value="${escapeHtml(row?.to ?? '')}"></label>` +
+        `<label class="sched-field"><span>Show</span>` +
+        `<select name="schedule_slot_${n}">` +
+        option('', row === undefined ? 'Not used' : 'Remove this rule', chosen === '') +
+        slots.map((slot) => option(slot, slot, chosen === slot)).join('') +
+        `</select></label>` +
+        `</span>`;
+      rows.push(
+        listRow('', {
+          title: `Rule ${n}`,
+          detail: row === undefined ? 'Between two times, show one of your layouts.' : `${row.from}–${row.to}: ${row.slot}`,
+        }, control),
+      );
+    }
+    return (
+      intro +
+      `<input type="hidden" name="schedule_form" value="1">` +
+      `<div class="rows sched-rows">${rows.join('')}</div>` +
+      `<p class="hint">Outside every rule the wall shows its everyday layout. A rule ` +
+      `may run past midnight — from 21:00 until 06:00 is the whole night. Where ` +
+      `two rules overlap, the first one wins.</p>`
+    );
+  }
+
+  /**
    * A number this wall may either inherit or set for itself.
    *
    * The stored shape is unchanged — blank means "follow the household" exactly
@@ -4671,7 +4880,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
               'Normal is what this wall draws today; tighter gives the room back to what is on it.',
             selected: String(screen.layoutGutter ?? GUTTER_DEFAULT_STEP),
             options: GUTTER_LABELS.map((label, step) => ({ value: String(step), label })),
-          }),
+          }) +
+          scheduleRows(screen.id),
       ) +
       /*
        * The colours, faces, weight, tracking and inset every widget on this
@@ -5321,7 +5531,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           ? owner?.layoutLandscapeBackground ?? household.layoutLandscapeBackground
           : owner?.layoutBackground ?? household.layoutBackground,
       ),
-      widgets: readLayoutWidgets(deps.db, ownerKey, orientation).map((widget) => ({
+      widgets: widgetsOf(orientation, null),
+    });
+    const widgetsOf = (orientation: 'portrait' | 'landscape', slot: string | null): readonly unknown[] =>
+      readLayoutWidgets(deps.db, ownerKey, orientation, slot).map((widget) => ({
         id: widget.id,
         type: widget.type,
         x: widget.x,
@@ -5330,8 +5543,16 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         h: widget.h,
         z: widget.z,
         config: widget.config,
-      })),
-    });
+      }));
+    // The named canvases (RFC 014 §5.2), each on both orientations, and the
+    // schedule — so the editor can offer them beside the orientation tabs and
+    // save every one of them the way it saves both orientations.
+    const slotNames = readLayoutSlots(deps.db, ownerKey);
+    const slots = slotNames.map((slot) => ({
+      slot,
+      portrait: { widgets: widgetsOf('portrait', slot) },
+      landscape: { widgets: widgetsOf('landscape', slot) },
+    }));
     /*
      * The e-paper panels drawing *this* canvas, for the ink lane's preview.
      *
@@ -5362,6 +5583,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // (RFC 005).
       portrait: canvasFor('portrait'),
       landscape: canvasFor('landscape'),
+      // And every named canvas, with the schedule and the bound (RFC 014 §5.2).
+      slots,
+      schedule: readLayoutSchedule(deps.db, ownerKey),
+      maxSlots: MAX_LAYOUT_SLOTS,
       // Everything the config panel needs to offer a choice: the calendars that
       // exist (id + name), and the Home Assistant reading labels currently
       // resolving. Read here rather than fetched again so the editor can build
@@ -5406,6 +5631,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       notDrawn: widgetsNotDrawn(deps.db, [
         ...readLayoutWidgets(deps.db, ownerKey, 'portrait'),
         ...readLayoutWidgets(deps.db, ownerKey, 'landscape'),
+        // A box on a scheduled canvas is left out for the same reasons.
+        ...slotNames.flatMap((slot) => [
+          ...readLayoutWidgets(deps.db, ownerKey, 'portrait', slot),
+          ...readLayoutWidgets(deps.db, ownerKey, 'landscape', slot),
+        ]),
       ]),
       omission: omissionFacts(deps.db),
     };

@@ -54,6 +54,7 @@ const SHELL = [
   '/',
   '/assets/display.css',
   '/assets/main.js',
+  '/assets/canvas-schedule.js',
   '/assets/clock.js',
   '/assets/clock-face.js',
   '/assets/density.js',

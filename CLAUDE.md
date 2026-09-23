@@ -663,7 +663,7 @@ rest, served as a manifest over HTTP with an ETag. 166 events, zero warnings.
 pieces rather than because it is complete; everything after it in this section
 is also done: ICS engine · SSRF guard (URL + DNS-pinned fetcher) · shift
 rotation (per person, pattern or calendar-derived, with title analysis) ·
-secrets at rest · the schema (30 tables, 46 migrations) · migrations behind a
+secrets at rest · the schema (31 tables, 50 migrations) · migrations behind a
 file lock · scheduler · ICS sync ·
 `/healthz` · `/d/manifest` · display tokens · session gating · **Better Auth
 mounted at `/api/auth/*`, verified against the real library** · **first-run
@@ -7022,6 +7022,77 @@ the display, the panel, the honours table and the editor were checked, and all
 fifteen are red. **Still unproven where it counts:** nobody has looked at a
 face on a kitchen wall or a photographed panel, and the other five rows of
 §4.2 are each their own session.
+
+**A wall can hold several named canvases per orientation and draw the one
+its clock selects (RFC 014 §5.2), and the design is that nothing about it
+moves a rectangle.** The theme already switched on a daylight window; the
+canvas does the same now. Storage is one nullable `slot` column on
+`layout_widgets` — **null is the default canvas**, which is every row that
+existed, so migration `0049` (generated, then read: one table, one index, one
+`ADD COLUMN`, no recreate) touches nothing a wall already draws — and a
+`layout_schedule` table keyed on the screen, rows of *slot, from, to*, validated
+by the interrupt window's own all-or-nothing rule and wrapping past midnight
+exactly as the daylight theme's window does. Named slots are bounded at four
+per wall in the handler, because a `CHECK` cannot count rows. The manifest
+carries every slot's widgets and the schedule, for the reason it carries both
+orientations: the wall must swap **offline**, from its IndexedDB copy, at the
+moment the clock crosses the boundary. `pickCanvas` in `main.ts` takes the
+wall's corrected local time on the fifteen-second tick — the same reading the
+theme is switched on, so the colours and the arrangement never change on
+different ticks — and picks *within* the orientation: the slot's widgets, the
+orientation's own aspect and background. A slot with no canvas on the
+orientation the wall is hung at falls back to the default slot's canvas for
+it, never to a blank.
+
+**Absence is spread away, and a panel follows the default slot only.** A wall
+with one canvas and no schedule sends a document byte-identical to the one it
+always sent — `layout.slots` and `layout.schedule` are spread, never `[]`, so
+no stored ETag churns at one image pull — and that is asserted as text, the
+`wall-sizing` discipline; a schedule change moves the ETag on its own, which is
+free (the layout is in the preimage) and pinned anyway. An e-paper panel
+following a wall draws that wall's *default* slot at every hour: a battery panel
+is a glance class, asleep for most of an hour showing a frame it drew earlier,
+so a canvas that must change at 06:30 is one it cannot honour. `readLayoutWidgets`
+reads the default slot unless told otherwise and no panel path tells it
+otherwise, the panel's own page says so in words, and the server refuses a slot
+posted at a panel. The schedule is in neither honours table, the gutter's
+argument verbatim. The window arithmetic is written twice — `layout-slots.ts`
+on the server, `canvas-schedule.ts` in the bundle — held character-identical by
+test, and the bundle's copy is held to `daytimeActive` at every minute of the
+day.
+
+**The editor is one mechanism rather than a second one, and the verification is
+the boundary rather than the rule.** The slot tabs beside the orientation
+buttons are `wireTabs`, the same roving tabindex the inspector and the ink lane
+use — and they draw only once a wall holds a named layout, with New and Remove
+in the Layout popover, because the first draft put a second segment in the
+toolbar and `browser-editor`'s phone measurement caught it at once: the row
+wrapped and the 390px canvas went from 455px to 388px, under the half-screen
+floor that test exists for. The stash became a map keyed on `(orientation, slot)`, so dirtiness is a
+comparison per canvas, undo is per canvas, and Save writes every canvas that
+differs — the named ones with their slot in the body, the default without one,
+so an older server gets the body it always got. **New layout** copies the
+canvas on screen under a name with fresh widget ids (a template's rule: two
+canvases started from one arrangement must not share a row), which is the whole
+"start from what you have" affordance; **Remove layout** takes a named one off
+the server with every rule naming it. The schedule is rows on the wall's Layout
+settings behind a marker the handler reads them by, so a stale tab saving a
+timezone leaves it alone — and a slot is a *layout* wherever a household reads
+it, because `canvas` is a retired noun on those pages. What is measured
+(`browser-scheduled-canvas.test.ts`) is a wall loaded ten seconds before 06:30
+on the harness's own clock — `shiftClock`, new on the harness, moves the app's
+clock and the wall reads it off `x-server-time`; the device clock under
+Playwright is the runner's and reads a different hour on every machine — with
+`/d/manifest` then blocked at the network: it swaps on its own tick with zero
+manifests delivered and its canvas rectangle unmoved. Then the server is killed,
+the device clock fixed at 07:00 (the one clock a tablet has after a power cut),
+and the reload draws the morning canvas out of IndexedDB, and the everyday one
+at 09:00. The mutation is a window one minute later than the wall's clock: same
+load, same wait, no swap — because a boundary test that only waits until
+something changes cannot tell a schedule from a wall that swaps for any reason.
+**Still unproven where it counts:** nobody has watched a kitchen wall change
+over at 06:30, and no e-paper hardware has been photographed sleeping through
+one.
 
 ---
 

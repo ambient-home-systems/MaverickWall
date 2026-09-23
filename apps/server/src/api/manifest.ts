@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 
+import { isHhmm, isSlotName, type ScheduleRow } from './layout-slots.js';
+
 import {
   addDays,
   eachDate,
@@ -524,6 +526,13 @@ export function buildLayout(
    * untouched either way.
    */
   styling: StyleContext = NO_STYLE,
+  /*
+   * The named canvases and the schedule (RFC 014 §5.2). Defaulted to none
+   * because none is the safe answer — a caller that forgets them sends the
+   * one-canvas document, which is what every caller sent before they existed.
+   */
+  slotRows: readonly LayoutSlotRows[] = [],
+  schedule: readonly ScheduleRow[] = [],
 ): Manifest['layout'] {
   const setUp: HouseholdSetUp = {
     modules: readyModules,
@@ -532,6 +541,25 @@ export function buildLayout(
   };
   const portrait = placeCanvas(portraitWidgets, setUp, styling);
   const landscape = placeCanvas(landscapeWidgets, setUp, styling);
+  /*
+   * Every slot goes through the same `placeCanvas` as the default — the same
+   * omission, the same fallback, the same style resolution — so a schedule
+   * cannot draw a box the default would have left out. A slot with nothing
+   * drawable on either orientation is dropped from the document rather than
+   * carried empty: the wall would fall back to the default for it anyway, and
+   * the schedule row naming it still travels, so nothing on the glass differs.
+   */
+  const slots: ManifestLayoutSlot[] = [];
+  for (const row of slotRows) {
+    if (!isSlotName(row.slot)) continue;
+    const p = placeCanvas(row.portrait, setUp, styling);
+    const l = placeCanvas(row.landscape, setUp, styling);
+    if (p.length === 0 && l.length === 0) continue;
+    slots.push({ slot: row.slot, portrait: { widgets: p }, landscape: { widgets: l } });
+  }
+  const rows = schedule.filter(
+    (row) => isSlotName(row.slot) && isHhmm(row.from) && isHhmm(row.to) && row.from !== row.to,
+  );
 
   // Always free-form: the responsive "auto" layout was retired in favour of a
   // single rendering path. Every wall carries the Classic template's widgets (a
@@ -556,6 +584,10 @@ export function buildLayout(
       widgets: landscape,
       ...(landscapeBg !== undefined ? { background: landscapeBg } : {}),
     },
+    // Spread, never emitted empty: a `"slots": []` on every wall in the world
+    // would churn every stored ETag at one image pull (RFC 014 §5.2).
+    ...(slots.length > 0 ? { slots } : {}),
+    ...(rows.length > 0 ? { schedule: rows } : {}),
   };
 }
 
@@ -767,6 +799,17 @@ export interface Manifest {
       readonly widgets: readonly ManifestPlacedWidget[];
       readonly background?: CanvasBackground;
     };
+    /**
+     * The wall's *named* canvases, every one of them (RFC 014 §5.2), and the
+     * schedule that picks between them — so the wall can swap at the boundary
+     * offline, from its stored copy, for the reason both orientations travel.
+     * A slot carries widgets only: its aspect and background are the
+     * orientation's, above. **Both absent** on a wall with one canvas and no
+     * schedule, which is every wall until a household makes a second one:
+     * spread, never `[]`, because `manifestEtag` hashes the serialisation.
+     */
+    readonly slots?: readonly ManifestLayoutSlot[];
+    readonly schedule?: readonly ManifestScheduleRow[];
   };
   /**
    * How this particular screen is hung.
@@ -973,6 +1016,27 @@ export interface PlacedWidgetRow {
  * display reads `styleTokens` and never `style`, exactly as the panel reads a
  * merged `ink` and the wall never looks at it.
  */
+/** A named canvas's stored rows, as `readLayoutWidgets` hands them over. */
+export interface LayoutSlotRows {
+  readonly slot: string;
+  readonly portrait: readonly PlacedWidgetRow[];
+  readonly landscape: readonly PlacedWidgetRow[];
+}
+
+/** One named canvas, on both orientations (RFC 014 §5.2). */
+export interface ManifestLayoutSlot {
+  readonly slot: string;
+  readonly portrait: { readonly widgets: readonly ManifestPlacedWidget[] };
+  readonly landscape: { readonly widgets: readonly ManifestPlacedWidget[] };
+}
+
+/** Between `from` and `to` in the wall's zone, draw `slot` (RFC 014 §5.2). */
+export interface ManifestScheduleRow {
+  readonly slot: string;
+  readonly from: string;
+  readonly to: string;
+}
+
 export interface ManifestPlacedWidget extends PlacedWidgetRow {
   /** This box is drawing its `whenEmpty` fallback rather than itself (RFC 014 §5.3). */
   readonly substituted?: true;
@@ -999,6 +1063,12 @@ export interface BuildManifestInput {
    */
   readonly layoutWidgetsPortrait?: readonly PlacedWidgetRow[];
   readonly layoutWidgetsLandscape?: readonly PlacedWidgetRow[];
+  /**
+   * The wall's named canvases and its schedule (RFC 014 §5.2). Absent or
+   * empty is a wall with one canvas, which sends the document it always sent.
+   */
+  readonly layoutSlots?: readonly LayoutSlotRows[];
+  readonly layoutSchedule?: readonly ScheduleRow[];
   readonly events: readonly EventCacheRow[];
   readonly sources: readonly SourceRow[];
   readonly people: readonly PersonRow[];
@@ -1589,6 +1659,8 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       input.readyModules ?? [],
       input.watchedTodoLists ?? [],
       styling,
+      input.layoutSlots ?? [],
+      input.layoutSchedule ?? [],
     ),
     days,
     people: people.map((person) => ({

@@ -1,3 +1,4 @@
+import { scheduledSlot, slotWidgets } from './canvas-schedule.js';
 import { createClock } from './clock.js';
 import {
   createManifestClient,
@@ -37,14 +38,35 @@ import { assess, DEFAULT_LIMITS } from './watchdog.js';
  * retired — so this always returns a canvas: an empty one (no widgets) when
  * there is nothing to draw, which `renderFreeform` paints as a "nothing yet"
  * note rather than a blank wall.
+ *
+ * The clock chooses *within* the orientation (RFC 014 §5.2). `localHhmm` is
+ * the wall's corrected time in the household's zone — the same reading the
+ * daylight theme is switched on, taken on the same tick — and a schedule
+ * window containing it names a slot whose widgets replace the orientation's
+ * own. The geometry does not move: the aspect and the background are still
+ * the orientation's, because a schedule picks an arrangement and never a
+ * shape. A slot with no canvas on this orientation falls through to the
+ * default slot's canvas for it, so a household who arranged a morning
+ * portrait wall and never its landscape gets the everyday landscape between
+ * 06:30 and 08:30 rather than nothing.
  */
 function pickCanvas(
   layout: Manifest['layout'],
   orientation: 'portrait' | 'landscape',
+  localHhmm: string,
 ): { readonly aspect: number; readonly widgets: readonly ManifestWidget[]; readonly background?: CanvasBackground } {
   const landscape = orientation === 'landscape';
   const primary = landscape ? layout?.landscape : layout?.portrait;
   const secondary = landscape ? layout?.portrait : layout?.landscape;
+  const slot = scheduledSlot(layout?.schedule, localHhmm);
+  const scheduled = slot === undefined ? undefined : slotWidgets(layout?.slots, orientation, slot);
+  if (scheduled !== undefined) {
+    return {
+      aspect: primary?.aspect ?? (landscape ? 1.7778 : 0.5625),
+      widgets: scheduled,
+      ...(primary?.background !== undefined ? { background: primary.background } : {}),
+    };
+  }
   if (primary?.widgets !== undefined && primary.widgets.length > 0) {
     return {
       aspect: primary.aspect ?? (landscape ? 1.7778 : 0.5625),
@@ -279,7 +301,9 @@ function start(): void {
      * an empty canvas when nothing is arranged — `renderFreeform` draws a
      * "nothing yet" note for that rather than a blank wall.
      */
-    const canvas = pickCanvas(manifest.layout, geo.layout);
+    // `local` again: the schedule reads the same minute the theme just did,
+    // so a wall never swaps its canvas and its colours on different ticks.
+    const canvas = pickCanvas(manifest.layout, geo.layout, local);
     // Which theme is on the glass decides which resolution of a style lane
     // the boxes wear (RFC 014 §4.1) — the same `day` the root was just themed by.
     renderFreeform(root, model, canvas, undefined, { daytime: day });

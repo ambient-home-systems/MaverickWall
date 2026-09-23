@@ -1423,6 +1423,13 @@ pre.code{background:var(--mw-surface-2);
  * the row has to fit and the popover states it anyway. */
 .le-tool-note{color:var(--mw-ink-2)}
 .le-orient{flex:0 0 auto}
+/* The named layouts (RFC 014 §5.2): the tablist in the orientation buttons'
+ * own anatomy, then New and Remove beside it. */
+.le-slots{display:inline-flex;flex-wrap:wrap;align-items:center;gap:var(--mw-s-2)}
+/* An author display rule beats the hidden attribute, and an empty tablist
+ * still wrapped the toolbar onto a third row on a phone — measured at 404px
+ * of canvas where 455 is the floor. */
+.le-slots[hidden]{display:none}
 /* Toolbar tools are compact outlined buttons — the shared anatomy at 32px
  * density, targets stretched back to 48px. */
 .le-tool-link,.le-tool-btn,.le-layers-btn{position:relative;margin:0;height:32px;
@@ -2257,6 +2264,13 @@ pre.code{background:var(--mw-surface-2);
 .wset-back{display:none}
 .wset-lead{margin:0 0 var(--mw-s-4);font-size:var(--mw-t-label-size);line-height:1.55;color:var(--muted)}
 .wset-group{position:relative;margin:var(--mw-s-5) 0 0}
+/* A schedule rule (RFC 014 §5.2): from, until and which layout, on one row
+ * that wraps on a phone. The labels are the field's own kicker rather than
+ * the form's block label, whose margin would stack three rows of it. */
+.sched-row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--mw-s-2)}
+.sched-field{display:flex;flex-direction:column;gap:var(--mw-s-1);margin:0}
+.sched-field>span{font-size:var(--mw-t-label-size);font-weight:var(--mw-t-label-weight);color:var(--mw-ink-2)}
+.sched-field input,.sched-field select{margin:0;width:auto}
 .wset-group:first-of-type{margin-top:var(--mw-s-4)}
 .wset-group>.kick{margin:0 0 var(--mw-s-2)}
 /* The theme picker inside the wall's settings sheet: the same .themegrid of

@@ -275,6 +275,47 @@ describe('upgrading a database that is already in use', () => {
     db.close();
   });
 
+  it('leaves an existing widget on the default canvas, with the schedule table empty (0049)', () => {
+    /*
+     * RFC 014 §5.2: `layout_widgets.slot` is nullable and **null is the
+     * default canvas** — every row that existed before the column did. A
+     * migration that backfilled a name here, or a default of `''`, would put
+     * every wall's widgets on a canvas the schedule could name and the wall
+     * would draw them only inside a window nobody wrote. The row is planted
+     * when the table is created (0012), before `screen_id` (0013) and
+     * `orientation` (0024) exist, so it walks every shape the table has had.
+     */
+    const entries = journal();
+    const db = new Database(':memory:');
+    const stamp = 1_700_000_000_000;
+
+    let planted = false;
+    for (const entry of entries) {
+      apply(db, entry.tag);
+      if (entry.tag.startsWith('0012')) {
+        db.prepare(
+          `INSERT INTO layout_widgets (id, type, x, y, w, h, z, config, created_at, updated_at)
+           VALUES ('w-1', 'clock', 0, 0, 0.5, 0.2, 0, NULL, ?, ?)`,
+        ).run(stamp, stamp);
+        planted = true;
+      }
+    }
+    expect(planted).toBe(true);
+
+    const widget = db
+      .prepare('SELECT type, screen_id AS screenId, orientation, slot FROM layout_widgets WHERE id = ?')
+      .get('w-1') as Record<string, unknown>;
+    expect(widget).toEqual({ type: 'clock', screenId: null, orientation: 'portrait', slot: null });
+    // And `IS NULL` is how the default is read, so the row is found that way.
+    expect(
+      (db.prepare('SELECT COUNT(*) AS n FROM layout_widgets WHERE slot IS NULL').get() as { n: number }).n,
+    ).toBe(1);
+    expect(
+      (db.prepare('SELECT COUNT(*) AS n FROM layout_schedule').get() as { n: number }).n,
+    ).toBe(0);
+    db.close();
+  });
+
   it('leaves an existing eInk screen refusing nothing by network (0038)', () => {
     /*
      * `lan_only` (Option C) has to reach a screen paired long before it

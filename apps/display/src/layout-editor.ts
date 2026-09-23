@@ -53,8 +53,10 @@ import {
 } from './placement.js';
 import { markTabs, wireTabs } from './tabs.js';
 import {
+  canvasKey,
   canvasSnapshot,
   isCanvasDirty,
+  parseCanvasKey,
   postedBackground,
   widgetsForSave,
   type CanvasBackground,
@@ -108,13 +110,24 @@ interface LayoutState {
   mode: 'auto' | 'freeform';
   /** Which of the two canvases is being edited (RFC 005). */
   orientation: 'portrait' | 'landscape';
+  /**
+   * Which named canvas is being edited (RFC 014 §5.2); null is the default,
+   * the one the wall draws outside every schedule window.
+   */
+  slot: string | null;
   // The active canvas is held flat as `aspect`/`widgets` so the whole editor
-  // reads and mutates it directly; the other canvas waits in `stash` and the two
-  // swap on the orientation toggle. Each is saved under its own orientation.
+  // reads and mutates it directly; every other canvas — the other orientation,
+  // and each named slot on both orientations — waits in `stash`, keyed by
+  // `canvasKey`, and one swaps in on the orientation toggle or the slot tabs.
+  // Each is saved under its own orientation and slot.
   aspect: number;
   widgets: Widget[];
   background?: Background | undefined;
-  stash: Canvas;
+  stash: Record<string, Canvas>;
+  /** The named canvases this wall holds, in the order the tabs draw them. */
+  slots: string[];
+  /** How many named canvases a wall may hold — the server's bound, echoed. */
+  maxSlots: number;
   /** The calendars that exist, for the Calendar widget's "which calendars". */
   calendars: readonly { readonly id: string; readonly name: string }[];
   /** The Home Assistant reading labels resolving now, for the HA widget picker. */
@@ -172,6 +185,13 @@ function randomId(): string {
   // Enough not to collide across a household's handful of widgets. Not a secret.
   return 'w' + Math.random().toString(36).slice(2, 10);
 }
+
+/**
+ * A slot's name, as the server's `layout-slots.ts` states it. Transcribed
+ * rather than imported — this bundle has no bundler and cannot reach the
+ * server — and held to it by `layout-slots-parity.test.ts`.
+ */
+const SLOT_NAME = /^[a-z0-9][a-z0-9-]{0,23}$/;
 
 function boot(): void {
   // Confirm any destructive form on the page (the Reset button), whether or not
@@ -290,6 +310,8 @@ function boot(): void {
       readonly mode?: unknown;
       readonly portrait?: RawCanvas;
       readonly landscape?: RawCanvas;
+      readonly slots?: unknown;
+      readonly maxSlots?: unknown;
       readonly calendars?: unknown;
       readonly readings?: unknown;
       readonly modules?: unknown;
@@ -384,14 +406,42 @@ function boot(): void {
     // are the per-orientation defaults when a canvas has no aspect yet.
     const portrait = canvasFrom(parsed.portrait, 0.5625);
     const landscape = canvasFrom(parsed.landscape, 1.7778);
+    /*
+     * And every named canvas (RFC 014 §5.2), both orientations each, sharing
+     * the orientation's aspect and background — a slot is an arrangement and
+     * never a shape. Read defensively: a slot whose name is not one is
+     * dropped whole rather than offered as a tab that cannot be saved.
+     */
+    const stash: Record<string, Canvas> = { [canvasKey('landscape', null)]: landscape };
+    const slots: string[] = [];
+    if (Array.isArray(parsed.slots)) {
+      for (const entry of parsed.slots) {
+        const named = entry as { slot?: unknown; portrait?: RawCanvas; landscape?: RawCanvas };
+        if (typeof named.slot !== 'string' || !SLOT_NAME.test(named.slot) || slots.includes(named.slot)) continue;
+        slots.push(named.slot);
+        const p = canvasFrom(named.portrait, portrait.aspect);
+        const l = canvasFrom(named.landscape, landscape.aspect);
+        stash[canvasKey('portrait', named.slot)] = {
+          aspect: portrait.aspect, widgets: p.widgets,
+          ...(portrait.background !== undefined ? { background: portrait.background } : {}),
+        };
+        stash[canvasKey('landscape', named.slot)] = {
+          aspect: landscape.aspect, widgets: l.widgets,
+          ...(landscape.background !== undefined ? { background: landscape.background } : {}),
+        };
+      }
+    }
     state = {
       screen: typeof parsed.screen === 'string' ? parsed.screen : null,
       mode: parsed.mode === 'freeform' ? 'freeform' : 'auto',
       orientation: 'portrait',
+      slot: null,
       aspect: portrait.aspect,
       widgets: portrait.widgets,
       ...(portrait.background !== undefined ? { background: portrait.background } : {}),
-      stash: landscape,
+      stash,
+      slots,
+      maxSlots: typeof parsed.maxSlots === 'number' && parsed.maxSlots > 0 ? parsed.maxSlots : 4,
       calendars: Array.isArray(parsed.calendars) ? (parsed.calendars as LayoutState['calendars']) : [],
       readings: Array.isArray(parsed.readings) ? (parsed.readings as string[]) : [],
       modules: Array.isArray(parsed.modules) ? (parsed.modules as LayoutState['modules']) : [],
@@ -408,8 +458,9 @@ function boot(): void {
     };
   } catch {
     state = {
-      screen: null, mode: 'auto', orientation: 'portrait', aspect: 0.5625, widgets: [],
-      stash: { aspect: 1.7778, widgets: [] },
+      screen: null, mode: 'auto', orientation: 'portrait', slot: null, aspect: 0.5625, widgets: [],
+      stash: { [canvasKey('landscape', null)]: { aspect: 1.7778, widgets: [] } },
+      slots: [], maxSlots: 4,
       calendars: [], readings: [], modules: [], people: [], todoLists: [],
     };
   }
@@ -471,8 +522,20 @@ function boot(): void {
    * the write succeeded, reporting a failed save as a success. Nothing is
    * written on a switch now; the save bar saves both.
    */
-  const savedSnapshot: Record<'portrait' | 'landscape', string> = { portrait: '', landscape: '' };
-  let stashDirty = false;
+  const savedSnapshot: Record<string, string> = {};
+  /** The key of the canvas being edited — `canvasKey` of the active pair. */
+  const activeKey = (): string => canvasKey(state.orientation, state.slot);
+  /**
+   * Whether any canvas waiting in the stash differs from what the server
+   * holds. Derived on every ask rather than remembered on the switch, so a
+   * named canvas edited, left and undone back to its saved state reads clean
+   * — which is the comparison-not-flag rule (RFC 009 Phase 5) applied to
+   * every canvas rather than to the one other canvas there used to be.
+   */
+  const anyStashDirty = (): boolean =>
+    Object.keys(state.stash).some(
+      (key) => canvasSnapshot(state.stash[key] as Canvas) !== (savedSnapshot[key] ?? ''),
+    );
 
   /**
    * One undo stack per canvas.
@@ -483,11 +546,15 @@ function boot(): void {
    * and a stack that survived a reload would offer to undo edits the household
    * has already seen written.
    */
-  const histories: Record<'portrait' | 'landscape', History> = {
-    portrait: createHistory(),
-    landscape: createHistory(),
+  const histories: Record<string, History> = {};
+  const history = (): History => {
+    const key = activeKey();
+    const known = histories[key];
+    if (known !== undefined) return known;
+    const made = createHistory();
+    histories[key] = made;
+    return made;
   };
-  const history = (): History => histories[state.orientation];
 
   /*
    * A run of small edits is one intention.
@@ -684,9 +751,88 @@ function boot(): void {
     // Selected state announced, not drawn only — the tick and the fill are the
     // sighted half of the same fact.
     button.setAttribute('aria-pressed', state.orientation === which ? 'true' : 'false');
-    button.addEventListener('click', () => switchOrientation(which));
+    button.addEventListener('click', () => switchCanvas(which, state.slot));
     orientToggle.appendChild(button);
   }
+
+  /*
+   * Which of this wall's *named* layouts is being arranged (RFC 014 §5.2).
+   *
+   * A tablist, wired by `wireTabs` — the roving tabindex the inspector's
+   * tabs and the ink lane use, and not a second mechanism — beside the
+   * orientation buttons: orientation decides the family of canvases and the
+   * slot picks within it, so the two controls sit together and read in that
+   * order. "Everyday" is the default canvas, which has no name in the store
+   * and no window in the schedule; it is what the wall draws outside every
+   * rule. New starts a layout *from what is there now*, which is the whole
+   * "start from what you have" affordance: a school-morning wall is the
+   * everyday one with a box or two moved, not a blank page. Remove is only
+   * offered on a named layout, because the everyday one cannot be removed.
+   *
+   * Hidden on a panel with the orientation buttons, for the reason the
+   * server refuses a slot at one: a battery panel draws one layout. And
+   * **hidden on a wall with no named layout**, which is every wall until a
+   * household makes one: measured, a second segment beside the orientation
+   * buttons wrapped the toolbar onto a third row on a 390px phone and took the
+   * canvas from 455px to 388px — under the half-screen floor RFC 009 Phase 5
+   * measured it up to. So New and Remove live in the Layout popover, where the
+   * canvas's own settings already are, and the tabs cost the toolbar nothing
+   * until there is a second layout to choose between.
+   */
+  const slotBar = document.createElement('div');
+  slotBar.className = 'le-slots';
+  const slotGroup = document.createElement('div');
+  slotGroup.className = 'le-orient seg';
+  slotGroup.setAttribute('role', 'tablist');
+  slotGroup.setAttribute('aria-label', 'Which of this wall’s layouts you are arranging');
+  const slotTabs: HTMLButtonElement[] = [];
+  const slotKeyOf = (tab: HTMLButtonElement): string | undefined => tab.dataset['slot'];
+  const newSlotButton = document.createElement('button');
+  newSlotButton.type = 'button';
+  newSlotButton.className = 'le-add';
+  newSlotButton.textContent = 'New layout';
+  newSlotButton.title = 'Start another layout from this one, to show at certain hours';
+  newSlotButton.addEventListener('click', () => newSlotFromCurrent());
+  const removeSlotButton = document.createElement('button');
+  removeSlotButton.type = 'button';
+  removeSlotButton.className = 'le-add';
+  removeSlotButton.textContent = 'Remove layout';
+  removeSlotButton.addEventListener('click', () => {
+    void removeCurrentSlot();
+  });
+  function drawSlotTabs(): void {
+    for (const tab of slotTabs) tab.remove();
+    slotTabs.length = 0;
+    for (const slot of [null, ...state.slots]) {
+      const tab = document.createElement('button');
+      tab.type = 'button';
+      tab.className = 'le-orient-btn';
+      tab.setAttribute('role', 'tab');
+      tab.dataset['slot'] = slot ?? '';
+      tab.textContent = slot ?? 'Everyday';
+      slotTabs.push(tab);
+    }
+    slotGroup.append(...slotTabs);
+    wireTabs(
+      slotTabs,
+      slotKeyOf,
+      (key) => switchCanvas(state.orientation, key === '' ? null : key),
+      false,
+    );
+    markSlotTabs();
+  }
+  function markSlotTabs(): void {
+    markTabs(slotTabs, slotKeyOf, state.slot ?? '', 'is-on');
+    slotBar.hidden = epaperHost || state.slots.length === 0;
+    removeSlotButton.hidden = state.slot === null;
+    newSlotButton.hidden = state.slots.length >= state.maxSlots;
+    newSlotButton.title =
+      state.slots.length >= state.maxSlots
+        ? `A wall can hold ${state.maxSlots} extra layouts`
+        : 'Start another layout from this one, to show at certain hours';
+  }
+  slotBar.append(slotGroup);
+  drawSlotTabs();
 
   // A panel has one orientation and one ratio, both facts about the hardware.
   // Offering the wall's Portrait/Landscape tabs and its aspect list let a
@@ -976,6 +1122,15 @@ function boot(): void {
     snapRow.appendChild(snapToggle);
     canvasPopover.appendChild(snapRow);
     if (!epaperHost) {
+      // Another layout for certain hours (RFC 014 §5.2): started from this
+      // one, or the one on screen removed. Here rather than in the toolbar,
+      // which has no row to spare on a phone — see `slotBar`.
+      const slotSep = document.createElement('div');
+      slotSep.className = 'le-pop-sep';
+      const slotRow = document.createElement('div');
+      slotRow.className = 'le-pop-row le-pop-slots';
+      slotRow.append(newSlotButton, removeSlotButton);
+      canvasPopover.append(slotSep, slotRow);
       const sep2 = document.createElement('div');
       sep2.className = 'le-pop-sep';
       canvasPopover.append(sep2, backgroundPanel);
@@ -1079,6 +1234,7 @@ function boot(): void {
   };
   barMain.append(
     orientToggle,
+    slotBar,
     panelChip,
     palette,
     undoButton,
@@ -1532,7 +1688,7 @@ function boot(): void {
    * flag honestly, and the other orientation's unsaved work keeps it set.
    */
   function markDirty(): void {
-    setDirty(isCanvasDirty(state, savedSnapshot[state.orientation], stashDirty));
+    setDirty(isCanvasDirty(state, savedSnapshot[activeKey()] ?? '', anyStashDirty()));
     refreshUndo();
   }
 
@@ -1721,7 +1877,7 @@ function boot(): void {
   const notDrawn = (): NotDrawn =>
     omissionFacts === undefined
       ? notDrawnSeed
-      : notDrawnFor([...state.widgets, ...state.stash.widgets], omissionFacts);
+      : notDrawnFor(allWidgets(), omissionFacts);
   /*
    * A flagged box that names a fallback draws the fallback in its rectangle
    * (RFC 014 §5.3) — substituted here from the same facts, in the server's
@@ -4562,21 +4718,59 @@ function boot(): void {
    * still loses neither; it now loses neither to a failed request either.
    */
   function switchOrientation(which: 'portrait' | 'landscape'): void {
-    if (which === state.orientation) return;
+    switchCanvas(which, state.slot);
+  }
+
+  /** Every widget on every canvas — for the omission flags, which are per box. */
+  function allWidgets(): Widget[] {
+    return [
+      ...state.widgets,
+      ...Object.values(state.stash).flatMap((canvas) => canvas.widgets),
+    ];
+  }
+
+  /**
+   * Swap the active canvas for another — the other orientation, another named
+   * layout, or both (RFC 014 §5.2). Nothing is written; every canvas is
+   * already here, and the save bar saves whichever differ.
+   *
+   * A slot with no canvas on the arriving orientation gets an empty one at
+   * that orientation's own aspect and background, which is honest on the
+   * editor where the wall would fall back to the everyday canvas: the
+   * household can see it is empty here and copy into it. Within one
+   * orientation the arriving canvas takes the leaving one's aspect and
+   * background, because those are the orientation's and not the slot's — a
+   * size changed on the morning layout is the wall's size.
+   */
+  function switchCanvas(which: 'portrait' | 'landscape', slot: string | null): void {
+    if (which === state.orientation && slot === state.slot) return;
 
     const leaving: Canvas = {
       aspect: state.aspect,
       widgets: state.widgets,
       ...(state.background !== undefined ? { background: state.background } : {}),
     };
-    stashDirty = canvasSnapshot(leaving) !== savedSnapshot[state.orientation];
-    state.aspect = state.stash.aspect;
-    state.widgets = state.stash.widgets;
-    state.background = state.stash.background;
-    state.stash = leaving;
+    const arrivingKey = canvasKey(which, slot);
+    const sameOrientation = which === state.orientation;
+    const fallback: Canvas = sameOrientation
+      ? { aspect: leaving.aspect, widgets: [], ...(leaving.background !== undefined ? { background: leaving.background } : {}) }
+      : { aspect: state.stash[canvasKey(which, null)]?.aspect ?? (which === 'landscape' ? 1.7778 : 0.5625), widgets: [] };
+    const arriving = state.stash[arrivingKey] ?? fallback;
+    if (state.stash[arrivingKey] === undefined) {
+      // A canvas that never existed reads as saved-empty, so an untouched
+      // empty slot on this orientation is not something Save has to write.
+      savedSnapshot[arrivingKey] = canvasSnapshot(fallback);
+    }
+    delete state.stash[arrivingKey];
+    state.stash[activeKey()] = leaving;
+    state.aspect = sameOrientation ? leaving.aspect : arriving.aspect;
+    state.widgets = arriving.widgets;
+    state.background = sameOrientation ? leaving.background : arriving.background;
     state.orientation = which;
+    state.slot = slot;
     rememberOrientation(state.screen, which);
     selected = undefined;
+    markSlotTabs();
 
     // Reflect the switch in the toolbar: the active button, and the aspect
     // select. `aria-pressed` moves with the class — the fill and the tick are
@@ -4593,6 +4787,83 @@ function boot(): void {
     markDirty();
   }
 
+  /**
+   * Start a named layout from the canvas on screen (RFC 014 §5.2).
+   *
+   * The widgets are copied with fresh ids — a template's rule: two canvases
+   * started from one arrangement must not share widget ids, or a box moved on
+   * the morning layout would be the same row as the everyday one. The copy
+   * lands on the current orientation only; the other orientation's canvas for
+   * the new layout starts empty, which the wall reads as "draw the everyday
+   * one there" and the editor shows as empty so it can be filled in turn.
+   */
+  function newSlotFromCurrent(): void {
+    if (state.slots.length >= state.maxSlots) return;
+    const typed = window.prompt(
+      'Name for the new layout — a short word, like morning or evening:',
+      '',
+    );
+    if (typed === null) return;
+    const slot = typed.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24);
+    if (!SLOT_NAME.test(slot) || state.slots.includes(slot)) return;
+    const copied: Widget[] = state.widgets.map((widget) => ({
+      ...widget,
+      id: randomId(),
+      ...(widget.config !== undefined
+        ? { config: JSON.parse(JSON.stringify(widget.config)) as Record<string, unknown> }
+        : {}),
+    }));
+    state.slots.push(slot);
+    state.stash[canvasKey(state.orientation, slot)] = {
+      aspect: state.aspect,
+      widgets: copied,
+      ...(state.background !== undefined ? { background: state.background } : {}),
+    };
+    // Never saved, so it compares against nothing: the copy is unsaved work
+    // from the moment it exists, and the bar says so.
+    savedSnapshot[canvasKey(state.orientation, slot)] = '';
+    drawSlotTabs();
+    switchCanvas(state.orientation, slot);
+  }
+
+  /**
+   * Remove the named layout on screen, on the server and here.
+   *
+   * On the server first: a layout removed only here would come back on the
+   * next load, and its schedule rows with it. The everyday layout cannot be
+   * removed, so the button is hidden on it and the server's shape refuses it.
+   */
+  async function removeCurrentSlot(): Promise<void> {
+    const slot = state.slot;
+    if (slot === null) return;
+    if (!window.confirm(`Remove the “${slot}” layout? Any rule showing it at certain hours goes with it.`)) return;
+    try {
+      const response = await fetch('admin/layout/remove-slot', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ screen: state.screen, slot }),
+      });
+      if (!response.ok) return;
+    } catch {
+      return;
+    }
+    switchCanvas(state.orientation, null);
+    state.slots = state.slots.filter((one) => one !== slot);
+    for (const orientation of ['portrait', 'landscape'] as const) {
+      const key = canvasKey(orientation, slot);
+      delete state.stash[key];
+      delete savedSnapshot[key];
+      delete histories[key];
+    }
+    drawSlotTabs();
+    markDirty();
+    // The schedule rows under Wall settings were rendered with that layout on
+    // offer. With nothing else unsaved, a reload is the honest refresh; with
+    // edits pending it is not, and the settings form refuses a stale row by
+    // name rather than losing them.
+    if (!dirty) location.reload();
+  }
+
   // ---- save -------------------------------------------------------------
 
   /**
@@ -4601,6 +4872,7 @@ function boot(): void {
    */
   async function postCanvas(
     orientation: 'portrait' | 'landscape',
+    slot: string | null,
     aspect: number,
     widgets: readonly Widget[],
     background: Background | undefined,
@@ -4612,6 +4884,9 @@ function boot(): void {
         body: JSON.stringify({
           screen: state.screen,
           orientation,
+          // Absent for the everyday canvas, so the body an older server
+          // validated is the body it still gets (RFC 014 §5.2).
+          ...(slot === null ? {} : { slot }),
           // Always free-form: the "auto" stacked layout was retired. Saving a
           // canvas is what makes a display free-form, and there is no other mode.
           mode: 'freeform',
@@ -4627,7 +4902,7 @@ function boot(): void {
       if (response.ok) {
         // What the server now holds. The dirty flag is derived from this, so
         // there is no second place saying whether this canvas is clean.
-        savedSnapshot[orientation] = canvasSnapshot({ aspect, widgets, background });
+        savedSnapshot[canvasKey(orientation, slot)] = canvasSnapshot({ aspect, widgets, background });
         return { ok: true };
       }
       return { ok: false, message: body.message ?? 'That did not save.' };
@@ -4646,16 +4921,25 @@ function boot(): void {
    * it names which layout failed — the household is looking at the other one.
    */
   async function saveCurrent(): Promise<{ ok: boolean; message?: string }> {
-    const other = state.orientation === 'portrait' ? 'landscape' : 'portrait';
-    if (stashDirty) {
-      const stashed = await postCanvas(other, state.stash.aspect, state.stash.widgets, state.stash.background);
+    /*
+     * Every stashed canvas that differs from what the server holds, then the
+     * active one — the other orientation and every named layout alike (RFC
+     * 014 §5.2). A canvas the server has never seen and that is still empty
+     * compares equal to its saved-empty snapshot and is never posted, so a
+     * layout made on portrait alone writes no landscape rows.
+     */
+    for (const key of Object.keys(state.stash)) {
+      const canvas = state.stash[key] as Canvas;
+      if (canvasSnapshot(canvas) === (savedSnapshot[key] ?? '')) continue;
+      const [orientation, slot] = parseCanvasKey(key);
+      const stashed = await postCanvas(orientation, slot, canvas.aspect, canvas.widgets, canvas.background);
       if (!stashed.ok) {
         markDirty();
-        return { ok: false, message: `Your ${other} layout did not save. ${stashed.message ?? ''}`.trim() };
+        const name = slot === null ? orientation : `${orientation} “${slot}”`;
+        return { ok: false, message: `Your ${name} layout did not save. ${stashed.message ?? ''}`.trim() };
       }
-      stashDirty = false;
     }
-    const outcome = await postCanvas(state.orientation, state.aspect, state.widgets, state.background);
+    const outcome = await postCanvas(state.orientation, state.slot, state.aspect, state.widgets, state.background);
     markDirty();
     return outcome;
   }
@@ -4674,9 +4958,10 @@ function boot(): void {
    * switch orientation — a switch compares against these, and a blank one would
    * read as "everything is unsaved" on a canvas nobody has touched.
    */
-  savedSnapshot[state.orientation] = activeSnapshot();
-  savedSnapshot[state.orientation === 'portrait' ? 'landscape' : 'portrait'] =
-    canvasSnapshot(state.stash);
+  savedSnapshot[activeKey()] = activeSnapshot();
+  for (const key of Object.keys(state.stash)) {
+    savedSnapshot[key] = canvasSnapshot(state.stash[key] as Canvas);
+  }
 
   // Reopen on the orientation last edited on this device — except on a panel,
   // which has exactly one and remembers nothing. The panel case is not a

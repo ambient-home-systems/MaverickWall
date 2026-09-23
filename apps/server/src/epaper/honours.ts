@@ -312,6 +312,24 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
  * canvas, exactly as it does for the gutter step.
  */
 
+/*
+ * **A panel follows a wall's default canvas only, and the schedule is in
+ * neither table** (RFC 014 §5.2).
+ *
+ * A wall may hold named canvases the clock picks between — `layout_widgets.slot`
+ * and `layout_schedule` — and a panel following that wall draws its *default*
+ * slot and nothing else, at every hour. Not a limitation somebody forgot to
+ * lift: a battery panel is a glance class, asleep for most of an hour showing
+ * a frame it drew earlier, so a canvas that must change at 06:30 is one it
+ * cannot honour and must not pretend to. `readLayoutWidgets` reads the default
+ * slot unless told otherwise, and neither the frame route nor the design page
+ * ever tells it otherwise, so the promise is a property of the reads rather
+ * than of a flag. The schedule itself is a table keyed on the screen, not a
+ * widget config, so it belongs in neither honours table for the reason the
+ * gutter and the style lane above do; the panel's own page says in words that
+ * a scheduled layout never reaches it, which is where a household would look.
+ */
+
 /**
  * The widget's options as the panel reads them: the wall's, with the ink lane
  * laid over the top.

@@ -1361,7 +1361,9 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
             // Escaped by `fieldWrap`, so the ampersand is written plainly here:
             // an `&amp;` in a hint reaches the page as a literal `&amp;`.
             'Following a wall draws that layout in black & white — move a box there ' +
-            'and this panel moves with it. Each widget can say less on ink without changing the wall.',
+            'and this panel moves with it. Each widget can say less on ink without changing the wall. ' +
+            'A panel follows the wall’s everyday layout only: a layout the wall shows at certain hours ' +
+            'never reaches a panel, which may sleep through the hour.',
         }) +
         `<button class="secondary" type="submit">Use this</button></form>`,
     );
@@ -1393,7 +1395,8 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
             undefined,
             `<p class="hint">This panel follows <b>${escapeHtml(followedName)}</b>. Arrange it there — ` +
               `and use the <b>On ink</b> lane beside a widget to say less on this panel without changing ` +
-              `that wall.</p>` +
+              `that wall. It follows that wall’s everyday layout only; a layout the wall shows at ` +
+              `certain hours never reaches a panel.</p>` +
               (followed === null
                 ? `<p><a class="btn" href="admin/walls">Pick a wall to follow</a></p>`
                 : `<p><a class="btn" href="admin/walls/${encodeURIComponent(followed)}#layout">Open ${escapeHtml(
