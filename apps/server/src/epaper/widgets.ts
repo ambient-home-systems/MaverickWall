@@ -58,6 +58,7 @@ import {
 import { calendarView } from './calendar-view.js';
 import { withInk } from './honours.js';
 import { clockLabel, type EpaperModel } from './viewmodel.js';
+import { drawAnalogueFace } from './clock-face.js';
 
 /** A widget placed on the canvas: fractional box, plus its stored options. */
 export interface PlacedEpaperWidget {
@@ -259,14 +260,46 @@ function drawFrame(fb: Framebuffer, m: EpaperMetrics, box: Box, config: Config):
   return inner;
 }
 
+/** The widest line a stacked clock's date can be: see `drawClock`. */
+const STACKED_DATE_BUDGET = '30 SEPTEMBER';
+
 /**
- * The clock, honouring the same two options the wall's does.
+ * The clock, honouring the same options the wall's does.
  *
  * `clockFormat` re-reads the frame's own time rather than reformatting the
  * string the viewmodel already built, which is the only way to change a clock
  * without parsing one. `showDate` is absence-means-on, matching the schema.
  */
 function drawClock(fb: Framebuffer, m: EpaperMetrics, box: Box, model: EpaperModel, config: Config): void {
+  /*
+   * The variant (RFC 014 §4.2), read exactly as the wall's `clockVariant`
+   * reads it: one of the clock's three, and anything else — absent, or a value
+   * that belongs to another widget type — is `plain`, the clock this function
+   * drew before the key existed. So no stored canvas's frame moves and
+   * `EPAPER_RENDERER_VERSION` does not either.
+   */
+  const variant = str(config, 'variant');
+  if (variant === 'analogue') {
+    /*
+     * A face at the box's short side, centred — a picture has no alignment to
+     * honour, and on the wall the SVG is centred in its box the same way. The
+     * reading is the digits' own, in 24-hour form, so the hands and the plain
+     * clock on the next panel can never disagree about the time.
+     */
+    const [hh, mm] = clockLabel(model.generatedAt, model.timezone, true).split(':');
+    const size = Math.max(0, Math.min(box.w, box.h));
+    drawAnalogueFace(
+      fb,
+      box.x + Math.floor((box.w - size) / 2),
+      box.y + Math.floor((box.h - size) / 2),
+      size,
+      // A label that did not parse draws twelve o'clock rather than a face
+      // whose every polygon is `NaN` — the frame still goes out (rule nine).
+      (Number(hh) || 0) % 24,
+      (Number(mm) || 0) % 60,
+    );
+    return;
+  }
   const format = str(config, 'clockFormat');
   const time =
     format === '12' || format === '24'
@@ -282,8 +315,36 @@ function drawClock(fb: Framebuffer, m: EpaperMetrics, box: Box, model: EpaperMod
   const timeRung = rungToFit(time, box.w, byHeight);
   const align = alignOf(config);
   drawLines(fb, m, [time], { ...box, h: timeRung.height }, timeRung, align);
-  if (config['showDate'] === false) return;
   const dateRung = shorterRung(scaleRung(m, 1.5), rungStep(timeRung, -1));
+  if (variant === 'stacked') {
+    /*
+     * The weekday and the date each on a line of its own, capitalised the way
+     * the wall's scaffold role sets them. The date is the stacked form's
+     * second half rather than an option on it, so `showDate` is not read —
+     * the wall does not read it for this variant either.
+     */
+    const lines = [model.header.weekday, `${model.header.day} ${model.header.month}`].map((line) =>
+      line.toUpperCase(),
+    );
+    /*
+     * Stepped against a character budget rather than today's words, which is
+     * the refresh contract's rule: the widest line the English calendar can
+     * put here is "30 SEPTEMBER", so the rung is a function of the box alone
+     * and does not change size at midnight on the first of a long month.
+     */
+    const lineRung = rungToFit(STACKED_DATE_BUDGET, box.w, dateRung);
+    const top = box.y + timeRung.height + m.widget.inset;
+    drawLines(
+      fb,
+      m,
+      lines,
+      { x: box.x, y: top, w: box.w, h: Math.max(0, box.y + box.h - top) },
+      lineRung,
+      align,
+    );
+    return;
+  }
+  if (config['showDate'] === false) return;
   const date = `${model.header.weekday} ${model.header.day} ${model.header.month}`;
   const dateTop = box.y + timeRung.height + m.widget.inset;
   drawLines(

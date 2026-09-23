@@ -174,6 +174,23 @@ const widgetConfigFields = z
     clockFormat: z.enum(['12', '24']).optional(),
     showDate: z.boolean().optional(),
     /*
+     * A designed variant of the widget (RFC 014 §4.2): the same reading drawn
+     * a different way on purpose, the Swiss month grid's shape one widget
+     * along. **One enum for every type**, the way `mode` is, because the
+     * editor's Look picker is generic and a key per widget would be six names
+     * for one idea — so each renderer filters to its own allowlist and a value
+     * a type does not know is "not for me", drawn as that type's default.
+     *
+     * The clock is the first: `plain` (the clock every wall has drawn),
+     * `stacked` (the time over the weekday over the date) and `analogue` (a
+     * filled face with two hands). **Absent means `plain`**, like every
+     * default in this schema, so a canvas saved before this key existed sends
+     * a byte-identical config and no stored ETag churns. `plain` is still a
+     * member rather than only an absence, because the ink lane has to be able
+     * to say "plain on the panel" beside a wall that says `stacked`.
+     */
+    variant: z.enum(['plain', 'stacked', 'analogue']).optional(),
+    /*
      * Weather. `count` is shared with the calendar's agenda above — one strict
      * object for every type, and a key a type does not read is simply not read.
      *
@@ -278,6 +295,7 @@ export const inkOverrideBody = widgetConfigFields
     readings: true,
     shiftName: true,
     showDate: true,
+    variant: true,
   })
   .strict();
 

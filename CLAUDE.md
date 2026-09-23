@@ -6869,6 +6869,90 @@ default — which is the rule working, not the test failing.
 kitchen wall or through a real supervisor's sidebar, and no e-paper panel has
 been photographed drawing a lane's inset.
 
+**The clock has three designed variants, and it is the first row of RFC 014
+§4.2 rather than the last (§4.2, clock).** `config.variant` is one enum on
+`widgetConfigBody` for every type, the way `mode` is, because the Look picker
+is generic and a key per widget would be six names for one idea — so each
+renderer filters to its own allowlist, and a value a type does not know is
+"not for me", drawn as that type's default. `clockVariant` in
+`apps/display/src/clock-face.ts` is the wall's reading and `drawClock` reads
+it identically; both are pinned to treat a weather variant handed to a clock
+as `plain`. **Absent is `plain`**, so every canvas already hanging sends a
+byte-identical config: the plain clock on a paired Classic wall measures
+exactly what a clean worktree of `main` drew (digits, date, both rectangles,
+unmeasured and measured, both sizes), and the plain panel frame is `main`'s
+bytes at three sizes and four configs. `EPAPER_RENDERER_VERSION` did not move,
+for the reason it would have: nothing stored carries a variant yet.
+
+**`stacked` did not restate the digits' size, and that is the design.** The
+digits are sized by three rules, one of which exists only to win a (0,3,0)
+versus (0,2,0) accident on a landscape wall — a variant restating `font-size`
+would have to go to (0,5,0) to beat it, and the next variant to (0,6,0), which
+is how the landscape clock went unsized for as long as it did. So the rules
+read two custom properties with today's values as their fallbacks —
+`--clock-h`, the digits' share of the box height, and `--clock-cap`, their
+ceiling on an unmeasured portrait wall — and a variant sets them. The cap is
+the part worth reading: a plain clock's unmeasured ceiling is `100vh`
+deliberately, because capping it would move a wall nobody measured, and that
+is why the shipped Classic clock draws 2.4x its agenda title. **A variant
+nobody has chosen has no drawing to preserve**, so `stacked` takes the 1.8x
+design rule on every wall and lands at exactly 1.800x where the cap binds. The
+weekday and the date are two lines in the scaffold role and ink, each sized
+against the room the box actually has — its width *less its padding*, which
+the digits' per-character term never subtracted and gets away with because
+five condensed digits are narrow. Twelve display capitals are not: measured
+at 0.67-0.76em a character, "23 SEPTEMBER" clipped in a 130px box until the
+padding came off.
+
+**Two of `stacked`'s rules passed with themselves removed on the shipped
+wall**, which is why the test drags the clock small. On the Classic seed at
+both sizes the digits are held by the cap or the role before their height
+share, and the date lines by their role before the box's width — so deleting
+`--clock-h: 44` or the date's width term turned nothing red. A box 120px tall
+is where the height share is what leaves room for two date lines, and one
+130px wide is where the width term, net of padding, is what stops a clip; both
+mutations are red there, and so is measuring the width against the whole box.
+
+**`analogue` is a picture and takes no type role.** A filled face on the 24
+grid in `glyphs.ts`'s idiom — the ring a clockwise disc with an anticlockwise
+one cut from it, twelve quads for marks, two wedge hands with short tails, a
+hub — and no seconds hand, for the reason the schema has no seconds field. The
+SVG fills its box's content and a square `viewBox` is drawn at the shorter
+side, so `min(width, height)` is a property of the element rather than
+arithmetic somebody could get wrong: measured, 99.8-99.9% of the short side at
+all four walls. It holds no text node, so the tabular-figures walk never meets
+it. Each hand is its own path and **its first point is its tip**, which is what
+lets the test read the angle back out of the path data rather than trusting a
+class: at the harness's eleven o'clock the minute hand is at 0° and the hour
+hand at 330°, checked against whichever minute the page drew in. The hands
+read `model.now`, the corrected wall clock, and never `Date.now()` — a mutation
+that reads the device clock goes red, except during the few minutes a day the
+runner's own clock reads 11:0x in London, where it is inconclusive in the way
+the bootstrap-clock paragraph above describes.
+
+**The panel rasterises the same polygons rather than keeping a bitmap.** A
+glyph can be a stored cell because it never changes; a hand is at a different
+angle every minute, and a cell per angle is 720 cells. So the geometry block is
+transcribed into `epaper/clock-face.ts` between markers, held
+character-identical by `clock-face-parity.test.ts`, and filled by asking of
+each pixel's centre whether it is inside — crisp at one bit with nothing
+resampled, and a function of the box alone, so the refresh contract's
+rectangle does not move from one minute to the next. The panel's stacked date
+lines step their rung against the constant "30 SEPTEMBER" rather than today's
+words, for the same contract. `variant` is in `PANEL_HONOURS` and `INK_LANE`
+for the clock, so a panel following a wall may wear a different look from it.
+
+**The editor's Look leads the Style tab and the ink lane**, and offers only
+what does something: an analogue clock loses its time format and its date
+switch, and a stacked one its date switch, because a stacked clock without a
+date is the plain one. On the ink lane `plain` is written out when the wall
+says otherwise, because clearing the override there would hand the panel back
+to the wall's variant rather than to the one chosen. Fifteen mutations across
+the display, the panel, the honours table and the editor were checked, and all
+fifteen are red. **Still unproven where it counts:** nobody has looked at a
+face on a kitchen wall or a photographed panel, and the other five rows of
+§4.2 are each their own session.
+
 ---
 
 ## Open decisions

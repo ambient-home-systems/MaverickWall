@@ -40,6 +40,7 @@ import {
   type CalendarView,
 } from './widget-views.js';
 import { clearLaneKeys, inkOf, mergeInk, setLaneValue } from './ink.js';
+import { clockVariant } from './clock-face.js';
 import { createHistory, type History } from './history.js';
 import {
   SNAP,
@@ -2781,6 +2782,10 @@ function boot(): void {
       // was not told about, which is the right default and takes these with it.
       configPanel.insertBefore(frame, configPanel.firstChild);
       configPanel.insertBefore(head, configPanel.firstChild);
+      // The Look leads here as it leads the Style tab: it is the largest thing
+      // the lane can change, and the type's own rows are built before it.
+      const look = configPanel.querySelector<HTMLElement>(':scope > [data-cfg-key="variant"]');
+      if (look !== null) configPanel.insertBefore(look, frame.nextSibling);
     }
 
     /*
@@ -3201,6 +3206,7 @@ function boot(): void {
    * now — nothing here rewrites that key, so it is dead rather than migrated.
    */
   function buildFormatConfig(widget: Widget, cfg: Record<string, unknown>): void {
+    buildLookField(widget, cfg);
     buildBoxFields(widget);
 
     // Title — countdown sets its own label in Content (the same `title` key),
@@ -3290,6 +3296,41 @@ function boot(): void {
     );
 
     buildStyleLane(widget, cfg);
+  }
+
+  /**
+   * The Look: a widget's designed variant (RFC 014 §4.2), at the top of the
+   * Style tab because it is the largest thing the tab can change.
+   *
+   * The clock is the one type with variants so far; a type without any draws
+   * no row rather than a picker of one. Annotated with `variant`, so the ink
+   * lane keeps it — a panel draws every clock variant (`PANEL_HONOURS`), so
+   * every value is offered there too. `plain` is the default and is stored as
+   * an absence on the wall; on the ink lane it is written out when the wall
+   * says otherwise, because clearing the override there would hand the panel
+   * straight back to the wall's variant rather than to the plain one chosen.
+   */
+  function buildLookField(widget: Widget, cfg: Record<string, unknown>): void {
+    if (widget.type !== 'clock') return;
+    const wallVariant = clockVariant(widget.config);
+    configPanel.appendChild(
+      segControl(
+        'Look',
+        [
+          ['plain', 'Plain'],
+          ['stacked', 'Stacked'],
+          ['analogue', 'Analogue'],
+        ],
+        clockVariant(cfg),
+        (value) =>
+          setConfig(
+            widget,
+            'variant',
+            value === 'plain' && (lane === 'wall' || wallVariant === 'plain') ? undefined : value,
+          ),
+        'variant',
+      ),
+    );
   }
 
   /**
@@ -3764,6 +3805,15 @@ function boot(): void {
    * decision, and it is written down in the schema too.
    */
   function buildClockConfig(widget: Widget, cfg: Record<string, unknown>): void {
+    /*
+     * An analogue face has no digits to format and a stacked clock always
+     * draws its date, so each of these rows is offered only where it does
+     * something — an option that does nothing is worse than one not offered.
+     * Read off the lane's own config, so the ink lane asks what the *panel*
+     * will draw.
+     */
+    const variant = clockVariant(cfg);
+    if (variant === 'analogue') return;
     configPanel.appendChild(
       segControl(
         'Time format',
@@ -3781,6 +3831,7 @@ function boot(): void {
         'clockFormat',
       ),
     );
+    if (variant !== 'plain') return;
     configPanel.appendChild(
       switchRow(
         'Show the date',

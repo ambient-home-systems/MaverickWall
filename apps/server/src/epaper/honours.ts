@@ -60,7 +60,7 @@
 const STYLE_INSET = 'style.inset';
 
 export const PANEL_HONOURS: Readonly<Record<string, readonly string[]>> = {
-  clock: ['title', 'showTitle', 'align', 'clockFormat', 'showDate', STYLE_INSET],
+  clock: ['title', 'showTitle', 'align', 'clockFormat', 'showDate', 'variant', STYLE_INSET],
   calendar: ['title', 'showTitle', 'mode', 'cellEvents', 'count', 'calendars', STYLE_INSET],
   shift: ['title', 'showTitle', 'people', 'fields', 'shiftName', 'showHours', STYLE_INSET],
   weather: ['title', 'showTitle', 'count', 'fields', 'showLow', 'showIcon', STYLE_INSET],
@@ -91,7 +91,12 @@ export const PANEL_HONOURS: Readonly<Record<string, readonly string[]>> = {
  * controls for one decision, one of which the editor no longer draws anywhere.
  */
 export const INK_LANE: Readonly<Record<string, readonly string[]>> = {
-  clock: ['clockFormat', 'showDate', 'align'],
+  // Every clock variant draws on one bit — `stacked` as three lines, and
+  // `analogue` as a face rasterised at the box's short side — so the Look is
+  // offered on the lane whole, and a panel may take a different one from the
+  // wall it follows: a face reads at a glance from a doorway where a small
+  // panel's digits do not.
+  clock: ['variant', 'clockFormat', 'showDate', 'align'],
   calendar: ['mode', 'cellEvents', 'count', 'calendars'],
   shift: ['people', 'fields', 'shiftName'],
   weather: ['count', 'fields'],
