@@ -476,7 +476,17 @@ in `migration-upgrade`). The one red is `browser-source-colours` finding no
 span text on a cold first draw, a file this phase does not touch, and it
 passed alone on the same tree a minute later (5 of 5) — the font race this
 document already records for a cold boot under load, and the same file as the
-previous measurement's one red, written here rather than deducted. **The
+previous measurement's one red, written here rather than deducted. **It then
+went red on CI a third time, on a commit that touched one test file and this
+document, so it is repaired rather than recorded a fourth time**: the file
+was one of the last still opening a cold page with a bare `settleWall`, and a
+cold context resolves its density tiers against whatever face has arrived —
+on a loaded runner the fallback, a month grid naming nothing, and nothing
+drawn on a calendar colour. Its three pages take `loadWallSettled` now, whose
+manifest hold is the cure the rest of the suite already takes, and the
+re-measure inside it waits for the manifest on its second navigation the way
+the helper's own load does. Three runs in a row green; the mechanism is the
+helper's docstring, not a number. **The
 figure this replaces was 381 tests and twenty files behind**, and this phase
 accounts for 171 and five of those: the rest is §4.2's clock, §5.3's
 `whenEmpty`, §5.2's scheduled layouts and both halves of §5.1, each of which
