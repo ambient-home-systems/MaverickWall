@@ -16,6 +16,20 @@
 
 ## Unreleased
 
+**A wall's layout can hold a group.** A group is one box that holds other
+widgets and lays them out for you — in a row, a column or a grid — so a strip
+of the clock, the forecast and the rota badge is one thing to move and size
+rather than three to line up by hand. The first layout to use one is on the
+template gallery: **Classic Strip** is Classic with those three utilities in
+one strip above the calendar and the agenda, which stay exactly where Classic
+puts them. An e-paper panel following a wall draws the same group in the same
+place, and a group's boxes never move when the calendar changes, so a panel
+that refreshes part of its screen still can. Nothing changes on any wall until
+you pick the new layout. Making a group of your own — selecting two or more
+widgets and pressing **Group** — is the next step and is not in this release;
+the editor does not yet know about groups, so a layout that carries one is
+best left to the gallery until it does.
+
 **A wall can show a different layout at certain hours.** On a wall's Layout
 tab, press **New layout** to start a second arrangement from the one you
 have — a school-morning layout with the week's events large and the clock

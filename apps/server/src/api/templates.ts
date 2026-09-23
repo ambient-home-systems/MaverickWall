@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { z } from '../validation.js';
-import { templateWidgetSchema, backgroundSchema } from './widget-schema.js';
+import { templateWidgetSchema, backgroundSchema, widgetTreeIssues } from './widget-schema.js';
 import {
   readLayoutWidgets,
   replaceLayout,
@@ -35,7 +35,17 @@ export const templateCanvasSchema = z.object({
   // Portrait phone through wide television, and nothing degenerate.
   aspect: z.number().min(0.2).max(5),
   // A wall is a few widgets, not a dashboard. The cap is a guard, not a target.
-  widgets: z.array(templateWidgetSchema).max(50),
+  widgets: z
+    .array(templateWidgetSchema)
+    .max(50)
+    // The same tree rule a save is held to (RFC 014 §5.1), with the link
+    // spelled as a key: a group never has a parent, a parent is a group on
+    // this canvas, and a key names one widget.
+    .superRefine((widgets, ctx) => {
+      for (const message of widgetTreeIssues(widgets, (w) => w.key, (w) => w.parent)) {
+        ctx.addIssue({ code: 'custom', message });
+      }
+    }),
   // An optional canvas background (RFC 005 Phase 3); templates gain them in 3c.
   background: backgroundSchema.optional(),
 });
@@ -74,6 +84,60 @@ const ORIENTATIONS = ['portrait', 'landscape'] as const;
 /** A widget id that will not collide across a household's handful. Not a secret. */
 function widgetId(): string {
   return 'w' + randomBytes(6).toString('hex');
+}
+
+/**
+ * A template canvas's widgets with ids minted and every `parent` key resolved
+ * to the id its group got — **parents first, then children**, which is the
+ * order `applyTemplate` writes and the order a reader of the rows wants.
+ *
+ * Shared by the apply path and the gallery's preview (`templatePreviewWidgets`)
+ * so the two cannot resolve a key differently: a card drawn with a child
+ * orphaned from its group would be a preview of a canvas the wall never draws.
+ * `mint` decides what an id looks like — random for a stored row, positional
+ * for a card that is thrown away with the page.
+ */
+export function resolveTemplateWidgets(
+  widgets: readonly TemplateCanvas['widgets'][number][],
+  mint: (index: number) => string,
+): LayoutWidgetInput[] {
+  const ids = widgets.map((_, index) => mint(index));
+  const byKey = new Map<string, string>();
+  widgets.forEach((widget, index) => {
+    if (widget.key !== undefined) byKey.set(widget.key, ids[index] as string);
+  });
+  const placed = widgets.map((widget, index): LayoutWidgetInput & { readonly order: number } => {
+    const parentId = widget.parent === undefined ? undefined : byKey.get(widget.parent);
+    return {
+      id: ids[index] as string,
+      type: widget.type,
+      x: widget.x,
+      y: widget.y,
+      w: widget.w,
+      h: widget.h,
+      z: widget.z ?? index,
+      ...(widget.config !== undefined ? { config: widget.config } : {}),
+      // A child whose parent key resolved to nothing is refused by the schema
+      // before it reaches here; the spread is what keeps a plain widget's row
+      // free of the key, so a canvas with no group stores what it always did.
+      ...(parentId !== undefined ? { parentId } : {}),
+      order: index,
+    };
+  });
+  // Stable: parents keep their array order among themselves, children theirs.
+  return placed
+    .sort((a, b) => Number(a.parentId !== undefined) - Number(b.parentId !== undefined) || a.order - b.order)
+    .map(({ order: _order, ...widget }) => widget);
+}
+
+/**
+ * A template canvas as the gallery's preview draws it: ids positional and
+ * disposable (`tpl0`, `tpl1`, …), parents before children, and every `parent`
+ * key already a `parentId` — the manifest's own shape, so `template-gallery.js`
+ * hands it to `renderFreeform` exactly as a wall would be.
+ */
+export function templatePreviewWidgets(canvas: TemplateCanvas): LayoutWidgetInput[] {
+  return resolveTemplateWidgets(canvas.widgets, (index) => `tpl${index}`);
 }
 
 /**
@@ -119,16 +183,9 @@ export function applyTemplate(
     replaceLayout(db, owner, orientation, {
       mode: 'freeform',
       aspect: aspects?.[orientation] ?? canvas.aspect,
-      widgets: canvas.widgets.map((widget, index) => ({
-        id: widgetId(),
-        type: widget.type,
-        x: widget.x,
-        y: widget.y,
-        w: widget.w,
-        h: widget.h,
-        z: widget.z ?? index,
-        ...(widget.config !== undefined ? { config: widget.config } : {}),
-      })),
+      // Ids minted for the parents first, then the children with the id their
+      // key resolved to (RFC 014 §5.1) — `resolveTemplateWidgets` carries why.
+      widgets: resolveTemplateWidgets(canvas.widgets, widgetId),
       // A template may carry a background (RFC 005 Phase 3); JSON-stringified for
       // storage, or null when it has none.
       background: canvas.background !== undefined ? JSON.stringify(canvas.background) : null,
@@ -598,16 +655,25 @@ function ownerLayout(
 export function copyLayout(db: SqliteDatabase, from: string | null, to: string | null): void {
   const source = ownerLayout(db, from);
   for (const orientation of ORIENTATIONS) {
-    const widgets: LayoutWidgetInput[] = readLayoutWidgets(db, from, orientation).map((widget) => ({
-      id: widgetId(),
-      type: widget.type,
-      x: widget.x,
-      y: widget.y,
-      w: widget.w,
-      h: widget.h,
-      z: widget.z,
-      ...(widget.config !== undefined ? { config: widget.config } : {}),
-    }));
+    const rows = readLayoutWidgets(db, from, orientation);
+    // Fresh ids, and a child's parent link follows its group to the *new* id
+    // (RFC 014 §5.1) — a copy that kept the old one would point the copied
+    // children at rows on another wall.
+    const minted = new Map(rows.map((row) => [row.id, widgetId()]));
+    const widgets: LayoutWidgetInput[] = rows.map((widget) => {
+      const parentId = widget.parentId === undefined ? undefined : minted.get(widget.parentId);
+      return {
+        id: minted.get(widget.id) as string,
+        type: widget.type,
+        x: widget.x,
+        y: widget.y,
+        w: widget.w,
+        h: widget.h,
+        z: widget.z,
+        ...(widget.config !== undefined ? { config: widget.config } : {}),
+        ...(parentId !== undefined ? { parentId } : {}),
+      };
+    });
     replaceLayout(db, to, orientation, {
       mode: source.mode,
       aspect: orientation === 'landscape' ? source.landscapeAspect : source.portraitAspect,

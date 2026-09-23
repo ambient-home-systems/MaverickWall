@@ -2,6 +2,7 @@ import type { DisplayTemplate } from '../api/templates.js';
 export { PANEL_TEMPLATES, findPanelTemplate } from './panel/index.js';
 import { template as blank } from './blank.js';
 import { template as classic } from './classic.js';
+import { template as classicStrip } from './classic-strip.js';
 import { template as skyCalendar } from './sky-calendar.js';
 import { template as skyWeek } from './sky-week.js';
 import { template as familyHub } from './family-hub.js';
@@ -49,4 +50,8 @@ export const TEMPLATES: readonly DisplayTemplate[] = [
   meetingRoom,
   opsDashboard,
   reception,
+  // Classic with its utilities grouped into one strip (RFC 014 §5.1) — last,
+  // so the gallery's opening four cards, which `templates.test.ts` pins, are
+  // untouched by it.
+  classicStrip,
 ];

@@ -82,6 +82,7 @@ import {
 import { mountedSize, wallSizePreset } from '../src/wall-sizes.js';
 import { addDays, type CivilDate } from '@maverick-wall/core';
 import type { Manifest, ManifestDay, ManifestEvent } from '../src/api/manifest.js';
+import { applyTemplate, findTemplate } from '../src/api/templates.js';
 import { measureText } from '../src/epaper/font.js';
 import { Framebuffer } from '../src/epaper/framebuffer.js';
 import { renderScreenFrame } from '../src/epaper/frame.js';
@@ -96,6 +97,7 @@ import {
 } from '../src/epaper/render.js';
 import { typeTierFor } from '../src/epaper/type-tiers.js';
 import { buildEpaperModel } from '../src/epaper/viewmodel.js';
+import { renderFreeformEpaper, type PlacedEpaperWidget } from '../src/epaper/widgets.js';
 
 process.env['TZ'] = 'UTC';
 
@@ -165,6 +167,10 @@ interface Wall {
 /** Every selector this file holds to the pixel: rows, cells and columns. */
 const SELECTORS: Readonly<Record<string, string>> = {
   boxes: '.fw',
+  // A group's own box and the boxes placed inside it (RFC 014 §5.1): empty on
+  // the Classic wall, three of one and one of the other on Classic Strip.
+  groups: '.fw-group',
+  groupChildren: '.fw-group-inner > .fw',
   monthCells: '.hz-cell',
   weekdayHeads: '.hz-head',
   spanBars: '.hz-span',
@@ -198,8 +204,15 @@ async function shapeOf(page: Page): Promise<Wall> {
   }, SELECTORS as Record<string, string>);
 }
 
-/** One wall, seeded and measured: install, equip, pair, size, draw, dispose. */
-async function drawOne(calendars: readonly NamedFeed[]): Promise<Wall> {
+/**
+ * One wall, seeded and measured: install, equip, pair, size, draw, dispose.
+ *
+ * `grouped` applies Classic Strip over the Classic seed (RFC 014 §5.1): the
+ * same calendars, with the clock, the forecast and the rota badge inside one
+ * row group — the one shipped arrangement that carries a group, so the
+ * stability contract is measured on a wall that has one.
+ */
+async function drawOne(calendars: readonly NamedFeed[], grouped = false): Promise<Wall> {
   const home: Installation = await install({ calendars });
   try {
     equipHousehold(home.db, home.now());
@@ -207,6 +220,11 @@ async function drawOne(calendars: readonly NamedFeed[]): Promise<Wall> {
     const id = (
       home.db.prepare('SELECT id FROM screens ORDER BY created_at LIMIT 1').get() as { id: string }
     ).id;
+    if (grouped) {
+      const strip = findTemplate('classic-strip');
+      if (strip === undefined) throw new Error('no classic-strip template');
+      applyTemplate(home.db, id, strip);
+    }
     const preset = wallSizePreset('tv-32');
     if (preset === undefined) throw new Error('no tv-32 preset');
     const mounted = mountedSize(preset, 90);
@@ -228,6 +246,8 @@ async function drawOne(calendars: readonly NamedFeed[]): Promise<Wall> {
 
 let first: Wall;
 let second: Wall;
+let groupedFirst: Wall;
+let groupedSecond: Wall;
 
 describe('the same wall drawn with different events', () => {
   /*
@@ -248,6 +268,8 @@ describe('the same wall drawn with different events', () => {
      */
     first = await drawOne(feed(WORDS_A, 0));
     second = await drawOne(feed(WORDS_B, 1));
+    groupedFirst = await drawOne(feed(WORDS_A, 0), true);
+    groupedSecond = await drawOne(feed(WORDS_B, 1), true);
   }, SLOW);
 
   afterAll(async () => {
@@ -272,6 +294,13 @@ describe('the same wall drawn with different events', () => {
     it(`places every ${name} identically`, () => {
       const before = first.rects[name] ?? [];
       const after = second.rects[name] ?? [];
+      // Classic carries no group, so those two selectors are asserted empty
+      // here and non-empty on the grouped wall below — a selector that matched
+      // nothing on both would make its identity vacuous.
+      if (name === 'groups' || name === 'groupChildren') {
+        expect(before, `Classic drew a ${name}`).toEqual([]);
+        return;
+      }
       expect(before.length, `the first wall drew no ${name}`).toBeGreaterThan(0);
       expect(
         after,
@@ -280,6 +309,53 @@ describe('the same wall drawn with different events', () => {
       ).toEqual(before);
     });
   }
+
+  /*
+   * The same contract on a wall that carries a group (RFC 014 §5.1).
+   *
+   * A group places its children from its own box and their count, never from
+   * what they draw, so a child's rectangle is as stable as any top-level box.
+   * Held here rather than assumed: the group's clock, forecast and rota badge
+   * each read their own box for a form, and a form chosen from content that
+   * moved the box would show up as a child rectangle that moved.
+   */
+  describe('and the same on a wall with a group', () => {
+    it('draws a group with three children, and different words', () => {
+      expect(groupedFirst.rects['groups'], 'no group on the grouped wall').toHaveLength(1);
+      expect(groupedFirst.rects['groupChildren'], 'the group holds no children').toHaveLength(3);
+      expect(groupedFirst.words.length).toBeGreaterThan(5);
+      expect(groupedSecond.words.join('|')).not.toBe(groupedFirst.words.join('|'));
+    });
+
+    for (const name of Object.keys(SELECTORS)) {
+      it(`places every ${name} identically, to the hundredth of a pixel`, () => {
+        const before = groupedFirst.rects[name] ?? [];
+        const after = groupedSecond.rects[name] ?? [];
+        expect(before.length, `the grouped wall drew no ${name}`).toBeGreaterThan(0);
+        expect(after, `${name} moved when the events changed on the grouped wall`).toEqual(before);
+      });
+    }
+
+    it('tiles the group’s inner box with its children, in a row, left to right', () => {
+      const parse = (rect: string) => rect.split(' ').map(Number) as [number, number, number, number];
+      const group = parse((groupedFirst.rects['groups'] ?? [])[0] as string);
+      const children = (groupedFirst.rects['groupChildren'] ?? []).map(parse).sort((a, b) => a[0] - b[0]);
+      const [gx, gy, gw, gh] = group;
+      for (const [x, y, w, h] of children) {
+        expect(x).toBeGreaterThanOrEqual(gx - 0.01);
+        expect(x + w).toBeLessThanOrEqual(gx + gw + 0.01);
+        expect(y).toBeGreaterThanOrEqual(gy - 0.01);
+        expect(y + h).toBeLessThanOrEqual(gy + gh + 0.01);
+      }
+      // Equal thirds, edge to edge: the next child begins where the last ended.
+      for (let i = 1; i < children.length; i++) {
+        const prev = children[i - 1] as [number, number, number, number];
+        const next = children[i] as [number, number, number, number];
+        expect(Math.abs(next[0] - (prev[0] + prev[2]))).toBeLessThan(0.51);
+        expect(Math.abs(next[2] - prev[2])).toBeLessThan(0.51);
+      }
+    });
+  });
 });
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -667,6 +743,110 @@ describe('the same panel frame drawn with different events', () => {
       const preimage = readFileSync(join(HERE, '..', 'src', 'epaper', 'frame.ts'), 'utf8');
       const block = /const preimage = \[([\s\S]*?)\]\.join/.exec(preimage)?.[1] ?? '';
       expect(block, "the frame's ETag preimage does not read the type tier").toContain('typeTierFor');
+    });
+  });
+
+  /*
+   * A canvas with a group on it (RFC 014 §5.1), on the panel.
+   *
+   * The free-form renderer draws a group's box and then its children inside
+   * it, from the same cells the wall uses, and records every one of those
+   * rectangles under a positional name. So the same comparison applies: two
+   * frames with different words, one region log. And the gutter check the
+   * built-in layout gets: every child's own content box has ink in it, and
+   * the padding band inside each child's box — where a truncated title would
+   * land if `fit()` were not holding it — has none.
+   */
+  describe('a canvas with a group on it', () => {
+    const GROUP: readonly PlacedEpaperWidget[] = [
+      { id: 'g', type: 'group', x: 0, y: 0, w: 1, h: 0.42, z: 0, config: { layout: 'row' } },
+      { type: 'calendar', x: 0, y: 0, w: 1 / 3, h: 1, z: 0, config: { mode: 'list' }, parentId: 'g' },
+      { type: 'clock', x: 1 / 3, y: 0, w: 1 / 3, h: 1, z: 1, config: {}, parentId: 'g' },
+      { type: 'calendar', x: 2 / 3, y: 0, w: 1 / 3, h: 1, z: 2, config: { mode: 'list', count: 3 }, parentId: 'g' },
+      { type: 'calendar', x: 0, y: 0.42, w: 1, h: 0.58, z: 1, config: { mode: 'month' } },
+    ];
+
+    function groupedFrame(words: readonly string[]): { fb: Framebuffer; regions: RegionLog } {
+      const regions: RegionLog = [];
+      const manifest = panelManifest(words);
+      const fb = renderFreeformEpaper(buildEpaperModel(manifest), manifest, GROUP, PANEL, regions);
+      return { fb, regions };
+    }
+
+    const ga = groupedFrame(PANEL_WORDS_A);
+    const gb = groupedFrame(PANEL_WORDS_B);
+    const find = (log: RegionLog, name: string): DrawnRegion => {
+      const region = log.find((r) => r.name === name);
+      if (region === undefined) throw new Error(`no region ${name}`);
+      return region;
+    };
+    const inkIn = (fb: Framebuffer, r: DrawnRegion): number => {
+      let ink = 0;
+      for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) if (fb.get(x, y)) ink += 1;
+      return ink;
+    };
+
+    it('draws different frames, and records the group and each child', () => {
+      expect(inkOf(gb.fb)).not.toBe(inkOf(ga.fb));
+      const names = ga.regions.map((r) => r.name);
+      expect(names).toContain('widget:0');
+      for (const child of ['child:0:0', 'child:0:1', 'child:0:2', 'child-inner:0:0', 'child-inner:0:1', 'child-inner:0:2']) {
+        expect(names, `nothing recorded ${child}`).toContain(child);
+      }
+    });
+
+    it('places every region identically when the events change', () => {
+      expect(gb.regions.map(key)).toEqual(ga.regions.map(key));
+    });
+
+    it('resolves the children to panel pixels that tile the group’s inner box', () => {
+      const inner = find(ga.regions, 'widget-inner:0');
+      const cells = [0, 1, 2].map((j) => find(ga.regions, `child:0:${j}`)).sort((a, b) => a.x - b.x);
+      expect(cells[0]?.x).toBe(inner.x);
+      expect((cells[2]?.x ?? 0) + (cells[2]?.w ?? 0)).toBe(inner.x + inner.w);
+      for (let j = 1; j < cells.length; j++) {
+        const prev = cells[j - 1] as DrawnRegion;
+        const next = cells[j] as DrawnRegion;
+        expect(next.x, 'a gap or an overlap between two children').toBe(prev.x + prev.w);
+      }
+      for (const cell of cells) {
+        expect(cell.y).toBe(inner.y);
+        expect(cell.h).toBe(inner.h);
+      }
+    });
+
+    it('has ink inside every child’s content box and none in the padding around it', () => {
+      for (const frame of [ga, gb]) {
+        for (let j = 0; j < 3; j++) {
+          const box = find(frame.regions, `child:0:${j}`);
+          const content = find(frame.regions, `child-inner:0:${j}`);
+          expect(inkIn(frame.fb, content), `child ${j} drew nothing`).toBeGreaterThan(0);
+          // The band between the child's box and its content box, less the
+          // one-pixel outline `drawFrame` strokes on the box's own edge.
+          let stray = 0;
+          for (let y = box.y + 1; y < box.y + box.h - 1; y++) {
+            for (let x = box.x + 1; x < box.x + box.w - 1; x++) {
+              const inside =
+                x >= content.x && x < content.x + content.w && y >= content.y && y < content.y + content.h;
+              if (!inside && frame.fb.get(x, y)) stray += 1;
+            }
+          }
+          expect(stray, `ink in the padding of child ${j}`).toBe(0);
+        }
+      }
+    });
+
+    it('moves the ETag when the group’s layout does, and not when only the words do', () => {
+      const screen = { panelWidth: 800, panelHeight: 480, panelColour: null, rotation: 0 };
+      const row = renderScreenFrame(panelManifest(PANEL_WORDS_A), screen, GROUP).etag;
+      const again = renderScreenFrame(panelManifest(PANEL_WORDS_A), screen, GROUP).etag;
+      expect(again).toBe(row);
+      const column = renderScreenFrame(
+        panelManifest(PANEL_WORDS_A),
+        screen,
+        GROUP.map((w) => (w.type === 'group' ? { ...w, config: { layout: 'column' } } : w)),
+      ).etag;
+      expect(column).not.toBe(row);
     });
   });
 });

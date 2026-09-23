@@ -316,6 +316,54 @@ describe('upgrading a database that is already in use', () => {
     db.close();
   });
 
+  it('carries a wall’s widgets through 0050 with no group link (RFC 014 §5.1)', () => {
+    /*
+     * `layout_widgets.parent_id` is nullable and **null is a widget on the
+     * canvas itself** — every row that existed before the column did. A
+     * migration that backfilled anything here would put a household's boxes
+     * inside a group nobody made, at fractions that were of the canvas and
+     * are now read as fractions of that group. Two rows are planted the way a
+     * wall stores them today — a clock and a calendar on one screen, one
+     * orientation, the default slot — walked through the migration, and read
+     * back exactly as they were: same box, same z, and no parent.
+     */
+    const entries = journal();
+    const db = new Database(':memory:');
+    const stamp = 1_700_000_000_000;
+
+    let planted = false;
+    for (const entry of entries) {
+      if (entry.tag.startsWith('0050')) {
+        for (const [id, type, y, z] of [['w-clock', 'clock', 0, 0], ['w-cal', 'calendar', 0.2, 1]] as const) {
+          db.prepare(
+            `INSERT INTO layout_widgets (id, screen_id, orientation, type, x, y, w, h, z, config, created_at, updated_at)
+             VALUES (?, 's-wall', 'portrait', ?, 0, ?, 1, 0.2, ?, NULL, ?, ?)`,
+          ).run(id, type, y, z, stamp, stamp);
+        }
+        planted = true;
+      }
+      apply(db, entry.tag);
+    }
+    expect(planted).toBe(true);
+
+    const rows = db
+      .prepare(
+        `SELECT id, type, screen_id AS screenId, x, y, w, h, z, parent_id AS parentId
+           FROM layout_widgets ORDER BY z`,
+      )
+      .all() as Record<string, unknown>[];
+    expect(rows).toEqual([
+      { id: 'w-clock', type: 'clock', screenId: 's-wall', x: 0, y: 0, w: 1, h: 0.2, z: 0, parentId: null },
+      { id: 'w-cal', type: 'calendar', screenId: 's-wall', x: 0, y: 0.2, w: 1, h: 0.2, z: 1, parentId: null },
+    ]);
+    // And the column is what a group's child will write into — text, nullable.
+    const column = (
+      db.prepare(`PRAGMA table_info(layout_widgets)`).all() as { name: string; type: string; notnull: number }[]
+    ).find((c) => c.name === 'parent_id');
+    expect(column).toMatchObject({ type: 'TEXT', notnull: 0 });
+    db.close();
+  });
+
   it('leaves an existing eInk screen refusing nothing by network (0038)', () => {
     /*
      * `lan_only` (Option C) has to reach a screen paired long before it

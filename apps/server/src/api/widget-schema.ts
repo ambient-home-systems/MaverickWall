@@ -191,6 +191,28 @@ const widgetConfigFields = z
      */
     variant: z.enum(['plain', 'stacked', 'analogue']).optional(),
     /*
+     * Group (RFC 014 §5.1) — how a group lays its children out inside its own
+     * box: a `row` divides the group's inner box equally across its children in
+     * `z` order, a `column` divides it down, a `grid` fills `columns` across and
+     * as many rows as the children need. **Absent means `row`**, like every
+     * default here, and `columns` absent means two; it is read on `grid` alone.
+     *
+     * The children keep their own stored `x`/`y`/`w`/`h`, as fractions of the
+     * group's box, and a group in any of these three layouts **ignores them**
+     * and places from order — they are kept so an ungroup later can put the
+     * boxes back where they were, not so the renderer can read them. That is
+     * what makes a group's geometry a function of the arrangement alone:
+     * `reflow-stability.test.ts` holds two walls with the same arrangement and
+     * different events to identical child rectangles.
+     *
+     * Only a `group` reads either key; on any other type both are "not for
+     * me", exactly as `variant` is. A group carries no `whenEmpty` of its own —
+     * its children are boxes and each resolves its own — and is dropped whole
+     * when none of them has anything to say (`keepWidgetsWithSomethingToSay`).
+     */
+    layout: z.enum(['row', 'column', 'grid']).optional(),
+    columns: z.number().int().min(2).max(4).optional(),
+    /*
      * Weather. `count` is shared with the calendar's agenda above — one strict
      * object for every type, and a key a type does not read is simply not read.
      *
@@ -376,8 +398,91 @@ const box = {
 };
 const zOrder = z.number().int().min(0).max(9999);
 
-/** A placed widget as the editor posts it — it carries a stable id and z. */
-export const layoutWidgetBody = z.object({ id: z.string().min(1).max(64), ...box, z: zOrder });
+/**
+ * A placed widget as the editor posts it — it carries a stable id and z.
+ *
+ * `parentId` names the group this widget sits inside (RFC 014 §5.1): its box
+ * is then fractions of that group's, and its `z` is relative to it. Optional
+ * and absent for every widget on the canvas itself, which is every widget an
+ * editor that predates groups posts. The link is checked across the whole
+ * posted canvas by `placedWidgetsBody` below — a widget alone cannot say
+ * whether the id it names is a group on the same canvas.
+ */
+export const layoutWidgetBody = z.object({
+  id: z.string().min(1).max(64),
+  ...box,
+  z: zOrder,
+  parentId: z.string().min(1).max(64).optional(),
+});
+
+/**
+ * What a list of placed widgets has to get right about its groups, stated once
+ * for every boundary that takes one (RFC 014 §5.1).
+ *
+ * Three refusals, each a 400 rather than a row the wall would have to explain:
+ *
+ *  - **A group never has a parent.** Nesting is one level, and it is bounded
+ *    here the way `ink.ink` is — refused at the boundary rather than clamped
+ *    somewhere a renderer has to remember. `placeCanvas` refuses it a second
+ *    time, because a row can reach the database by more than one door.
+ *  - **A parent is a group on the same canvas.** A child naming a stranger's
+ *    id, a widget of another type, or nothing at all is refused, never
+ *    orphaned onto the canvas at fractions that were of somebody else's box.
+ *  - **Ids are unique**, or a parent link could name two rows at once.
+ *
+ * Generic over the two spellings of the link — the editor's save names a
+ * parent by *id* and a template by a local *key* (ids are minted at apply
+ * time, so a template cannot carry one) — so one rule serves both and cannot
+ * be updated on one side only.
+ */
+export function widgetTreeIssues<T extends { readonly type: string }>(
+  widgets: readonly T[],
+  idOf: (widget: T, index: number) => string | undefined,
+  parentOf: (widget: T) => string | undefined,
+): string[] {
+  const issues: string[] = [];
+  const groups = new Set<string>();
+  const seen = new Set<string>();
+  widgets.forEach((widget, index) => {
+    const id = idOf(widget, index);
+    if (id === undefined) return;
+    if (seen.has(id)) issues.push(`Two widgets share the id "${id}".`);
+    seen.add(id);
+    if (widget.type === 'group') groups.add(id);
+  });
+  widgets.forEach((widget, index) => {
+    const parent = parentOf(widget);
+    if (parent === undefined) return;
+    if (widget.type === 'group') {
+      issues.push('A group cannot sit inside another group.');
+      return;
+    }
+    if (!groups.has(parent)) {
+      issues.push(`Widget ${idOf(widget, index) ?? index} names a parent that is not a group on this layout.`);
+    }
+  });
+  return issues;
+}
+
+/**
+ * A whole canvas of placed widgets, as every save and preview route takes it.
+ *
+ * A wall is a few widgets, not a dashboard: the cap is a guard, not a target.
+ * The tree rule is applied here rather than per widget because it is a
+ * property of the list — `layoutWidgetBody` alone cannot see the row a
+ * `parentId` names.
+ */
+export const placedWidgetsBody = z
+  .array(layoutWidgetBody)
+  .max(50)
+  .superRefine((widgets, ctx) => {
+    for (const message of widgetTreeIssues(widgets, (w) => w.id, (w) => w.parentId)) {
+      ctx.addIssue({ code: 'custom', message });
+    }
+  });
+
+/** A template's local name for a widget, so another can name it as its group. */
+const templateKey = z.string().min(1).max(32).regex(/^[a-z0-9-]+$/, 'lower-case letters, digits and hyphens only');
 
 /**
  * A widget as a template ships it — the same shape, minus the id, with z
@@ -388,5 +493,18 @@ export const layoutWidgetBody = z.object({ id: z.string().min(1).max(64), ...box
  * share widget ids. Everything else is the *same* validation the editor's save
  * goes through, which is the whole point — a template is a saved arrangement of
  * options a household could set by hand, and nothing more.
+ *
+ * A group is named by a local **`key`** and its children name it as `parent`
+ * (RFC 014 §5.1). A key rather than an index into the array, because a
+ * template is edited by hand and an index breaks the moment a widget is added
+ * above it; a key reads as what it is. `applyTemplate` mints an id for every
+ * parent first, then writes each child with the id its key resolved to — so
+ * the stored rows carry `parent_id` and the template never does. The same
+ * tree rule a save is held to is applied per canvas in `templateCanvasSchema`.
  */
-export const templateWidgetSchema = z.object({ ...box, z: zOrder.optional() });
+export const templateWidgetSchema = z.object({
+  ...box,
+  z: zOrder.optional(),
+  key: templateKey.optional(),
+  parent: templateKey.optional(),
+});

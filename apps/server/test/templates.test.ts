@@ -75,14 +75,16 @@ describe('the shipped templates', () => {
   it('every template names a built-in theme and gives both canvases a background (Phase 3c)', () => {
     for (const t of TEMPLATES) {
       /*
-       * Two exceptions, and they are one reason twice: a card that must not
-       * repaint the wall it is applied to. Classic is the universal default
-       * every wall is migrated onto, and Blank is an empty canvas — a household
-       * pressing either is asking about *arrangement*, and taking their chosen
-       * theme off the wall is not something either word promises. Both set no
-       * theme and no background and keep whatever the wall already has.
+       * Three exceptions, and they are one reason three times: a card that
+       * must not repaint the wall it is applied to. Classic is the universal
+       * default every wall is migrated onto, Blank is an empty canvas, and
+       * Classic Strip is Classic's own arrangement with its utilities in one
+       * group (RFC 014 §5.1) — a household pressing any of them is asking
+       * about *arrangement*, and taking their chosen theme off the wall is not
+       * something any of those words promises. All three set no theme and no
+       * background and keep whatever the wall already has.
        */
-      if (t.id === 'classic' || t.id === 'blank') {
+      if (t.id === 'classic' || t.id === 'blank' || t.id === 'classic-strip') {
         expect(t.theme, `${t.id} theme`).toBeUndefined();
         expect(t.portrait.background, `${t.id} portrait bg`).toBeUndefined();
         expect(t.landscape.background, `${t.id} landscape bg`).toBeUndefined();

@@ -2440,6 +2440,34 @@ body {
   --buh: calc((var(--canvas-h) * var(--bh, 0.15) - var(--in-y, 0px)) / 100);
 }
 
+/*
+ * A group (RFC 014 §5.1): a box whose children are boxes placed inside it.
+ *
+ * The children sit in `.fw-group-inner`, which fills the group's *content*
+ * box — so a child's percentages are of the room left after the group's own
+ * padding, which is the gutter step the group spends like any other box. Two
+ * custom properties are computed here, on the group, for its children to
+ * inherit: `--fw-pad`, the whole padding the group spends per axis (exactly
+ * what `.fw` declares halved on each side), and `--fw-lost-x`/`-y`, what the
+ * canvas gutter took off the group's own rectangle. A child's `--in-x` is its
+ * share of both, so `--buw`/`--buh` — one per cent of the box a widget
+ * actually has — come out right for a clock or a countdown inside a group
+ * without a second copy of the arithmetic. Declared here rather than inline
+ * because the value depends on the cascade the group sits in: the wall's
+ * default inset on the canvas, or the group's own lane.
+ */
+.fw-group {
+  --fw-pad: var(--fw-inset, var(--fw-gutter, var(--s4)));
+  --fw-lost-x: var(--in-x, 0px);
+  --fw-lost-y: var(--in-y, 0px);
+}
+.fw-group-inner {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
 .fw-empty {
   margin: auto;
   color: var(--muted, #9AA5B2);

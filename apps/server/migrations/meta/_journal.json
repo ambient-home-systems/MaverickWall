@@ -351,6 +351,13 @@
       "when": 1790163711031,
       "tag": "0049_scheduled_canvases",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "6",
+      "when": 1790171667106,
+      "tag": "0050_widget_groups",
+      "breakpoints": true
     }
   ]
 }

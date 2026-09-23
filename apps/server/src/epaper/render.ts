@@ -130,6 +130,15 @@ const note = (log: RegionLog | undefined, name: string, x: number, y: number, w:
 };
 
 /**
+ * The same record, for the free-form renderer in `widgets.ts` — one function
+ * writing the log, so a widget's box and a built-in block's are comparable
+ * entries in one list rather than two shapes of the same fact.
+ */
+export function recordRegion(log: RegionLog | undefined, name: string, box: Box): void {
+  note(log, name, box.x, box.y, box.w, box.h);
+}
+
+/**
  * The width `chars` characters occupy at these options.
  *
  * The refresh contract's workhorse: every step-down below asks this rather than
