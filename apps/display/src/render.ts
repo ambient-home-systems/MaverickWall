@@ -22,7 +22,7 @@ import type { PanelData, PanelReading } from './viewmodel.js';
 import type { ManifestWidget, CanvasBackground } from './manifest.js';
 import { glyphNode } from './glyphs.js';
 import { boxRect, gutterStepFor } from './gutter.js';
-import { groupCells, groupChildren, topLevelWidgets } from './group-cells.js';
+import { childCells, groupChildren, topLevelWidgets } from './group-cells.js';
 import { applyStyleTokens, styleTokensOf } from './widget-style.js';
 import { inkOn, shiftTint } from './theme.js';
 import {
@@ -3080,8 +3080,9 @@ export function renderFreeform(
    *
    * A group is a box, not a section: it is placed on the canvas exactly as
    * any widget is, and its children are placed inside it through
-   * `groupCells` — equal shares of its inner box in `z` order, reading nothing
-   * a child draws — and then each child is a box in its own right, with its
+   * `childCells` — equal shares of its inner box in `z` order, or each child's
+   * own stored fractions in a `free` group, reading nothing a child draws —
+   * and then each child is a box in its own right, with its
    * own format, its own body and its own place in every tier pass below.
    * Nothing is scaled, and nothing about a child depends on its siblings'
    * content, which is what keeps the group inside the same stability contract
@@ -3105,7 +3106,9 @@ export function renderFreeform(
       box.classList.add('fw-group');
       const members = children.get(widget.id) ?? [];
       const inner = el('div', 'fw-group-inner');
-      const cells = groupCells(widget.config, members.length);
+      // From the order for a row, a column or a grid; from each child's own
+      // stored fractions for a `free` group — the same table on both media.
+      const cells = childCells(widget.config, members);
       members.forEach((child, index) => {
         const cell = cells[index];
         if (cell === undefined) return;

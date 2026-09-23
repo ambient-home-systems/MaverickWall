@@ -2049,3 +2049,353 @@ describe('10 · a fallback for a box the wall leaves out', () => {
     SLOW,
   );
 });
+
+// ===========================================================================
+// 11 · Groups in the editor (RFC 014 §5.1)
+// ===========================================================================
+
+/** One overlay box by id, as `boxes` reads it. */
+async function boxById(page: Page, id: string): Promise<EditorBox> {
+  const found = (await boxes(page)).find((one) => one.id === id);
+  if (found === undefined) throw new Error(`no box ${id} on the layout`);
+  return found;
+}
+
+/** The box named by the start of its chip: "Clock", "Shift", "Calendar — Month". */
+async function boxNamed(page: Page, start: string): Promise<EditorBox> {
+  const found = (await boxes(page)).find((one) => one.label.startsWith(start));
+  if (found === undefined) throw new Error(`no box named ${start} on the layout`);
+  return found;
+}
+
+/** Drag a box by id from its middle. */
+async function dragById(page: Page, id: string, dx: number, dy: number): Promise<void> {
+  const rect = await page.locator(`.le-overlay .le-widget[data-id="${id}"]`).boundingBox();
+  if (rect === null) throw new Error('that widget has no box to drag');
+  await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(rect.x + rect.width / 2 + dx, rect.y + rect.height / 2 + dy, { steps: 8 });
+  await page.mouse.up();
+}
+
+/** What the save bar says: the flag, and whether Save is live. */
+async function saveBar(page: Page): Promise<{ flagged: boolean; saveEnabled: boolean }> {
+  return page.evaluate(() => ({
+    flagged: !(document.querySelector<HTMLElement>('[data-dirty-flag]')?.hidden ?? true),
+    saveEnabled: !(document.querySelector<HTMLButtonElement>('[data-action="save"]')?.disabled ?? true),
+  }));
+}
+
+/**
+ * Select a group through its Layers row. Its own box is under its children's
+ * — a child takes the pointer before the group behind it — so a tap on the
+ * layout reaches a group only where no child covers it, and Layers is the
+ * way a household reaches one that is covered.
+ */
+async function selectViaLayers(page: Page, id: string): Promise<void> {
+  await page.click('.le-layers-btn');
+  await page.locator(`.le-layer[data-id="${id}"]`).click();
+  await page.waitForTimeout(150);
+  if (await page.locator('.le-layers-pop').isVisible()) await page.click('.le-layers-btn');
+  await page.waitForTimeout(100);
+}
+
+/** Choose two boxes: a click, then a Shift+click. */
+async function chooseTwo(page: Page, first: string, second: string): Promise<void> {
+  await page.locator(`.le-overlay .le-widget[data-id="${first}"]`).click();
+  await page.locator(`.le-overlay .le-widget[data-id="${second}"]`).click({ modifiers: ['Shift'] });
+  await page.waitForTimeout(150);
+}
+
+/** The boxes as one comparable string of exactly what `positionBox` wrote. */
+async function pixels(page: Page): Promise<string> {
+  const placed = await boxes(page);
+  return JSON.stringify(placed.slice().sort((a, b) => (a.id < b.id ? -1 : 1)).map((one) => [one.id, one.x, one.y, one.w, one.h]));
+}
+
+describe('11 · groups', () => {
+  /**
+   * Group is one undo step, and Ungroup is the inverse of Group.
+   *
+   * Both are claims about the *whole* canvas, so both are measured as the
+   * canvas: the rectangles `positionBox` wrote, the ranking `canvasState`
+   * reads, and — the one that matters — the save bar, which compares what
+   * would be posted against what was last posted (`canvas-state.ts`). A bar
+   * reading clean after Group → Ctrl+Z is the assertion that the round trip
+   * loses nothing, to the three places the layout is saved in; a bar that
+   * read dirty would be a save that wrote a different canvas back.
+   *
+   * The body the grouped save would post is captured by refusing it at the
+   * network, so the baseline the bar compares against stays the ungrouped
+   * one: a save that landed would make "clean after undo" a claim about the
+   * grouped canvas instead.
+   */
+  it(
+    'groups two boxes chosen by Shift+click in one step, and comes back to the pixel by undo and by Ungroup',
+    async () => {
+      const wall = await fresh();
+      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      try {
+        const page = await context.newPage();
+        await openEditor(wall, page);
+        const clock = await boxNamed(page, 'Clock');
+        const shift = await boxNamed(page, 'Shift');
+
+        // The baseline the bar compares against: what the server holds.
+        const saved = await page.evaluate(() =>
+          (window as unknown as { mwEditor: { saveCurrent(): Promise<{ ok: boolean }> } }).mwEditor.saveCurrent(),
+        );
+        expect(saved.ok).toBe(true);
+        expect(await saveBar(page)).toEqual({ flagged: false, saveEnabled: false });
+        const before = await canvasState(page);
+        const beforePixels = await pixels(page);
+
+        // Shift+click chooses both, and both say so.
+        await chooseTwo(page, clock.id, shift.id);
+        const pressed = await page.evaluate(() =>
+          [...document.querySelectorAll<HTMLElement>('.le-overlay .le-widget')]
+            .filter((el) => el.getAttribute('aria-pressed') === 'true')
+            .map((el) => el.dataset['id']),
+        );
+        expect(pressed.sort()).toEqual([clock.id, shift.id].sort());
+        // The inspector shows the shared Style controls and nothing else.
+        expect(await page.locator('.insp-title').textContent()).toBe('2 widgets selected');
+        expect(await page.locator('.insp-tabs').isHidden()).toBe(true);
+        expect(await page.locator('.insp-remove').isHidden()).toBe(true);
+        expect(await page.locator('.le-config .le-style').count()).toBe(1);
+        expect(await page.locator('.le-config .le-box').count()).toBe(0);
+        expect(await page.locator('.le-group-btn').isVisible()).toBe(true);
+
+        // The grouped body, captured and refused.
+        const bodies: string[] = [];
+        await page.route('**/admin/layout', (route) => {
+          if (route.request().method() !== 'POST') return route.continue();
+          bodies.push(route.request().postData() ?? '');
+          return route.fulfill({
+            status: 503,
+            contentType: 'application/json',
+            body: JSON.stringify({ ok: false, message: 'held back by the test' }),
+          });
+        });
+
+        await page.click('.le-group-btn');
+        await page.waitForTimeout(200);
+        const group = (await boxes(page)).find((one) => one.label.startsWith('Group'));
+        if (group === undefined) throw new Error('no group box after Group');
+        // Named from what it holds, in the group's own order, on the attribute.
+        expect(
+          await page.locator(`.le-overlay .le-widget[data-id="${group.id}"]`).getAttribute('aria-label'),
+        ).toBe('Group of 2: clock, shift');
+        // At the union of the two: Classic's clock and rota badge share the top band.
+        expect([group.x, group.y, group.w, group.h]).toEqual([
+          Math.min(clock.x, shift.x),
+          Math.min(clock.y, shift.y),
+          Math.max(clock.x + clock.w, shift.x + shift.w) - Math.min(clock.x, shift.x),
+          Math.max(clock.y + clock.h, shift.y + shift.h) - Math.min(clock.y, shift.y),
+        ]);
+        // Its children are still drawn exactly where they were.
+        expect((await boxById(page, clock.id))).toMatchObject({ x: clock.x, y: clock.y, w: clock.w, h: clock.h });
+        expect((await boxById(page, shift.id))).toMatchObject({ x: shift.x, y: shift.y, w: shift.w, h: shift.h });
+        expect(await saveBar(page)).toEqual({ flagged: true, saveEnabled: true });
+
+        // The rows the save posts: the group first, its children after with the link.
+        const refused = await page.evaluate(() =>
+          (window as unknown as { mwEditor: { saveCurrent(): Promise<{ ok: boolean }> } }).mwEditor.saveCurrent(),
+        );
+        expect(refused.ok).toBe(false);
+        expect(bodies).toHaveLength(1);
+        const rows = (JSON.parse(bodies[0] ?? '{}') as { widgets: { id: string; z: number; x: number; y: number; w: number; h: number; parentId?: string; config?: Record<string, unknown> }[] }).widgets;
+        const parents = rows.filter((row) => row.parentId === undefined);
+        const children = rows.filter((row) => row.parentId !== undefined);
+        expect(rows.indexOf(parents[parents.length - 1]!)).toBeLessThan(rows.indexOf(children[0]!));
+        expect(rows[0]).toMatchObject({ id: group.id, z: 0, config: { layout: 'free' } });
+        expect('parentId' in (rows[0] ?? {})).toBe(false);
+        const union = { x: group.x / 100, y: group.y / 100, w: group.w / 100, h: group.h / 100 };
+        const to3 = (n: number): number => Math.round(n * 1000) / 1000;
+        expect(children.map((row) => [row.id, row.parentId, row.z, row.x, row.y, row.w, row.h])).toEqual([
+          [clock.id, group.id, 0, to3((clock.x / 100 - union.x) / union.w), to3((clock.y / 100 - union.y) / union.h), to3(clock.w / 100 / union.w), to3(clock.h / 100 / union.h)],
+          [shift.id, group.id, 1, to3((shift.x / 100 - union.x) / union.w), to3((shift.y / 100 - union.y) / union.h), to3(shift.w / 100 / union.w), to3(shift.h / 100 / union.h)],
+        ]);
+
+        // One Ctrl+Z, and everything is back: the rectangles, the ranking, and the bar.
+        await pressUndo(page);
+        expect(await pixels(page), 'undo did not put the two boxes back to the pixel').toBe(beforePixels);
+        expect(await canvasState(page)).toBe(before);
+        expect((await boxes(page)).some((one) => one.id === group.id)).toBe(false);
+        expect(await saveBar(page), 'the bar reads dirty after Group and one undo — the round trip lost something').toEqual({
+          flagged: false,
+          saveEnabled: false,
+        });
+
+        // Group again, then Ungroup: the same three, and the children selected.
+        await chooseTwo(page, clock.id, shift.id);
+        await page.click('.le-group-btn');
+        await page.waitForTimeout(200);
+        expect(await page.locator('.le-ungroup-btn').isVisible()).toBe(true);
+        expect(await page.locator('.le-group-btn').isHidden()).toBe(true);
+        await page.click('.le-ungroup-btn');
+        await page.waitForTimeout(200);
+        expect(await pixels(page), 'Ungroup did not put the two boxes back to the pixel').toBe(beforePixels);
+        expect(await canvasState(page)).toBe(before);
+        expect(await saveBar(page)).toEqual({ flagged: false, saveEnabled: false });
+        const chosen = await page.evaluate(() =>
+          [...document.querySelectorAll<HTMLElement>('.le-overlay .le-widget[aria-pressed="true"]')].map((el) => el.dataset['id']),
+        );
+        expect(chosen.sort()).toEqual([clock.id, shift.id].sort());
+        await page.unroute('**/admin/layout');
+      } finally {
+        await context.close();
+      }
+    },
+    SLOW,
+  );
+
+  /**
+   * A child moves inside its group and nowhere else.
+   *
+   * A child's fractions are of its group, so `placement.ts`'s unit clamp is
+   * the group's box with no second rule; what has to be right is that the
+   * drag's travel is read in the group's fractions and that the box is
+   * *drawn* through the group. Reverting the second — drawing a child at its
+   * own fractions read as fractions of the layout, which is what the editor
+   * did before this session — puts the dragged clock at the far edge of the
+   * wall, and this goes red on the first assertion.
+   *
+   * The group is made narrower than the wall first, by moving the rota badge
+   * in under the clock before grouping: Classic's own strip spans the whole
+   * width, and a group whose edge is the wall's edge cannot tell the two
+   * clamps apart.
+   */
+  it(
+    'stops a child at its group’s edge, by drag and by a hundred arrow presses alike',
+    async () => {
+      const wall = await fresh();
+      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      try {
+        const page = await context.newPage();
+        await openEditor(wall, page);
+        const clock = await boxNamed(page, 'Clock');
+        const shift = await boxNamed(page, 'Shift');
+        const canvas = await page.locator('.le-canvas').boundingBox();
+        if (canvas === null) throw new Error('no canvas');
+
+        // The badge in from the right edge, so the union is narrower than the wall.
+        await dragById(page, shift.id, -Math.round(canvas.width * 0.25), 0);
+        await page.waitForTimeout(150);
+        await chooseTwo(page, clock.id, shift.id);
+        await page.click('.le-group-btn');
+        await page.waitForTimeout(200);
+        const group = (await boxes(page)).find((one) => one.label.startsWith('Group'));
+        if (group === undefined) throw new Error('no group box after Group');
+        expect(group.x + group.w, 'the group still reaches the wall’s edge, so the clamps cannot be told apart').toBeLessThan(90);
+
+        // Drag the clock far past the wall's edge.
+        await dragById(page, clock.id, Math.round(canvas.width * 2), 0);
+        await page.waitForTimeout(150);
+        const groupRect = await page.locator(`.le-overlay .le-widget[data-id="${group.id}"]`).boundingBox();
+        const clockRect = await page.locator(`.le-overlay .le-widget[data-id="${clock.id}"]`).boundingBox();
+        if (groupRect === null || clockRect === null) throw new Error('no rectangles to compare');
+        expect(
+          Math.abs(clockRect.x + clockRect.width - (groupRect.x + groupRect.width)),
+          'the child did not stop at its group’s edge',
+        ).toBeLessThanOrEqual(1);
+        expect(clockRect.x + clockRect.width).toBeLessThan(canvas.x + canvas.width - 20);
+        const dragged = await boxById(page, clock.id);
+
+        // Back, then the same distance by keyboard. Focus once; `locator.press`
+        // re-focuses before every key and would hide a rebuild.
+        await pressUndo(page);
+        expect((await boxById(page, clock.id)).x, 'undo did not put the child back').not.toBe(dragged.x);
+        await page.locator(`.le-overlay .le-widget[data-id="${clock.id}"]`).focus();
+        for (let i = 0; i < 120; i += 1) await page.keyboard.press('ArrowRight');
+        await page.waitForTimeout(200);
+        const nudged = await boxById(page, clock.id);
+        expect([nudged.x, nudged.y, nudged.w, nudged.h], 'the arrow keys stopped somewhere the drag did not').toEqual([
+          dragged.x, dragged.y, dragged.w, dragged.h,
+        ]);
+        expect(await page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset['id'])).toBe(clock.id);
+        // And the inspector's fields say where it is, within the group.
+        await page.click('.insp-tab:has-text("Style")');
+        expect(await page.locator('.le-box input[aria-label="X, per cent of the group"]').inputValue()).toBe(
+          String(Math.round(dragged.x === undefined ? 0 : ((dragged.x - group.x) / group.w) * 100)),
+        );
+      } finally {
+        await context.close();
+      }
+    },
+    SLOW,
+  );
+
+  /**
+   * A group's name is composed from its children, and stays composed.
+   *
+   * §8's fault, one composition up: the name is on the chip and on the
+   * attribute, and the attribute is the half nobody can see go stale. A child
+   * switched from a month to an agenda has to rename the group in place —
+   * the group's own element, not a rebuilt one — and a child of a row has to
+   * be told its place is the order rather than offered fields that move it.
+   */
+  it(
+    'renames a group in place when a child changes view, and says when a child’s place is the order',
+    async () => {
+      const wall = await fresh();
+      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      try {
+        const page = await context.newPage();
+        await openEditor(wall, page);
+        const clock = await boxNamed(page, 'Clock');
+        const month = await boxNamed(page, 'Calendar — Month');
+        await chooseTwo(page, clock.id, month.id);
+        await page.click('.le-group-btn');
+        await page.waitForTimeout(200);
+        const group = (await boxes(page)).find((one) => one.label.startsWith('Group'));
+        if (group === undefined) throw new Error('no group box after Group');
+        const selector = `.le-overlay .le-widget[data-id="${group.id}"]`;
+        expect(await page.getAttribute(selector, 'aria-label')).toBe(`Group of 2: clock, ${month.label.toLowerCase()}`);
+        // Mark the element, so a rebuild cannot pass as a rename in place.
+        await page.evaluate((s) => {
+          document.querySelector<HTMLElement>(s)!.dataset['marker'] = 'kept';
+        }, selector);
+
+        await page.locator(`.le-overlay .le-widget[data-id="${month.id}"]`).click();
+        await page.click('.insp-tab:has-text("Content")');
+        await page.locator('.le-cfg-field[data-cfg-key="mode"] select').selectOption('list');
+        await page.waitForTimeout(300);
+        const renamed = await boxById(page, month.id);
+        expect(renamed.label).not.toBe(month.label);
+        expect(await page.getAttribute(selector, 'data-marker'), 'the group box was rebuilt').toBe('kept');
+        expect(await page.getAttribute(selector, 'aria-label')).toBe(`Group of 2: clock, ${renamed.label.toLowerCase()}`);
+        expect(await page.locator('.le-layers').isHidden()).toBe(true);
+        await page.click('.le-layers-btn');
+        const layerNames = await page.evaluate(() =>
+          [...document.querySelectorAll<HTMLElement>('.le-layer')].map((row) => [row.classList.contains('le-layer-child'), row.textContent?.trim()]),
+        );
+        expect(layerNames.filter(([child]) => child === true).map(([, name]) => name)).toEqual(
+          expect.arrayContaining([expect.stringContaining('Clock')]),
+        );
+        await page.click('.le-layers-btn');
+
+        // A row: the child's place is the order, and the panel says so.
+        await selectViaLayers(page, group.id);
+        await page.click('.insp-tab:has-text("Content")');
+        await page.locator('.le-cfg-field[data-cfg-key="layout"] .seg button', { hasText: 'Row' }).click();
+        await page.waitForTimeout(300);
+        await page.locator(`.le-overlay .le-widget[data-id="${clock.id}"]`).click();
+        await page.click('.insp-tab:has-text("Style")');
+        expect(await page.locator('.le-config .le-ordered').textContent()).toContain('takes its place from the group’s order');
+        expect(await page.locator('.le-config .le-box').count()).toBe(0);
+        // An arrow reorders it: the clock moves to the second cell, the month to the first.
+        const beforeOrder = await boxById(page, clock.id);
+        await page.locator(`.le-overlay .le-widget[data-id="${clock.id}"]`).focus();
+        await page.keyboard.press('ArrowRight');
+        await page.waitForTimeout(200);
+        const afterOrder = await boxById(page, clock.id);
+        expect(afterOrder.x).toBeGreaterThan(beforeOrder.x);
+        expect((await boxById(page, month.id)).x).toBe(beforeOrder.x);
+      } finally {
+        await context.close();
+      }
+    },
+    SLOW,
+  );
+});

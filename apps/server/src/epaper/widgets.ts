@@ -59,7 +59,7 @@ import {
 } from './ladder.js';
 import { calendarView } from './calendar-view.js';
 import { withInk } from './honours.js';
-import { groupCells, groupChildren, topLevelWidgets } from './group-cells.js';
+import { childCells, groupChildren, topLevelWidgets } from './group-cells.js';
 import { clockLabel, type EpaperModel } from './viewmodel.js';
 import { drawAnalogueFace } from './clock-face.js';
 
@@ -1469,9 +1469,10 @@ export function renderFreeformEpaper(
   }
   /*
    * The parents, then the children inside them (RFC 014 §5.1) — the wall's
-   * own order, and the same cells: `groupCells` is the display's module
+   * own order, and the same cells: `childCells` is the display's module
    * transcribed, so a child lands in the same fraction of its group's inner
-   * box on both media and resolves to panel pixels exactly as a top-level box
+   * box on both media — from the order, or from its own stored fractions in
+   * a `free` group and resolves to panel pixels exactly as a top-level box
    * does. A group is a box here too: its frame and title are drawn, and its
    * children are drawn inside what is left, each with a frame of its own.
    */
@@ -1515,7 +1516,7 @@ export function renderFreeformEpaper(
       return;
     }
     const members = widget.id === undefined ? [] : (children.get(widget.id) ?? []);
-    const cells = groupCells(config, members.length);
+    const cells = childCells(config, members);
     members.forEach((child, index) => {
       const cell = cells[index];
       if (cell === undefined) return;

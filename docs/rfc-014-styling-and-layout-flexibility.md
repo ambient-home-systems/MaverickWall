@@ -18,15 +18,18 @@ clock's three variants (`config.variant`, `apps/display/src/clock-face.ts`,
 `apps/server/test/browser-clock-variants.test.ts`); and §5.3's substitution
 half, a fallback for an empty box (`config.whenEmpty`, resolved in
 `keepWidgetsWithSomethingToSay`, `apps/server/test/browser-when-empty.test.ts`)
-— its yield half is not built and is a separate decision; and §5.1's **model
-is built; editor pending** — `layout_widgets.parent_id` (migration `0050`), a
+— its yield half is not built and is a separate decision; and §5.1 is
+**built**, model and editor — `layout_widgets.parent_id` (migration `0050`), a
 `group` widget type laid out by `apps/display/src/group-cells.ts` and its
-transcription, both renderers placing the children inside the group, and one
+transcription, both renderers placing the children inside the group, one
 gallery template, Classic Strip, that carries one
 (`apps/server/test/widget-groups.test.ts`, `reflow-stability.test.ts`'s grouped
-halves, `browser-grouped-card.test.ts`); multi-select and the Group action are
-the next session, and until then the editor neither shows a group as one nor
-carries its links through a save. Nothing else here is built ·
+halves, `browser-grouped-card.test.ts`), and in the editor multi-select, a
+marquee, Group and Ungroup as one undo step each, children placed and dragged
+inside their parent, a group's own inspector and nested Layers
+(`apps/display/src/selection.ts`, `grouping.ts`, `placement.ts`'s parent
+space, `apps/server/test/browser-editor.test.ts` §11). Nothing else here is
+built ·
 Owner: — · First drafted 2026-09-15 ·
 Arises from the question "could a household style each widget with a CSS
 block?" · Relates to `apps/server/src/api/widget-schema.ts`,
@@ -451,7 +454,7 @@ is the retired `auto` layout's reflow — the paragraphs in `CLAUDE.md` marked a
 history are the last time the project reasoned that through, and 5.3 below is
 the one place this RFC deliberately re-enters that ground.
 
-### 5.1 Groups — model built; editor pending
+### 5.1 Groups — **built**
 
 A container box that lays its children out in a `row`, `column` or `grid`,
 with the gutter step from 4.4 between them. Today a utility strip is three
@@ -509,14 +512,26 @@ untouched under a row of the clock, the forecast and the rota badge. An
 unstyled, ungrouped wall's manifest and a groupless panel's ETag preimage are
 byte-identical to what they were, asserted rather than assumed.
 
-What is *not* built is the editor's half, and it is the larger: multi-select,
-the Group action, an ungroup, and — first, because it is the one that loses
-data — carrying `parentId` through the editor's save. Today the editor shows a
-grouped wall's children as top-level boxes at their stored fractions read as
-canvas fractions, its live preview draws the group correctly beneath them, and
-a Save flattens the group into three boxes at those fractions. Written down
-rather than papered over: the template is opt-in, the wall draws, and the next
-session's first item is that round trip.
+**The editor's half is built, and it needed a fourth layout.** Multi-select
+(Shift+click, a marquee over empty layout, Escape), Group and Ungroup on the
+toolbar, children placed and dragged inside their parent, a group's own
+inspector and nested Layers — each as a pure module first
+(`apps/display/src/selection.ts`, `grouping.ts`, and `placement.ts` given a
+parent space), the way `history.ts` and `placement.ts` were extracted, and
+`boot()` not rewritten. The layout is **`free`**: a group's children at their
+own stored fractions of its inner box. Without it a group had no layout in
+which a child *could* be dragged to a position — in a row, a column or a grid
+its place is the order — and, more to the point, no layout in which making a
+group moves nothing on the glass. Group writes `free`, so the wall is
+identical before and after and the household chooses an ordered layout as a
+second, visible step; Ungroup restores the stored fractions whatever the
+layout became, which is what the fractions were kept for. The stability
+contract is unchanged in the only way it is stated: a child's rectangle is a
+function of the arrangement — its group's box, the layout, and the children's
+count or stored boxes — and never of the events. `childCells` is the one
+reading on both media, `parentId` rides through `widgetsForSave` with `z` per
+scope, and the bootstrap JSON carries the link, which is the round trip the
+paragraph that stood here named first.
 
 ### 5.2 Scheduled canvases **built**
 
@@ -655,9 +670,10 @@ convenience rather than a capability. Listed for completeness and last.
 - **Inspector, for a flagged box:** the omission note gains a "When this has
   nothing to show" control (5.3) beside the sentence that already explains the
   flag.
-- **Toolbar:** *Group* appears when two or more boxes are selected, which the
-  editor does not support yet — multi-select is a prerequisite of 5.1 and is
-  the largest single piece of editor work in this RFC.
+- **Toolbar:** *Group* appears when two or more boxes are selected and
+  *Ungroup* when one group is (built: at the end of the row, because they
+  come and go). Multi-select is Shift+click or a marquee; with several boxes
+  chosen the inspector shows the shared style lane and nothing else.
 
 Nothing in the list is a new component. The Style tab's rows are `switchRow`,
 `segControl` and `cfgField`; the schedule is `listRow`s.
@@ -796,7 +812,20 @@ reads a class name.
   holds the two refusals at the boundary and in the walker, the keep rule, the
   minted parent-before-child rows, the copy's re-link and the byte-identical
   groupless documents; `browser-grouped-card.test.ts` reads the gallery card's
-  group against the paired wall's. The editor round trip waits on the editor.
+  group against the paired wall's. **The editor's half**:
+  `browser-editor.test.ts` §11 chooses two boxes by Shift+click and reads both
+  `aria-pressed`; presses Group and reads the group's name off the attribute
+  and the rows the save posts (parent first, children with `parentId`,
+  fractions of the union to three places); one Ctrl+Z, and the boxes are back
+  to the pixel with the save bar reading clean — `canvas-state` is the
+  comparison, so a bar that read dirty is a round trip that lost something;
+  Ungroup, the same; a child dragged toward the wall's edge stops at its
+  group's, and a hundred and twenty arrow presses land on the same box; a
+  child changing view renames its group in place on the same element.
+  `browser-inspector.test.ts` runs its two sweeps over the group's own
+  segmented controls and the shared lane's at eleven widths, at zero.
+  Mutations: a second `record()` inside Group reddens the undo assertion; a
+  child drawn at its own fractions read as the layout's reddens the drag.
 - **5.2** Drive the wall's clock across a schedule boundary with `HARNESS_HOUR`
   and assert the canvas swapped, offline, from the stored copy. **Built**,
   `browser-scheduled-canvas.test.ts`: the app's clock moved to ten seconds
@@ -834,9 +863,8 @@ reads a class name.
 2. 4.1 — the lane, the server-side resolver, the honours table entries.
    **Built**, with §4.4's default widget style beside it.
 3. 4.2 — one widget at a time, clock first, each with its measurement.
-4. 5.3 substitution (**built**), then 5.2 (**built**), then 5.1 — the model
-   and one template **built**, multi-select and the Group action next — then
-   5.3 yield as a decision on its own.
+4. 5.3 substitution (**built**), then 5.2 (**built**), then 5.1 (**built**,
+   model, template and editor) — then 5.3 yield as a decision on its own.
 5. 7, if asked for, behind its three preconditions, and the CSP on its own
    before any of it.
 

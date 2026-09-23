@@ -302,3 +302,16 @@ describe('a fallback for an empty box (RFC 014 §5.3)', () => {
     expect(choices).toContain('clock');
   });
 });
+
+describe('a group’s accessible name (RFC 014 §5.1)', () => {
+  it('carries no noun after a name that already says what it is', () => {
+    expect(boxAriaLabel('Group of 3: clock, weather, shift', undefined, 'wall', undefined, 'group')).toBe(
+      'Group of 3: clock, weather, shift',
+    );
+    expect(boxAriaLabel('Group of 3: clock, weather, shift', 'Why.', 'wall', undefined, 'group')).toBe(
+      'Group of 3: clock, weather, shift — not on the wall. Why.',
+    );
+    // And a widget's is exactly what it was.
+    expect(boxAriaLabel('Clock', undefined, 'wall')).toBe('Clock widget');
+  });
+});

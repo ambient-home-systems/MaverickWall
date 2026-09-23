@@ -25,7 +25,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import type { Page } from 'playwright-core';
 import { TEARDOWN, browser, install, shutDownBrowser, HOUSEHOLD_CALENDARS, type Installation } from './browser-harness.js';
-import { applyTemplate } from '../src/api/templates.js';
+import { applyTemplate, findTemplate } from '../src/api/templates.js';
 import { CLASSIC_TEMPLATE } from '../src/templates/index.js';
 
 process.env['TZ'] = 'UTC';
@@ -194,7 +194,114 @@ async function openWithCalendar(app: Installation, page: Page): Promise<void> {
   await page.waitForSelector('.le-cfg-field .seg', { timeout: 20_000 });
 }
 
+/**
+ * Open a paired wall's editor with a *group* selected, on a grid (RFC 014
+ * §5.1), so both of the group's own segmented controls are drawn — the
+ * four-up layout picker and the three-up column count — beside the Style
+ * tab's. Classic Strip is the one template that carries a group; its row is
+ * switched to a grid in the database so the second control has a reason to
+ * exist.
+ */
+async function openWithGroup(app: Installation, page: Page, tab: 'Content' | 'Style'): Promise<void> {
+  const id = await app.pairWall('Group wall');
+  const strip = findTemplate('classic-strip');
+  if (strip === undefined) throw new Error('no Classic Strip template');
+  applyTemplate(app.db, id, strip);
+  app.db
+    .prepare(`UPDATE layout_widgets SET config = ? WHERE screen_id = ? AND type = 'group'`)
+    .run(JSON.stringify({ layout: 'grid', columns: 3 }), id);
+  await page.goto(`${app.base}/admin/walls/${encodeURIComponent(id)}`, { waitUntil: 'load' });
+  await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
+  await page.evaluate(() => document.fonts.ready.then(() => undefined));
+  const group = await page.evaluate(() =>
+    Array.from(document.querySelectorAll<HTMLElement>('.le-overlay .le-widget'))
+      .map((el) => ({ id: el.getAttribute('data-id'), label: el.getAttribute('aria-label') }))
+      .find((box) => /^Group of/.test(box.label ?? '')),
+  );
+  if (group?.id == null) throw new Error('no group on this wall');
+  // The group's own box is under its children's, which take the pointer
+  // first; the Layers row is how a covered group is reached.
+  await page.click('.le-layers-btn');
+  await page.locator(`.le-layer[data-id="${group.id}"]`).click();
+  await page.waitForSelector('.le-cfg-field .seg', { timeout: 20_000 });
+  if (await page.locator('.le-layers-pop').isVisible()) await page.click('.le-layers-btn');
+  await page.click(`.insp-tab:has-text("${tab}")`);
+  await page.waitForSelector('.le-cfg-field .seg', { timeout: 20_000 });
+  // The style lane's own controls are behind "Inherit the wall's theme"
+  // (RFC 014 §4.1); off, Weight, Tracking and Inset are drawn — the controls
+  // a multi-selection shows, one group's Style tab along.
+  if (tab === 'Style') {
+    await page.locator('.le-style .switch input[type=checkbox]').first().click();
+    await page.waitForSelector('.le-style .seg', { timeout: 20_000 });
+  }
+}
+
 describe('the widget inspector, across screen sizes', () => {
+  it(
+    'neither breaks nor starves a label on a group’s own controls, at any width',
+    async () => {
+      /*
+       * The two sweeps above, run again over the controls RFC 014 §5.1 added:
+       * a group's layout picker (Free / Row / Column / Grid) and its column
+       * count, on the Content tab, and the shared style lane's Weight,
+       * Tracking and Inset on the Style tab — the controls a multi-selection
+       * shows. Same rules, same nine-plus widths, asserted at zero.
+       */
+      const app = await install({ wizard: true, feed: true, calendars: HOUSEHOLD_CALENDARS.slice(0, 2) });
+      installations.push(app);
+      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 900 } });
+      const page = await context.newPage();
+      await app.signIn(page);
+
+      const faults: string[] = [];
+      const starved: string[] = [];
+      const seen = new Set<string>();
+      for (const width of WIDTHS) {
+        for (const tab of ['Content', 'Style'] as const) {
+          await page.setViewportSize({ width, height: 900 });
+          await openWithGroup(app, page, tab);
+          const all = await segments(page);
+          for (const segment of all) {
+            seen.add(segment.control);
+            for (const line of segment.lines) {
+              const trimmed = line.trim();
+              if (trimmed !== '' && !segment.text.split(/\s+/).some((word) => trimmed.endsWith(word))) {
+                faults.push(`${width}px · ${tab} · "${segment.control}" · ${JSON.stringify(segment.text)} broke as ${JSON.stringify(segment.lines)}`);
+              }
+            }
+          }
+          const byControl = new Map<string, Segment[]>();
+          for (const segment of all) {
+            const list = byControl.get(segment.control) ?? [];
+            list.push(segment);
+            byControl.set(segment.control, list);
+          }
+          for (const [control, group] of byControl) {
+            for (const wrapped of group.filter((one) => one.lines.length > 1)) {
+              for (const sibling of group) {
+                if (sibling === wrapped || sibling.lines.length > 1) continue;
+                if (sibling.slack > wrapped.slack) {
+                  starved.push(
+                    `${width}px · ${tab} · "${control}" · ${JSON.stringify(wrapped.text)} wrapped with ` +
+                      `${wrapped.slack}px spare while ${JSON.stringify(sibling.text)} sat on ${sibling.slack}px`,
+                  );
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+      // The controls this test exists for, by name, so it cannot go green by
+      // measuring a page that no longer draws them.
+      expect([...seen]).toEqual(expect.arrayContaining(['Arrange the widgets in it', 'Across', 'Weight', 'Inset']));
+      expect(faults).toEqual([]);
+      expect(starved).toEqual([]);
+      await context.close();
+    },
+    SLOW,
+  );
+
   it(
     'never breaks a segment label in the middle of a word, at any width',
     async () => {

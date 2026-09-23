@@ -553,6 +553,28 @@ describe('the admin, read out loud', () => {
       const sentences = [...omission.matchAll(/`([^`]+)`/g)].map((m) => m[1] as string);
       expect(sentences.length, 'omission.ts composes no sentences — has it moved?').toBeGreaterThan(3);
       labels.push(...sentences);
+      /*
+       * And the two modules RFC 014 §5.1 gave sentences of their own: a
+       * group's name is composed in `widget-labels.ts` ("Group of 3: …"), and
+       * the inspector's note for a child of a row, the multi-selection's
+       * title and what Remove takes with a group are `inspector.ts`'s. Both
+       * are read the same way — every template literal, comments first — and
+       * the editor's own strings for the new toolbar buttons and the group's
+       * controls are held to the same words below.
+       */
+      for (const file of ['widget-labels.ts', 'inspector.ts']) {
+        const source = readFileSync(join(src, file), 'utf8')
+          .replace(/\/\*[\s\S]*?\*\//g, '')
+          .replace(/\/\/.*$/gm, '');
+        const own = [...source.matchAll(/`([^`]+)`/g)].map((m) => m[1] as string);
+        expect(own.length, `${file} composes no sentences — has it moved?`).toBeGreaterThan(0);
+        labels.push(...own);
+      }
+      const editorStrings = [
+        ...editor.matchAll(/(?:textContent|title|placeholder) = '([^']+)'/g),
+      ].map((m) => m[1] as string);
+      expect(editorStrings.some((one) => one.startsWith('Put the selected widgets')), 'the Group button’s words are not where this looks').toBe(true);
+      labels.push(...editorStrings);
       for (const label of labels) {
         expect(label, 'a retired noun in an accessible name').not.toMatch(
           /\b(canvas|screen|display|block)\b/i,

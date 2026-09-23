@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { inspectorView, type InspectorInput } from '../src/inspector.js';
+import { ORDERED_CHILD_NOTE, inspectorView, type InspectorInput } from '../src/inspector.js';
 import type { NotDrawn } from '../src/omission.js';
 import { TIER_NAMES } from '../src/tiers.js';
 
@@ -248,5 +248,47 @@ describe('what stands in for an empty box (RFC 014 §5.3)', () => {
   it('is the wall lane’s alone', () => {
     const view = ask({ selected: weather.id, notDrawn: flagged, facts, lane: 'ink', inkAvailable: true });
     expect(view).not.toHaveProperty('fallback');
+  });
+});
+
+describe('two or more boxes (RFC 014 §5.1)', () => {
+  it('shows the shared style lane and nothing else, counting only boxes that exist', () => {
+    const view = ask({ selected: clock.id, selection: [clock.id, weather.id, 'gone'] });
+    expect(view).toEqual({ kind: 'multi', widgetIds: [clock.id, weather.id], title: '2 widgets selected' });
+  });
+
+  it('is the ordinary inspector for a selection of one, however it was chosen', () => {
+    expect(ask({ selected: clock.id, selection: [clock.id] }).kind).toBe('widget');
+    expect(ask({ selected: clock.id, selection: [clock.id, 'gone'] }).kind).toBe('widget');
+  });
+});
+
+describe('a group and its children (RFC 014 §5.1)', () => {
+  const group = { id: 'g', type: 'group', config: { layout: 'row' } };
+  const free = { id: 'f', type: 'group', config: { layout: 'free' } };
+  const inRow = { id: 'r', type: 'notes', parentId: 'g' };
+  const inFree = { id: 'n', type: 'notes', parentId: 'f' };
+  const widgets = [group, free, inRow, inFree];
+
+  it('says a child of a row takes its place from the order, and draws no position fields', () => {
+    const view = ask({ widgets, selected: inRow.id });
+    expect(view.kind === 'widget' && view.placement).toBe(ORDERED_CHILD_NOTE);
+  });
+
+  it('says nothing of the kind for a child of a free group, or for a box on the layout', () => {
+    expect(ask({ widgets, selected: inFree.id })).not.toHaveProperty('placement');
+    expect(ask({ widgets, selected: group.id })).not.toHaveProperty('placement');
+  });
+
+  it('names what Remove takes with a group', () => {
+    expect(ask({ widgets, selected: group.id })).toMatchObject({
+      title: 'Group widget',
+      removeLabel: 'Remove this group and the widgets in it',
+    });
+  });
+
+  it('keeps the note off the ink lane, where a panel follows the wall’s order anyway', () => {
+    const view = ask({ widgets, selected: inRow.id, lane: 'ink', inkAvailable: true });
+    expect(view).not.toHaveProperty('placement');
   });
 });

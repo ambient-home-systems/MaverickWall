@@ -3,6 +3,8 @@ import {
   MIN_SIZE,
   NUDGE_STEP,
   SNAP,
+  childOnCanvas,
+  inParent,
   moveTo,
   nextZ,
   nudge,
@@ -213,5 +215,42 @@ describe('bringing a box to the front', () => {
 
   it('ignores a negative z rather than going below it', () => {
     expect(nextZ([{ z: -3 }])).toBe(1);
+  });
+});
+
+describe('a child inside a group', () => {
+  /*
+   * A child's fractions are of its group (RFC 014 §5.1), so the unit square
+   * the clamp works in *is* the group's box. What is translated is the drag's
+   * travel, which the pointer measures in fractions of the layout.
+   */
+  const parent = { x: 0.1, y: 0.2, w: 0.5, h: 0.25 };
+  const child = { x: 0.2, y: 0.1, w: 0.4, h: 0.5 };
+
+  it('reads a drag in the group’s fractions', () => {
+    expect(inParent({ dx: 0.25, dy: 0.125 }, parent)).toEqual({ dx: 0.5, dy: 0.5 });
+    expect(inParent({ dx: 1, dy: 1 }, { x: 0, y: 0, w: 0, h: 0 })).toEqual({ dx: 0, dy: 0 });
+  });
+
+  it('resolves to the layout through its group', () => {
+    expect(childOnCanvas(parent, child)).toEqual({ x: 0.2, y: 0.225, w: 0.2, h: 0.125 });
+  });
+
+  it('stops at the group’s edge where a hundred arrow presses stop, and inside the group', () => {
+    // A drag pulled far past the wall's own edge, read in the group's fractions.
+    const dragged = resolveDrag(child, inParent({ dx: 5, dy: 5 }, parent), { resize: false, snap: false });
+    let nudged = child;
+    for (let i = 0; i < 200; i += 1) {
+      nudged = nudge(nudged, 'ArrowRight', { resize: false }) ?? nudged;
+      nudged = nudge(nudged, 'ArrowDown', { resize: false }) ?? nudged;
+    }
+    expect(dragged).toEqual(nudged);
+    expect(dragged).toEqual(moveTo(child, 1, 1));
+    // On the layout that is the group's own far corner, not the wall's.
+    const drawn = childOnCanvas(parent, dragged);
+    expect(drawn.x + drawn.w).toBeCloseTo(parent.x + parent.w, 3);
+    expect(drawn.y + drawn.h).toBeCloseTo(parent.y + parent.h, 3);
+    // And the typed number agrees with both.
+    expect(setDimension(child, 'x', 1.4)).toEqual({ ...child, x: 0.6 });
   });
 });

@@ -142,6 +142,42 @@ export function resolveDrag(
 }
 
 /**
+ * A child inside a group (RFC 014 §5.1) is placed in its *parent's* space.
+ *
+ * Its `x`/`y`/`w`/`h` are fractions of the group's box, not of the canvas —
+ * so the unit square every function above clamps to *is* the parent's box,
+ * and a child dragged toward the edge of the wall stops at the edge of its
+ * group with no second rule anywhere. What has to be translated is only the
+ * input: a pointer's travel is measured in fractions of the canvas, and a
+ * child sees that distance as a larger fraction of a smaller box. These two
+ * are that translation, in and out, so the drag, the arrow keys and the
+ * numeric fields all still meet at `moveTo` and `resizeTo` — `placement.test`
+ * holds a drag and a hundred arrow presses on a child to one box, exactly as
+ * it does on the canvas.
+ */
+
+/** A pointer's travel, from fractions of the canvas to fractions of a parent. */
+export function inParent(
+  delta: { readonly dx: number; readonly dy: number },
+  parent: Box,
+): { readonly dx: number; readonly dy: number } {
+  return {
+    dx: parent.w > 0 ? delta.dx / parent.w : 0,
+    dy: parent.h > 0 ? delta.dy / parent.h : 0,
+  };
+}
+
+/** Where a child's box sits on the canvas, from its parent's box and its own fractions. */
+export function childOnCanvas(parent: Box, child: Box): Box {
+  return {
+    x: round3(parent.x + child.x * parent.w),
+    y: round3(parent.y + child.y * parent.h),
+    w: round3(child.w * parent.w),
+    h: round3(child.h * parent.h),
+  };
+}
+
+/**
  * The stacking value that puts a box in front of every other.
  *
  * One rule for the two things that need it — a widget just added, and a widget

@@ -1455,6 +1455,11 @@ pre.code{background:var(--mw-surface-2);
 .le-tool-btn:disabled{color:color-mix(in srgb,var(--mw-ink) 38%,transparent);
   border-color:color-mix(in srgb,var(--mw-ink) 12%,transparent);cursor:default}
 .le-tool-btn:disabled:hover{background:transparent}
+/* The author display rule above beats the hidden attribute — the same trap
+ * .le-slots[hidden] records — so Group and Ungroup, which are offered only
+ * when they can do something (RFC 014 §5.1), have to be told to go. Found by
+ * the test that asked whether Group was gone with one group selected. */
+.le-tool-btn[hidden]{display:none}
 .le-reset-form{margin:0}
 /* Each popover hangs off its own button — the anchor is the offsetParent, so
    it opens under the control that opened it rather than at the end of the row,
@@ -1670,6 +1675,20 @@ pre.code{background:var(--mw-surface-2);
  * still promises that selection keeps its accent regardless. A dash reads
  * against either colour. */
 .le-widget.is-not-drawn{border-style:dashed}
+/* A group (RFC 014 §5.1) is a box that holds boxes: its edge is the same
+ * hairline, and what says "group" is the children drawn over it — each a box
+ * of its own, tinted a shade lighter so the pair reads as one inside the
+ * other rather than as two boxes that happen to overlap. A child is still a
+ * full control: it takes the pointer before the group behind it does. */
+.le-widget.is-child{background:color-mix(in srgb,var(--mw-ink) 4%,transparent);
+  border-style:dotted}
+.le-widget.is-child:hover{background:color-mix(in srgb,var(--mw-ink) 11%,transparent)}
+/* The marquee: a rectangle on empty layout that selects what it encloses.
+ * Drawn in the selection's own accent so the two read as one gesture, and
+ * pointer-events:none so the pointer under it keeps reaching the overlay. */
+.le-marquee{position:absolute;pointer-events:none;
+  border:1px dashed var(--accent);
+  background:color-mix(in srgb,var(--accent) 10%,transparent)}
 /* Bottom-left. The name chip has left the box entirely, so the top strip is
  * free again — but this one stays where it is, because it is a fact about the
  * widget rather than a name for it and belongs in the artwork it is about.
@@ -1742,6 +1761,10 @@ pre.code{background:var(--mw-surface-2);
   var(--mw-ink) var(--mw-wash-hover),transparent)}
 .le-layer.is-selected{background:var(--mw-accent-soft);
   color:var(--mw-accent-soft-ink)}
+/* A group's children sit under it, indented one step (RFC 014 §5.1): the
+ * list is two scopes, and the indent is what says which rows a grip can be
+ * dragged among. */
+.le-layer-child{margin-left:var(--mw-s-5)}
 .le-layer-grip{flex:0 0 auto;color:var(--mw-ink-muted);cursor:grab;letter-spacing:-2px;
   font-size:var(--mw-t-h4-size);touch-action:none;padding:0 var(--mw-s-1)}
 .le-layer-name{flex:1;min-width:0;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PALETTE, SWATCH, describeWidget, labelFor } from '../src/widget-labels.js';
+import { PALETTE, SWATCH, describeWidget, describeWidgetIn, labelFor } from '../src/widget-labels.js';
 import { WIDGET_VIEWS } from '../src/widget-views.js';
 
 /**
@@ -90,5 +90,33 @@ describe('what a box is called', () => {
         views.length > 1,
       );
     }
+  });
+});
+
+describe('a group’s name (RFC 014 §5.1)', () => {
+  const widgets = [
+    { id: 'g', type: 'group', z: 0 },
+    { id: 'w', type: 'weather', z: 1, parentId: 'g' },
+    { id: 'c', type: 'clock', z: 0, parentId: 'g' },
+    { id: 's', type: 'shift', z: 2, parentId: 'g' },
+    { id: 'm', type: 'calendar', z: 1 },
+  ];
+
+  it('is composed from what it holds, in the group’s own order', () => {
+    expect(labelFor('group')).toBe('Group');
+    expect(describeWidgetIn({ id: 'g', type: 'group' }, widgets)).toBe('Group of 3: clock, weather, shift');
+    expect(describeWidgetIn({ id: 'g', type: 'group' }, [{ id: 'g', type: 'group', z: 0 }])).toBe('Empty group');
+  });
+
+  it('names any other box exactly as describeWidget does, view and all', () => {
+    const month = { id: 'm', type: 'calendar', config: { mode: 'week' } };
+    expect(describeWidgetIn(month, widgets)).toBe(describeWidget(month));
+    // A child's view reaches its group's name, which is how a change of view
+    // renames the group in place.
+    const renamed = widgets.map((w) => (w.id === 'c' ? { ...w, type: 'calendar', config: { mode: 'list' } } : w));
+    expect(describeWidgetIn({ id: 'g', type: 'group' }, renamed)).toBe(
+      `Group of 3: ${describeWidget({ type: 'calendar', config: { mode: 'list' } }).toLowerCase()}, weather, shift`,
+    );
+    expect(describeWidgetIn({ id: 'g', type: 'group' }, renamed)).toContain('calendar — ');
   });
 });

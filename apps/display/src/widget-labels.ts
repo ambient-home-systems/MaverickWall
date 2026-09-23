@@ -11,7 +11,16 @@
  * while there is exactly one place a name is composed.
  */
 
+import { groupChildren, parentIdOf } from './group-cells.js';
 import { viewLabel } from './widget-views.js';
+
+/**
+ * A group (RFC 014 §5.1) is not in the palette: an empty group is a box with
+ * nothing to say, which the wall would leave out, so one is only ever made
+ * from two or more boxes by the toolbar's Group. It still has a name.
+ */
+export const GROUP_TYPE = 'group';
+const GROUP_LABEL = 'Group';
 
 /** The first-party palette. No web embed is offered — the wall cannot draw one. */
 export const PALETTE: readonly { readonly type: string; readonly label: string }[] = [
@@ -34,6 +43,7 @@ export const PALETTE: readonly { readonly type: string; readonly label: string }
  * on the wall. Unknown types fall back to the muted token.
  */
 export const SWATCH: Readonly<Record<string, string>> = {
+  group: 'var(--muted)',
   clock: 'var(--accent)',
   calendar: 'var(--night)',
   weather: 'var(--ok)',
@@ -55,6 +65,7 @@ export const SWATCH: Readonly<Record<string, string>> = {
  * boxes, and "external" is a poorer label than "Module" but is not a blank box.
  */
 export function labelFor(type: string): string {
+  if (type === GROUP_TYPE) return GROUP_LABEL;
   return PALETTE.find((p) => p.type === type)?.label ?? type;
 }
 
@@ -73,4 +84,36 @@ export function describeWidget(widget: {
   const base = labelFor(widget.type);
   const view = viewLabel(widget.type, widget.config);
   return view === undefined ? base : `${base} \u2014 ${view}`;
+}
+
+/**
+ * What a box is called, on a layout that may hold groups.
+ *
+ * A group is named by what it holds — "Group of 3: clock, weather, shift" —
+ * because "Group" alone is a box nobody can tell from the next group, and the
+ * Layers list and a screen reader both meet it without the picture. The
+ * children are named in their `z` order, which is the order a row draws them
+ * in; a child's own name is `describeWidget`'s, view and all ("calendar —
+ * month grid"), so a child switched from a month to an agenda renames its
+ * group too, and `refreshLabels` re-reads both in place — which is the only
+ * way a name composed from other boxes can be told from one written once. This is the **one** composition:
+ * `boxAriaLabel` takes what it answers and never assembles a group's name of
+ * its own.
+ */
+export function describeWidgetIn(
+  widget: { readonly id: string; readonly type: string; readonly config?: Record<string, unknown> | undefined },
+  widgets: readonly {
+    readonly id: string;
+    readonly type: string;
+    readonly z: number;
+    readonly parentId?: unknown;
+    readonly config?: Record<string, unknown> | undefined;
+  }[],
+): string {
+  if (widget.type !== GROUP_TYPE || parentIdOf(widget as { readonly parentId?: unknown }) !== undefined) {
+    return describeWidget(widget);
+  }
+  const children = groupChildren(widgets).get(widget.id) ?? [];
+  if (children.length === 0) return 'Empty group';
+  return `Group of ${children.length}: ${children.map((child) => describeWidget(child).toLowerCase()).join(', ')}`;
 }

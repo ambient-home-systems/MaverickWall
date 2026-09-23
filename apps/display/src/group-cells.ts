@@ -1,17 +1,22 @@
 /**
  * Where a group puts its children (RFC 014 §5.1).
  *
- * A group is a box that holds other boxes. It lays them out in one of three
- * ways — a `row` across, a `column` down, or a `grid` of `columns` across and
- * as many rows as the children need — by dividing its own inner box **equally
- * among the children in `z` order**, and it reads nothing else: not a child's
- * own stored fractions (those are of the group's box and are kept only so an
- * ungroup can put a box back where it was), and never what a child draws. So
- * every cell here is a function of the group's box, the layout and the
- * child count alone, which is what makes a group's geometry a property of the
- * arrangement rather than of the calendar: `reflow-stability.test.ts` holds
- * two walls with the same arrangement and different events to identical child
- * rectangles, and the e-paper renderer draws the same cells in pixels.
+ * A group is a box that holds other boxes. It lays them out in one of four
+ * ways. Three are *ordered* — a `row` across, a `column` down, or a `grid` of
+ * `columns` across and as many rows as the children need — and divide its own
+ * inner box **equally among the children in `z` order**, reading nothing
+ * else: not a child's own stored fractions, and never what a child draws. The
+ * fourth, `free`, is the one the editor's Group action makes: each child sits
+ * at its **own stored fractions** of the group's inner box, which is exactly
+ * where it was on the wall before it was grouped, so grouping moves nothing
+ * on the glass until the household picks an ordered layout — and those same
+ * fractions are what an ungroup puts back. Either way every cell here is a
+ * function of the *arrangement* — the group's box, its layout, and its
+ * children's count or stored boxes — and never of the calendar, which is what
+ * makes a group's geometry a property of the arrangement rather than of the
+ * events: `reflow-stability.test.ts` holds two walls with the same
+ * arrangement and different events to identical child rectangles, and the
+ * e-paper renderer draws the same cells in pixels.
  *
  * Pure, and its own module for the reason `gutter.ts`, `tiers.ts` and
  * `placement.ts` are: there is no DOM in this package's test suite, so a rule
@@ -24,8 +29,12 @@
 
 /* ---- transcribed, and nothing else ------------------------------------ */
 
-/** The layouts a group offers, in the order the schema names them. */
-export const GROUP_LAYOUTS = ['row', 'column', 'grid'] as const;
+/**
+ * The layouts a group offers, in the order the schema names them. `free` is
+ * last so nothing that indexed the first three moves; the editor's Group
+ * action writes it out, because an absent layout means `row` (below).
+ */
+export const GROUP_LAYOUTS = ['row', 'column', 'grid', 'free'] as const;
 export type GroupLayout = (typeof GROUP_LAYOUTS)[number];
 
 /** A grid's width in cells when the household has not said; the schema's own bounds. */
@@ -49,7 +58,12 @@ export interface GroupCell {
 export function groupLayoutOf(config: unknown): GroupLayout {
   const raw =
     typeof config === 'object' && config !== null ? (config as Record<string, unknown>)['layout'] : undefined;
-  return raw === 'column' || raw === 'grid' ? raw : 'row';
+  return raw === 'column' || raw === 'grid' || raw === 'free' ? raw : 'row';
+}
+
+/** Whether a group's children take their place from the group's order. */
+export function groupIsOrdered(config: unknown): boolean {
+  return groupLayoutOf(config) !== 'free';
 }
 
 /**
@@ -94,6 +108,33 @@ export function groupCells(config: unknown, count: number): GroupCell[] {
     w: 1 / columns,
     h: 1 / rows,
   }));
+}
+
+/**
+ * The unit square, with a box held inside it: `x`/`y` clamped to 0..1 and
+ * `w`/`h` to what is left. A child's stored fractions are of its group's box
+ * and are written by the editor through the same clamp — but a document this
+ * process did not write this session is read defensively, and a child hanging
+ * out of its group would be drawn over a neighbour the household never put it
+ * near.
+ */
+function insideUnit(box: GroupCell): GroupCell {
+  const unit = (n: number): number => (Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0);
+  const x = unit(box.x);
+  const y = unit(box.y);
+  return { x, y, w: Math.min(unit(box.w), 1 - x), h: Math.min(unit(box.h), 1 - y) };
+}
+
+/**
+ * Where each of a group's children goes, given the children themselves in `z`
+ * order: the ordered layouts answer from `groupCells` and read nothing of the
+ * children but how many there are; `free` answers each child's own stored
+ * fractions. One function for both renderers, so the wall and the panel ask
+ * the same question and cannot read a `free` group two ways.
+ */
+export function childCells(config: unknown, children: readonly GroupCell[]): GroupCell[] {
+  if (groupLayoutOf(config) !== 'free') return groupCells(config, children.length);
+  return children.map(insideUnit);
 }
 
 /** A widget that sits inside a group, read defensively off any document. */

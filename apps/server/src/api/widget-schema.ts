@@ -194,23 +194,28 @@ const widgetConfigFields = z
      * Group (RFC 014 §5.1) — how a group lays its children out inside its own
      * box: a `row` divides the group's inner box equally across its children in
      * `z` order, a `column` divides it down, a `grid` fills `columns` across and
-     * as many rows as the children need. **Absent means `row`**, like every
-     * default here, and `columns` absent means two; it is read on `grid` alone.
+     * as many rows as the children need, and `free` places each child at its
+     * own stored fractions of the group's box. **Absent means `row`**, like
+     * every default here, and `columns` absent means two; it is read on `grid`
+     * alone.
      *
      * The children keep their own stored `x`/`y`/`w`/`h`, as fractions of the
-     * group's box, and a group in any of these three layouts **ignores them**
-     * and places from order — they are kept so an ungroup later can put the
-     * boxes back where they were, not so the renderer can read them. That is
-     * what makes a group's geometry a function of the arrangement alone:
-     * `reflow-stability.test.ts` holds two walls with the same arrangement and
-     * different events to identical child rectangles.
+     * group's box. A group in any of the three *ordered* layouts **ignores
+     * them** and places from order — there they are kept so an ungroup later
+     * can put the boxes back where they were. A `free` group is the one the
+     * editor's Group action makes, precisely because it reads them: the
+     * children stay exactly where they were on the wall, so grouping moves
+     * nothing on the glass until the household picks an ordered layout. Either
+     * way a group's geometry is a function of the arrangement alone and never
+     * of the events: `reflow-stability.test.ts` holds two walls with the same
+     * arrangement and different events to identical child rectangles.
      *
      * Only a `group` reads either key; on any other type both are "not for
      * me", exactly as `variant` is. A group carries no `whenEmpty` of its own —
      * its children are boxes and each resolves its own — and is dropped whole
      * when none of them has anything to say (`keepWidgetsWithSomethingToSay`).
      */
-    layout: z.enum(['row', 'column', 'grid']).optional(),
+    layout: z.enum(['row', 'column', 'grid', 'free']).optional(),
     columns: z.number().int().min(2).max(4).optional(),
     /*
      * Weather. `count` is shared with the calendar's agenda above — one strict
