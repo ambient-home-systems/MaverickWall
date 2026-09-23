@@ -127,6 +127,13 @@ export interface ManifestWidget {
    */
   readonly styleTokens?: unknown;
   readonly daytimeStyleTokens?: unknown;
+  /**
+   * This box is drawing its `whenEmpty` fallback rather than itself (RFC 014
+   * §5.3) — `type` and `config` are already the fallback's, resolved by the
+   * server. The wall reads nothing from it and labels nothing: a note standing
+   * in for a forecast is drawn exactly as a note.
+   */
+  readonly substituted?: unknown;
 }
 
 export interface Manifest {

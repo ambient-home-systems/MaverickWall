@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   boxAriaLabel,
   drawnWidgets,
+  fallbackChoices,
+  fallbackOf,
+  omissionOf,
   notDrawnFor,
   omissionFlag,
   omissionNote,
@@ -208,5 +211,94 @@ describe('deciding the flags from the facts (RFC 012 §6.2)', () => {
     expect(drawnWidgets(widgets, flags).map((one) => one.id)).toEqual(['a', 't1']);
     expect(omittedReason(gone, widgets, flags)).toBe('Pick a list that is still on Home Assistant.');
     expect(omittedReason(typed, widgets, flags)).toBeUndefined();
+  });
+});
+
+describe('a fallback for an empty box (RFC 014 §5.3)', () => {
+  /*
+   * The server substitutes in `keepWidgetsWithSomethingToSay`, and this is that
+   * reading transcribed so the preview draws what the wall will as the
+   * household edits. Same order, same rule: only a flagged box is substituted,
+   * the fallback has to have something to say itself, and the guard runs last.
+   */
+  const facts: OmissionFacts = {
+    drawn: { clock: true, notes: true, weather: false, shift: false, countdown: true },
+    todoLists: [],
+    why: { weather: NO_LOCATION, shift: NO_PEOPLE },
+  };
+  const note = { type: 'notes', config: { text: 'Bins Tuesday' } };
+  const box = (id: string, type: string, whenEmpty?: unknown) => ({
+    id,
+    type,
+    config: whenEmpty === undefined ? undefined : { whenEmpty },
+  });
+
+  it('reads a stored fallback, and nothing that is not one', () => {
+    expect(fallbackOf({ whenEmpty: note })).toEqual(note);
+    expect(fallbackOf({ whenEmpty: { type: 'clock' } })).toEqual({ type: 'clock' });
+    expect(fallbackOf(undefined)).toBeUndefined();
+    expect(fallbackOf({ whenEmpty: 'yield' })).toBeUndefined();
+    expect(fallbackOf({ whenEmpty: { type: '' } })).toBeUndefined();
+  });
+
+  it('draws the fallback in the flagged box, keeping its id', () => {
+    const widgets = [box('a', 'clock'), box('w', 'weather', note)];
+    const flags = notDrawnFor(widgets, facts);
+    expect(drawnWidgets(widgets, flags, facts).map((one) => [one.id, one.type, one.substituted])).toEqual([
+      ['a', 'clock', undefined],
+      ['w', 'notes', true],
+    ]);
+  });
+
+  it('never replaces a box that is not flagged', () => {
+    const widgets = [box('w', 'weather', note)];
+    const setUp = { ...facts, drawn: { ...facts.drawn, weather: true } };
+    expect(drawnWidgets(widgets, notDrawnFor(widgets, setUp), setUp)).toBe(widgets);
+  });
+
+  it('drops a box whose fallback would be left out too', () => {
+    const widgets = [box('a', 'clock'), box('w', 'weather', { type: 'shift' })];
+    expect(drawnWidgets(widgets, notDrawnFor(widgets, facts), facts).map((one) => one.id)).toEqual(['a']);
+  });
+
+  it('substitutes before the never-empty guard, so a canvas of empty boxes draws their fallbacks', () => {
+    // The ordering trap, the same as the server's: guarding first keeps both
+    // originals and draws two placeholders over two answers already written.
+    const widgets = [box('w', 'weather', note), box('s', 'shift', { type: 'countdown' })];
+    expect(drawnWidgets(widgets, notDrawnFor(widgets, facts), facts).map((one) => one.type)).toEqual([
+      'notes',
+      'countdown',
+    ]);
+  });
+
+  it('still flags a box drawing its fallback, and says what stands in', () => {
+    const widgets = [box('a', 'clock'), box('w', 'weather', note)];
+    const flags = notDrawnFor(widgets, facts);
+    expect(omissionOf(widgets[1]!, widgets, flags, facts)).toEqual({
+      why: NO_LOCATION,
+      instead: { type: 'notes', config: { text: 'Bins Tuesday' } },
+    });
+    // A canvas that is *only* that box: substituted, so still flagged — the
+    // wall draws a note there, not the forecast.
+    const alone = [box('w', 'weather', note)];
+    expect(omissionOf(alone[0]!, alone, notDrawnFor(alone, facts), facts)?.instead?.type).toBe('notes');
+  });
+
+  it('puts the stand-in in the name a screen reader hears, and on the flag', () => {
+    expect(boxAriaLabel('Weather', NO_LOCATION, 'wall', 'Notes')).toBe(
+      `Weather widget — not on the wall, shows Notes instead. ${NO_LOCATION}`,
+    );
+    expect(omissionFlag('wall', 'Notes')).toBe('Shows Notes instead');
+    expect(omissionNote(NO_LOCATION, 'panel', 'Notes')).toBe(
+      `Not on the panel yet, so this box shows Notes instead. ${NO_LOCATION}`,
+    );
+  });
+
+  it('offers only what the wall would draw, and never the box itself', () => {
+    const choices = fallbackChoices('weather', facts);
+    expect(choices).not.toContain('weather');
+    expect(choices).not.toContain('shift');
+    expect(choices[0]).toBe('notes');
+    expect(choices).toContain('clock');
   });
 });

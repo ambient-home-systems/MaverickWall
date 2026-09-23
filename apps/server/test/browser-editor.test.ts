@@ -1953,3 +1953,99 @@ describe('9 · a to-do box that names a list', () => {
     SLOW,
   );
 });
+
+// ===========================================================================
+// 10 · What stands in for an empty box (RFC 014 §5.3)
+// ===========================================================================
+
+describe('10 · a fallback for a box the wall leaves out', () => {
+  /**
+   * Choosing what stands in changes what the box *is* on the wall, and the
+   * place that must follow it in place is the one nobody can see go stale —
+   * the accessible name, which is §8's fault exactly, one control along.
+   *
+   * A Chores box on an install with no chore board is the case again: it is
+   * flagged, the Classic clock beside it keeps the never-empty guard stood
+   * down, and nothing about it changes but what the inspector writes.
+   */
+  it(
+    'says what stands in, follows a change of fallback in place, and saves it through the schema',
+    async () => {
+      const wall = await fresh();
+      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      try {
+        const page = await context.newPage();
+        await openEditor(wall, page);
+        await addWidget(page, 'Chores');
+        await page.waitForTimeout(400);
+
+        const before = await saysAbout(page, 'Chores');
+        expect(before.flagged, 'nothing is flagged, so there is nothing to stand in for').toBe(true);
+        expect(before.inPreview).toBe(false);
+        expect(before.aria).not.toContain('instead');
+
+        // "When this has nothing to show" → "Show another widget".
+        await page.locator('.le-fallback .le-seg button', { hasText: 'Show another widget' }).click();
+        await page.waitForTimeout(400);
+        await page.locator('.le-fallback textarea').fill('Chores are on the fridge');
+        await page.waitForTimeout(500);
+
+        const notes = await saysAbout(page, 'Chores');
+        expect(notes.id).toBe(before.id);
+        expect(notes.flag).toBe('Shows Notes instead');
+        expect(notes.aria).toBe(
+          `Chores — Today widget — not on the wall, shows Notes instead. ${(notes.note ?? '').replace(
+            'Not on the wall yet, so this box shows Notes instead. ',
+            '',
+          )}`,
+        );
+        expect(notes.note ?? '').toMatch(/^Not on the wall yet, so this box shows Notes instead\. \S/);
+        // The preview draws the note in that box — the wall's own renderer,
+        // handed the substitution the server will make.
+        const drawn = await page.evaluate((id) => {
+          const shadow = document.querySelector<HTMLElement>('.le-preview')?.shadowRoot;
+          const box = shadow?.querySelector<HTMLElement>(`[data-widget-id="${id}"]`);
+          return { classes: box?.className ?? '', text: box?.textContent ?? '' };
+        }, notes.id);
+        expect(drawn.classes).toContain('fw-notes');
+        expect(drawn.text).toContain('Chores are on the fridge');
+
+        // Switch the stand-in; the box is renamed where it stands, not rebuilt.
+        await page.locator('.le-fallback-type').selectOption('countdown');
+        await page.waitForTimeout(400);
+        const countdown = await saysAbout(page, 'Chores');
+        expect(countdown.id, 'the box was rebuilt, so this proves nothing about renaming in place').toBe(
+          before.id,
+        );
+        expect(countdown.flag).toBe('Shows Countdown instead');
+        expect(countdown.aria, 'the flag moved and the accessible name did not').toContain(
+          'shows Countdown instead',
+        );
+        expect(countdown.aria).not.toContain('Notes');
+
+        // And it survives the server's own schema, one level deep.
+        const saved = await page.evaluate(() =>
+          (window as unknown as { mwEditor: { saveCurrent(): Promise<{ ok: boolean }> } }).mwEditor.saveCurrent(),
+        );
+        expect(saved.ok).toBe(true);
+        const row = wall.db
+          .prepare(`SELECT config FROM layout_widgets WHERE id = ?`)
+          .get(before.id) as { config: string } | undefined;
+        expect(JSON.parse(row?.config ?? '{}')).toMatchObject({
+          whenEmpty: { type: 'countdown', config: { text: 'Chores are on the fridge' } },
+        });
+
+        // "Leave the box empty" takes it back, and the name with it.
+        await page.locator('.le-fallback .le-seg button', { hasText: 'Leave the box empty' }).click();
+        await page.waitForTimeout(400);
+        const empty = await saysAbout(page, 'Chores');
+        expect(empty.flag).toBe('Not on the wall');
+        expect(empty.aria).not.toContain('instead');
+        expect(empty.inPreview).toBe(false);
+      } finally {
+        await context.close();
+      }
+    },
+    SLOW,
+  );
+});

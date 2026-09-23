@@ -77,6 +77,75 @@ export function widgetOmitted(widget: OmissionTarget, facts: OmissionFacts): boo
   return facts.drawn[widget.type] === false;
 }
 
+/**
+ * What a box draws instead when it has nothing to say (RFC 014 §5.3).
+ *
+ * `config.whenEmpty` names another widget, and the server substitutes it in
+ * `keepWidgetsWithSomethingToSay` — the one place the wall and the panel both
+ * go through. This is that reading transcribed, for the reason `widgetOmitted`
+ * is: the preview here has to draw what the wall will, as the household edits,
+ * without a round trip. Read defensively, since the canvas came out of a JSON
+ * blob the editor did not write this session.
+ */
+export interface Fallback {
+  readonly type: string;
+  readonly config?: Record<string, unknown> | undefined;
+}
+
+export function fallbackOf(config: Record<string, unknown> | undefined): Fallback | undefined {
+  const raw = config?.['whenEmpty'];
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const type = (raw as Record<string, unknown>)['type'];
+  if (typeof type !== 'string' || type === '') return undefined;
+  const own = (raw as Record<string, unknown>)['config'];
+  return typeof own === 'object' && own !== null
+    ? { type, config: own as Record<string, unknown> }
+    : { type };
+}
+
+/**
+ * The types a household may choose to stand in for an empty box, in the order
+ * the picker offers them.
+ *
+ * Notes first because it is the answer RFC 014 §5.3 was written around — a
+ * Weather box with no location showing the household's own words. A picture
+ * and a module's panel are left out: each needs a picker of its own (an upload,
+ * a registered module) that is more than the "minimal content controls" a
+ * fallback carries, and a fallback that could only be finished on another
+ * widget would be half a control.
+ */
+export const FALLBACK_TYPES: readonly string[] = [
+  'notes', 'countdown', 'clock', 'calendar', 'todo', 'weather', 'homeassistant', 'shift', 'chores',
+];
+
+/**
+ * What this box may fall back to: never itself, and never a type the wall
+ * would leave out too — a Shift badge on a household with no rota is not an
+ * answer to an empty Weather box, it is a second empty box.
+ */
+export function fallbackChoices(type: string, facts: OmissionFacts | undefined): readonly string[] {
+  return FALLBACK_TYPES.filter(
+    (one) => one !== type && (facts === undefined || !widgetOmitted({ id: '', type: one }, facts)),
+  );
+}
+
+/**
+ * The fallback this flagged box would actually draw, or nothing — the second
+ * half of the server's rule, that a fallback with nothing to say is dropped
+ * exactly as the widget would have been. Without the facts (an older server's
+ * page) the fallback is believed, which is the side that shows the household
+ * what they chose.
+ */
+export function drawnFallback(widget: OmissionTarget, facts: OmissionFacts | undefined): Fallback | undefined {
+  const fallback = fallbackOf(widget.config);
+  if (fallback === undefined) return undefined;
+  if (facts !== undefined && widgetOmitted({ id: widget.id, ...fallback }, facts)) return undefined;
+  return fallback;
+}
+
+/** A box as the preview draws it: itself, or its fallback wearing its rectangle. */
+export type Drawn<T extends OmissionTarget> = T & { readonly substituted?: true };
+
 /** Every box the wall would leave out, with its reason — the seed, re-derived. */
 export function notDrawnFor(widgets: readonly OmissionTarget[], facts: OmissionFacts): NotDrawn {
   const flagged = new Map<string, string>();
@@ -87,7 +156,8 @@ export function notDrawnFor(widgets: readonly OmissionTarget[], facts: OmissionF
 }
 
 /**
- * What the *preview* draws — the whole canvas, less the flagged boxes.
+ * What the *preview* draws — the whole canvas, less the flagged boxes, with
+ * each flagged box that names a fallback drawing that instead.
  *
  * A canvas that filtered away to nothing keeps everything, which is rule nine:
  * a preview that emptied itself would draw "Nothing on this wall yet" — a lie
@@ -95,38 +165,80 @@ export function notDrawnFor(widgets: readonly OmissionTarget[], facts: OmissionF
  * contradictory sentences on one screen ("Not on the wall" on a box, over a
  * preview claiming the wall is empty).
  *
+ * **Substitute, then guard** — `keepWidgetsWithSomethingToSay`'s order, for its
+ * reason: a canvas of two empty boxes each naming a note draws two notes, not
+ * two placeholders the guard put back.
+ *
  * Used by every preview and by no save: the overlay boxes are always the whole
  * canvas, because one that vanished under the pointer would be unusable.
  */
 export function drawnWidgets<T extends OmissionTarget>(
   widgets: readonly T[],
   notDrawn: NotDrawn,
-): readonly T[] {
+  facts?: OmissionFacts,
+): readonly Drawn<T>[] {
   if (notDrawn.size === 0) return widgets;
-  const kept = widgets.filter((widget) => !notDrawn.has(widget.id));
+  const kept: Drawn<T>[] = [];
+  for (const widget of widgets) {
+    if (!notDrawn.has(widget.id)) {
+      kept.push(widget);
+      continue;
+    }
+    const fallback = drawnFallback(widget, facts);
+    if (fallback !== undefined) {
+      kept.push({ ...widget, type: fallback.type, config: fallback.config, substituted: true } as Drawn<T>);
+    }
+  }
   return kept.length === 0 ? widgets : kept;
 }
 
 /**
- * Why *this* box is not drawn, or nothing.
+ * What the editor says about one box: why the wall leaves it out, and what it
+ * shows in its place when it names a fallback — or nothing, for a box drawn as
+ * itself.
+ */
+export interface Omission {
+  readonly why: string;
+  /** The fallback the wall draws in this box instead, when there is one. */
+  readonly instead?: Fallback | undefined;
+}
+
+/**
+ * Why *this* box is not drawn as itself, and what stands in for it.
  *
  * The flag is not enough. Omission is per canvas rather than per widget,
  * because of the rule above: on a canvas of only unconfigured widgets every one
  * of them *is* drawn, and flagging by the map alone would label a box "not on
  * the wall" while the wall and the preview beside it both drew it — the same
- * contradiction the preview filter fixes in the other direction.
+ * contradiction the preview filter fixes in the other direction. A box drawing
+ * its fallback is still flagged: the wall does not draw *it*, and saying so is
+ * what lets a household find out why their forecast is a note.
  *
  * The `has` test comes first because it short-circuits: the scan below only
  * runs for the handful of boxes that could be flagged at all.
  */
+export function omissionOf<T extends OmissionTarget>(
+  widget: T,
+  widgets: readonly T[],
+  notDrawn: NotDrawn,
+  facts?: OmissionFacts,
+): Omission | undefined {
+  const why = notDrawn.get(widget.id);
+  if (why === undefined) return undefined;
+  const drawn = drawnWidgets(widgets, notDrawn, facts).find((one) => one.id === widget.id);
+  if (drawn === undefined) return { why };
+  if (drawn.substituted !== true) return undefined;
+  return { why, instead: { type: drawn.type, config: drawn.config } };
+}
+
+/** The reason alone — `omissionOf` for the callers that only need the sentence. */
 export function omittedReason<T extends OmissionTarget>(
   widget: T,
   widgets: readonly T[],
   notDrawn: NotDrawn,
+  facts?: OmissionFacts,
 ): string | undefined {
-  if (!notDrawn.has(widget.id)) return undefined;
-  if (drawnWidgets(widgets, notDrawn).some((one) => one.id === widget.id)) return undefined;
-  return notDrawn.get(widget.id);
+  return omissionOf(widget, widgets, notDrawn, facts)?.why;
 }
 
 /**
@@ -139,14 +251,22 @@ export function omittedReason<T extends OmissionTarget>(
  */
 export type Surface = 'wall' | 'panel';
 
-/** The flag drawn on the box itself. Short: the reason is in the inspector. */
-export function omissionFlag(surface: Surface): string {
-  return `Not on the ${surface}`;
+/**
+ * The flag drawn on the box itself. Short: the reason is in the inspector.
+ *
+ * `instead` is the fallback's own name (RFC 014 §5.3): a box standing in for
+ * itself says what is standing in, because "Not on the wall" over a preview
+ * that plainly draws a note in that box reads as the two disagreeing.
+ */
+export function omissionFlag(surface: Surface, instead?: string): string {
+  return instead === undefined ? `Not on the ${surface}` : `Shows ${instead} instead`;
 }
 
 /** The inspector's note, above everything else in the panel. */
-export function omissionNote(why: string, surface: Surface): string {
-  return `Not on the ${surface} yet. ${why}`;
+export function omissionNote(why: string, surface: Surface, instead?: string): string {
+  return instead === undefined
+    ? `Not on the ${surface} yet. ${why}`
+    : `Not on the ${surface} yet, so this box shows ${instead} instead. ${why}`;
 }
 
 /**
@@ -158,9 +278,20 @@ export function omissionNote(why: string, surface: Surface): string {
  * compose the longer sentence a second time. A flagged Calendar switched from
  * a month to an agenda then showed the new name on its chip and went on
  * announcing the old one, which is the only half of it nobody can see.
+ *
+ * And the fallback (RFC 014 §5.3) is in the same sentence for the same reason:
+ * choosing a different widget to stand in changes what the box *is* on the
+ * wall, and the one place that must be re-read in place is the one place
+ * nobody can see go stale.
  */
-export function boxAriaLabel(name: string, why: string | undefined, surface: Surface): string {
-  return why === undefined
-    ? `${name} widget`
-    : `${name} widget — not on the ${surface}. ${why}`;
+export function boxAriaLabel(
+  name: string,
+  why: string | undefined,
+  surface: Surface,
+  instead?: string,
+): string {
+  if (why === undefined) return `${name} widget`;
+  return instead === undefined
+    ? `${name} widget — not on the ${surface}. ${why}`
+    : `${name} widget — not on the ${surface}, shows ${instead} instead. ${why}`;
 }

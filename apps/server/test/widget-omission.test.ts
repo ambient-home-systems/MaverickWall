@@ -256,3 +256,129 @@ describe('the canvas', () => {
     ).toEqual(['clock']);
   });
 });
+
+describe('a fallback for an empty box (RFC 014 §5.3)', () => {
+  /*
+   * Substitution, and nothing else: a box with nothing to say draws another
+   * widget in the same rectangle. Resolved here, in the one function the wall's
+   * canvas and the panel's share, so a panel following a wall cannot disagree
+   * about what the box holds.
+   */
+  const notes = { type: 'notes', config: { text: 'Bins go out Tuesday' } };
+  const withFallback = (id: string, type: string, whenEmpty: unknown, z = 0): PlacedWidgetRow => ({
+    ...widget(id, type),
+    z,
+    config: { whenEmpty },
+  });
+
+  it('draws the fallback in the empty box — same id, same rectangle, same z — and marks it', () => {
+    const empty = { ...withFallback('w', 'weather', notes, 3), x: 0.2, y: 0.4, w: 0.5, h: 0.25 };
+    const layout = buildLayout(HOUSEHOLD(), [widget('a', 'clock'), empty], [], []);
+    const drawn = layout.portrait.widgets.find((w) => w.id === 'w');
+    expect(drawn).toMatchObject({
+      id: 'w', type: 'notes', x: 0.2, y: 0.4, w: 0.5, h: 0.25, z: 3,
+      config: { text: 'Bins go out Tuesday' }, substituted: true,
+    });
+  });
+
+  it('never replaces a widget that has something to say', () => {
+    /*
+     * The sentence the whole design rests on. A fallback is what an *empty* box
+     * draws, so a Weather box with a location draws weather whatever it names —
+     * on the wall and, through the same function, on the panel.
+     */
+    const layout = buildLayout(HOUSEHOLD(), [withFallback('w', 'weather', notes)], [], ['weather']);
+    const [drawn] = layout.portrait.widgets;
+    expect(drawn?.type).toBe('weather');
+    expect(drawn && 'substituted' in drawn).toBe(false);
+    const resolved = keepWidgetsWithSomethingToSay([withFallback('w', 'weather', notes)], {
+      modules: ['weather'], shift: false, todoLists: [],
+    });
+    expect(resolved.map((r) => [r.type, r.substituted])).toEqual([['weather', undefined]]);
+  });
+
+  it('checks the fallback for something to say, and drops the box when it has none', () => {
+    // A Weather box falling back to a Shift badge on a household with no rota
+    // has two things with nothing to say, and is left out exactly as before.
+    const layout = buildLayout(
+      HOUSEHOLD(),
+      [widget('a', 'clock'), withFallback('w', 'weather', { type: 'shift' })],
+      [],
+      [],
+    );
+    expect(layout.portrait.widgets.map((w) => w.id)).toEqual(['a']);
+  });
+
+  it('draws the fallbacks on a canvas of nothing but empty boxes, not the originals', () => {
+    /*
+     * The ordering trap. The guard keeps every original when nothing survives,
+     * so guarding *before* substituting sees two empty boxes, keeps both, and
+     * draws a forecast placeholder and a rota placeholder over two notes the
+     * household had already written. Substitute first, then guard.
+     */
+    const layout = buildLayout(
+      HOUSEHOLD(),
+      [
+        withFallback('w', 'weather', notes, 0),
+        withFallback('s', 'shift', { type: 'countdown', config: { target: '2026-12-25' } }, 1),
+      ],
+      [],
+      [],
+    );
+    expect(layout.portrait.widgets.map((w) => [w.id, w.type, w.substituted])).toEqual([
+      ['w', 'notes', true],
+      ['s', 'countdown', true],
+    ]);
+  });
+
+  it('hands back the arranged originals when even the fallbacks have nothing to say', () => {
+    // Rule nine, unchanged: the canvas somebody arranged, unedited — never a
+    // mixture of their boxes and fallbacks that could not draw either.
+    const layout = buildLayout(HOUSEHOLD(), [withFallback('w', 'weather', { type: 'shift' })], [], []);
+    expect(layout.portrait.widgets.map((w) => [w.type, 'substituted' in w])).toEqual([['weather', false]]);
+  });
+
+  it('turns a to-do fallback’s list into its handle, as it does for any to-do box', () => {
+    // The fallback is placed like any widget, so rule 12 reaches it too: the
+    // entity id stays on the server.
+    const layout = buildLayout(
+      HOUSEHOLD(),
+      [withFallback('w', 'weather', { type: 'todo', config: { list: 'todo.shopping' } })],
+      [],
+      [],
+      ['todo.shopping'],
+    );
+    const [drawn] = layout.portrait.widgets;
+    expect(drawn?.type).toBe('todo');
+    expect(JSON.stringify(layout)).not.toContain('todo.shopping');
+  });
+
+  it('never sends the fallback itself to the wall, so a to-do fallback’s entity id stays home', () => {
+    /*
+     * Rule 12 one level down. A Weather box with a location is not substituted,
+     * and its config goes to the wall — so if `whenEmpty` rode along, a to-do
+     * fallback's entity id would travel inside a box that is not a to-do widget,
+     * where `list`'s rewrite never looks.
+     */
+    const layout = buildLayout(
+      HOUSEHOLD(),
+      [withFallback('w', 'weather', { type: 'todo', config: { list: 'todo.shopping' } })],
+      [],
+      ['weather'],
+      ['todo.shopping'],
+    );
+    expect(layout.portrait.widgets[0]?.type).toBe('weather');
+    expect(JSON.stringify(layout)).not.toContain('todo.shopping');
+    expect(JSON.stringify(layout)).not.toContain('whenEmpty');
+  });
+
+  it('ignores a fallback this build cannot draw, rather than handing the wall one', () => {
+    const layout = buildLayout(
+      HOUSEHOLD(),
+      [widget('a', 'clock'), withFallback('w', 'weather', { type: 'website' })],
+      [],
+      [],
+    );
+    expect(layout.portrait.widgets.map((w) => w.id)).toEqual(['a']);
+  });
+});

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { todoListHandle, type Manifest, type ManifestDay } from '../src/api/manifest.js';
+import {
+  keepWidgetsWithSomethingToSay,
+  todoListHandle,
+  type HouseholdSetUp,
+  type Manifest,
+  type ManifestDay,
+} from '../src/api/manifest.js';
 import { inkOverrideBody, widgetConfigBody } from '../src/api/widget-schema.js';
 import { widgetStyleBody } from '../src/api/widget-style.js';
 import type { Framebuffer } from '../src/epaper/framebuffer.js';
@@ -125,10 +131,27 @@ function manifest(): Manifest {
 const M = manifest();
 const MODEL = buildEpaperModel(M);
 
+/*
+ * A household with nothing set up, which is what makes a box *empty*.
+ *
+ * Every frame goes through `keepWidgetsWithSomethingToSay` first, because
+ * that is the panel's own path (`/d/epaper/:file` runs it before
+ * `renderScreenFrame`) and it is where `whenEmpty` is resolved — a probe that
+ * rendered the widget directly could never see a fallback move ink. Nothing
+ * else moves for it: a widget alone on its canvas is kept by the guard however
+ * little is set up, so every other key is probed against exactly the frame it
+ * always was.
+ */
+const NOTHING_SET_UP: HouseholdSetUp = { modules: [], shift: false, todoLists: [] };
+
 /** One widget, alone on a panel, as a string of bits — comparable and exact. */
 function frame(type: string, config: Record<string, unknown>): string {
-  const widget: PlacedEpaperWidget = { type, x: 0, y: 0, w: 1, h: 1, z: 0, config };
-  const fb: Framebuffer = renderFreeformEpaper(MODEL, M, [widget], PANEL);
+  const placed: PlacedEpaperWidget = { type, x: 0, y: 0, w: 1, h: 1, z: 0, config };
+  const widgets = keepWidgetsWithSomethingToSay([placed], NOTHING_SET_UP).map((widget) => ({
+    ...widget,
+    config: widget.config as Record<string, unknown>,
+  }));
+  const fb: Framebuffer = renderFreeformEpaper(MODEL, M, widgets, PANEL);
   let bits = '';
   for (let y = 0; y < PANEL.height; y++) {
     for (let x = 0; x < PANEL.width; x++) bits += fb.get(x, y) ? '1' : '0';
@@ -238,6 +261,12 @@ const PROBES: Readonly<Record<string, readonly unknown[]>> = {
   'style.weight': ['bold'],
   'style.tracking': ['wide'],
   'style.inset': [0, 2],
+  /*
+   * A fallback (RFC 014 §5.3): draws where the widget has nothing to say, which
+   * under `NOTHING_SET_UP` is every type that can be left out — and nowhere
+   * else, which is what keeps it off a clock's row of `PANEL_HONOURS`.
+   */
+  whenEmpty: [{ type: 'notes', config: { text: 'Instead of the forecast' } }],
 };
 
 /**
@@ -424,6 +453,25 @@ describe('the override itself', () => {
     expect(withInk({ count: 3, ink: 'nonsense' })).toEqual({ count: 3 });
   });
 
+  it('is refused by the schema when a fallback nests, or carries an ink lane', () => {
+    // `whenEmpty.config` is the widget's config less `whenEmpty` and `ink`,
+    // by omission rather than by a second declaration — so a fallback's
+    // fallback is a rejected key, and one level deep is a fact about the shape.
+    const notes = { type: 'notes', config: { text: 'Hi' } };
+    expect(widgetConfigBody.safeParse({ whenEmpty: notes }).success).toBe(true);
+    expect(widgetConfigBody.safeParse({ whenEmpty: { type: 'notes' } }).success).toBe(true);
+    expect(
+      widgetConfigBody.safeParse({ whenEmpty: { type: 'notes', config: { whenEmpty: notes } } }).success,
+    ).toBe(false);
+    expect(
+      widgetConfigBody.safeParse({ whenEmpty: { type: 'notes', config: { ink: { count: 1 } } } }).success,
+    ).toBe(false);
+    expect(widgetConfigBody.safeParse({ whenEmpty: { type: 'website' } }).success).toBe(false);
+    expect(widgetConfigBody.safeParse({ whenEmpty: { type: 'notes', nonsense: 1 } }).success).toBe(false);
+    // And the ink lane cannot carry one: a panel substitutes where its wall does.
+    expect(widgetConfigBody.safeParse({ ink: { whenEmpty: notes } }).success).toBe(false);
+  });
+
   it('adds a setting the wall never had', () => {
     expect(frame('shift', { ink: { shiftName: 'code' } })).toBe(frame('shift', { shiftName: 'code' }));
   });
@@ -445,6 +493,31 @@ describe('the override itself', () => {
     expect(widgetConfigBody.safeParse({ ink: { count: 0 } }).success).toBe(false);
     expect(widgetConfigBody.safeParse({ ink: { count: 999 } }).success).toBe(false);
     expect(widgetConfigBody.safeParse({ ink: { mode: 'nonsense' } }).success).toBe(false);
+  });
+});
+
+describe('a fallback for an empty box, on the panel', () => {
+  /*
+   * RFC 014 §5.3. Resolved before the renderer, in the same function the wall's
+   * canvas goes through, so the panel draws the note exactly where the wall
+   * does — and draws the forecast, untouched, wherever the forecast has
+   * something to say.
+   */
+  const notes = { type: 'notes', config: { text: 'Instead of the forecast' } };
+
+  it('draws the fallback, and exactly the fallback, in an empty box', () => {
+    const empty = frame('weather', {});
+    const withFallback = frame('weather', { whenEmpty: notes });
+    expect(withFallback).not.toBe(empty);
+    expect(withFallback).toBe(frame('notes', notes.config));
+  });
+
+  it('never replaces a widget that has something to say', () => {
+    const placed: PlacedEpaperWidget = { type: 'weather', x: 0, y: 0, w: 1, h: 1, z: 0, config: { whenEmpty: notes } };
+    const setUp: HouseholdSetUp = { modules: ['weather'], shift: false, todoLists: [] };
+    const [resolved] = keepWidgetsWithSomethingToSay([placed], setUp);
+    expect(resolved?.type).toBe('weather');
+    expect(resolved?.substituted).toBeUndefined();
   });
 });
 

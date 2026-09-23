@@ -307,8 +307,35 @@ export const inkOverrideBody = widgetConfigFields
  * is a lane over the widget rather than one of its options, and it must not
  * be pickable *into* the ink lane (`ink.style` is a rejected key).
  */
-export const widgetConfigBody = widgetConfigFields
-  .extend({ ink: inkOverrideBody.optional(), style: widgetStyleBody.optional() })
+const laneConfigFields = widgetConfigFields.extend({
+  ink: inkOverrideBody.optional(),
+  style: widgetStyleBody.optional(),
+});
+
+/**
+ * What a box draws when it has nothing to say (RFC 014 §5.3): another widget,
+ * in the same rectangle.
+ *
+ * `config` is the widget's own config *less* `whenEmpty` and `ink` — omitted
+ * from the lanes above rather than declared again, so a fallback is validated
+ * by exactly the rule a placed widget of its type is, and the shape stops one
+ * level down the way `ink.ink` does: `whenEmpty.config.whenEmpty` is a
+ * rejected key, not a recursion anybody has to bound. `ink` goes with it
+ * because a fallback is the wall's substitution, and a panel following that
+ * wall draws the same fallback — an override on it would be a panel saying
+ * something the wall does not, one level further in than the ink lane allows.
+ *
+ * The style lane stays: a note standing in for a forecast is still a box on
+ * this wall, and may be dressed like one.
+ */
+export const whenEmptyConfigBody = laneConfigFields.omit({ ink: true }).strict();
+
+export const whenEmptyBody = z
+  .object({ type: z.enum(WIDGET_TYPES), config: whenEmptyConfigBody.optional() })
+  .strict();
+
+export const widgetConfigBody = laneConfigFields
+  .extend({ whenEmpty: whenEmptyBody.optional() })
   .strict();
 
 /**

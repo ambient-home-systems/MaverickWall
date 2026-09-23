@@ -22,9 +22,17 @@
  */
 
 import { inkOf } from './ink.js';
-import { omittedReason, omissionNote, type NotDrawn, type Surface } from './omission.js';
+import {
+  fallbackChoices,
+  fallbackOf,
+  omissionNote,
+  omissionOf,
+  type NotDrawn,
+  type OmissionFacts,
+  type Surface,
+} from './omission.js';
 import { tierNamed, type TierName } from './tiers.js';
-import { labelFor } from './widget-labels.js';
+import { describeWidget, labelFor } from './widget-labels.js';
 import { calendarView } from './widget-views.js';
 
 export type InspectorTab = 'content' | 'style';
@@ -48,6 +56,12 @@ export interface InspectorInput {
   /** Which tab the person last chose. The wall lane only has tabs. */
   readonly tab: InspectorTab;
   readonly notDrawn: NotDrawn;
+  /**
+   * What the server decided the flags from, so a box's fallback can be asked
+   * whether it has anything to say itself (RFC 014 §5.3). Absent on an older
+   * server's page, where a chosen fallback is believed.
+   */
+  readonly facts?: OmissionFacts | undefined;
   readonly surface: Surface;
   /**
    * The density tier the *preview* resolved for the selected widget, read back
@@ -91,6 +105,19 @@ export interface WidgetInspector {
   /** Why the wall leaves this box out, said in full. Wall lane only. */
   readonly note?: string | undefined;
   /**
+   * "When this has nothing to show" (RFC 014 §5.3): offered on a box the wall
+   * would leave out, and on one that already names a fallback so it can be
+   * taken back. Wall lane only — a panel substitutes where its wall does, so
+   * there is nothing for the ink lane to say differently.
+   *
+   * `current` is the chosen fallback's type, or nothing for "leave the box
+   * empty"; `choices` is what may stand in, never including a type the wall
+   * would leave out too.
+   */
+  readonly fallback?:
+    | { readonly current: string | undefined; readonly choices: readonly string[] }
+    | undefined;
+  /**
    * What this box has room to say, in the household's words. Wall lane only,
    * and absent unless the preview drew a tier to read.
    */
@@ -124,14 +151,42 @@ export function inspectorView(input: InspectorInput): InspectorView {
   };
   if (lane === 'ink') return base;
 
-  const why = omittedReason(widget, input.widgets, input.notDrawn);
+  const omission = omissionOf(widget, input.widgets, input.notDrawn, input.facts);
   const density = densityNote(widget, input.drawnTier);
+  const chosen = fallbackOf(widget.config);
+  const offersFallback = input.notDrawn.has(widget.id) || chosen !== undefined;
   return {
     ...base,
-    ...(why === undefined ? {} : { note: omissionNote(why, input.surface) }),
+    ...(omission === undefined
+      ? {}
+      : {
+          note: omissionNote(
+            omission.why,
+            input.surface,
+            omission.instead === undefined ? undefined : describeWidget(omission.instead),
+          ),
+        }),
+    ...(offersFallback
+      ? {
+          fallback: {
+            current: chosen?.type,
+            choices: withCurrent(fallbackChoices(widget.type, input.facts), chosen?.type),
+          },
+        }
+      : {}),
     ...(density === undefined ? {} : { density }),
     tab: input.tab,
   };
+}
+
+/**
+ * The picker's choices, keeping a stored fallback the facts would not offer
+ * today — a Shift badge chosen before the rota was deleted — so the control
+ * says what is stored rather than quietly showing the first option, which is
+ * `buildTodoConfig`'s rule for a list no longer watched.
+ */
+function withCurrent(choices: readonly string[], current: string | undefined): readonly string[] {
+  return current === undefined || choices.includes(current) ? choices : [...choices, current];
 }
 
 /**

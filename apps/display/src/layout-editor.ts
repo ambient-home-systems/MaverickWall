@@ -63,17 +63,20 @@ import {
 import {
   boxAriaLabel,
   drawnWidgets as drawnOf,
+  fallbackOf,
   notDrawnFor,
   todoListOf,
   omissionFlag,
-  omittedReason as omittedReasonOf,
+  omissionOf as omissionOfBox,
+  type Fallback,
+  type Omission,
   type Surface,
   type NotDrawn,
   type OmissionFacts,
 } from './omission.js';
 import { inspectorView } from './inspector.js';
 import { TIER_NAMES, type TierName } from './tiers.js';
-import { PALETTE, SWATCH, describeWidget } from './widget-labels.js';
+import { PALETTE, SWATCH, describeWidget, labelFor } from './widget-labels.js';
 import {
   HOUSE_FIELDS,
   SHIFT_FIELDS,
@@ -1719,9 +1722,18 @@ function boot(): void {
     omissionFacts === undefined
       ? notDrawnSeed
       : notDrawnFor([...state.widgets, ...state.stash.widgets], omissionFacts);
-  const drawnWidgets = (): readonly Widget[] => drawnOf(state.widgets, notDrawn());
-  const omittedReason = (widget: Widget): string | undefined =>
-    omittedReasonOf(widget, state.widgets, notDrawn());
+  /*
+   * A flagged box that names a fallback draws the fallback in its rectangle
+   * (RFC 014 §5.3) — substituted here from the same facts, in the server's
+   * order, so the preview, the ink-lane frame and the arrange backdrop all draw
+   * what the wall and the panel will.
+   */
+  const drawnWidgets = (): readonly Widget[] => drawnOf(state.widgets, notDrawn(), omissionFacts);
+  const omissionOf = (widget: Widget): Omission | undefined =>
+    omissionOfBox(widget, state.widgets, notDrawn(), omissionFacts);
+  /** The name of what stands in for a flagged box, when something does. */
+  const insteadName = (omission: Omission | undefined): string | undefined =>
+    omission?.instead === undefined ? undefined : describeWidget(omission.instead);
 
   /**
    * The widgets as the wall's own renderer needs them for the preview.
@@ -1866,20 +1878,24 @@ function boot(): void {
      * in this project where one thing is stored and two things read it. The
      * reason is in the inspector; this is the flag that sends you there.
      */
-    const why = omittedReason(widget);
-    if (why !== undefined) {
+    const omission = omissionOf(widget);
+    const instead = insteadName(omission);
+    if (omission !== undefined) {
       box.classList.add('is-not-drawn');
       const flag = document.createElement('span');
       flag.className = 'le-widget-flag';
       // The noun follows the host. This editor draws a panel's canvas as well
       // as a wall's, and "not on the wall" beside a 1-bit frame is the wrong
       // object — the same page carries the word "panel" everywhere else.
-      flag.textContent = omissionFlag(surfaceWord());
+      flag.textContent = omissionFlag(surfaceWord(), instead);
       box.appendChild(flag);
     }
     // Composed after the flag, and by the same function `refreshLabels` uses,
     // so a flagged box whose name changes is renamed to a screen reader too.
-    box.setAttribute('aria-label', boxAriaLabel(describeWidget(widget), why, surfaceWord()));
+    box.setAttribute(
+      'aria-label',
+      boxAriaLabel(describeWidget(widget), omission?.why, surfaceWord(), instead),
+    );
 
     const handle = document.createElement('span');
     handle.className = 'le-handle';
@@ -2226,7 +2242,9 @@ function boot(): void {
       const name = describeWidget(widget);
       const label = box.querySelector('.le-widget-label');
       if (label !== null) label.textContent = name;
-      const why = omittedReason(widget);
+      const omission = omissionOf(widget);
+      const why = omission?.why;
+      const instead = insteadName(omission);
       /*
        * The flag too, in place (RFC 012 §6.2). A to-do box is flagged by the
        * list its own settings name, and the list is picked in the inspector —
@@ -2241,10 +2259,13 @@ function boot(): void {
       const flag = box.querySelector<HTMLElement>('.le-widget-flag');
       if (why === undefined) {
         flag?.remove();
-      } else if (flag === null) {
+      } else if (flag !== null) {
+        // And its words: a box whose fallback changed says what stands in now.
+        flag.textContent = omissionFlag(surfaceWord(), instead);
+      } else {
         const made = document.createElement('span');
         made.className = 'le-widget-flag';
-        made.textContent = omissionFlag(surfaceWord());
+        made.textContent = omissionFlag(surfaceWord(), instead);
         // Before the handle, where `buildBox` puts it, so the box's children
         // keep one order however the flag arrived.
         const handle = box.querySelector('.le-handle');
@@ -2257,9 +2278,11 @@ function boot(): void {
        * sentence a flagged box carries was composed only where the flag is —
        * so a Calendar the wall leaves out, switched from a month to an agenda,
        * showed the new name on its chip and went on announcing the old one.
-       * The visible half updating is exactly what hid it.
+       * The visible half updating is exactly what hid it — and a fallback
+       * chosen or switched in the inspector (RFC 014 §5.3) changes this name
+       * and nothing a household can see on the box but the flag's words.
        */
-      box.setAttribute('aria-label', boxAriaLabel(name, why, surfaceWord()));
+      box.setAttribute('aria-label', boxAriaLabel(name, why, surfaceWord(), instead));
     }
     for (const row of layersPanel.querySelectorAll<HTMLElement>('.le-layer')) {
       const widget = state.widgets.find((one) => one.id === row.dataset['id']);
@@ -2587,6 +2610,7 @@ function boot(): void {
       inkAvailable: ink !== undefined,
       tab: inspectorTab,
       notDrawn: notDrawn(),
+      facts: omissionFacts,
       surface: surfaceWord(),
       ...(selected === undefined ? {} : { drawnTier: drawnTierOf(selected) }),
     });
@@ -2637,6 +2661,7 @@ function boot(): void {
       note.textContent = view.note;
       configPanel.appendChild(note);
     }
+    if (view.fallback !== undefined) buildFallbackConfig(widget, view.fallback);
 
     /*
      * And what this box has room to say, which is a fact about the size the
@@ -2679,6 +2704,138 @@ function boot(): void {
       buildFormatConfig(widget, cfg);
     }
     openInspector(keepFocus);
+  }
+
+  /**
+   * "When this has nothing to show" (RFC 014 §5.3): leave the box empty, as it
+   * always was, or show another widget in its rectangle.
+   *
+   * Substitution only. The box keeps its rectangle whatever it draws, so the
+   * canvas the household arranged is the canvas on the wall and a panel's
+   * refresh regions do not move; giving the room to a neighbour is a different
+   * decision and is not offered.
+   *
+   * Written as one `whenEmpty` object through `setConfig`, so it is one undo
+   * step per edit and a typed run of a note is one step, and read back through
+   * `fallbackOf` — the same reading the preview substitutes from. The content
+   * controls are each type's minimum: what the fallback *says*, never how it
+   * is dressed — a note's words, a countdown's name and date, a checklist's
+   * lines. Every other type draws what the household has already set up, and
+   * the picker never offers one the wall would leave out too.
+   */
+  function buildFallbackConfig(
+    widget: Widget,
+    offer: { readonly current: string | undefined; readonly choices: readonly string[] },
+  ): void {
+    const chosen = fallbackOf(widget.config);
+    const write = (next: Fallback | undefined): void => {
+      const own = next?.config;
+      setConfig(
+        widget,
+        'whenEmpty',
+        next === undefined
+          ? undefined
+          : own !== undefined && Object.keys(own).length > 0
+            ? { type: next.type, config: own }
+            : { type: next.type },
+      );
+    };
+    const first = offer.choices[0];
+    const section = document.createElement('div');
+    section.className = 'le-fallback';
+    section.appendChild(
+      segControl(
+        'When this has nothing to show',
+        first === undefined
+          ? [['empty', 'Leave the box empty']]
+          : [['empty', 'Leave the box empty'], ['other', 'Show another widget']],
+        chosen === undefined ? 'empty' : 'other',
+        (value) => {
+          if (value === 'empty') write(undefined);
+          else if (chosen === undefined && first !== undefined) write({ type: first });
+        },
+      ),
+    );
+    configPanel.appendChild(section);
+    if (chosen === undefined) return;
+
+    const typeField = cfgField('Show instead');
+    const select = document.createElement('select');
+    select.className = 'le-fallback-type';
+    for (const type of offer.choices) {
+      const option = document.createElement('option');
+      option.value = type;
+      option.textContent = labelFor(type);
+      if (type === chosen.type) option.selected = true;
+      select.appendChild(option);
+    }
+    select.addEventListener('change', () => {
+      // The content carries across: one strict object for every type, and a
+      // key a type does not read is simply not read — so a note's words
+      // survive a look at the countdown and back. Read *now*, not from
+      // `chosen`: the text areas below write without rebuilding this panel,
+      // so what was captured when it was built is missing everything typed
+      // since — measured, a switch dropped the note it had just been given.
+      write({ type: select.value, config: fallbackOf(widget.config)?.config });
+      renderConfigPanel();
+    });
+    typeField.appendChild(select);
+    section.appendChild(typeField);
+
+    const own = chosen.config ?? {};
+    const setOwn = (key: string, value: unknown): void => {
+      const next: Record<string, unknown> = { ...(fallbackOf(widget.config)?.config ?? {}) };
+      const empty = value === undefined || value === '' || (Array.isArray(value) && value.length === 0);
+      if (empty) delete next[key];
+      else next[key] = value;
+      write({ type: chosen.type, config: next });
+    };
+    const text = (label: string, key: string, rows: number, max: number, hint: string): void => {
+      const field = cfgField(label);
+      const area = document.createElement('textarea');
+      area.rows = rows;
+      area.maxLength = max;
+      area.placeholder = hint;
+      const stored = own[key];
+      area.value = Array.isArray(stored) ? (stored as string[]).join('\n') : typeof stored === 'string' ? stored : '';
+      area.addEventListener('input', () => {
+        if (key === 'items') {
+          const lines = area.value.split('\n').map((line) => line.trim()).filter((line) => line !== '');
+          setOwn(key, lines.slice(0, 40));
+        } else setOwn(key, area.value);
+      });
+      field.appendChild(area);
+      section.appendChild(field);
+    };
+    if (chosen.type === 'notes') {
+      text('Note', 'text', 4, 2000, 'What the wall should say in this box instead.');
+    } else if (chosen.type === 'todo') {
+      text('Items (one per line)', 'items', 5, 4000, 'Pick up milk\nPut the bins out');
+    } else if (chosen.type === 'countdown') {
+      const nameField = cfgField('Counting down to');
+      const name = document.createElement('input');
+      name.type = 'text';
+      name.maxLength = 60;
+      name.placeholder = 'e.g. Summer holiday';
+      name.value = typeof own['title'] === 'string' ? (own['title'] as string) : '';
+      name.addEventListener('change', () => setOwn('title', name.value.trim()));
+      nameField.appendChild(name);
+      section.appendChild(nameField);
+      const dateField = cfgField('Date');
+      const date = document.createElement('input');
+      date.type = 'date';
+      date.value = typeof own['target'] === 'string' ? (own['target'] as string) : '';
+      date.addEventListener('change', () =>
+        setOwn('target', /^\d{4}-\d{2}-\d{2}$/.test(date.value) ? date.value : undefined),
+      );
+      dateField.appendChild(date);
+      section.appendChild(dateField);
+    } else {
+      const hint = document.createElement('p');
+      hint.className = 'hint';
+      hint.textContent = `Drawn as a new ${labelFor(chosen.type).toLowerCase()} widget would be, from what is already set up.`;
+      section.appendChild(hint);
+    }
   }
 
   /** The type's own controls — the Content tab, and the ink lane's raw material. */
@@ -4153,6 +4310,7 @@ function boot(): void {
       inkAvailable: ink !== undefined,
       tab: inspectorTab,
       notDrawn: notDrawn(),
+      facts: omissionFacts,
       surface: surfaceWord(),
       ...(drawnTierOf(selected) === undefined ? {} : { drawnTier: drawnTierOf(selected) }),
     });

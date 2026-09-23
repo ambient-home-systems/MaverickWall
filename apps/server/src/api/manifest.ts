@@ -136,12 +136,25 @@ export function todoListHandle(entityId: string): string {
  * Carried through untouched for every type but one: a `todo` widget's `list`
  * is an entity id and leaves as its handle. Nothing else is rewritten, so a
  * config saved before the key existed is byte-identical on the way out.
+ *
+ * **Except that `whenEmpty` never leaves** (RFC 014 §5.3). It is resolved
+ * before this — a box that needed its fallback is already wearing it — so the
+ * wall has no use for it, and carrying it would carry a to-do fallback's
+ * *entity id* to the wall inside a box that is not a to-do widget, which is
+ * rule 12 broken one level down where `list`'s rewrite cannot see. A config
+ * that never named one is untouched, so no stored ETag moves.
  */
 export function displayConfig(type: string, config: unknown): unknown {
-  if (type !== 'todo' || typeof config !== 'object' || config === null) return config;
-  const list = (config as Record<string, unknown>)['list'];
-  if (typeof list !== 'string' || list === '') return config;
-  return { ...(config as Record<string, unknown>), list: todoListHandle(list) };
+  if (typeof config !== 'object' || config === null) return config;
+  let out = config as Record<string, unknown>;
+  if ('whenEmpty' in out) {
+    const { whenEmpty: _resolved, ...rest } = out;
+    out = rest;
+  }
+  if (type !== 'todo') return out;
+  const list = out['list'];
+  if (typeof list !== 'string' || list === '') return out;
+  return { ...out, list: todoListHandle(list) };
 }
 
 /**
@@ -246,6 +259,28 @@ export function widgetIsSetUp(widget: SetUpTarget, setUp: HouseholdSetUp): boole
 }
 
 /**
+ * What a box draws instead when it has nothing to say (RFC 014 §5.3), or
+ * nothing when it names no fallback.
+ *
+ * Read defensively although the editor wrote it through `whenEmptyBody`: a
+ * type this build does not draw, or a config that is not an object, is no
+ * fallback rather than a box the wall cannot draw — the same rule
+ * `placeCanvas` applies to a stored row's own type.
+ */
+export function fallbackOf(config: unknown): { readonly type: string; readonly config: unknown } | undefined {
+  if (typeof config !== 'object' || config === null) return undefined;
+  const raw = (config as Record<string, unknown>)['whenEmpty'];
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const type = (raw as Record<string, unknown>)['type'];
+  if (typeof type !== 'string' || !(WIDGET_TYPES as readonly string[]).includes(type)) return undefined;
+  const own = (raw as Record<string, unknown>)['config'];
+  return { type, config: typeof own === 'object' && own !== null ? own : {} };
+}
+
+/** A widget as it leaves the omission — itself, or its fallback wearing its box. */
+export type Resolved<T extends SetUpTarget> = T & { readonly substituted?: true };
+
+/**
  * Drop the widgets with nothing to say — unless that would leave nothing at all.
  *
  * The guard is rule nine and it is not theoretical: a canvas holding only a
@@ -256,12 +291,40 @@ export function widgetIsSetUp(widget: SetUpTarget, setUp: HouseholdSetUp): boole
  * Shared by the wall's canvas and the e-paper panel's, so a panel following a
  * wall cannot draw "No weather yet" where the wall draws nothing — one stored
  * value read two ways is the fault this repository keeps paying for.
+ *
+ * **And it is where a box's fallback is resolved, for the same reason**
+ * (RFC 014 §5.3). A widget with nothing to say that names a `whenEmpty` becomes
+ * that widget — same id, same box, same `z`, `substituted: true` — provided the
+ * fallback has something to say itself; one that has not is dropped exactly as
+ * the widget would have been. Only the omitted are substituted, so a fallback
+ * never replaces a real widget: a Weather box with a location draws weather
+ * whatever it names.
+ *
+ * **The order is the whole of it: substitute, *then* guard.** The guard keeps
+ * every original when nothing survives, which is right when nothing *could*
+ * — and wrong when the canvas is a Weather box and a Shift badge, neither set
+ * up, each naming a note. Guarding first sees "nothing to say", keeps both
+ * originals, and draws two placeholders the household had already written the
+ * answer to. Substituting first draws the two notes. When even the fallbacks
+ * have nothing, the guard hands back the *originals* rather than their
+ * fallbacks — the canvas somebody arranged, unedited, which is what it always
+ * drew.
  */
 export function keepWidgetsWithSomethingToSay<T extends SetUpTarget>(
   widgets: readonly T[],
   setUp: HouseholdSetUp,
-): readonly T[] {
-  const kept = widgets.filter((widget) => widgetIsSetUp(widget, setUp));
+): readonly Resolved<T>[] {
+  const kept: Resolved<T>[] = [];
+  for (const widget of widgets) {
+    if (widgetIsSetUp(widget, setUp)) {
+      kept.push(widget);
+      continue;
+    }
+    const fallback = fallbackOf(widget.config);
+    if (fallback !== undefined && widgetIsSetUp(fallback, setUp)) {
+      kept.push({ ...widget, type: fallback.type, config: fallback.config, substituted: true } as Resolved<T>);
+    }
+  }
   return kept.length === 0 ? widgets : kept;
 }
 
@@ -352,6 +415,11 @@ function placeCanvas(
   return keepWidgetsWithSomethingToSay(drawable, setUp)
     .map((widget) => ({
       id: widget.id,
+      // A fallback drawing in this box (RFC 014 §5.3): the wall labels nothing
+      // and draws `type` as it draws any widget — the mark is for the editor
+      // and for anybody reading the manifest. Spread, so a box that is itself
+      // carries no key and no ETag churns.
+      ...(widget.substituted === true ? { substituted: true as const } : {}),
       type: widget.type,
       x: unit(widget.x, 0),
       y: unit(widget.y, 0),
@@ -906,6 +974,8 @@ export interface PlacedWidgetRow {
  * merged `ink` and the wall never looks at it.
  */
 export interface ManifestPlacedWidget extends PlacedWidgetRow {
+  /** This box is drawing its `whenEmpty` fallback rather than itself (RFC 014 §5.3). */
+  readonly substituted?: true;
   readonly styleTokens?: Readonly<Record<string, string>>;
   readonly daytimeStyleTokens?: Readonly<Record<string, string>>;
 }

@@ -213,3 +213,40 @@ describe('what the box has room to say', () => {
     expect(view).not.toHaveProperty('density');
   });
 });
+
+describe('what stands in for an empty box (RFC 014 §5.3)', () => {
+  const flagged = new Map([[weather.id, NO_LOCATION]]) as NotDrawn;
+  const facts = { drawn: { clock: true, weather: false, shift: false }, todoLists: [], why: {} };
+
+  it('offers the control on a box the wall leaves out, starting from "leave it empty"', () => {
+    const view = ask({ selected: weather.id, notDrawn: flagged, facts });
+    expect(view).toMatchObject({ fallback: { current: undefined } });
+    const choices = view.kind === 'widget' ? view.fallback?.choices ?? [] : [];
+    expect(choices).not.toContain('weather');
+    expect(choices).not.toContain('shift');
+  });
+
+  it('does not offer it on a box the wall draws as itself', () => {
+    expect(ask({ selected: clock.id, notDrawn: flagged, facts })).not.toHaveProperty('fallback');
+  });
+
+  it('names what stands in, in the note', () => {
+    const withNote = { ...weather, config: { whenEmpty: { type: 'notes', config: { text: 'Hi' } } } };
+    const view = ask({ widgets: [clock, withNote], selected: weather.id, notDrawn: flagged, facts });
+    expect(view).toMatchObject({
+      note: `Not on the wall yet, so this box shows Notes instead. ${NO_LOCATION}`,
+      fallback: { current: 'notes' },
+    });
+  });
+
+  it('keeps a stored choice the facts would no longer offer, so the picker says what is stored', () => {
+    const stale = { ...weather, config: { whenEmpty: { type: 'shift' } } };
+    const view = ask({ widgets: [clock, stale], selected: weather.id, notDrawn: flagged, facts });
+    expect(view.kind === 'widget' && view.fallback?.choices).toContain('shift');
+  });
+
+  it('is the wall lane’s alone', () => {
+    const view = ask({ selected: weather.id, notDrawn: flagged, facts, lane: 'ink', inkAvailable: true });
+    expect(view).not.toHaveProperty('fallback');
+  });
+});

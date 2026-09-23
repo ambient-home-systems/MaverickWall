@@ -59,18 +59,32 @@
  */
 const STYLE_INSET = 'style.inset';
 
+/*
+ * **`whenEmpty` is honoured by every type that can be left out, and by no
+ * other** (RFC 014 §5.3). It is resolved before either renderer, in
+ * `keepWidgetsWithSomethingToSay`, so a panel substitutes exactly where the
+ * wall does — which is the reason it is in this table at all rather than
+ * beside the ink lane. But this table is a fact derived by rendering, and a
+ * clock, a calendar, a note, a countdown, a picture and a module's panel are
+ * never omitted (`widgetIsSetUp`), so a fallback on one of them cannot move
+ * ink and naming it there would be the entry this table exists not to carry.
+ * A to-do box is omittable only when it names a list, which is why it is here
+ * and why `epaper-ink.test.ts` probes it from a list-backed base.
+ */
+const WHEN_EMPTY = 'whenEmpty';
+
 export const PANEL_HONOURS: Readonly<Record<string, readonly string[]>> = {
   clock: ['title', 'showTitle', 'align', 'clockFormat', 'showDate', 'variant', STYLE_INSET],
   calendar: ['title', 'showTitle', 'mode', 'cellEvents', 'count', 'calendars', STYLE_INSET],
-  shift: ['title', 'showTitle', 'people', 'fields', 'shiftName', 'showHours', STYLE_INSET],
-  weather: ['title', 'showTitle', 'count', 'fields', 'showLow', 'showIcon', STYLE_INSET],
-  homeassistant: ['title', 'showTitle', 'count', 'fields', 'readings', STYLE_INSET],
+  shift: ['title', 'showTitle', 'people', 'fields', 'shiftName', 'showHours', STYLE_INSET, WHEN_EMPTY],
+  weather: ['title', 'showTitle', 'count', 'fields', 'showLow', 'showIcon', STYLE_INSET, WHEN_EMPTY],
+  homeassistant: ['title', 'showTitle', 'count', 'fields', 'readings', STYLE_INSET, WHEN_EMPTY],
   external: ['title', 'showTitle', 'count', 'module', STYLE_INSET],
   countdown: ['title', 'showTitle', 'target', STYLE_INSET],
   notes: ['title', 'showTitle', 'align', 'text', STYLE_INSET],
   // `list` and `showDone` are read the way the wall reads them (RFC 012 §6.3):
   // a list absent means the typed items, present means that list's rows.
-  todo: ['title', 'showTitle', 'items', 'list', 'showDone', STYLE_INSET],
+  todo: ['title', 'showTitle', 'items', 'list', 'showDone', STYLE_INSET, WHEN_EMPTY],
   image: ['title', 'showTitle', 'image', STYLE_INSET],
 };
 

@@ -16,6 +16,16 @@
 
 ## Unreleased
 
+**An empty box can show something else instead.** When a widget has nothing
+to show — a Weather box before you have set a location, a rota badge with no
+rota — your wall has left a gap where you put it. Select that box in the
+editor and, under the note saying why it is not on the wall, choose **When
+this has nothing to show → Show another widget**: a note in your own words, a
+countdown, a clock, the calendar or a checklist, drawn in exactly that box
+until the widget has something of its own to say, and then the widget comes
+back by itself. An e-paper panel following the wall shows the same thing in
+the same place. Nothing changes on any wall until you choose it.
+
 **The clock comes in three looks.** Select a clock on your wall and the
 **Style** tab now opens with **Look**: **Plain** is the clock you have today,
 **Stacked** puts the weekday and the date on lines of their own under the

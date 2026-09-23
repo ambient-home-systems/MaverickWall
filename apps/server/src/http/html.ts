@@ -1678,6 +1678,10 @@ pre.code{background:var(--mw-surface-2);
 .le-not-drawn{margin:0 0 var(--mw-s-3);padding:var(--mw-s-3) var(--mw-s-3);border-radius:var(--mw-r-2);
   background:var(--mw-surface-2);border:1px solid var(--mw-line);
   font:var(--mw-t-body);color:var(--mw-ink-2)}
+/* What stands in for the box (RFC 014 §5.3), under the reason it is needed and
+ * set off from the widget's own options by a hairline — it is about the box,
+ * not about anything the widget draws. */
+.le-fallback{margin:0 0 var(--mw-s-4);padding-bottom:var(--mw-s-3);border-bottom:var(--mw-hairline) solid var(--mw-line)}
 .le-handle{position:absolute;right:2px;bottom:2px;width:12px;height:12px;background:var(--accent);
   border-radius:calc(var(--mw-r-1) + var(--mw-hairline)) 0 calc(var(--mw-r-1) + var(--mw-hairline)) 0;cursor:se-resize;touch-action:none}
 /* A 12px corner is a pointer target on a mouse and nothing at all on a
