@@ -10,7 +10,7 @@ import {
 import { inkOverrideBody, widgetConfigBody } from '../src/api/widget-schema.js';
 import { widgetStyleBody } from '../src/api/widget-style.js';
 import type { Framebuffer } from '../src/epaper/framebuffer.js';
-import { INK_KEYS, INK_LANE, PANEL_HONOURS, PANEL_IGNORES, withInk } from '../src/epaper/honours.js';
+import { INK_KEYS, INK_LANE, PANEL_HONOURS, PANEL_IGNORES, WIDGET_ROW_KEYS, withInk } from '../src/epaper/honours.js';
 import { renderFreeformEpaper, type PlacedEpaperWidget } from '../src/epaper/widgets.js';
 import { buildEpaperModel } from '../src/epaper/viewmodel.js';
 
@@ -335,6 +335,14 @@ const SCHEMA_KEYS = Object.keys(widgetConfigBody.shape)
   .flatMap((key) =>
     key === 'style' ? Object.keys(widgetStyleBody.shape).map((member) => `style.${member}`) : [key],
   );
+/*
+ * And the one setting that is a column beside the config rather than a key in
+ * it: a widget's own CSS (RFC 014 §7). `WIDGET_ROW_KEYS` is the honours
+ * table's own statement of that, so a note may name it; the probe below sets
+ * it on the config anyway, where it is an unknown key, which is the only route
+ * a stored value could ever take to `drawWidget` — and it takes none.
+ */
+const STORED_KEYS = [...SCHEMA_KEYS, ...WIDGET_ROW_KEYS];
 
 describe('what a panel honours, checked against the panel', () => {
   for (const type of TYPES) {
@@ -382,7 +390,7 @@ describe('what a panel honours, checked against the panel', () => {
 describe('what a panel cannot honour, and says so', () => {
   it('names a real setting for every note', () => {
     for (const entry of PANEL_IGNORES) {
-      expect(SCHEMA_KEYS, `${entry.key} is not a stored option`).toContain(entry.key);
+      expect(STORED_KEYS, `${entry.key} is not a stored option`).toContain(entry.key);
       expect(entry.label.length).toBeGreaterThan(0);
       // Written for somebody in a kitchen: a reason, not a category.
       expect(entry.why.length).toBeGreaterThan(12);

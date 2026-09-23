@@ -162,6 +162,8 @@ function feed(words: readonly string[], shift: number): readonly NamedFeed[] {
 interface Wall {
   readonly rects: Record<string, readonly string[]>;
   readonly words: readonly string[];
+  /** The computed ink of the first date numeral and the first agenda title. */
+  readonly inks: readonly string[];
 }
 
 /** Every selector this file holds to the pixel: rows, cells and columns. */
@@ -200,7 +202,11 @@ async function shapeOf(page: Page): Promise<Wall> {
     const words = [...document.querySelectorAll('#wall .canvas .hz-rowtext, #wall .canvas .dr-ev-title, #wall .canvas .hz-spantext')]
       .filter(visible)
       .map((node) => (node.textContent ?? '').trim());
-    return { rects, words };
+    const inks = ['#wall .canvas .hz-num', '#wall .canvas .dr-ev-title'].map((selector) => {
+      const node = document.querySelector(selector);
+      return node === null ? 'none' : getComputedStyle(node).color;
+    });
+    return { rects, words, inks };
   }, SELECTORS as Record<string, string>);
 }
 
@@ -212,7 +218,7 @@ async function shapeOf(page: Page): Promise<Wall> {
  * row group — the one shipped arrangement that carries a group, so the
  * stability contract is measured on a wall that has one.
  */
-async function drawOne(calendars: readonly NamedFeed[], grouped = false): Promise<Wall> {
+async function drawOne(calendars: readonly NamedFeed[], grouped = false, css?: string): Promise<Wall> {
   const home: Installation = await install({ calendars });
   try {
     equipHousehold(home.db, home.now());
@@ -224,6 +230,12 @@ async function drawOne(calendars: readonly NamedFeed[], grouped = false): Promis
       const strip = findTemplate('classic-strip');
       if (strip === undefined) throw new Error('no classic-strip template');
       applyTemplate(home.db, id, strip);
+    }
+    if (css !== undefined) {
+      // Through the real Advanced page, so the block is read, scoped and
+      // stored exactly as a household's is (RFC 014 §7).
+      const saved = await home.post(`/admin/walls/${id}/css`, { css_form: '1', css_wall: css });
+      if (saved.status !== 302) throw new Error(`the wall's CSS was refused: ${await saved.text()}`);
     }
     const preset = wallSizePreset('tv-32');
     if (preset === undefined) throw new Error('no tv-32 preset');
@@ -248,6 +260,21 @@ let first: Wall;
 let second: Wall;
 let groupedFirst: Wall;
 let groupedSecond: Wall;
+let styled: Wall;
+
+/**
+ * A household's own CSS that changes colours and nothing else (RFC 014 §7).
+ *
+ * Three inks and a background, on the numerals, the titles and the forecast:
+ * the block a household writes first. It reaches the glass through the CSSOM,
+ * after the wall's own stylesheet, and the whole promise of the refresh
+ * contract is that it moves no rectangle — a colour is ink inside a region,
+ * never the region.
+ */
+const COLOURS_ONLY =
+  '.fw-calendar .hz-num { color: #ff0000 }\n' +
+  '.dr-ev-title { color: #00aa00 }\n' +
+  '.wx-day { color: #0000ff; background: #eeeeee }';
 
 describe('the same wall drawn with different events', () => {
   /*
@@ -361,6 +388,28 @@ describe('the same wall drawn with different events', () => {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const RENDER = join(HERE, '..', '..', 'display', 'src', 'render.ts');
 const DENSITY = join(HERE, '..', '..', 'display', 'src', 'density.ts');
+
+describe('and the same wall wearing a household’s CSS that changes only colours', () => {
+  beforeAll(async () => {
+    styled = await drawOne(feed(WORDS_A, 0), false, COLOURS_ONLY);
+  }, SLOW);
+
+  it('wears it — the inks moved, so this is not comparing an unstyled wall with itself', () => {
+    expect(styled.inks).not.toEqual(first.inks);
+    expect(styled.inks[0]).toBe('rgb(255, 0, 0)');
+    expect(styled.inks[1]).toBe('rgb(0, 170, 0)');
+  });
+
+  it('draws the same words', () => {
+    expect(styled.words).toEqual(first.words);
+  });
+
+  for (const name of Object.keys(SELECTORS)) {
+    it(`places every ${name} identically, to the hundredth of a pixel`, () => {
+      expect(styled.rects[name]).toEqual(first.rects[name]);
+    });
+  }
+});
 
 describe('the mechanisms that computed geometry from content', () => {
   /*

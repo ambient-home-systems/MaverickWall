@@ -982,6 +982,8 @@ export function createApp(deps: AppDeps): Hono {
     readonly layoutGutter?: number | null;
     /** The wall's default style lane as stored JSON (RFC 014 §4.1). */
     readonly layoutStyle?: string | null;
+    /** The wall's own CSS, already scoped (RFC 014 §7); null until written. */
+    readonly customCss?: string | null;
   }) => {
     const at = now();
     const household = readHousehold(deps.db);
@@ -1111,6 +1113,9 @@ export function createApp(deps: AppDeps): Hono {
         // As stored, too; `buildManifest` reads it through `storedStyleLayer`
         // and a column this process did not write resolves to no lane.
         layoutStyle: screenLike.layoutStyle ?? null,
+        // The scoped text as stored (RFC 014 §7); `buildManifest` spreads an
+        // absent one away, so a wall with none sends the document it always did.
+        customCss: screenLike.customCss ?? null,
         theme: screenLike.theme,
         timezone: screenLike.timezone,
         daytimeTheme: screenLike.daytimeTheme,
@@ -1161,6 +1166,7 @@ export function createApp(deps: AppDeps): Hono {
       readDistanceMm: screen.readDistanceMm,
       layoutGutter: screen.layoutGutter,
       layoutStyle: screen.layoutStyle,
+      customCss: screen.customCss,
     });
 
   // The push server, if boot wired one, builds from exactly this — see the dep.

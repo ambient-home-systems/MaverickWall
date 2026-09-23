@@ -292,6 +292,25 @@ export const layoutWidgets = sqliteTable('layout_widgets', {
    * orientation and slot, so every sweep that removes a canvas takes them too.
    */
   parentId: text('parent_id'),
+  /**
+   * This widget's own CSS (RFC 014 §7), as the household typed it, and the
+   * same text read and scoped by `api/custom-css.ts` at save time — which is
+   * the text the manifest carries and the wall inserts. Two columns rather
+   * than one because the two are read by two different readers: the Advanced
+   * page echoes the household's own text into its textarea, comments and all,
+   * and the wall is handed the compact, scoped output; parsing at render time
+   * to derive the second from the first is the one thing the RFC forbids.
+   *
+   * **Null is no CSS**, which is every row that existed before the column did
+   * and every row the editor writes: the migration adds the two and touches
+   * nothing, and the manifest spreads an absent block away rather than
+   * emitting a null, so a household who never opens the page sends the
+   * document they sent before, byte for byte. A layout save from the editor
+   * does not carry either — `replaceLayout` keeps them by widget id across
+   * the rewrite, so arranging a wall cannot silently discard its CSS.
+   */
+  customCss: text('custom_css'),
+  customCssScoped: text('custom_css_scoped'),
   ...timestamps,
 });
 
@@ -591,6 +610,16 @@ export const screens = sqliteTable(
      * a widget's own `style.inset` alone (see the note at `PANEL_IGNORES`).
      */
     layoutStyle: text('layout_style'),
+    /**
+     * The wall's own CSS (RFC 014 §7): what the household typed, and the same
+     * text read and scoped under `.canvas` at save time by `api/custom-css.ts`,
+     * which is what the manifest carries. The `layout_widgets` pair above
+     * says why there are two and why null is what every wall drew before.
+     * Read by the browser wall only; a panel draws one bit from its config
+     * and never reads a stylesheet (`PANEL_IGNORES` carries the sentence).
+     */
+    customCss: text('custom_css'),
+    customCssScoped: text('custom_css_scoped'),
     /** The landscape canvas's aspect; null follows the household (RFC 005). */
     layoutLandscapeAspect: real('layout_landscape_aspect'),
     /** Per-orientation canvas background as JSON; null is none (RFC 005 Phase 3). */

@@ -62,7 +62,14 @@
  *       iframe reports zero violations very reliably;
  *   (e) an image widget served from `/d/media` — a `background-image` written
  *       through the CSSOM, which is the exact shape the positive control uses
- *       to fail, differing only in the host it names.
+ *       to fail, differing only in the host it names;
+ *   (f) a wall wearing a household's own CSS (RFC 014 §7) — the block that
+ *       passed the sanitiser, inserted by the wall through `insertRule` on its
+ *       own sheet, at zero violations and *applied*, read off a computed
+ *       colour. The positive control below is the other half of §7's
+ *       verification bar: a block that reaches the CSSOM with a `url()` in it
+ *       — which only a hand-insert can, since the sanitiser refuses one —
+ *       produces exactly one refusal.
  *
  * ## The positive control
  *
@@ -484,6 +491,50 @@ describe('2 · the surfaces the wall actually draws', () => {
 
         const found = await violations(page);
         expect(found.length, `the image widget:\n  ${describeViolations(found)}`).toBe(0);
+      } finally {
+        await context.close();
+      }
+    },
+    SLOW,
+  );
+
+  it(
+    '(f) draws a wall wearing a household’s own CSS with nothing refused, and wears it',
+    async () => {
+      const wall = await fresh({ feed: true });
+      const link = await wall.pairLink();
+      const screen = wall.db
+        .prepare('SELECT id FROM screens ORDER BY created_at DESC LIMIT 1')
+        .get() as { id: string };
+      const saved = await wall.post(`/admin/walls/${screen.id}/css`, {
+        css_form: '1',
+        css_wall: '.fw-calendar .hz-num { color: #ff0000 }',
+      });
+      expect(saved.status, 'the CSS this surface needs was refused').toBe(302);
+
+      const context = await (await browser()).newContext({ viewport: { width: 1080, height: 1920 } });
+      await armViolationListener(context);
+      try {
+        const page = await context.newPage();
+        await page.goto(link, { waitUntil: 'load' });
+        await settleWall(page);
+        await page.waitForTimeout(1000);
+
+        /*
+         * Applied, or the zero below is about a wall that ignored the block.
+         * Read off the computed colour of a date numeral rather than off the
+         * sheet: the sheet holding the rule and the glass wearing it are two
+         * facts, and only the second is the one a household sees.
+         */
+        const numeral = await page.evaluate(() => {
+          const node = document.querySelector('#wall .canvas .fw-calendar .hz-num');
+          return node === null ? 'no numeral' : getComputedStyle(node).color;
+        });
+        expect(numeral, 'the household’s block did not reach the glass').toBe('rgb(255, 0, 0)');
+        expect(await page.evaluate(() => document.querySelectorAll('style').length), 'a <style> element was written').toBe(0);
+
+        const found = await violations(page);
+        expect(found.length, `the styled wall:\n  ${describeViolations(found)}`).toBe(0);
       } finally {
         await context.close();
       }

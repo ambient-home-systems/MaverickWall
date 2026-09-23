@@ -24,6 +24,7 @@ import {
 } from './orientation.js';
 import { announcement, buildModel, localTime } from './viewmodel.js';
 import { createManifestStore } from './store.js';
+import { createCustomCssSheet, customCssBlocks } from './custom-css.js';
 import { assess, DEFAULT_LIMITS } from './watchdog.js';
 
 /**
@@ -126,6 +127,18 @@ function start(): void {
     () => ({ w: window.innerWidth, h: window.innerHeight }),
   );
   const store = createManifestStore();
+  /*
+   * The household's own CSS (RFC 014 §7), on the wall's own stylesheet and
+   * after every rule of it — through the CSSOM, never a `<style>`, which the
+   * display's Content-Security-Policy would refuse. `draw` applies it exactly
+   * when the document it just built holds a canvas, and every path that draws
+   * chrome instead clears it; the rules are scoped under `.canvas` and the
+   * boxes inside it, so the clearing is belt and braces over a fence the
+   * selectors already keep.
+   */
+  const customCss = createCustomCssSheet(() =>
+    Array.from(document.styleSheets).find((sheet) => (sheet.href ?? '').includes('/assets/display.css')),
+  );
 
   let manifest: Manifest | undefined;
   /*
@@ -179,6 +192,7 @@ function start(): void {
   };
 
   renderMessage(root, 'Maverick Wall', 'Waiting for the first update…');
+  customCss.clear();
 
   /**
    * Turn the page to match how the screen is hung.
@@ -307,6 +321,17 @@ function start(): void {
     // Which theme is on the glass decides which resolution of a style lane
     // the boxes wear (RFC 014 §4.1) — the same `day` the root was just themed by.
     renderFreeform(root, model, canvas, undefined, { daytime: day });
+    /*
+     * The household's CSS goes on only while a canvas is on the glass. Asked
+     * of the document rather than of the model: `renderFreeform` draws an
+     * alert takeover *instead of* a canvas, and the one fact that matters here
+     * is which of the two it drew.
+     */
+    if (root.querySelector('.canvas') !== null) {
+      customCss.apply(customCssBlocks(manifest.screen?.customCss, canvas.widgets));
+    } else {
+      customCss.clear();
+    }
     // What is drawn, said. No-op unless the sentence itself changed.
     announce(announcement(model));
     lastDrawAt = Date.now();
@@ -405,6 +430,7 @@ function start(): void {
         if (!pairingShown) {
           pairingShown = true;
           renderPairing(root, submitPairingCode);
+          customCss.clear();
         }
         return;
       case 'failed':
@@ -465,6 +491,7 @@ function start(): void {
                 ? 'This wall’s server answered, but not with a wall. Nothing has arrived yet — it keeps trying.'
                 : 'Not reaching this wall’s server. Nothing has arrived yet — it keeps trying.'),
           );
+          customCss.clear();
         }
         break;
     }

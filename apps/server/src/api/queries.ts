@@ -101,7 +101,8 @@ export function readLayoutWidgets(
    */
   const rows = db
     .prepare(
-      `SELECT id, type, x, y, w, h, z, config, parent_id AS parentId
+      `SELECT id, type, x, y, w, h, z, config, parent_id AS parentId,
+              custom_css_scoped AS customCss
          FROM layout_widgets
         WHERE screen_id IS ? AND orientation = ? AND slot IS ?
         ORDER BY (parent_id IS NOT NULL), z, created_at`,
@@ -116,6 +117,7 @@ export function readLayoutWidgets(
     z: number;
     config: string | null;
     parentId: string | null;
+    customCss: string | null;
   }[];
 
   return rows.map((row) => {
@@ -139,6 +141,10 @@ export function readLayoutWidgets(
       // Spread, so a row on the canvas itself carries no key — the shape every
       // reader saw before groups, byte for byte where it is serialised.
       ...(row.parentId !== null ? { parentId: row.parentId } : {}),
+      // The widget's own CSS, already scoped (RFC 014 §7) — the *scoped* text,
+      // never what the household typed, because this row is what the manifest
+      // is built from. Spread on the same argument as the group link.
+      ...(row.customCss !== null && row.customCss !== '' ? { customCss: row.customCss } : {}),
     };
   });
 }
@@ -360,16 +366,39 @@ export function replaceLayout(
       ).run(layout.mode, layout.aspect, layout.background, at, screenId);
     }
 
+    /*
+     * A widget's own CSS (RFC 014 §7) survives the rewrite, by id.
+     *
+     * The editor posts everything it knows about a box and it does not know
+     * about the CSS — that lives on the Advanced page — so a rewrite that
+     * simply re-inserted the posted rows would take a household's CSS off a
+     * widget every time they dragged one. Read first, written back onto the
+     * rows whose ids came round again; a widget the household deleted takes
+     * its CSS with it, and a fresh id (a duplicate, a copy, a template's
+     * minted rows) starts with none, which is what its scope would match.
+     */
+    const kept = new Map(
+      (
+        db
+          .prepare(
+            `SELECT id, custom_css AS source, custom_css_scoped AS scoped FROM layout_widgets
+              WHERE screen_id IS ? AND orientation = ? AND slot IS ? AND custom_css IS NOT NULL`,
+          )
+          .all(screenId, orientation, slot) as { id: string; source: string; scoped: string | null }[]
+      ).map((row) => [row.id, row] as const),
+    );
     // One canvas: this orientation, this slot. The other slots' rows on the
     // same orientation are somebody else's arrangement and are left alone.
     db.prepare(
       'DELETE FROM layout_widgets WHERE screen_id IS ? AND orientation = ? AND slot IS ?',
     ).run(screenId, orientation, slot);
     const insert = db.prepare(
-      `INSERT INTO layout_widgets (id, screen_id, orientation, slot, type, x, y, w, h, z, config, parent_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO layout_widgets (id, screen_id, orientation, slot, type, x, y, w, h, z, config, parent_id,
+                                   custom_css, custom_css_scoped, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     layout.widgets.forEach((widget, index) => {
+      const css = kept.get(widget.id);
       insert.run(
         widget.id,
         screenId,
@@ -386,10 +415,125 @@ export function replaceLayout(
         // A child's group (RFC 014 §5.1); the boundary checked it names a group
         // in this same list, so the row can be trusted here as the rest are.
         widget.parentId ?? null,
+        css?.source ?? null,
+        css?.scoped ?? null,
         at,
         at,
       );
     });
+  });
+  tx();
+}
+
+/**
+ * Everything the wall's Advanced page shows and saves (RFC 014 §7): the
+ * household's own text for the wall and for every widget on it, in every
+ * orientation and every named layout, with the scoped output beside each so
+ * the page can say how many rules a saved block holds.
+ *
+ * The *source* rather than the scoped text, because this is the one reader
+ * that echoes it back into a textarea — comments, indentation and all. The
+ * manifest never reads this; it reads `readLayoutWidgets` and `readScreens`,
+ * which carry the scoped column and not this one.
+ */
+export interface WidgetCssRow {
+  readonly id: string;
+  readonly type: string;
+  readonly orientation: 'portrait' | 'landscape';
+  /** Null is the everyday layout; a name is a scheduled one (RFC 014 §5.2). */
+  readonly slot: string | null;
+  /** The widget's own settings, for a title to name the row by. */
+  readonly config: unknown;
+  readonly source: string | null;
+  readonly scoped: string | null;
+}
+
+export interface ScreenCss {
+  readonly wall: { readonly source: string | null; readonly scoped: string | null };
+  readonly widgets: readonly WidgetCssRow[];
+}
+
+export function readCustomCss(db: SqliteDatabase, screenId: string): ScreenCss | undefined {
+  const wall = db
+    .prepare('SELECT custom_css AS source, custom_css_scoped AS scoped FROM screens WHERE id = ?')
+    .get(screenId) as { source: string | null; scoped: string | null } | undefined;
+  if (wall === undefined) return undefined;
+  const rows = db
+    .prepare(
+      `SELECT id, type, orientation, slot, config, custom_css AS source, custom_css_scoped AS scoped
+         FROM layout_widgets
+        WHERE screen_id IS ?
+        ORDER BY (slot IS NOT NULL), slot, orientation, (parent_id IS NOT NULL), z, created_at`,
+    )
+    .all(screenId) as {
+    id: string;
+    type: string;
+    orientation: string;
+    slot: string | null;
+    config: string | null;
+    source: string | null;
+    scoped: string | null;
+  }[];
+  return {
+    wall,
+    widgets: rows.map((row) => {
+      let config: unknown;
+      if (row.config !== null) {
+        try {
+          config = JSON.parse(row.config);
+        } catch {
+          config = undefined;
+        }
+      }
+      return {
+        id: row.id,
+        type: row.type,
+        orientation: row.orientation === 'landscape' ? 'landscape' : 'portrait',
+        slot: row.slot,
+        config,
+        source: row.source,
+        scoped: row.scoped,
+      };
+    }),
+  };
+}
+
+/** One block, as the sanitiser answered it: what was typed, and what the wall gets. */
+export interface CssBlock {
+  readonly source: string;
+  readonly scoped: string;
+}
+
+/**
+ * Write the Advanced page's blocks, whole, in one transaction.
+ *
+ * `wall` absent leaves the wall's own untouched, and a widget not named in
+ * `widgets` keeps what it had — the gutter's rule: a page rendered before a
+ * widget was added must not clear the CSS on the widget it never showed. An
+ * *empty* block is stored as null on both columns, so "cleared" and "never
+ * written" are one state and the manifest spreads both away. Only widgets on
+ * this screen are written, whatever ids the form named.
+ */
+export function writeCustomCss(
+  db: SqliteDatabase,
+  screenId: string,
+  blocks: { readonly wall?: CssBlock; readonly widgets: ReadonlyMap<string, CssBlock> },
+): void {
+  const at = Date.now();
+  const nullIfEmpty = (text: string): string | null => (text.trim() === '' ? null : text);
+  const tx = db.transaction(() => {
+    if (blocks.wall !== undefined) {
+      db.prepare(
+        'UPDATE screens SET custom_css = ?, custom_css_scoped = ?, updated_at = ? WHERE id = ?',
+      ).run(nullIfEmpty(blocks.wall.source), nullIfEmpty(blocks.wall.scoped), at, screenId);
+    }
+    const update = db.prepare(
+      `UPDATE layout_widgets SET custom_css = ?, custom_css_scoped = ?, updated_at = ?
+        WHERE id = ? AND screen_id IS ?`,
+    );
+    for (const [id, block] of blocks.widgets) {
+      update.run(nullIfEmpty(block.source), nullIfEmpty(block.scoped), at, id, screenId);
+    }
   });
   tx();
 }
@@ -2064,6 +2208,12 @@ export interface ScreenRow {
    * Named in the `SELECT` for the reason the gutter above is.
    */
   readonly layoutStyle: string | null;
+  /**
+   * The wall's own CSS, **scoped** — the text the manifest carries and never
+   * what the household typed (RFC 014 §7). Null is no CSS, which is every wall
+   * until one is written. Named in the `SELECT` for the reason the gutter is.
+   */
+  readonly customCss: string | null;
 }
 
 export function readScreens(db: SqliteDatabase): ScreenRow[] {
@@ -2089,7 +2239,8 @@ export function readScreens(db: SqliteDatabase): ScreenRow[] {
               layout_landscape_aspect AS layoutLandscapeAspect,
               layout_background AS layoutBackground,
               layout_landscape_background AS layoutLandscapeBackground,
-              layout_gutter AS layoutGutter, layout_style AS layoutStyle
+              layout_gutter AS layoutGutter, layout_style AS layoutStyle,
+              custom_css_scoped AS customCss
          FROM screens WHERE revoked_at IS NULL`,
     )
     .all() as ScreenRow[];

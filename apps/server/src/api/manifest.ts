@@ -506,6 +506,8 @@ function placeCanvas(
       // The group this box sits inside (RFC 014 §5.1). Spread, so a canvas
       // with no group serialises byte for byte as it did before the key.
       ...(widget.parentId !== undefined ? { parentId: widget.parentId } : {}),
+      // The widget's own CSS, scoped (RFC 014 §7): spread on the same argument.
+      ...(widget.customCss !== undefined && widget.customCss !== '' ? { customCss: widget.customCss } : {}),
     }))
     // Parents before children, then by z — a child's z is relative to its
     // group, so the two scales are not sorted against each other.
@@ -977,6 +979,13 @@ export interface Manifest {
      */
     readonly layoutStyleTokens?: Readonly<Record<string, string>>;
     readonly layoutDaytimeStyleTokens?: Readonly<Record<string, string>>;
+    /**
+     * The wall's own CSS, scoped under its canvas at save time (RFC 014 §7):
+     * the text the wall inserts after its own stylesheet, and never what the
+     * household typed. **Optional, and absent until a household writes one**,
+     * on the `layoutGutter` argument above — spread, never emitted empty.
+     */
+    readonly customCss?: string;
   };
   readonly days: readonly ManifestDay[];
   /** Everyone the wall knows about, so a legend can be drawn. */
@@ -1087,6 +1096,13 @@ export interface PlacedWidgetRow {
    * existed before the column did.
    */
   readonly parentId?: string;
+  /**
+   * The widget's own CSS, scoped to its box at save time (RFC 014 §7) — the
+   * text the wall inserts, never what the household typed. Absent on every
+   * widget until a household writes one, which keeps the row byte-identical
+   * to what it sent before the column existed.
+   */
+  readonly customCss?: string;
 }
 
 /**
@@ -1223,6 +1239,8 @@ export interface BuildManifestInput {
     readonly layoutGutter?: number | null;
     /** The wall's default style lane, as stored JSON; null until chosen. */
     readonly layoutStyle?: string | null;
+    /** The wall's own CSS, already scoped; null until written (RFC 014 §7). */
+    readonly customCss?: string | null;
   };
   /**
    * Resolve a theme reference to its shape and (for a custom theme) its tokens.
@@ -1645,6 +1663,7 @@ export function buildManifest(input: BuildManifestInput): Manifest {
     ...(canvasStyle === undefined ? {} : { canvas: canvasStyle }),
   };
   const canvasStyleTokens = resolveStyleTokens(styling.active, [], canvasStyle);
+  const wallCss = pick(input.screen?.customCss) ?? undefined;
   const canvasDaytimeStyleTokens =
     styling.daytime === undefined ? undefined : resolveStyleTokens(styling.daytime, [], canvasStyle);
 
@@ -1721,6 +1740,9 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       ...(canvasDaytimeStyleTokens === undefined
         ? {}
         : { layoutDaytimeStyleTokens: canvasDaytimeStyleTokens }),
+      // The wall's own CSS (RFC 014 §7), on the same argument once more: the
+      // scoped text as stored, and nothing at all until a household wrote one.
+      ...(wallCss === undefined ? {} : { customCss: wallCss }),
     },
     display: {
       todayEvents: clamp(input.household.displayTodayEvents, 1, 20, 8),

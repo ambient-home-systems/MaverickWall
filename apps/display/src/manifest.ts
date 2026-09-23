@@ -142,6 +142,15 @@ export interface ManifestWidget {
    * older than this bundle never sends it, and one newer may send anything.
    */
   readonly parentId?: unknown;
+  /**
+   * The widget's own CSS, scoped to its box by the server at save time
+   * (RFC 014 §7). Inserted through the CSSOM after the wall's own stylesheet
+   * by `custom-css.ts`, one rule at a time, while a canvas is drawn. Absent
+   * on every widget until a household writes one, and read defensively — a
+   * server older than the field never sends it, and a cached copy may carry
+   * anything.
+   */
+  readonly customCss?: unknown;
 }
 
 export interface Manifest {
@@ -244,6 +253,12 @@ export interface Manifest {
      */
     readonly layoutStyleTokens?: unknown;
     readonly layoutDaytimeStyleTokens?: unknown;
+    /**
+     * The wall's own CSS, scoped under its canvas by the server (RFC 014 §7).
+     * Absent on a wall nobody has written one for, and on a server older than
+     * the field; read defensively for the reason a widget's is.
+     */
+    readonly customCss?: unknown;
   };
   readonly days: readonly ManifestDay[];
   readonly people: readonly ManifestPerson[];

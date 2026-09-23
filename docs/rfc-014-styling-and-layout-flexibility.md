@@ -28,7 +28,14 @@ halves, `browser-grouped-card.test.ts`), and in the editor multi-select, a
 marquee, Group and Ungroup as one undo step each, children placed and dragged
 inside their parent, a group's own inspector and nested Layers
 (`apps/display/src/selection.ts`, `grouping.ts`, `placement.ts`'s parent
-space, `apps/server/test/browser-editor.test.ts` §11). Nothing else here is
+space, `apps/server/test/browser-editor.test.ts` §11); and **§7 is built**, all
+three preconditions — the sanitiser (`apps/server/src/api/custom-css.ts` over
+css-tree, `apps/server/test/custom-css.test.ts`), the two columns per table
+(migration `0051`), the CSSOM delivery (`apps/display/src/custom-css.ts`,
+`browser-custom-css.test.ts`, `display-csp.test.ts` surface f,
+`reflow-stability.test.ts`'s styled wall) and the Advanced page
+(`apps/server/src/http/admin-css.ts`, `apps/display/src/css-editor.ts`,
+`custom-css-page.test.ts`). Nothing else here is
 built ·
 Owner: — · First drafted 2026-09-15 ·
 Arises from the question "could a household style each widget with a CSS
@@ -685,6 +692,31 @@ block per wall and one per widget, on an **Advanced** screen, with these
 properties. None is optional and all three preconditions ship before the
 textarea does.
 
+**The ask, as this repository records it — written down before the textarea
+was built, because the block is conditional on it.** This RFC arose from a
+household asking whether each widget could be styled with a CSS block (its own
+status line; the commit that added it says it was "written from the question
+'could a household style each widget with a CSS block?'"), and §1 records what
+that household was reaching for: *a unique look, per widget*. Searched before
+this phase was built — every issue and every pull request on the repository,
+and every commit message — **no narrower ask is recorded anywhere**: nobody has
+written down "a hairline under the clock" or "the agenda's times in a serif".
+So the thing the steps before this one could not express is the ask itself,
+and that is worth stating as a property rather than as a gap in the evidence.
+Every step this RFC built ahead of the block is a menu: an enum somebody drew
+(§4.2, and five of its six rows are still undrawn), a lane of the theme's own
+thirteen tokens (§4.1, §4.4), a shape chosen from five (§4.3). A look that is
+*unique* is, by definition, one that is on none of them. The nearest the
+record comes to a specific case is §4.1's own summary of what "a unique design
+per module" means — "a different face, a different ground, a different accent,
+tighter or looser, larger or smaller, per widget" — of which *larger or
+smaller* is exactly the control the lane shipped without (`scale`, deferred,
+and §12 leans towards never), and a *shape* per widget is what §4.3 declined
+("shape is not per widget"). Today a household reaches either of those only
+through this block. **If the household's own words exist outside this
+repository, they belong here in place of this paragraph**, and the block's
+justification is whichever of them the four steps could not express.
+
 **Precondition 1 — a Content-Security-Policy on the display. Built.** It
 turns rule three from a property of the code into a property of the browser,
 and it is what makes the sanitiser below defence in depth rather than the only
@@ -727,6 +759,41 @@ widget's own box selector by rewriting each selector list — the mechanism
 same reason `@scope` is not used: rule two. A block that fails to parse is a
 400 that names the line.
 
+**Built, as `apps/server/src/api/custom-css.ts` over css-tree (in
+`apps/server` alone; core and calendar stay vendor-free), and four things were
+decided in the building.** The at-rules are an **allowlist** — `@media`,
+`@supports`, `@container` — rather than the list above, so `@charset`,
+`@layer`, `@property` and whatever comes next are refused without a clause
+each, and the name is unescaped and lowercased first, because `@IMPORT`,
+`@\69 mport` and `@import` are one keyword to a browser. `url()` is refused as
+a node *and* the functions that fetch are refused by name — `src()`,
+`image()`, `image-set()`, `cross-fade()`, `element()`, `paint()` — because
+`image-set("a.png" 1x)` takes bare strings and a scan for `url(` never sees
+it; every property, a custom property's value and an at-rule's prelude alike.
+**Two forms of every selector are emitted**, the descendant form and a self
+form with the scope compounded into the first compound (after a leading type
+selector, so `div.x` stays valid): a household reads `.fw-clock` straight off
+the markup, and a descendant-only scope would let that selector silently match
+nothing, which is the `options.json` fault in CSS. Both forms add one
+attribute (or one class) of specificity to every selector alike, so the order
+the household's rules win in is the order they wrote — the `preview-css.ts`
+argument, kept. And **custom properties are allowed to be defined and not to
+be read back**: `var(--x)` of a property the block defines is refused anywhere
+in it, `position` takes a bare keyword only (never `var()`, never a fallback,
+never an escape), and a custom property may not carry `fixed` or `sticky` as
+an identifier at all, because a value assembled at one site and used at
+another is one a sanitiser checking use sites cannot see. Nesting is refused
+outright — `.canvas & {}` is the one spelling that puts an ancestor in front of
+the scope, and it is newer than the browsers rule two keeps. The bound is 8 KB.
+The whole policy is one table in `custom-css.test.ts`, in `safeNextPath`'s
+shape: every row asserts `ok === false`, so a sanitiser that stripped instead
+of rejecting turns the table red — which is the mutation the table was checked
+against. Stored as **two columns per table** (`custom_css`, the household's
+text for the textarea; `custom_css_scoped`, the output for the manifest,
+migration `0051`, four `ALTER TABLE ADD COLUMN`), so nothing is parsed on a
+poll; `replaceLayout` keeps a widget's block by id across the editor's
+rewrite and a fresh id starts with none.
+
 **Precondition 3 — safe mode by construction.** The wall inserts the block
 after its own stylesheet and *only* on the canvas: the pairing form, the boot
 message, the offline banner and the alert takeover are never under it. A block
@@ -735,6 +802,39 @@ stored copy in IndexedDB carries the block, so a wall coming back from a power
 cut draws the styled wall it had. And the editor states, beside the textarea,
 in these words: *class names may change between releases; a panel ignores
 this; the wall's own rules about motion and size are not enforced here.*
+
+**Built, and the door is `insertRule` on the wall's own `display.css` sheet,
+never a `<style>`** (`apps/display/src/custom-css.ts`): the display's policy is
+`style-src 'self'` with no `'unsafe-inline'`, a `<style>` written by script is
+exactly what that refuses, and the CSSOM is what precondition 1 measured as
+not governed. The rules go on after every rule of the wall's, one at a time
+under their own `try`, so a rule this engine cannot read costs that rule and
+never the block; the split is a brace counter that knows strings, escapes and
+comments, and nothing on the wall parses CSS. `draw` applies the blocks exactly
+when the document it just built holds a canvas and clears them otherwise, and
+every path that draws chrome clears before it draws — on top of a fence the
+selectors already keep, since nothing in CSS climbs. The IndexedDB copy is the
+manifest, so it carries the block for free. Measured (`browser-custom-css.test.ts`)
+with the block a household is most likely to get wrong, `display: none` on the
+wall's calendar boxes and on the clock inside its widget: both reach the glass
+through the sheet with no `<style>` element in the document; the pairing form
+renders on a screen with no token; the boot message renders on a screen whose
+every poll is aborted; and the offline banner renders after the server is
+**killed** — the only way to get one — over a wall drawn from its stored copy
+with both blocks still on it. `display-csp.test.ts` gained surface (f), a wall
+wearing a sanitised block at zero violations with the block *applied*, read off
+a computed colour; the positive control is the other half of §10's bar. And
+`reflow-stability.test.ts` draws a third wall wearing a colours-only block and
+holds every rectangle to the unstyled wall's, to the hundredth. The Advanced
+page (`admin-css.ts`, reached from the wall's Advanced category and never from
+the Style tab) is a field per block with the promise verbatim, a 400 that
+echoes every field back with the sanitiser's sentence beside the one it
+refused and the form handed back dirty, and a live preview
+(`css-editor.ts`) that posts the fields to `/check` and inserts what comes back
+through the same module the wall uses — one sanitiser, not two. `PANEL_IGNORES`
+carries the same sentence beside `customCss`, the one entry that names a column
+beside the config rather than a key in it. **Still unproven where it counts:**
+nobody has written a block for a real kitchen wall.
 
 What the escape hatch does **not** get: scoping by a shadow root per widget.
 It scopes natively without parsing and would be the honest mechanism, but it
@@ -752,10 +852,10 @@ cannot do.
 | Rule | Where it bites | How it holds |
 |---|---|---|
 | 2 (ES2019) | Scoping | Selector prefixing, not `@scope`; no `:has()` in any generated rule |
-| 3 (no third-party origins) | The CSS block | CSP on the display — **built**, and wider than `/d/*`: `/`, `/pair`, `/d/*`, `/assets/*`, `/sw.js`; `url()`, `@import`, `@font-face` still refused at save |
+| 3 (no third-party origins) | The CSS block | CSP on the display — **built**, and wider than `/d/*`: `/`, `/pair`, `/d/*`, `/assets/*`, `/sw.js`; `url()`, every fetching function, `@import` and `@font-face` refused at save — **built**, `custom-css.ts` |
 | 5 (Zod at every boundary) | Every new key | Enums and bounded numbers; the lane is `themeTokensSchema` picked; the block is parsed, never regex-checked |
 | 6 (no secrets in logs) | Unchanged | No new string reaches a log |
-| 9 (never brick) | The lane's `scale`; the block | Bounds on `scale`; safe mode; chrome never under the block; a refused block is a 400, not a blank wall |
+| 9 (never brick) | The lane's `scale`; the block | Bounds on `scale`; safe mode — **built**: chrome never under the block, a refused rule costs that rule, a refused block is a 400 with the text echoed back, not a blank wall |
 | 12 (HA read-only) | Unchanged | — |
 | Design rules | The block | Not enforceable inside it, and the editor says so; enforceable everywhere else, because everything else is an enum |
 
@@ -856,6 +956,17 @@ reads a class name.
   inside `image-set()` and `cursor`, a selector escaping through `,`, a
   `\` -escaped brace, a comment splitting a keyword. Then a browser test that
   installs a refused block by hand and reads the CSP violation report.
+  **Built**: `custom-css.test.ts` is the table — a hundred-odd rows, every one
+  `ok === false`, including `position: fixed` through a custom property, a
+  `var()` fallback and an escape, `!important` in three spellings, and the
+  outside names inside `:not()`, `:is()` and `@media`; the hand-inserted
+  `url()` is `display-csp.test.ts`'s positive control and its surface (f) is a
+  sanitised block at zero violations, applied. `browser-custom-css.test.ts`
+  is precondition 3's four surfaces plus the refusal driven through the real
+  form; `reflow-stability.test.ts`'s styled wall is the rectangles;
+  `custom-css-page.test.ts` is the page, the echo, the check endpoint and the
+  layout rewrite keeping a block by id; `custom-css-manifest.test.ts` is the
+  byte-identical document for a wall with none.
 
 ## 11. Rollout
 
@@ -866,7 +977,7 @@ reads a class name.
 4. 5.3 substitution (**built**), then 5.2 (**built**), then 5.1 (**built**,
    model, template and editor) — then 5.3 yield as a decision on its own.
 5. 7, if asked for, behind its three preconditions, and the CSP on its own
-   before any of it.
+   before any of it. **Built**, on the ask as §7 records it.
 
 ## 12. Open questions
 

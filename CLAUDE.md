@@ -7217,6 +7217,68 @@ where it counts:** nobody has grouped anything on a real phone or in a real
 supervisor's sidebar, and no e-paper panel has been photographed drawing a
 group a household made.
 
+**A wall carries a household's own CSS now — one block per wall and one per
+widget, on an Advanced page — and the promise that makes is the one worth
+writing down (RFC 014 §7).** The class names in `display.css` are not an API.
+They are renamed in most releases and this document records the deletions:
+`.te*` is dead styling for markup that is gone, `hz-dots` became the density
+mark, `.fw-scale` went with `fitToBox`. A block written against `.hz-num`
+binds to today's markup, and the maintenance promise made here is **not**
+that those names will now hold still. It is the sentence the Advanced page
+states beside every field, verbatim, and `PANEL_IGNORES` states beside the
+key (`CUSTOM_CSS_PROMISE`, one constant, three readers): *class names may
+change between releases; a panel ignores this; the wall's own rules about
+motion and size are not enforced here.* It ships anyway, for two reasons
+stated once. The ask is recorded at RFC 014's own head and nowhere narrower —
+"a unique look, per widget" — and every step built ahead of the block is a
+menu: an enum somebody drew, a lane of the theme's thirteen tokens, a shape
+chosen from five. A look that is unique is on none of them by definition, so
+no fifth menu was going to answer it. And a household reaching for one with no
+block reaches for a fork of the stylesheet or a proxy that rewrites it, which
+is the same fragility with no sanitiser, no CSP and no sentence beside the
+field. What *is* promised is smaller and every clause is a test: a block is
+**refused, never stripped** (`custom-css.test.ts`, a bypass table in
+`safeNextPath`'s shape, every row `ok === false`, so a sanitiser that quietly
+removed the `@import` turns the whole table red); the chrome is never under
+it — the pairing form, the boot message, the offline banner and an alert
+takeover are outside `.canvas` by construction, every selector is scoped
+under it or under a box inside it, and the wall clears its household rules on
+every path that draws chrome (`browser-custom-css.test.ts`, with the server
+*killed* for the banner, which is the only way to get one); a rule this
+engine refuses costs that rule alone; a block that changes only colours moves
+no rectangle (`reflow-stability.test.ts`, a third wall); and rule three holds
+twice, at the sanitiser and at the Content-Security-Policy
+(`display-csp.test.ts`, surface f, at zero violations with the block
+*applied*).
+
+**Three things about building it are worth more than the feature.**
+`image-set()` takes bare strings, so a scan for `url(` never sees
+`image-set("a.png" 1x)` — which is why the refusal is a parser's (css-tree,
+`apps/server` only; core and calendar stay vendor-free) and the fetching
+functions are an allowlist rather than a regex. **Two forms of every selector
+are emitted**, `[data-widget-id="w1"] .fw-clock .clock` *and*
+`[data-widget-id="w1"].fw-clock .clock`, because a household reads `.fw-clock`
+straight off the wall's markup and a descendant-only scope would let that
+selector silently match nothing — the `options.json` fault, in CSS; both
+forms add one attribute of specificity to every selector alike, which is the
+`preview-css.ts` argument that a rewrite must never change which rule wins.
+And **custom properties may be defined and may not be read back**: `var(--x)`
+of a property the block itself defines is refused anywhere in it, `position`
+takes a bare keyword only, and a custom property may not carry `fixed` or
+`sticky` at all — because a value assembled at one site and used at another is
+one a sanitiser that checks use sites cannot see, and `display.css` is
+rewritten too often for this file to know which custom property a future rule
+reads into `position`. Two columns per table rather than one — the
+household's own text for the textarea, the scoped output for the manifest — so
+nothing is parsed on a poll, ever; `replaceLayout` keeps a widget's block by id
+across the editor's rewrite, and a fresh id starts with none. The e-paper
+panel reads none of it: `customCss` is in `PANEL_IGNORES` as the one entry
+that names a *column* beside the config rather than a key in it
+(`WIDGET_ROW_KEYS`), and `epaper-ink.test.ts` still proves it by rendering.
+**Still unproven where it counts:** nobody has written a block for a real
+kitchen wall, and the first household whose selector a release renames is the
+first test of the promise as stated.
+
 ---
 
 ## Open decisions

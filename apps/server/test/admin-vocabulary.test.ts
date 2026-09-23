@@ -388,6 +388,13 @@ describe('the admin, read out loud', () => {
         seen.filter((p) => /^\/admin\/walls\/[0-9a-f]{8,}$/.test(p)).length,
         'a paired wall’s own page',
       ).toBeGreaterThan(0);
+      // And the wall's Custom CSS page (RFC 014 §7), reached through the
+      // Advanced category — a page with a field per widget and a sentence
+      // about panels on it, which is exactly the kind of copy this sweeps.
+      expect(
+        seen.filter((p) => /^\/admin\/walls\/[0-9a-f]{8,}\/css$/.test(p)).length,
+        'a paired wall’s Custom CSS page',
+      ).toBeGreaterThan(0);
       expect(
         seen.filter((p) => /^\/admin\/epaper\/[0-9a-f]{8,}\/design$/.test(p)).length,
         'the e-paper panel’s design page',
