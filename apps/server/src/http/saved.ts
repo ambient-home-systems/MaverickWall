@@ -149,6 +149,10 @@ export const SAVED_MESSAGES = {
   'module-removed': 'Module removed.',
   'module-updated': 'Module updated.',
   'module-alerts-saved': 'Alerts setting saved.',
+  // A wall's own CSS (RFC 014 §7). Only sent once every block on the form
+  // has been read and written, so "picks it up" is a claim about a manifest
+  // whose ETag has already moved.
+  'wall-css': 'CSS saved. The wall picks it up within a minute.',
   // Themes
   'theme-created': 'Theme created.',
   'theme-generated': 'Theme generated.',

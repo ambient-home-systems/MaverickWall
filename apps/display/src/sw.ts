@@ -57,6 +57,7 @@ const SHELL = [
   '/assets/canvas-schedule.js',
   '/assets/clock.js',
   '/assets/clock-face.js',
+  '/assets/custom-css.js',
   '/assets/density.js',
   '/assets/glyphs.js',
   '/assets/group-cells.js',

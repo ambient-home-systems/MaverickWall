@@ -1269,6 +1269,15 @@ img.avatar{width:1.7rem;height:1.7rem;border-radius:var(--mw-r-full);object-fit:
 #theme-preview{width:300px;max-width:100%;min-height:220px;border:1px solid var(--rule);
   border-radius:var(--mw-r-2);overflow:hidden;background:var(--panel2)}
 #theme-contrast{margin-top:var(--mw-s-3)}
+/* The wall's Custom CSS page (RFC 014 §7): the theme builder's two columns,
+ * a monospace field, and a preview box of the same measure. */
+.css-builder{display:grid;grid-template-columns:1fr 320px;gap:calc(var(--mw-s-5) + var(--mw-s-1));align-items:start;margin-top:var(--mw-s-2)}
+@media(max-width:1000px){.css-builder{grid-template-columns:1fr}}
+.css-fields textarea.field-input{font-family:var(--mono);font-size:var(--mw-t-body-sm-size);line-height:var(--mw-t-body-sm-lh);white-space:pre;tab-size:2}
+.css-widget summary small{color:var(--mw-ink-muted);font-size:var(--mw-t-label-sm-size);margin-left:var(--mw-s-2)}
+.css-live[hidden]{display:none}
+#css-preview{width:300px;max-width:100%;min-height:220px;border:1px solid var(--rule);
+  border-radius:var(--mw-r-2);overflow:hidden;background:var(--panel2)}
 
 /* ---- Theme picker cards (Display) ---------------------------------------- */
 .themegrid{display:grid;grid-template-columns:repeat(2,1fr);gap:var(--mw-s-4);margin-top:var(--mw-s-2)}

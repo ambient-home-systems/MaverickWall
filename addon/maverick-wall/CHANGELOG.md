@@ -16,6 +16,24 @@
 
 ## Unreleased
 
+**A wall can carry your own CSS, and so can each widget on it.** Open a
+wall, then Wall settings › Advanced › **Custom CSS**. There is one field for
+the whole wall and one for every widget, with a live preview beside them.
+What you write is checked when you save: anything that would fetch from
+somewhere else (`@import`, `@font-face`, `url()`), anything that moves
+(`transition`, `animation`), `position: fixed` or `sticky`, `!important`, and
+any selector that reaches outside the widget are refused, with the line and
+the reason shown beside the field, and nothing is saved until every field is
+accepted. Everything else is applied inside the widget's own box (or, for the
+wall's own field, inside the layout) and never to the pairing form, the
+"waiting" message, the offline banner or a weather alert, which stay exactly
+as they are. A rule this wall's browser cannot read is skipped on its own;
+the wall draws on. A wall coming back from a power cut draws its styled
+layout from memory. One thing to know before you start: **class names may
+change between releases; a panel ignores this; the wall's own rules about
+motion and size are not enforced here.** An e-paper panel draws one bit from a
+widget's settings and never reads a stylesheet.
+
 **You can group widgets on a wall's layout.** Choose two or more boxes —
 click one, then Shift+click the others, or drag a rectangle over empty layout
 around them — and press **Group** on the toolbar. The boxes become one group

@@ -364,6 +364,63 @@ describe('upgrading a database that is already in use', () => {
     db.close();
   });
 
+  it('carries a wall and its widgets through 0051 with no CSS on either (RFC 014 §7)', () => {
+    /*
+     * `custom_css` and `custom_css_scoped` are nullable on both tables and
+     * **null is no CSS** — every row that existed before the columns did. A
+     * migration that wrote anything here would hand a household's wall a
+     * stylesheet nobody typed; so a wall paired long ago and a widget arranged
+     * on it are planted before 0051, walked through it, and read back with
+     * all four columns null and the widget's row otherwise exactly as it was.
+     * Text and nullable, so a block can be written and cleared without a
+     * default standing in for either.
+     */
+    const entries = journal();
+    const db = new Database(':memory:');
+    const stamp = 1_700_000_000_000;
+
+    let planted = false;
+    for (const entry of entries) {
+      if (entry.tag.startsWith('0051')) {
+        db.prepare(
+          `INSERT INTO screens (id, name, token_hash, token_issued_at, theme, created_at, updated_at)
+           VALUES ('s-wall', 'Kitchen', 'hash-1', ?, 'panels', ?, ?)`,
+        ).run(stamp, stamp, stamp);
+        db.prepare(
+          `INSERT INTO layout_widgets (id, screen_id, orientation, type, x, y, w, h, z, config, created_at, updated_at)
+           VALUES ('w-clock', 's-wall', 'portrait', 'clock', 0, 0, 1, 0.2, 0, '{"align":"center"}', ?, ?)`,
+        ).run(stamp, stamp);
+        planted = true;
+      }
+      apply(db, entry.tag);
+    }
+    expect(planted).toBe(true);
+
+    expect(
+      db
+        .prepare('SELECT custom_css AS source, custom_css_scoped AS scoped FROM screens WHERE id = ?')
+        .get('s-wall'),
+    ).toEqual({ source: null, scoped: null });
+    expect(
+      db
+        .prepare(
+          `SELECT id, type, x, y, w, h, z, config, custom_css AS source, custom_css_scoped AS scoped
+             FROM layout_widgets WHERE id = ?`,
+        )
+        .get('w-clock'),
+    ).toEqual({
+      id: 'w-clock', type: 'clock', x: 0, y: 0, w: 1, h: 0.2, z: 0, config: '{"align":"center"}',
+      source: null, scoped: null,
+    });
+    for (const table of ['screens', 'layout_widgets']) {
+      const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string; type: string; notnull: number }[];
+      for (const name of ['custom_css', 'custom_css_scoped']) {
+        expect(columns.find((c) => c.name === name), `${table}.${name}`).toMatchObject({ type: 'TEXT', notnull: 0 });
+      }
+    }
+    db.close();
+  });
+
   it('leaves an existing eInk screen refusing nothing by network (0038)', () => {
     /*
      * `lan_only` (Option C) has to reach a screen paired long before it

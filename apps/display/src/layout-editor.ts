@@ -31,6 +31,7 @@ import {
 } from './widget-style.js';
 import { renderContrast } from './contrast-guidance.js';
 import { PREVIEW_ROOT_CLASS, layoutPreviewRoot, previewStylesheet } from './preview-css.js';
+import { createCustomCssSheet, customCssBlocks, type CustomCssSheet } from './custom-css.js';
 import type { Manifest } from './manifest.js';
 import {
   CALENDAR_DENSITIES,
@@ -681,6 +682,9 @@ function boot(): void {
   let model: DisplayModel | undefined;
   let manifest: Manifest | undefined;
   let previewShadow: ShadowRoot | undefined;
+  /** The household's CSS on the preview's sheet, and each box's block by id (RFC 014 §7). */
+  let previewCss: CustomCssSheet | undefined;
+  let customCssById = new Map<string, string>();
   // The e-paper designer's backdrop: the panel's own 1-bit frame, fetched from
   // the server for whatever is on the canvas now. Kept as an <img> rather than
   // a second renderer in this bundle — see `renderEpaperPreview`.
@@ -1554,6 +1558,31 @@ function boot(): void {
       shadow.append(styleEl, wall);
       previewShadow = shadow;
       previewWall = wall;
+      /*
+       * The household's own CSS (RFC 014 §7), on the preview's copy of the
+       * stylesheet exactly as the wall puts it on its own: after every rule
+       * of it, through the CSSOM. The blocks are the manifest's — scoped by
+       * the server, keyed by the ids this canvas already has — so a wall and
+       * its editor cannot disagree about what a box looks like, which is the
+       * fault the preview exists to prevent. A box added here has none yet.
+       */
+      previewCss = createCustomCssSheet(() => styleEl.sheet ?? undefined);
+      customCssById = new Map();
+      const remember = (widgets: unknown): void => {
+        if (!Array.isArray(widgets)) return;
+        for (const widget of widgets as { readonly id?: unknown; readonly customCss?: unknown }[]) {
+          if (typeof widget?.id === 'string' && typeof widget.customCss === 'string') {
+            customCssById.set(widget.id, widget.customCss);
+          }
+        }
+      };
+      remember(manifest.layout?.portrait?.widgets);
+      remember(manifest.layout?.landscape?.widgets);
+      for (const slot of manifest.layout?.slots ?? []) {
+        const named = slot as { readonly portrait?: { readonly widgets?: unknown }; readonly landscape?: { readonly widgets?: unknown } };
+        remember(named?.portrait?.widgets);
+        remember(named?.landscape?.widgets);
+      }
 
       const at = Date.now();
       model = buildModel({ manifest, now: at, lastConfirmedAt: at, offline: false });
@@ -1601,11 +1630,19 @@ function boot(): void {
     // into the shadow wall: the reused sections measure themselves and scale to
     // their box, so they are indifferent to the shadow root having no root
     // font-size of its own.
+    const drawn = previewWidgets();
     renderFreeform(previewWall, model, {
       aspect: state.aspect,
-      widgets: previewWidgets(),
+      widgets: drawn,
       ...(state.background !== undefined ? { background: state.background } : {}),
     }, EDITOR_MEDIA_BASE);
+    // Then the household's CSS, for the boxes on this canvas that carry one.
+    previewCss?.apply(
+      customCssBlocks(
+        manifest.screen?.customCss,
+        drawn.map((widget) => ({ customCss: customCssById.get(widget.id) })),
+      ),
+    );
 
     // The ladder's cut marker is read back out of what was just drawn, so the
     // editor and the wall cannot disagree about what fits. The tier note is the

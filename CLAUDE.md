@@ -464,6 +464,47 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
+**3812 tests passing, over 268 files, and one of them red in the full run.**
+calendar 153 (plus 1 skipped) over 10 · core 314 over 9 · display 613 over
+35 · server 2732 over 214 with one red, measured on a clone whose tags had
+been fetched, so `changelog-shape.test.ts` compares rather than refusing.
+Measured for RFC 014 §7 (a household's own CSS): the display grew one file of
+18 tests and the server grew four files of 148 — the sanitiser's bypass table
+alone is 125 — plus five tests in three files that already existed
+(`display-csp`'s surface f, `reflow-stability`'s third wall, and a 0051 walk
+in `migration-upgrade`). The one red is `browser-source-colours` finding no
+span text on a cold first draw, a file this phase does not touch, and it
+passed alone on the same tree a minute later (5 of 5) — the font race this
+document already records for a cold boot under load, and the same file as the
+previous measurement's one red, written here rather than deducted. **It then
+went red on CI a third time, on a commit that touched one test file and this
+document, so it is repaired rather than recorded a fourth time**: the file
+was one of the last still opening a cold page with a bare `settleWall`, and a
+cold context resolves its density tiers against whatever face has arrived —
+on a loaded runner the fallback, a month grid naming nothing, and nothing
+drawn on a calendar colour. Its three pages take `loadWallSettled` now, whose
+manifest hold is the cure the rest of the suite already takes, and the
+re-measure inside it waits for the manifest on its second navigation the way
+the helper's own load does. Three runs in a row green; the mechanism is the
+helper's docstring, not a number. **The
+figure this replaces was 381 tests and twenty files behind**, and this phase
+accounts for 171 and five of those: the rest is §4.2's clock, §5.3's
+`whenEmpty`, §5.2's scheduled layouts and both halves of §5.1, each of which
+recorded its own tests and none of which re-ran the count — the paragraph's
+own warning, for the eighth time. Nine mutations were checked on this tree
+and eight are red: `@import` let through (8 rows of the table), the self form
+dropped (9), `var()` indirection allowed (3), the manifest emitting
+`customCss: null` (1),
+`replaceLayout` dropping a widget's block (1), the row key unlisted from the
+honours closure (1), a retired noun on the page (1), and the display's
+`insertRule` removed with the bundle rebuilt (3, in a real Chromium). The
+ninth — the `.canvas` gate in `main.ts` removed — stays green, and that is
+recorded rather than fixed: every rule is scoped under `.canvas` or under a
+box inside it, so the gate is a belt and the scope is the fence, and a test
+that cannot tell them apart is measuring the fence. The paragraph that
+carried the previous figure follows, unchanged, because its subject is the
+method and not the number:
+
 **3431 tests, over 248 files, and one of them red in the full run.** calendar
 153 (plus 1 skipped) over 10 · core 314 over 9 · display 520 over 29 · server
 2444 over 200, measured on a clone whose tags had been fetched, so
@@ -7216,6 +7257,68 @@ child drawn at its own fractions read as the layout's. **Still unproven
 where it counts:** nobody has grouped anything on a real phone or in a real
 supervisor's sidebar, and no e-paper panel has been photographed drawing a
 group a household made.
+
+**A wall carries a household's own CSS now — one block per wall and one per
+widget, on an Advanced page — and the promise that makes is the one worth
+writing down (RFC 014 §7).** The class names in `display.css` are not an API.
+They are renamed in most releases and this document records the deletions:
+`.te*` is dead styling for markup that is gone, `hz-dots` became the density
+mark, `.fw-scale` went with `fitToBox`. A block written against `.hz-num`
+binds to today's markup, and the maintenance promise made here is **not**
+that those names will now hold still. It is the sentence the Advanced page
+states beside every field, verbatim, and `PANEL_IGNORES` states beside the
+key (`CUSTOM_CSS_PROMISE`, one constant, three readers): *class names may
+change between releases; a panel ignores this; the wall's own rules about
+motion and size are not enforced here.* It ships anyway, for two reasons
+stated once. The ask is recorded at RFC 014's own head and nowhere narrower —
+"a unique look, per widget" — and every step built ahead of the block is a
+menu: an enum somebody drew, a lane of the theme's thirteen tokens, a shape
+chosen from five. A look that is unique is on none of them by definition, so
+no fifth menu was going to answer it. And a household reaching for one with no
+block reaches for a fork of the stylesheet or a proxy that rewrites it, which
+is the same fragility with no sanitiser, no CSP and no sentence beside the
+field. What *is* promised is smaller and every clause is a test: a block is
+**refused, never stripped** (`custom-css.test.ts`, a bypass table in
+`safeNextPath`'s shape, every row `ok === false`, so a sanitiser that quietly
+removed the `@import` turns the whole table red); the chrome is never under
+it — the pairing form, the boot message, the offline banner and an alert
+takeover are outside `.canvas` by construction, every selector is scoped
+under it or under a box inside it, and the wall clears its household rules on
+every path that draws chrome (`browser-custom-css.test.ts`, with the server
+*killed* for the banner, which is the only way to get one); a rule this
+engine refuses costs that rule alone; a block that changes only colours moves
+no rectangle (`reflow-stability.test.ts`, a third wall); and rule three holds
+twice, at the sanitiser and at the Content-Security-Policy
+(`display-csp.test.ts`, surface f, at zero violations with the block
+*applied*).
+
+**Three things about building it are worth more than the feature.**
+`image-set()` takes bare strings, so a scan for `url(` never sees
+`image-set("a.png" 1x)` — which is why the refusal is a parser's (css-tree,
+`apps/server` only; core and calendar stay vendor-free) and the fetching
+functions are an allowlist rather than a regex. **Two forms of every selector
+are emitted**, `[data-widget-id="w1"] .fw-clock .clock` *and*
+`[data-widget-id="w1"].fw-clock .clock`, because a household reads `.fw-clock`
+straight off the wall's markup and a descendant-only scope would let that
+selector silently match nothing — the `options.json` fault, in CSS; both
+forms add one attribute of specificity to every selector alike, which is the
+`preview-css.ts` argument that a rewrite must never change which rule wins.
+And **custom properties may be defined and may not be read back**: `var(--x)`
+of a property the block itself defines is refused anywhere in it, `position`
+takes a bare keyword only, and a custom property may not carry `fixed` or
+`sticky` at all — because a value assembled at one site and used at another is
+one a sanitiser that checks use sites cannot see, and `display.css` is
+rewritten too often for this file to know which custom property a future rule
+reads into `position`. Two columns per table rather than one — the
+household's own text for the textarea, the scoped output for the manifest — so
+nothing is parsed on a poll, ever; `replaceLayout` keeps a widget's block by id
+across the editor's rewrite, and a fresh id starts with none. The e-paper
+panel reads none of it: `customCss` is in `PANEL_IGNORES` as the one entry
+that names a *column* beside the config rather than a key in it
+(`WIDGET_ROW_KEYS`), and `epaper-ink.test.ts` still proves it by rendering.
+**Still unproven where it counts:** nobody has written a block for a real
+kitchen wall, and the first household whose selector a release renames is the
+first test of the promise as stated.
 
 ---
 

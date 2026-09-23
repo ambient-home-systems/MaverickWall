@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from 'vitest';
-import { TEARDOWN, browser, install, settleWall, shutDownBrowser, type NamedFeed } from './browser-harness.js';
+import { TEARDOWN, install, loadWallSettled, settleWall, shutDownBrowser, type NamedFeed } from './browser-harness.js';
 import { replaceLayout } from '../src/api/queries.js';
 
 /**
@@ -150,10 +150,13 @@ async function threeCalendarWall(cellEvents?: 'pills'): Promise<{
     });
   }
 
-  const page = await (await browser()).newPage();
-  await page.setViewportSize({ width: 1080, height: 1920 });
-  await page.goto(link, { waitUntil: 'load' });
-  await settleWall(page);
+  // A settled page, never a cold one: a cold context resolves its density
+  // tiers against whatever face has arrived, and on a loaded runner that is
+  // the fallback — a month grid that names nothing, so nothing is drawn on a
+  // calendar colour and the test measures an empty list. `loadWallSettled`
+  // holds every manifest until the fonts are in, which is the cure the rest
+  // of the suite already takes.
+  const { page, close } = await loadWallSettled(link, { width: 1080, height: 1920 });
 
   const marks = await page.evaluate((pills: boolean) => {
     const out: {
@@ -203,7 +206,7 @@ async function threeCalendarWall(cellEvents?: 'pills'): Promise<{
     stored,
     marks,
     dispose: async (): Promise<void> => {
-      await page.close();
+      await close();
       await home.dispose();
     },
   };
@@ -431,11 +434,17 @@ describe('words drawn on a calendar’s own colour', () => {
       const link = await home.pairLink();
       const screen = (home.db.prepare('SELECT id FROM screens').get() as { id: string }).id;
 
-      const page = await (await browser()).newPage();
-      await page.setViewportSize({ width: 1080, height: 1920 });
+      // Settled rather than cold, for the reason `hzMarks` gives; the helper's
+      // manifest hold covers every navigation on this page, so the re-measure
+      // below waits for the manifest the same way the helper's own load does.
+      const { page, close } = await loadWallSettled(link, { width: 1080, height: 1920 });
 
       const measure = async (): Promise<OnHue[]> => {
+        const answered = page.waitForResponse((response) => response.url().includes('/d/manifest'), {
+          timeout: 30_000,
+        });
         await page.goto(link, { waitUntil: 'load' });
+        await answered;
         await settleWall(page);
         return (await page.evaluate(SWEEP_ON_HUE.replace('HUES', hues))) as OnHue[];
       };
@@ -488,7 +497,7 @@ describe('words drawn on a calendar’s own colour', () => {
       const grounds = new Set(runs.map((run) => run.ground));
       expect([...grounds], 'the 2.16:1 ground was never drawn').toContain('rgb(232, 163, 61)');
 
-      await page.close();
+      await close();
     } finally {
       await home.dispose();
     }
@@ -514,10 +523,7 @@ describe('words drawn on a calendar’s own colour', () => {
     const home = await install({ calendars: HUE_FEEDS });
     try {
       const link = await home.pairLink();
-      const page = await (await browser()).newPage();
-      await page.setViewportSize({ width: 1080, height: 1920 });
-      await page.goto(link, { waitUntil: 'load' });
-      await settleWall(page);
+      const { page, close } = await loadWallSettled(link, { width: 1080, height: 1920 });
 
       const seen = await page.evaluate(`
         (() => {
@@ -555,7 +561,7 @@ describe('words drawn on a calendar’s own colour', () => {
           counters.map((c) => `"${c.text}" is ${c.color}`).join(', '),
       ).toEqual([]);
 
-      await page.close();
+      await close();
     } finally {
       await home.dispose();
     }

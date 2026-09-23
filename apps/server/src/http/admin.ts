@@ -551,6 +551,7 @@ import { registerChoreRoutes } from './admin-chores.js';
 import { registerThemeRoutes } from './admin-themes.js';
 import { registerEpaperRoutes } from './admin-epaper.js';
 import { displaysPage, registerWallsRoutes } from './admin-walls.js';
+import { cssAdvancedRow, registerCssRoutes } from './admin-css.js';
 import { offeredTimezones } from './setup.js';
 import { selfHref } from './self.js';
 import { CUSTOM_PREFIX, FALLBACK_THEME, FONTS, isValidThemeRef, readTheme, readThemes } from '../api/themes.js';
@@ -2607,6 +2608,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   // where its route was: `/admin/walls` must be declared ahead of
   // `/admin/walls/new` and `/admin/walls/:id` below.
   registerWallsRoutes(app, deps);
+  // A wall's own CSS (RFC 014 §7) — admin-css.ts, beside the wall it belongs to.
+  registerCssRoutes(app, deps);
   /*
    * Declared ahead of `/admin/walls/:id`, for the reason the approve route
    * states one screen along: a static segment must come before the param that
@@ -5218,6 +5221,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `data-confirm="Unpair ${escapeHtml(screen.name)}? Its token stops working and it drops off the wall.">` +
       `<button class="arow is-danger" type="submit"><span class="arow-text">Unpair wall` +
       `<small>This wall stops receiving updates until it is paired again.</small></span></button></form>` +
+      // The wall's own CSS (RFC 014 §7) is a page of its own — a field per
+      // widget and a live preview do not fit a category — and it is here rather
+      // than under Appearance because it is the last option, not the first.
+      cssAdvancedRow(screen.id) +
       `<div class="frow"><span>Wall id</span><code>${escapeHtml(screen.id)}</code></div>` +
       `</div>`;
 
@@ -5231,7 +5238,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // chores, and a subtitle that mentions only the first is a heading a
       // household would not open looking for the second.
       wsetRow('alerts', 'Alerts and interaction', 'What this wall can press', false) +
-      wsetRow('advanced', 'Advanced', 'Pairing, reset, unpair', false) +
+      wsetRow('advanced', 'Advanced', 'Pairing, reset, unpair, custom CSS', false) +
       `</nav>` +
       `<div class="wset-panels">` +
       `<form method="post" action="${action}" class="wall-settings" data-settings>` +

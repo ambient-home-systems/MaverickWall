@@ -160,6 +160,21 @@ export interface PanelIgnores {
   readonly why: string;
 }
 
+/**
+ * A setting that is a **column beside a widget's config** rather than a key in
+ * it (RFC 014 §7): `layout_widgets.custom_css`, the widget's own CSS. Both
+ * tables are keyed on `widgetConfigBody` and `epaper-ink.test.ts` closes them
+ * against it, so a column has to be named here to be allowed into
+ * `PANEL_IGNORES` at all — it is not a config key, and the test's own
+ * `SCHEMA_KEYS` would otherwise refuse it as "not a stored option". It is
+ * listed there because the sentence beside it is the one the Advanced page
+ * states verbatim, and a household deserves to read it wherever the panel's
+ * limits are read. `toEpaperWidgets` carries no such field, so the panel's
+ * draw cannot read it by any route; the test still probes it by setting the
+ * key and watching no ink move, as it does every other entry.
+ */
+export const WIDGET_ROW_KEYS: readonly string[] = ['customCss'];
+
 export const PANEL_IGNORES: readonly PanelIgnores[] = [
   {
     key: 'background',
@@ -249,6 +264,19 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
     key: 'style.tracking',
     label: 'Tracking',
     why: 'the panel’s alphabet has one advance per face.',
+  },
+  /*
+   * The widget's own CSS (RFC 014 §7, precondition 3), with the sentence the
+   * editor states beside the textarea, word for word — `CUSTOM_CSS_PROMISE`
+   * in `api/custom-css.ts`, held to this by `custom-css-page.test.ts`. A
+   * panel draws one bit from a widget's config and reads no stylesheet, and
+   * the same is true of the wall's own block (`screens.custom_css`), which is
+   * in neither table for the reason the gutter and the style lane are.
+   */
+  {
+    key: 'customCss',
+    label: 'Custom CSS',
+    why: "Class names may change between releases; a panel ignores this; the wall's own rules about motion and size are not enforced here.",
   },
 ];
 
