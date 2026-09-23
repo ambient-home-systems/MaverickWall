@@ -4,11 +4,14 @@
  *
  * The block a household is most likely to get wrong is the one that hides
  * something, so that is the one this file saves: `display: none` on the wall's
- * own calendar boxes, and `display: none` on the clock inside its widget. Then
- * it asks the four questions the precondition names, in a real Chromium:
+ * own calendar boxes, and `display: none` on the clock inside its widget —
+ * plus a border on `.fw-clock`, which is the widget's *own box*, the element
+ * the scope attribute sits on, so it reaches the glass only through the self
+ * form of the scoped selector. Then it asks the four questions the
+ * precondition names, in a real Chromium:
  *
- *  1. the wall wears it — both blocks reach the glass through the CSSOM, and
- *     a box neither names is untouched;
+ *  1. the wall wears it — both blocks reach the glass through the CSSOM, the
+ *     self form included, and a box neither names is untouched;
  *  2. the pairing form still renders, on a screen that holds no token;
  *  3. the boot message still renders, on a screen whose server never answers;
  *  4. the offline banner still renders — the server is *killed*, which is the
@@ -63,20 +66,27 @@ async function styledWall(): Promise<{ home: Installation; link: string; screenI
   const saved = await home.post(`/admin/walls/${screenId}/css`, {
     css_form: '1',
     css_wall: '.fw-calendar { display: none }',
-    [`css_w_${clockId}`]: '.clock { display: none }',
+    // The second rule is the self form's own case: `.fw-clock` is the class on
+    // the clock's *box* — the element that carries `data-widget-id` — so a
+    // scope that only ever prefixed a descendant would let it match nothing.
+    [`css_w_${clockId}`]: '.clock { display: none }\n.fw-clock { border-top: 3px solid #ff0000 }',
   });
   expect(saved.status, 'the CSS this file needs was refused').toBe(302);
   return { home, link, screenId, clockId };
 }
 
 /** The computed `display` and the drawn height of the first match, or nothing. */
-async function drawn(page: Page, selector: string): Promise<{ display: string; height: number; count: number } | undefined> {
+async function drawn(
+  page: Page,
+  selector: string,
+): Promise<{ display: string; borderTop: string; height: number; count: number } | undefined> {
   return page.evaluate((sel: string) => {
     const all = document.querySelectorAll(sel);
     const first = all[0];
     if (!(first instanceof HTMLElement)) return undefined;
     return {
       display: getComputedStyle(first).display,
+      borderTop: getComputedStyle(first).borderTopWidth,
       height: first.getBoundingClientRect().height,
       count: all.length,
     };
@@ -96,8 +106,15 @@ describe('a household’s CSS on a real wall', () => {
 
         const clockBox = await drawn(page, `#wall .canvas .fw[data-widget-id="${clockId}"]`);
         expect(clockBox?.display, 'the widget’s block hid its own box, which it never named').not.toBe('none');
+        // `.fw-clock` is the box itself: only `[data-widget-id="…"].fw-clock`
+        // can reach it, and a scope emitting the descendant form alone leaves
+        // this at the stylesheet's 0px.
+        expect(clockBox?.borderTop, 'the self form of the scoped selector did not reach the widget’s own box').toBe('3px');
         const clock = await drawn(page, `#wall .canvas .fw[data-widget-id="${clockId}"] .clock`);
         expect(clock?.display, 'the widget’s block did not reach the clock inside its box').toBe('none');
+        const other = await drawn(page, `#wall .canvas .fw:not([data-widget-id="${clockId}"])`);
+        expect(other?.count ?? 0, 'the Classic wall has boxes other than the clock').toBeGreaterThan(0);
+        expect(other?.borderTop, 'a box the widget’s block never named took its border').not.toBe('3px');
 
         // Through the CSSOM, on the wall's own sheet, after every rule of it —
         // and through nothing else: no `<style>` was written into the document.
@@ -111,6 +128,7 @@ describe('a household’s CSS on a real wall', () => {
         });
         expect(how.last).toContain('.canvas .fw-calendar');
         expect(how.last).toContain(`[data-widget-id="${clockId}"] .clock`);
+        expect(how.last).toContain(`[data-widget-id="${clockId}"].fw-clock`);
         expect(how.styleElements).toBe(0);
       } finally {
         await close();

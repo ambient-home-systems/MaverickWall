@@ -464,6 +464,37 @@ this repository's commit messages are where the reasoning lives. What it no
 longer buys is the reachability of the early tags; that was lost when the
 history was re-rooted, not by how any PR was merged.
 
+**3812 tests passing, over 268 files, and one of them red in the full run.**
+calendar 153 (plus 1 skipped) over 10 · core 314 over 9 · display 613 over
+35 · server 2732 over 214 with one red, measured on a clone whose tags had
+been fetched, so `changelog-shape.test.ts` compares rather than refusing.
+Measured for RFC 014 §7 (a household's own CSS): the display grew one file of
+18 tests and the server grew four files of 148 — the sanitiser's bypass table
+alone is 125 — plus five tests in three files that already existed
+(`display-csp`'s surface f, `reflow-stability`'s third wall, and a 0051 walk
+in `migration-upgrade`). The one red is `browser-source-colours` finding no
+span text on a cold first draw, a file this phase does not touch, and it
+passed alone on the same tree a minute later (5 of 5) — the font race this
+document already records for a cold boot under load, and the same file as the
+previous measurement's one red, written here rather than deducted. **The
+figure this replaces was 381 tests and twenty files behind**, and this phase
+accounts for 171 and five of those: the rest is §4.2's clock, §5.3's
+`whenEmpty`, §5.2's scheduled layouts and both halves of §5.1, each of which
+recorded its own tests and none of which re-ran the count — the paragraph's
+own warning, for the eighth time. Nine mutations were checked on this tree
+and eight are red: `@import` let through (8 rows of the table), the self form
+dropped (9), `var()` indirection allowed (3), the manifest emitting
+`customCss: null` (1),
+`replaceLayout` dropping a widget's block (1), the row key unlisted from the
+honours closure (1), a retired noun on the page (1), and the display's
+`insertRule` removed with the bundle rebuilt (3, in a real Chromium). The
+ninth — the `.canvas` gate in `main.ts` removed — stays green, and that is
+recorded rather than fixed: every rule is scoped under `.canvas` or under a
+box inside it, so the gate is a belt and the scope is the fence, and a test
+that cannot tell them apart is measuring the fence. The paragraph that
+carried the previous figure follows, unchanged, because its subject is the
+method and not the number:
+
 **3431 tests, over 248 files, and one of them red in the full run.** calendar
 153 (plus 1 skipped) over 10 · core 314 over 9 · display 520 over 29 · server
 2444 over 200, measured on a clone whose tags had been fetched, so
