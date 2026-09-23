@@ -18,8 +18,15 @@ clock's three variants (`config.variant`, `apps/display/src/clock-face.ts`,
 `apps/server/test/browser-clock-variants.test.ts`); and §5.3's substitution
 half, a fallback for an empty box (`config.whenEmpty`, resolved in
 `keepWidgetsWithSomethingToSay`, `apps/server/test/browser-when-empty.test.ts`)
-— its yield half is not built and is a separate decision; nothing else here is
-built ·
+— its yield half is not built and is a separate decision; and §5.1's **model
+is built; editor pending** — `layout_widgets.parent_id` (migration `0050`), a
+`group` widget type laid out by `apps/display/src/group-cells.ts` and its
+transcription, both renderers placing the children inside the group, and one
+gallery template, Classic Strip, that carries one
+(`apps/server/test/widget-groups.test.ts`, `reflow-stability.test.ts`'s grouped
+halves, `browser-grouped-card.test.ts`); multi-select and the Group action are
+the next session, and until then the editor neither shows a group as one nor
+carries its links through a save. Nothing else here is built ·
 Owner: — · First drafted 2026-09-15 ·
 Arises from the question "could a household style each widget with a CSS
 block?" · Relates to `apps/server/src/api/widget-schema.ts`,
@@ -444,7 +451,7 @@ is the retired `auto` layout's reflow — the paragraphs in `CLAUDE.md` marked a
 history are the last time the project reasoned that through, and 5.3 below is
 the one place this RFC deliberately re-enters that ground.
 
-### 5.1 Groups
+### 5.1 Groups — model built; editor pending
 
 A container box that lays its children out in a `row`, `column` or `grid`,
 with the gutter step from 4.4 between them. Today a utility strip is three
@@ -471,6 +478,45 @@ migration is three `ALTER TABLE ADD COLUMN`s and no recreate, and the panel's
 renderer gets groups for free because a child's box resolves to panel pixels
 exactly as a top-level one does. Nesting is bounded at one level; a group's
 children are drawn with `z` relative to the group.
+
+**Built as the second shape, with four things decided in the building.** The
+migration turned out to be *one* `ADD COLUMN` (`0050`, generated then read):
+`parent_id`, nullable, null for every row that existed. **Placement is from
+order, never from the children's fractions.** A group in `row`, `column` or
+`grid` layout divides its inner box — its box less the gutter step it spends
+as padding, which is §4.4's `--fw-inset` — equally among its children in `z`
+order, from a pure table (`apps/display/src/group-cells.ts`, transcribed into
+`epaper/group-cells.ts` and held character-identical), and reads nothing a
+child draws; the children keep their own stored `x`/`y`/`w`/`h` only so an
+ungroup can put the boxes back. That is what makes a group's rectangles a
+function of the arrangement alone, and `reflow-stability.test.ts` holds a wall
+carrying one to identical child rectangles across two event sets, on the glass
+and in a decoded panel frame's region log — the refresh contract in
+`epaper/render.ts` extended to a household's canvas. **The bound is refused
+twice**: `placedWidgetsBody` refuses a group naming a parent and a child naming
+anything but a group on the same list with a 400 (the `ink.ink` rule), and
+`keepWidgetsWithSomethingToSay` prunes the same shapes on the way to either
+renderer, dropping an orphan rather than drawing it at fractions of a box that
+is not there. **A group speaks when a child does**: it is kept exactly when one
+of its children has something to say (a child's own `whenEmpty` counts), and
+dropped whole otherwise; it carries no fallback of its own. **A template names
+a parent by a local key**, `key`/`parent`, because ids are minted at apply
+time; `applyTemplate` mints the parents first and writes the children with the
+resolved id, `copyLayout` re-links a copied child to the copied group, and the
+gallery's card JSON is resolved the same way so the card draws the group the
+wall will. One template carries one: Classic Strip, Classic's calendars
+untouched under a row of the clock, the forecast and the rota badge. An
+unstyled, ungrouped wall's manifest and a groupless panel's ETag preimage are
+byte-identical to what they were, asserted rather than assumed.
+
+What is *not* built is the editor's half, and it is the larger: multi-select,
+the Group action, an ungroup, and — first, because it is the one that loses
+data — carrying `parentId` through the editor's save. Today the editor shows a
+grouped wall's children as top-level boxes at their stored fractions read as
+canvas fractions, its live preview draws the group correctly beneath them, and
+a Save flattens the group into three boxes at those fractions. Written down
+rather than papered over: the template is opt-in, the wall draws, and the next
+session's first item is that round trip.
 
 ### 5.2 Scheduled canvases **built**
 
@@ -742,7 +788,15 @@ reads a class name.
   other two. Fifteen mutations, all red.
 - **5.1** Group children resolve to the same pixels on the wall and on a panel
   frame, decoded; a template with a group applies through `applyTemplate` and
-  round-trips through the editor's save.
+  round-trips through the editor's save. **The model's half is built**:
+  `reflow-stability.test.ts` draws Classic Strip twice with different events
+  and holds every group and child rectangle identical to the hundredth, and
+  renders a grouped panel canvas twice with identical region logs, ink inside
+  every child's content box and none in its padding; `widget-groups.test.ts`
+  holds the two refusals at the boundary and in the walker, the keep rule, the
+  minted parent-before-child rows, the copy's re-link and the byte-identical
+  groupless documents; `browser-grouped-card.test.ts` reads the gallery card's
+  group against the paired wall's. The editor round trip waits on the editor.
 - **5.2** Drive the wall's clock across a schedule boundary with `HARNESS_HOUR`
   and assert the canvas swapped, offline, from the stored copy. **Built**,
   `browser-scheduled-canvas.test.ts`: the app's clock moved to ten seconds
@@ -780,8 +834,9 @@ reads a class name.
 2. 4.1 — the lane, the server-side resolver, the honours table entries.
    **Built**, with §4.4's default widget style beside it.
 3. 4.2 — one widget at a time, clock first, each with its measurement.
-4. 5.3 substitution (**built**), then 5.2 (**built**), then 5.1 with
-   multi-select, then 5.3 yield as a decision on its own.
+4. 5.3 substitution (**built**), then 5.2 (**built**), then 5.1 — the model
+   and one template **built**, multi-select and the Group action next — then
+   5.3 yield as a decision on its own.
 5. 7, if asked for, behind its three preconditions, and the CSP on its own
    before any of it.
 

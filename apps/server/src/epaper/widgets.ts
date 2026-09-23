@@ -38,7 +38,9 @@ import {
   drawUpcomingBox,
   drawWeekBox,
   fit,
+  recordRegion,
   type Box,
+  type RegionLog,
 } from './render.js';
 import {
   HOUSE_ROLES,
@@ -57,10 +59,20 @@ import {
 } from './ladder.js';
 import { calendarView } from './calendar-view.js';
 import { withInk } from './honours.js';
+import { groupCells, groupChildren, topLevelWidgets } from './group-cells.js';
 import { clockLabel, type EpaperModel } from './viewmodel.js';
 import { drawAnalogueFace } from './clock-face.js';
 
-/** A widget placed on the canvas: fractional box, plus its stored options. */
+/**
+ * A widget placed on the canvas: fractional box, plus its stored options.
+ *
+ * `id` and `parentId` are the group link (RFC 014 §5.1) and are carried only
+ * where they mean something — an id on a group, a parent on a child — because
+ * this list is serialised into the frame's ETag preimage (`frame.ts`), and a
+ * key present on every widget would move every paired panel's ETag at one
+ * image pull for canvases with no group on them. `toEpaperWidgets` is the one
+ * place a stored row becomes one of these, so no route can drop the link.
+ */
 export interface PlacedEpaperWidget {
   readonly type: string;
   readonly x: number;
@@ -69,6 +81,44 @@ export interface PlacedEpaperWidget {
   readonly h: number;
   readonly z: number;
   readonly config: Readonly<Record<string, unknown>>;
+  readonly id?: string;
+  readonly parentId?: string;
+}
+
+/**
+ * The stored rows of one canvas, as the panel draws them.
+ *
+ * Every route that hands a canvas to `renderScreenFrame` — the device's own
+ * frame, the designer's backdrop, the two preview endpoints — used to map the
+ * row by hand, four copies of one shape, and a field added to the row would
+ * have to be added to all four or a group would reach one renderer and not
+ * another. One mapping now. A config that is not an object reads as none, the
+ * way each copy already read it.
+ */
+export function toEpaperWidgets(
+  rows: readonly {
+    readonly id: string;
+    readonly type: string;
+    readonly x: number;
+    readonly y: number;
+    readonly w: number;
+    readonly h: number;
+    readonly z: number;
+    readonly config?: unknown;
+    readonly parentId?: string | undefined;
+  }[],
+): PlacedEpaperWidget[] {
+  return rows.map((row) => ({
+    type: row.type,
+    x: row.x,
+    y: row.y,
+    w: row.w,
+    h: row.h,
+    z: row.z,
+    config: row.config !== null && typeof row.config === 'object' ? (row.config as Record<string, unknown>) : {},
+    ...(row.type === 'group' ? { id: row.id } : {}),
+    ...(row.parentId !== undefined ? { parentId: row.parentId } : {}),
+  }));
 }
 
 type Config = Readonly<Record<string, unknown>>;
@@ -1382,6 +1432,13 @@ export function renderFreeformEpaper(
   manifest: Manifest,
   widgets: readonly PlacedEpaperWidget[],
   geometry: PanelGeometry,
+  /**
+   * Opt-in, like `renderEpaper`'s: pass an array and every box this canvas
+   * draws into is recorded — each widget's, and inside a group each child's —
+   * under a *positional* name, which is what `reflow-stability.test.ts`
+   * compares between two frames. See `DrawnRegion` in `render.ts`.
+   */
+  regions?: RegionLog,
 ): Framebuffer {
   const fb = new Framebuffer(geometry.width, geometry.height);
   // One reading of the panel, handed down. The shared calendar draws size their
@@ -1410,15 +1467,35 @@ export function renderFreeformEpaper(
     drawLines(fb, m, [EMPTY_CANVAS], box, rungToFit(EMPTY_CANVAS, box.w, m.body), 'left');
     return fb;
   }
-  const ordered = [...widgets].sort((a, b) => a.z - b.z);
-  for (const widget of ordered) {
+  /*
+   * The parents, then the children inside them (RFC 014 §5.1) — the wall's
+   * own order, and the same cells: `groupCells` is the display's module
+   * transcribed, so a child lands in the same fraction of its group's inner
+   * box on both media and resolves to panel pixels exactly as a top-level box
+   * does. A group is a box here too: its frame and title are drawn, and its
+   * children are drawn inside what is left, each with a frame of its own.
+   */
+  const children = groupChildren(widgets.map((widget, index) => ({ ...widget, id: widget.id ?? `#${index}`, z: widget.z })));
+  const ordered = topLevelWidgets(widgets)
+    .map((widget, index) => ({ widget, index }))
+    .sort((a, b) => a.widget.z - b.widget.z || a.index - b.index);
+  /** A child's pixel box: edges rounded, so adjacent cells meet and never overlap. */
+  const cellBox = (inner: Box, cell: { x: number; y: number; w: number; h: number }): Box => {
+    const x0 = inner.x + Math.round(cell.x * inner.w);
+    const x1 = inner.x + Math.round((cell.x + cell.w) * inner.w);
+    const y0 = inner.y + Math.round(cell.y * inner.h);
+    const y1 = inner.y + Math.round((cell.y + cell.h) * inner.h);
+    return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  };
+  ordered.forEach(({ widget }, position) => {
     const box: Box = {
       x: Math.round(widget.x * geometry.width),
       y: Math.round(widget.y * geometry.height),
       w: Math.round(widget.w * geometry.width),
       h: Math.round(widget.h * geometry.height),
     };
-    if (box.w < 16 || box.h < 16) continue;
+    recordRegion(regions, `widget:${position}`, box);
+    if (box.w < 16 || box.h < 16) return;
     /*
      * The ink lane, applied once and only here (RFC 005, direction B).
      *
@@ -1432,7 +1509,24 @@ export function renderFreeformEpaper(
      */
     const config = withInk(widget.config);
     const inner = drawFrame(fb, m, box, config);
-    drawWidget(fb, widget.type, inner, model, manifest, m, config);
-  }
+    recordRegion(regions, `widget-inner:${position}`, inner);
+    if (widget.type !== 'group') {
+      drawWidget(fb, widget.type, inner, model, manifest, m, config);
+      return;
+    }
+    const members = widget.id === undefined ? [] : (children.get(widget.id) ?? []);
+    const cells = groupCells(config, members.length);
+    members.forEach((child, index) => {
+      const cell = cells[index];
+      if (cell === undefined) return;
+      const childBox = cellBox(inner, cell);
+      recordRegion(regions, `child:${position}:${index}`, childBox);
+      if (childBox.w < 16 || childBox.h < 16) return;
+      const childConfig = withInk(child.config);
+      const childInner = drawFrame(fb, m, childBox, childConfig);
+      recordRegion(regions, `child-inner:${position}:${index}`, childInner);
+      drawWidget(fb, child.type, childInner, model, manifest, m, childConfig);
+    });
+  });
   return fb;
 }

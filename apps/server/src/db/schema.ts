@@ -274,6 +274,24 @@ export const layoutWidgets = sqliteTable('layout_widgets', {
    * with `IS ?` like `screen_id`, because `= NULL` matches nothing.
    */
   slot: text('slot'),
+  /**
+   * The group this widget sits inside (RFC 014 §5.1), or null for a widget
+   * placed on the canvas itself — which is every row that existed before this
+   * column did, and every row the editor writes until it can make a group.
+   *
+   * When set, `x`/`y`/`w`/`h` are fractions of the **parent's** box and `z` is
+   * relative to the parent; a group in `row`, `column` or `grid` layout ignores
+   * those fractions and lays its children out from their `z` order, so they are
+   * kept only so an ungroup later can put the boxes back where they were.
+   * Nesting is one level: a row of type `group` never carries a parent (the
+   * schema refuses it, the way `ink.ink` is refused, and the manifest walker
+   * refuses it a second time), and a child whose parent is missing is dropped
+   * rather than orphaned onto the canvas. A plain column rather than a foreign
+   * key, for the reason `screen_id` above is: SQLite cannot add one by `ALTER`,
+   * and the app keeps the link honest — a group's children share its screen,
+   * orientation and slot, so every sweep that removes a canvas takes them too.
+   */
+  parentId: text('parent_id'),
   ...timestamps,
 });
 

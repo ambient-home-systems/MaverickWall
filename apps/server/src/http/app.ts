@@ -59,6 +59,7 @@ import {
   type ManifestNotice,
 } from '../api/manifest.js';
 import { epaperOrientation, renderScreenFrame } from '../epaper/frame.js';
+import { toEpaperWidgets } from '../epaper/widgets.js';
 import { encodePng1bit } from '../epaper/png.js';
 import { resolveTheme } from '../api/themes.js';
 import {
@@ -1613,21 +1614,12 @@ export function createApp(deps: AppDeps): Hono {
     const widgets =
       canvasOwner === undefined
         ? undefined
-        : keepWidgetsWithSomethingToSay(
-            readLayoutWidgets(deps.db, canvasOwner, epaperOrientation(screen)),
-            householdSetUp(deps.db),
-          ).map((row) => ({
-            type: row.type,
-            x: row.x,
-            y: row.y,
-            w: row.w,
-            h: row.h,
-            z: row.z,
-            config:
-              row.config !== null && typeof row.config === 'object'
-                ? (row.config as Record<string, unknown>)
-                : {},
-          }));
+        : toEpaperWidgets(
+            keepWidgetsWithSomethingToSay(
+              readLayoutWidgets(deps.db, canvasOwner, epaperOrientation(screen)),
+              householdSetUp(deps.db),
+            ),
+          );
 
     let frame: ReturnType<typeof renderScreenFrame>;
     try {

@@ -15,11 +15,12 @@ import {
 } from '../api/queries.js';
 import { readEnabledExternalModules } from '../api/external-modules.js';
 import { keepWidgetsWithSomethingToSay, type Manifest, type PlacedWidgetRow } from '../api/manifest.js';
-import { layoutWidgetBody } from '../api/widget-schema.js';
+import { placedWidgetsBody } from '../api/widget-schema.js';
 import { applyTemplate, panelPixelAspects } from '../api/templates.js';
 import { PANEL_TEMPLATES, findPanelTemplate } from '../templates/index.js';
 import { issueDisplayToken, type IssuedToken } from '../auth/tokens.js';
 import { epaperOrientation, renderScreenFrame } from '../epaper/frame.js';
+import { toEpaperWidgets } from '../epaper/widgets.js';
 import { encodePng1bit } from '../epaper/png.js';
 import { householdSetUp } from '../modules/index.js';
 import { checkbox, optionalText, parse, quarterTurn, text, z } from '../validation.js';
@@ -178,7 +179,7 @@ const newEpaperBody = z.object({
  * validates, so a preview can express nothing a save could not.
  */
 const epaperPreviewBody = z.object({
-  widgets: z.array(layoutWidgetBody).max(50),
+  widgets: placedWidgetsBody,
 });
 
 /**
@@ -218,7 +219,7 @@ const epaperNewPreviewBody = z.object({
    * same note for the same reason.
    */
   builtin: z.preprocess((value) => value === true, z.boolean()),
-  widgets: z.array(layoutWidgetBody).max(50),
+  widgets: placedWidgetsBody,
 });
 
 /**
@@ -1089,18 +1090,7 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
       const widgets =
         authored === undefined
           ? undefined
-          : keepWidgetsWithSomethingToSay(authored, householdSetUp(deps.db)).map((row) => ({
-              type: row.type,
-              x: row.x,
-              y: row.y,
-              w: row.w,
-              h: row.h,
-              z: row.z,
-              config:
-                row.config !== null && typeof row.config === 'object'
-                  ? (row.config as Record<string, unknown>)
-                  : {},
-            }));
+          : toEpaperWidgets(keepWidgetsWithSomethingToSay(authored, householdSetUp(deps.db)));
       const frame = renderScreenFrame(deps.previewManifest(id) as Manifest, screen, widgets);
       c.header('cache-control', 'no-store');
       return c.body(bytesOf(Buffer.from(encodePng1bit(frame.fb))), 200, { 'content-type': 'image/png' });
@@ -1154,15 +1144,7 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
     const shaped = parse(epaperPreviewBody, raw);
     if (!shaped.ok) return c.json({ ok: false, message: shaped.message }, 400);
     try {
-      const widgets = shaped.value.widgets.map((widget) => ({
-        type: widget.type,
-        x: widget.x,
-        y: widget.y,
-        w: widget.w,
-        h: widget.h,
-        z: widget.z,
-        config: widget.config !== undefined ? (widget.config as Record<string, unknown>) : {},
-      }));
+      const widgets = toEpaperWidgets(shaped.value.widgets);
       const frame = renderScreenFrame(deps.previewManifest(id) as Manifest, screen, widgets);
       c.header('cache-control', 'no-store');
       return c.body(bytesOf(Buffer.from(encodePng1bit(frame.fb))), 200, { 'content-type': 'image/png' });
@@ -1200,15 +1182,7 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
     const pixels = panelPixels(shaped.value.preset, shaped.value.width, shaped.value.height);
     if (typeof pixels === 'string') return c.json({ ok: false, message: pixels }, 400);
     try {
-      const widgets = shaped.value.widgets.map((widget) => ({
-        type: widget.type,
-        x: widget.x,
-        y: widget.y,
-        w: widget.w,
-        h: widget.h,
-        z: widget.z,
-        config: widget.config !== undefined ? (widget.config as Record<string, unknown>) : {},
-      }));
+      const widgets = toEpaperWidgets(shaped.value.widgets);
       const frame = renderScreenFrame(
         deps.previewManifest(null) as Manifest,
         {

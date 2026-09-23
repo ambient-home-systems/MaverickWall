@@ -134,6 +134,14 @@ export interface ManifestWidget {
    * in for a forecast is drawn exactly as a note.
    */
   readonly substituted?: unknown;
+  /**
+   * The group this box sits inside (RFC 014 §5.1): its four fractions are then
+   * of that group's box and its `z` relative to it, and `renderFreeform`
+   * places it through the group's own cells rather than on the canvas. Absent
+   * on every widget on the canvas itself, and read defensively — a server
+   * older than this bundle never sends it, and one newer may send anything.
+   */
+  readonly parentId?: unknown;
 }
 
 export interface Manifest {

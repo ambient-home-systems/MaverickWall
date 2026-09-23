@@ -1,0 +1,1 @@
+ALTER TABLE `layout_widgets` ADD `parent_id` text;

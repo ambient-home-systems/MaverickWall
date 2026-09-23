@@ -144,10 +144,29 @@ const MODEL = buildEpaperModel(M);
  */
 const NOTHING_SET_UP: HouseholdSetUp = { modules: [], shift: false, todoLists: [] };
 
+/**
+ * A group's children, for the one type whose keys move ink only through
+ * what it holds (RFC 014 §5.1). Four, so that a grid two across and a grid
+ * three across draw different cells — two children would fill one row of
+ * either — and every one a type that always has something to say, so the
+ * group is kept under `NOTHING_SET_UP` and the probes compare two drawn
+ * frames rather than two blanks.
+ */
+const GROUP_CHILDREN: readonly PlacedEpaperWidget[] = [
+  { type: 'clock', x: 0, y: 0, w: 0.5, h: 0.5, z: 0, config: {}, parentId: 'g' },
+  { type: 'notes', x: 0.5, y: 0, w: 0.5, h: 0.5, z: 1, config: { text: 'Bins Tuesday' }, parentId: 'g' },
+  { type: 'countdown', x: 0, y: 0.5, w: 0.5, h: 0.5, z: 2, config: { target: '2026-12-25' }, parentId: 'g' },
+  { type: 'notes', x: 0.5, y: 0.5, w: 0.5, h: 0.5, z: 3, config: { text: 'Swim kit' }, parentId: 'g' },
+];
+
 /** One widget, alone on a panel, as a string of bits — comparable and exact. */
 function frame(type: string, config: Record<string, unknown>): string {
-  const placed: PlacedEpaperWidget = { type, x: 0, y: 0, w: 1, h: 1, z: 0, config };
-  const widgets = keepWidgetsWithSomethingToSay([placed], NOTHING_SET_UP).map((widget) => ({
+  const placed: PlacedEpaperWidget =
+    type === 'group'
+      ? { type, x: 0, y: 0, w: 1, h: 1, z: 0, config, id: 'g' }
+      : { type, x: 0, y: 0, w: 1, h: 1, z: 0, config };
+  const canvas = type === 'group' ? [placed, ...GROUP_CHILDREN] : [placed];
+  const widgets = keepWidgetsWithSomethingToSay(canvas, NOTHING_SET_UP).map((widget) => ({
     ...widget,
     config: widget.config as Record<string, unknown>,
   }));
@@ -181,6 +200,9 @@ const BASES: Readonly<Record<string, readonly Record<string, unknown>[]>> = {
   homeassistant: [{}],
   external: [{ module: 'mymod' }],
   image: [{ image: `${'a'.repeat(64)}.png` }],
+  // Both a row and a grid, because `columns` can only move ink on a grid —
+  // probed from a row alone it would have "proved" the key is not honoured.
+  group: [{ layout: 'row' }, { layout: 'grid' }],
 };
 
 /** Values that would visibly change a widget that reads the key at all. */
@@ -225,6 +247,10 @@ const PROBES: Readonly<Record<string, readonly unknown[]>> = {
   // different — "not for me" — and the clock is proved to draw both.
   variant: ['stacked', 'analogue'],
   showDate: [false],
+  // A group's layout and its grid width (RFC 014 §5.1): every other type is
+  // proved to draw nothing different for either, and the group both.
+  layout: ['column', 'grid'],
+  columns: [3],
   showLow: [false],
   showIcon: [false],
   readings: [['Kitchen']],

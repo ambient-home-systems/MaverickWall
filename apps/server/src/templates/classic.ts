@@ -134,6 +134,17 @@ const portraitCalendars = (weather: boolean) => [
   },
 ];
 
+/**
+ * Classic's calendar boxes and the band above them, for a template that keeps
+ * the calendar where Classic puts it and rearranges only the utilities —
+ * `classic-strip.ts` is the first. Exported as values rather than re-typed
+ * there, so a change to the split measured here reaches it too.
+ */
+export const CLASSIC_PORTRAIT_CALENDARS = portraitCalendars(true);
+export const CLASSIC_PORTRAIT_STRIP_H = TOP_H + WEATHER_H;
+export const CLASSIC_LANDSCAPE_CALENDARS = [LAND_AGENDA, LAND_MONTH] as const;
+export const CLASSIC_LANDSCAPE_STRIP_H = LAND_STRIP_H;
+
 const PORTRAIT_CLOCK_WIDE = { type: 'clock', x: 0, y: 0, w: 1, h: TOP_H } as const;
 const PORTRAIT_CLOCK = { type: 'clock', x: 0, y: 0, w: CLOCK_W, h: TOP_H } as const;
 const PORTRAIT_SHIFT = { type: 'shift', x: CLOCK_W, y: 0, w: 1 - CLOCK_W, h: TOP_H } as const;

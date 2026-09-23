@@ -7094,6 +7094,71 @@ something changes cannot tell a schedule from a wall that swaps for any reason.
 over at 06:30, and no e-paper hardware has been photographed sleeping through
 one.
 
+**A layout can hold a group, and the model shipped before the editor could
+make one (RFC 014 §5.1, first half).** `layout_widgets.parent_id` (migration
+`0050`, one generated `ADD COLUMN`, read rather than trusted, and walked by
+`migration-upgrade` with a wall's rows coming out the far side with the column
+null) names the `group` a widget sits inside; a `group` is a `WIDGET_TYPES`
+member whose config carries `layout: 'row' | 'column' | 'grid'` and `columns`
+(grid only, 2..4). **The stability contract is the whole design.** A group
+divides its inner box — its box less the gutter step it spends as padding —
+*equally among its children in `z` order* from a pure table
+(`apps/display/src/group-cells.ts`, transcribed into `epaper/group-cells.ts`
+and held character-identical by `group-cells-parity.test.ts`), and reads
+nothing a child draws and *not the children's own stored fractions*, which are
+kept only so an ungroup later can put the boxes back. So a child's rectangle
+is a function of the arrangement alone, on both media: `reflow-stability`
+draws Classic Strip twice with different events and holds every group and
+child rectangle identical to the hundredth of a pixel, and renders a grouped
+panel canvas twice to identical region logs — the free-form renderer records
+every box it draws now, `widget:i`, `child:i:j` and their inner boxes, which is
+the refresh contract in `epaper/render.ts` reaching a household's canvas — with
+ink inside every child's content box and none in its padding. **The bound is
+one level and it is refused twice**: `placedWidgetsBody` refuses a group
+naming a parent and a child naming anything but a group on the same posted
+list with a 400 (the `ink.ink` rule, at the boundary), and
+`keepWidgetsWithSomethingToSay` prunes the same shapes on the way to either
+renderer, dropping an orphan rather than drawing it at fractions of a box that
+is not there. That function is where **a group speaks when a child does**: it
+is kept exactly when one of its children has something to say, a child's own
+`whenEmpty` counting, and dropped whole otherwise; it carries no fallback of
+its own. The rows are read *parents first* (`ORDER BY (parent_id IS NOT
+NULL), z`), because a child's `z` is relative to its group and a plain `ORDER
+BY z` interleaves two scales. A template names a parent by a local **key**
+rather than an index, since ids are minted at apply time and a template is
+edited by hand; `applyTemplate` mints the parents first and writes the
+children with the resolved id, `copyLayout` re-links a copied child to the
+copied group, and the gallery's card JSON is resolved the same way, so
+`browser-grouped-card` reads the card's group against the paired wall's at the
+same shares. One template carries one: **Classic Strip**, Classic's two
+calendars untouched under a row of the clock, the forecast and the rota badge,
+and it keeps the wall's theme for Classic's own reason. An ungrouped wall's
+manifest and a groupless panel's ETag preimage are byte-identical to what they
+were — `parentId` is spread, and a panel widget carries `id` only when it is a
+group — and `EPAPER_RENDERER_VERSION` is unmoved at 9 because no panel without
+a group changes a pixel. `PANEL_HONOURS.group` names `layout` and `columns`
+and `epaper-ink` proves both by rendering a group with four children, which is
+the probe that found a renderer reading a child's stored fractions would draw
+one frame for a row and a grid. Seven mutations were checked and all seven
+are red. And `wall-density` was run on a clean worktree of `main` and on
+this branch at the pinned hour, with every one of its ten measurements — the
+five unmeasured Classic sizes and the five measured ones — written out and
+compared as text rather than passed against the ratchet: identical, every
+number, so Classic's `BASELINE` is unmoved by measurement and not by the
+gate happening to stay green.
+
+**What is not built is the editor's half, and it is written down because it
+loses data.** Multi-select, the Group action and an ungroup are the next
+session; until then the editor shows a grouped wall's children as top-level
+boxes at their stored fractions read as canvas fractions, its live preview
+draws the group correctly beneath them, and `widgetsForSave` posts no
+`parentId`, so a Save on that wall flattens the group into three boxes at
+those fractions. The template is opt-in and the wall draws either way, so
+this is a gap rather than a brick — but carrying the link through the save
+is the next session's first item, ahead of any control. **Still unproven
+where it counts:** nobody has looked at a kitchen wall drawing a group, and no
+e-paper panel has been photographed drawing one.
+
 ---
 
 ## Open decisions

@@ -81,6 +81,11 @@ export const WIDGET_TYPES = [
   // Still first-party by the rule that matters: the wall draws sanitised strings
   // through renderGenericPanel, never anything the module ships.
   'external',
+  // A container that lays its children out in a row, a column or a grid
+  // (RFC 014 §5.1). It draws nothing of its own: a child is a row of
+  // `layout_widgets` naming it as `parent_id`, and both renderers place the
+  // group's box and then the children inside it, each read as a box of its own.
+  'group',
 ] as const;
 export type WidgetType = (typeof WIDGET_TYPES)[number];
 
@@ -187,10 +192,17 @@ export interface HouseholdSetUp {
   readonly todoLists: readonly string[];
 }
 
-/** All `widgetIsSetUp` needs of a widget: its type, and its own settings. */
+/**
+ * All `widgetIsSetUp` needs of a widget: its type, and its own settings — and,
+ * for the group rule in `keepWidgetsWithSomethingToSay`, which box it is and
+ * which group it sits inside (RFC 014 §5.1). Both optional, because most
+ * callers ask about a type alone.
+ */
 export interface SetUpTarget {
   readonly type: string;
   readonly config?: unknown;
+  readonly id?: string;
+  readonly parentId?: string;
 }
 
 /**
@@ -316,18 +328,72 @@ export function keepWidgetsWithSomethingToSay<T extends SetUpTarget>(
   widgets: readonly T[],
   setUp: HouseholdSetUp,
 ): readonly Resolved<T>[] {
-  const kept: Resolved<T>[] = [];
-  for (const widget of widgets) {
-    if (widgetIsSetUp(widget, setUp)) {
-      kept.push(widget);
-      continue;
-    }
+  /*
+   * The tree first (RFC 014 §5.1), so a group refused here cannot be kept by
+   * the guard below: a group inside a group and a child whose parent is not a
+   * group on this canvas are dropped before anything is asked about them.
+   */
+  const tree = pruneWidgetTree(widgets);
+  const resolve = (widget: T): Resolved<T> | undefined => {
+    if (widgetIsSetUp(widget, setUp)) return widget;
     const fallback = fallbackOf(widget.config);
     if (fallback !== undefined && widgetIsSetUp(fallback, setUp)) {
-      kept.push({ ...widget, type: fallback.type, config: fallback.config, substituted: true } as Resolved<T>);
+      return { ...widget, type: fallback.type, config: fallback.config, substituted: true } as Resolved<T>;
     }
+    return undefined;
+  };
+  /*
+   * A group has something to say exactly when one of its children does. It
+   * draws nothing of its own, so asking `widgetIsSetUp` about it would keep an
+   * empty box on every wall; and it carries no fallback of its own, because
+   * its children are boxes and each resolves its own — a Weather child naming
+   * a note draws that note inside the group. When none of them has anything to
+   * say, fallbacks included, the group goes whole, children with it.
+   */
+  const resolved = new Map<T, Resolved<T> | undefined>();
+  for (const widget of tree) {
+    if (widget.type !== 'group') resolved.set(widget, resolve(widget));
   }
-  return kept.length === 0 ? widgets : kept;
+  const groupKept = new Set<string>();
+  for (const widget of tree) {
+    if (widget.parentId !== undefined && resolved.get(widget) !== undefined) groupKept.add(widget.parentId);
+  }
+  const kept: Resolved<T>[] = [];
+  for (const widget of tree) {
+    if (widget.type === 'group') {
+      if (widget.id !== undefined && groupKept.has(widget.id)) kept.push(widget);
+      continue;
+    }
+    if (widget.parentId !== undefined && !groupKept.has(widget.parentId)) continue;
+    const answer = resolved.get(widget);
+    if (answer !== undefined) kept.push(answer);
+  }
+  return kept.length === 0 ? tree : kept;
+}
+
+/**
+ * The widgets whose group links hold, and nothing else (RFC 014 §5.1).
+ *
+ * The boundary refuses these shapes with a 400 (`placedWidgetsBody`), and this
+ * refuses them a second time on the way to a renderer, because a row reaches
+ * the database by more than one door and a wall cannot handle a child whose
+ * parent is not there. Dropped, never orphaned: a child's fractions are of its
+ * group's box, and drawn on the canvas they would land somewhere nobody put
+ * them. Nesting is one level, so a group naming a parent goes too — with its
+ * children, since their parent is then gone.
+ *
+ * Both renderers' paths go through `keepWidgetsWithSomethingToSay`, which
+ * calls this first; exported so a caller that wants only the pruning can ask.
+ */
+export function pruneWidgetTree<T extends SetUpTarget>(widgets: readonly T[]): readonly T[] {
+  const groups = new Set<string>();
+  for (const widget of widgets) {
+    if (widget.type === 'group' && widget.parentId === undefined && widget.id !== undefined) groups.add(widget.id);
+  }
+  return widgets.filter((widget) => {
+    if (widget.type === 'group') return widget.parentId === undefined;
+    return widget.parentId === undefined || groups.has(widget.parentId);
+  });
 }
 
 /**
@@ -414,6 +480,9 @@ function placeCanvas(
   const drawable = widgets.filter((widget) =>
     (WIDGET_TYPES as readonly string[]).includes(widget.type),
   );
+  // The tree is pruned inside `keepWidgetsWithSomethingToSay` — a group in a
+  // group and a child with no group on this canvas are refused here a second
+  // time after the boundary (RFC 014 §5.1).
   return keepWidgetsWithSomethingToSay(drawable, setUp)
     .map((widget) => ({
       id: widget.id,
@@ -434,8 +503,13 @@ function placeCanvas(
       // The style lane, resolved (RFC 014 §4.1) — absent for a widget that
       // carries none, which is every widget until a household opens the tab.
       ...widgetStyleFields(widget.config, styling),
+      // The group this box sits inside (RFC 014 §5.1). Spread, so a canvas
+      // with no group serialises byte for byte as it did before the key.
+      ...(widget.parentId !== undefined ? { parentId: widget.parentId } : {}),
     }))
-    .sort((a, b) => a.z - b.z);
+    // Parents before children, then by z — a child's z is relative to its
+    // group, so the two scales are not sorted against each other.
+    .sort((a, b) => Number(a.parentId !== undefined) - Number(b.parentId !== undefined) || a.z - b.z);
 }
 
 const aspectOf = (value: number, fallback: number): number =>
@@ -1006,6 +1080,13 @@ export interface PlacedWidgetRow {
   readonly z: number;
   /** The widget's own settings, validated where it is written, not here. */
   readonly config: unknown;
+  /**
+   * The group this widget sits inside (RFC 014 §5.1). When set, the four
+   * fractions above are of that group's box and `z` is relative to it. Absent
+   * — never null — for a widget on the canvas itself, which is every row that
+   * existed before the column did.
+   */
+  readonly parentId?: string;
 }
 
 /**

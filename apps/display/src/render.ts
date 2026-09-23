@@ -22,6 +22,7 @@ import type { PanelData, PanelReading } from './viewmodel.js';
 import type { ManifestWidget, CanvasBackground } from './manifest.js';
 import { glyphNode } from './glyphs.js';
 import { boxRect, gutterStepFor } from './gutter.js';
+import { groupCells, groupChildren, topLevelWidgets } from './group-cells.js';
 import { applyStyleTokens, styleTokensOf } from './widget-style.js';
 import { inkOn, shiftTint } from './theme.js';
 import {
@@ -2967,7 +2968,20 @@ export function renderFreeform(
     readonly widget: ManifestWidget;
   }[] = [];
 
-  for (const widget of layout.widgets) {
+  /**
+   * One box on the canvas or inside a group, built and dressed the same way.
+   *
+   * `rect` is where it goes — percentages of the canvas for a widget the
+   * household placed, percentages of the group's inner box for a child — and
+   * `size` is the box's share of the canvas, which is what a widget that
+   * sizes its own type against its box (`--buw`/`--buh`) has to be told.
+   */
+  const buildBox = (
+    widget: ManifestWidget,
+    rect: { readonly left: string; readonly top: string; readonly width: string; readonly height: string },
+    size: { readonly w: number; readonly h: number },
+    lost: { readonly x: string; readonly y: string },
+  ): HTMLElement => {
     const box = el('div', `fw fw-${widget.type}`);
     /*
      * Which widget this box is, for anything that has to find it again after
@@ -2975,28 +2989,21 @@ export function renderFreeform(
      * survived in the real preview; nothing on a wall reads it.
      */
     box.dataset['widgetId'] = widget.id;
-    /*
-     * Percentages of the canvas, so the same layout fills any resolution of
-     * the authored aspect — less whatever the canvas gutter takes off the
-     * edges this box shares with another (`boxRect`, which keeps the edges
-     * that are the layout's own). Identical strings to the four it wrote
-     * before this existed whenever no step is chosen or the step spends
-     * nothing at the canvas.
-     */
-    const rect = boxRect(widget, gutter?.canvas);
     box.style.left = rect.left;
     box.style.top = rect.top;
     box.style.width = rect.width;
     box.style.height = rect.height;
     box.style.zIndex = String(widget.z);
-    // What the canvas took, so `.fw` can size a box-relative widget against
-    // the box it actually has rather than the one it was authored at.
-    if (rect.insetX !== '0px') box.style.setProperty('--in-x', rect.insetX);
-    if (rect.insetY !== '0px') box.style.setProperty('--in-y', rect.insetY);
+    // What the canvas (or the group) took, so `.fw` can size a box-relative
+    // widget against the box it actually has rather than the one it was
+    // authored at. Always written on a child, because a custom property
+    // inherits and the group above it may carry one of its own.
+    if (lost.x !== '0px') box.style.setProperty('--in-x', lost.x);
+    if (lost.y !== '0px') box.style.setProperty('--in-y', lost.y);
     // The box's own size, as fractions of the canvas — read in CSS as
     // `--bw`/`--bh` by the clock, which sizes its text against its box.
-    box.style.setProperty('--bw', String(widget.w));
-    box.style.setProperty('--bh', String(widget.h));
+    box.style.setProperty('--bw', String(size.w));
+    box.style.setProperty('--bh', String(size.h));
 
     // Box-level format the household chose — a background, corners,
     // alignment — and the widget's own style lane. Applied whatever the
@@ -3007,7 +3014,11 @@ export function renderFreeform(
       widget.config,
       styleTokensOf(options.daytime === true ? widget.daytimeStyleTokens : widget.styleTokens),
     );
+    return box;
+  };
 
+  /** Draw a widget's body into its box and enrol it for the passes below. */
+  const fillBox = (box: HTMLElement, widget: ManifestWidget): void => {
     const body = renderWidget(widget.type, model, widget.config, mediaBase, widget.id);
     if (body === undefined) {
       // A box the household placed but that has no data yet says so, rather
@@ -3061,6 +3072,65 @@ export function renderFreeform(
       if (widget.type === 'calendar' && body.classList.contains('next')) {
         agendas.push({ section: body, box, widget });
       }
+    }
+  };
+
+  /*
+   * The parents, then the children inside them (RFC 014 §5.1).
+   *
+   * A group is a box, not a section: it is placed on the canvas exactly as
+   * any widget is, and its children are placed inside it through
+   * `groupCells` — equal shares of its inner box in `z` order, reading nothing
+   * a child draws — and then each child is a box in its own right, with its
+   * own format, its own body and its own place in every tier pass below.
+   * Nothing is scaled, and nothing about a child depends on its siblings'
+   * content, which is what keeps the group inside the same stability contract
+   * the rest of the wall keeps. A child whose group is not on this canvas is
+   * left out here as the server leaves it out twice already.
+   */
+  const children = groupChildren(layout.widgets);
+  const pct = (value: number): string => `${value * 100}%`;
+  for (const widget of topLevelWidgets(layout.widgets)) {
+    /*
+     * Percentages of the canvas, so the same layout fills any resolution of
+     * the authored aspect — less whatever the canvas gutter takes off the
+     * edges this box shares with another (`boxRect`, which keeps the edges
+     * that are the layout's own). Identical strings to the four it wrote
+     * before this existed whenever no step is chosen or the step spends
+     * nothing at the canvas.
+     */
+    const rect = boxRect(widget, gutter?.canvas);
+    const box = buildBox(widget, rect, { w: widget.w, h: widget.h }, { x: rect.insetX, y: rect.insetY });
+    if (widget.type === 'group') {
+      box.classList.add('fw-group');
+      const members = children.get(widget.id) ?? [];
+      const inner = el('div', 'fw-group-inner');
+      const cells = groupCells(widget.config, members.length);
+      members.forEach((child, index) => {
+        const cell = cells[index];
+        if (cell === undefined) return;
+        const childBox = buildBox(
+          child,
+          { left: pct(cell.x), top: pct(cell.y), width: pct(cell.w), height: pct(cell.h) },
+          // Its share of the canvas, before the group's own padding and the
+          // canvas gutter took theirs — which `lost` below hands back.
+          { w: widget.w * cell.w, h: widget.h * cell.h },
+          {
+            x: `calc((var(--fw-lost-x) + var(--fw-pad)) * ${cell.w})`,
+            y: `calc((var(--fw-lost-y) + var(--fw-pad)) * ${cell.h})`,
+          },
+        );
+        fillBox(childBox, child);
+        inner.appendChild(childBox);
+      });
+      if (members.length === 0) {
+        // A group with nothing in it is a box with nothing to say: the same
+        // note an empty widget draws, rather than a bare rectangle.
+        inner.appendChild(el('div', 'fw-empty', 'Nothing to show yet.'));
+      }
+      box.appendChild(contentWithTitle(inner, widget.config));
+    } else {
+      fillBox(box, widget);
     }
     canvas.appendChild(box);
   }

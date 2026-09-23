@@ -86,6 +86,14 @@ export const PANEL_HONOURS: Readonly<Record<string, readonly string[]>> = {
   // a list absent means the typed items, present means that list's rows.
   todo: ['title', 'showTitle', 'items', 'list', 'showDone', STYLE_INSET, WHEN_EMPTY],
   image: ['title', 'showTitle', 'image', STYLE_INSET],
+  /*
+   * A group (RFC 014 §5.1) draws its frame, its title and its children's
+   * cells: `layout` moves every child and `columns` moves a grid's. Not
+   * `whenEmpty`, deliberately — a group carries no fallback of its own, its
+   * children are boxes and each resolves theirs, and the group goes whole
+   * when none of them has anything to say (`keepWidgetsWithSomethingToSay`).
+   */
+  group: ['title', 'showTitle', 'layout', 'columns', STYLE_INSET],
 };
 
 /**
@@ -124,6 +132,12 @@ export const INK_LANE: Readonly<Record<string, readonly string[]>> = {
   // way, and stays with the wall's own settings.
   todo: [],
   image: [],
+  // A panel could honestly lay a group out differently from the wall it
+  // follows — a row on the wall, a column on a narrow panel — and that is
+  // density and shape, which is what the lane is for. Empty until the editor
+  // can make a group at all (RFC 014 §5.1's second session): a lane offered
+  // on a box no control can select is a control nobody can reach.
+  group: [],
 };
 
 /** Every key the ink lane can carry, for the schema and for the merge. */

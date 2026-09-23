@@ -98,7 +98,7 @@ import {
 } from '../api/manifest.js';
 import { readTodoLists } from '../modules/todo/index.js';
 import { householdSetUp } from '../modules/index.js';
-import { layoutWidgetBody, backgroundSchema } from '../api/widget-schema.js';
+import { placedWidgetsBody, backgroundSchema } from '../api/widget-schema.js';
 import {
   applyTemplate,
   classicSeed,
@@ -106,6 +106,7 @@ import {
   findTemplate,
   panelPixelAspects,
   seedAspects,
+  templatePreviewWidgets,
   type DisplayTemplate,
 } from '../api/templates.js';
 import { TEMPLATES, PANEL_TEMPLATES, findPanelTemplate } from '../templates/index.js';
@@ -523,8 +524,9 @@ const layoutBody = z.object({
   mode: z.enum(['auto', 'freeform']),
   // Portrait phone through wide television, and nothing degenerate.
   aspect: z.number().min(0.2).max(5),
-  // A wall is a few widgets, not a dashboard. The cap is a guard, not a target.
-  widgets: z.array(layoutWidgetBody).max(50),
+  // A wall is a few widgets, not a dashboard, and a child names a group on
+  // this same list (RFC 014 §5.1) — `placedWidgetsBody` carries both rules.
+  widgets: placedWidgetsBody,
   // The canvas background (RFC 005 Phase 3): a solid colour or a gradient, or
   // null for none. Absent is treated as null so an older editor still saves.
   background: backgroundSchema.nullable().optional(),
@@ -764,7 +766,11 @@ function wallTemplatePreviews(
     // string this JSON already holds (RFC 015 §3.1).
     name: t.name,
     aspect: t.portrait.aspect,
-    widgets: t.portrait.widgets,
+    // Resolved the way `applyTemplate` resolves them (RFC 014 §5.1): ids
+    // minted positionally and every `parent` key already a `parentId`, so the
+    // card draws a group exactly as the wall will rather than three boxes
+    // orphaned at fractions of a box the card never placed.
+    widgets: templatePreviewWidgets(t.portrait),
     ...(t.theme !== undefined ? { theme: t.theme } : {}),
     ...(t.portrait.background !== undefined ? { background: t.portrait.background } : {}),
   }));

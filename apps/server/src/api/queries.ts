@@ -90,12 +90,21 @@ export function readLayoutWidgets(
    */
   slot: string | null = null,
 ): PlacedWidgetRow[] {
+  /*
+   * Parents before children (RFC 014 §5.1): a widget on the canvas itself
+   * sorts ahead of every widget inside a group, then by `z`. A child's `z` is
+   * relative to its group, so a plain `ORDER BY z` would interleave the two
+   * scales; every walker of this list places the parents and then the
+   * children inside them, and this is the order that lets it do so in one
+   * pass. A canvas with no group has a constant first key and reads exactly
+   * as it always did.
+   */
   const rows = db
     .prepare(
-      `SELECT id, type, x, y, w, h, z, config
+      `SELECT id, type, x, y, w, h, z, config, parent_id AS parentId
          FROM layout_widgets
         WHERE screen_id IS ? AND orientation = ? AND slot IS ?
-        ORDER BY z, created_at`,
+        ORDER BY (parent_id IS NOT NULL), z, created_at`,
     )
     .all(screenId, orientation, slot) as {
     id: string;
@@ -106,6 +115,7 @@ export function readLayoutWidgets(
     h: number;
     z: number;
     config: string | null;
+    parentId: string | null;
   }[];
 
   return rows.map((row) => {
@@ -117,7 +127,19 @@ export function readLayoutWidgets(
         config = undefined;
       }
     }
-    return { id: row.id, type: row.type, x: row.x, y: row.y, w: row.w, h: row.h, z: row.z, config };
+    return {
+      id: row.id,
+      type: row.type,
+      x: row.x,
+      y: row.y,
+      w: row.w,
+      h: row.h,
+      z: row.z,
+      config,
+      // Spread, so a row on the canvas itself carries no key — the shape every
+      // reader saw before groups, byte for byte where it is serialised.
+      ...(row.parentId !== null ? { parentId: row.parentId } : {}),
+    };
   });
 }
 
@@ -130,6 +152,8 @@ export interface LayoutWidgetInput {
   readonly h: number;
   readonly z: number;
   readonly config?: unknown;
+  /** The group this widget sits inside (RFC 014 §5.1); absent on the canvas. */
+  readonly parentId?: string | undefined;
 }
 
 /**
@@ -342,8 +366,8 @@ export function replaceLayout(
       'DELETE FROM layout_widgets WHERE screen_id IS ? AND orientation = ? AND slot IS ?',
     ).run(screenId, orientation, slot);
     const insert = db.prepare(
-      `INSERT INTO layout_widgets (id, screen_id, orientation, slot, type, x, y, w, h, z, config, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO layout_widgets (id, screen_id, orientation, slot, type, x, y, w, h, z, config, parent_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     layout.widgets.forEach((widget, index) => {
       insert.run(
@@ -359,6 +383,9 @@ export function replaceLayout(
         // Stored order carries the z, so a plain read is already back-to-front.
         widget.z ?? index,
         widget.config === undefined ? null : JSON.stringify(widget.config),
+        // A child's group (RFC 014 §5.1); the boundary checked it names a group
+        // in this same list, so the row can be trusted here as the rest are.
+        widget.parentId ?? null,
         at,
         at,
       );
