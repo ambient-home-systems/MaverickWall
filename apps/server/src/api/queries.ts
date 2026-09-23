@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import type { ShiftOverride, ShiftPlan, ShiftType } from '@maverick-wall/core';
 import type { SqliteDatabase } from '../db/open.js';
 import { DEFAULT_TIMEZONE } from '../timezone.js';
@@ -80,15 +80,24 @@ export function readLayoutWidgets(
   db: SqliteDatabase,
   screenId: string | null = null,
   orientation: 'portrait' | 'landscape' = 'portrait',
+  /*
+   * Which of the wall's scheduled canvases (RFC 014 §5.2). Null — the default
+   * — is what every caller that does not name one reads, and that default is
+   * the whole compatibility story: the panel following a wall, the template
+   * writer, the copy and the seed all read and write the default slot and
+   * never see a named one, so a battery panel cannot be handed a schedule it
+   * could not honour.
+   */
+  slot: string | null = null,
 ): PlacedWidgetRow[] {
   const rows = db
     .prepare(
       `SELECT id, type, x, y, w, h, z, config
          FROM layout_widgets
-        WHERE screen_id IS ? AND orientation = ?
+        WHERE screen_id IS ? AND orientation = ? AND slot IS ?
         ORDER BY z, created_at`,
     )
-    .all(screenId, orientation) as {
+    .all(screenId, orientation, slot) as {
     id: string;
     type: string;
     x: number;
@@ -158,6 +167,85 @@ export function clearLayout(db: SqliteDatabase, screenId: string): void {
         layout_landscape_background = NULL, updated_at = ? WHERE id = ?`,
     ).run(at, screenId);
     db.prepare('DELETE FROM layout_widgets WHERE screen_id IS ?').run(screenId);
+    // Every slot went with the rows above; a schedule naming them would be a
+    // schedule for canvases that no longer exist.
+    db.prepare('DELETE FROM layout_schedule WHERE screen_id = ?').run(screenId);
+  });
+  tx();
+}
+
+/**
+ * The named canvases a screen holds, in name order (RFC 014 §5.2).
+ *
+ * A slot exists by having a widget on it, in either orientation; the default
+ * canvas is not in this list because it has no name. Read off the rows rather
+ * than off a table of slots, so a slot whose last widget was removed simply
+ * stops existing, and the schedule form stops offering it.
+ */
+export function readLayoutSlots(db: SqliteDatabase, screenId: string | null): string[] {
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT slot FROM layout_widgets
+        WHERE screen_id IS ? AND slot IS NOT NULL ORDER BY slot`,
+    )
+    .all(screenId) as { slot: string }[];
+  return rows.map((row) => row.slot);
+}
+
+export interface LayoutScheduleRow {
+  readonly slot: string;
+  readonly from: string;
+  readonly to: string;
+}
+
+/** The screen's schedule, in the order the household wrote it. */
+export function readLayoutSchedule(db: SqliteDatabase, screenId: string | null): LayoutScheduleRow[] {
+  if (screenId === null) return [];
+  return db
+    .prepare(
+      `SELECT slot, from_hhmm AS "from", to_hhmm AS "to"
+         FROM layout_schedule WHERE screen_id = ? ORDER BY position`,
+    )
+    .all(screenId) as LayoutScheduleRow[];
+}
+
+/**
+ * Replace the screen's schedule whole.
+ *
+ * Whole rather than row by row, for the reason `replaceLayout` is: the form
+ * posts every row it renders, so what it posts *is* the schedule, and a
+ * partial write would leave a row nobody can see on the page. The rows are
+ * trusted here because the handler validated them against `layout-slots.ts`.
+ */
+export function replaceLayoutSchedule(
+  db: SqliteDatabase,
+  screenId: string,
+  rows: readonly LayoutScheduleRow[],
+): void {
+  const at = Date.now();
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM layout_schedule WHERE screen_id = ?').run(screenId);
+    const insert = db.prepare(
+      `INSERT INTO layout_schedule (id, screen_id, position, slot, from_hhmm, to_hhmm, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    rows.forEach((row, position) => {
+      insert.run(randomUUID(), screenId, position, row.slot, row.from, row.to, at, at);
+    });
+  });
+  tx();
+}
+
+/**
+ * Remove one named canvas: its widgets on both orientations, and every
+ * schedule row that named it — a window pointing at a canvas that is gone
+ * would draw the default anyway, and a row the settings page cannot explain
+ * is worse than no row.
+ */
+export function deleteLayoutSlot(db: SqliteDatabase, screenId: string, slot: string): void {
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM layout_widgets WHERE screen_id IS ? AND slot = ?').run(screenId, slot);
+    db.prepare('DELETE FROM layout_schedule WHERE screen_id = ? AND slot = ?').run(screenId, slot);
   });
   tx();
 }
@@ -229,6 +317,8 @@ export function replaceLayout(
     /** The canvas background as JSON, or null for none (RFC 005 Phase 3). */
     readonly background: string | null;
   },
+  /** Which scheduled canvas (RFC 014 §5.2); null is the default. */
+  slot: string | null = null,
 ): void {
   const at = Date.now();
   // The aspect and background columns depend on which canvas is being written.
@@ -246,19 +336,21 @@ export function replaceLayout(
       ).run(layout.mode, layout.aspect, layout.background, at, screenId);
     }
 
-    db.prepare('DELETE FROM layout_widgets WHERE screen_id IS ? AND orientation = ?').run(
-      screenId,
-      orientation,
-    );
+    // One canvas: this orientation, this slot. The other slots' rows on the
+    // same orientation are somebody else's arrangement and are left alone.
+    db.prepare(
+      'DELETE FROM layout_widgets WHERE screen_id IS ? AND orientation = ? AND slot IS ?',
+    ).run(screenId, orientation, slot);
     const insert = db.prepare(
-      `INSERT INTO layout_widgets (id, screen_id, orientation, type, x, y, w, h, z, config, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO layout_widgets (id, screen_id, orientation, slot, type, x, y, w, h, z, config, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     layout.widgets.forEach((widget, index) => {
       insert.run(
         widget.id,
         screenId,
         orientation,
+        slot,
         widget.type,
         widget.x,
         widget.y,
@@ -1405,8 +1497,10 @@ export function deleteScreen(db: SqliteDatabase, id: string): boolean {
       at,
       screenId,
     );
-    // No orientation clause: both canvases go.
+    // No orientation clause: both canvases go — and every slot, and the
+    // schedule that picked between them.
     db.prepare('DELETE FROM layout_widgets WHERE screen_id = ?').run(screenId);
+    db.prepare('DELETE FROM layout_schedule WHERE screen_id = ?').run(screenId);
     return db.prepare('DELETE FROM screens WHERE id = ?').run(screenId).changes > 0;
   });
   return remove(id);

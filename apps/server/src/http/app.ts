@@ -65,6 +65,8 @@ import {
   claimScreenPairing,
   countUsers,
   readEvents,
+  readLayoutSchedule,
+  readLayoutSlots,
   readLayoutWidgets,
   livePanelCanvasOwner,
   effectiveDisplay,
@@ -1040,6 +1042,16 @@ export function createApp(deps: AppDeps): Hono {
       // orientation is empty (RFC 005).
       layoutWidgetsPortrait: readLayoutWidgets(deps.db, layoutOwner, 'portrait'),
       layoutWidgetsLandscape: readLayoutWidgets(deps.db, layoutOwner, 'landscape'),
+      // And every named canvas with the schedule that picks between them
+      // (RFC 014 §5.2), so the wall can swap at the boundary from its stored
+      // copy. Both empty on a wall with one canvas, which `buildLayout` spreads
+      // away so that wall's document is the one it always sent.
+      layoutSlots: readLayoutSlots(deps.db, layoutOwner).map((slot) => ({
+        slot,
+        portrait: readLayoutWidgets(deps.db, layoutOwner, 'portrait', slot),
+        landscape: readLayoutWidgets(deps.db, layoutOwner, 'landscape', slot),
+      })),
+      layoutSchedule: readLayoutSchedule(deps.db, layoutOwner),
       events: readEvents(deps.db, runFrom, runTo),
       sources: readSources(deps.db),
       people: readPeople(deps.db),

@@ -188,6 +188,15 @@ export interface Manifest {
     readonly mode?: string;
     readonly portrait?: { readonly aspect?: number; readonly widgets?: readonly ManifestWidget[]; readonly background?: CanvasBackground };
     readonly landscape?: { readonly aspect?: number; readonly widgets?: readonly ManifestWidget[]; readonly background?: CanvasBackground };
+    /**
+     * The wall's named canvases and the schedule that picks between them
+     * (RFC 014 §5.2). Absent on a wall with one canvas, and on a server older
+     * than the feature; both draw the default. Read through
+     * `canvas-schedule.ts`, defensively, because a stored copy may carry a
+     * shape this bundle did not write.
+     */
+    readonly slots?: readonly unknown[];
+    readonly schedule?: readonly unknown[];
     /** Legacy single-canvas shape (pre-RFC-005). Width ÷ height, and its widgets. */
     readonly aspect?: number;
     readonly widgets?: readonly ManifestWidget[];

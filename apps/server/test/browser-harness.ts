@@ -322,6 +322,21 @@ export interface Installation {
    */
   now(): number;
   /**
+   * Move this installation's clock, and only this installation's.
+   *
+   * Every reader of `now` — the manifest, the setup token, the sync — follows,
+   * and so does the wall on its next poll, through `x-server-time`. A test
+   * about a *time boundary* needs a moment the pinned hour never reaches
+   * (nothing scheduled for 06:30 happens at eleven), and the only honest way
+   * to get there is to move the clock the wall is corrected against rather
+   * than the device's, which under Playwright is the runner's own and reads a
+   * different hour on every machine. Milliseconds, signed; a day is not
+   * 86,400,000 of them across a daylight-saving change, so a caller aiming
+   * at a civil time computes the target with `instantAt` and passes the
+   * difference.
+   */
+  shiftClock(ms: number): void;
+  /**
    * The household account — **present only when the wizard ran here.**
    *
    * `wizard: false` hands the wizard to the browser, which creates whatever
@@ -383,8 +398,11 @@ export async function install(options: InstallOptions = {}): Promise<Installatio
    * this one. Pinning the server pins the wall.
    */
   const at = fixtureNow(timezone, new Date(), dayShift);
-  const skew = at - Date.now();
+  let skew = at - Date.now();
   const now = (): number => Date.now() + skew;
+  const shiftClock = (ms: number): void => {
+    skew += ms;
+  };
 
   const { db } = openDatabase({ dataDir });
   runMigrations(db, { dataDir, migrationsFolder: MIGRATIONS, waitTimeoutMs: 2000 });
@@ -531,6 +549,7 @@ export async function install(options: InstallOptions = {}): Promise<Installatio
     base,
     db,
     now,
+    shiftClock,
     account: wizard ? account : undefined,
     setupToken: setupToken.current().token,
     call,
@@ -895,6 +914,27 @@ export function fixtureNow(zone: string, now: Date = new Date(), dayShift = 0): 
     Number(day.slice(4, 6)) - 1,
     Number(day.slice(6, 8)),
     HARNESS_HOUR,
+  );
+  let at = target;
+  at = target - (wallClockAsUtc(zone, at) - at);
+  at = target - (wallClockAsUtc(zone, at) - at);
+  return at;
+}
+
+/**
+ * The instant a zone's clock reads `hh:mm` on the civil day `days` from
+ * today — `fixtureNow`'s arithmetic with the hour and minute as parameters,
+ * for a test that has to stand one minute either side of a schedule window.
+ * Two passes, for `fixtureNow`'s Adak reason.
+ */
+export function instantAt(zone: string, days: number, hour: number, minute: number, now: Date = new Date()): number {
+  const day = fixtureDate(zone, days, now);
+  const target = Date.UTC(
+    Number(day.slice(0, 4)),
+    Number(day.slice(4, 6)) - 1,
+    Number(day.slice(6, 8)),
+    hour,
+    minute,
   );
   let at = target;
   at = target - (wallClockAsUtc(zone, at) - at);

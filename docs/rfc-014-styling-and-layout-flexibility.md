@@ -472,7 +472,7 @@ renderer gets groups for free because a child's box resolves to panel pixels
 exactly as a top-level one does. Nesting is bounded at one level; a group's
 children are drawn with `z` relative to the group.
 
-### 5.2 Scheduled canvases
+### 5.2 Scheduled canvases **built**
 
 The theme already switches on a daylight window. Let the canvas do the same:
 a screen holds *named* canvases per orientation rather than exactly one, and
@@ -487,6 +487,56 @@ manifest carries every slot and the wall picks, for the reason the manifest
 carries both orientations: the wall must draw the right one offline, from its
 stored copy, at the moment the clock crosses the boundary. The ETag needs
 nothing — the slots are in the layout, which is in the preimage.
+
+**Built, as written, with four things decided in the building.** Storage is
+`layout_widgets.slot` (nullable; null is the default canvas, which is every
+row that existed) and `layout_schedule` keyed on the screen, migration
+`0049`, generated then read: one table, one index, one `ADD COLUMN`. Named
+slots are bounded at four per wall (`MAX_LAYOUT_SLOTS`), in the handler
+rather than the schema, because a `CHECK` cannot count rows. The schedule's
+rows are the interrupt window's all-or-nothing rule and wrap past midnight
+exactly as the daylight theme's window does — the display's `windowContains`
+is held to `daytimeActive` at every minute of the day, and the server's copy
+to the display's character for character. The manifest carries `layout.slots`
+and `layout.schedule`, **both spread away** on a wall with one canvas and no
+schedule, so that wall's document is byte-identical to the one it always sent
+and no stored ETag churns; a schedule change moves the ETag on its own, which
+is pinned rather than assumed. `pickCanvas` in `main.ts` takes the wall's
+corrected local time on the fifteen-second tick — the same reading the theme
+switches on — and picks *within* the orientation: the slot's widgets, the
+orientation's own aspect and background. A slot with no canvas on the
+orientation the wall is hung at falls back to the default slot's canvas for
+it, never to a blank.
+
+- **A panel follows a wall's default slot only.** A battery panel is a glance
+  class, asleep for most of an hour showing a frame it drew earlier, so a
+  canvas that must change at 06:30 is one it cannot honour. `readLayoutWidgets`
+  reads the default slot unless told otherwise and no panel path ever tells it
+  otherwise; the panel's own page says so in words, and the server refuses a
+  slot posted at a panel.
+- **The editor is one mechanism, not two.** The slot tabs beside the
+  orientation buttons are `wireTabs` — the roving tabindex the inspector's
+  tabs and the ink lane use — drawn only once a wall holds a named layout,
+  with New and Remove in the Layout popover, because a second segment in the
+  toolbar wrapped it onto a third row on a 390px phone and cost the canvas
+  the half-screen floor `browser-editor` measures. The stash became a map keyed on
+  `(orientation, slot)`, so dirtiness is a comparison per canvas and Save
+  writes every canvas that differs, the named ones with their slot in the
+  body and the default without one. Undo is per canvas. **New layout** copies
+  the canvas on screen under a new name with fresh widget ids, which is the
+  whole "start from what you have" affordance; **Remove layout** takes a named
+  one off the server with every rule naming it.
+- **The schedule is rows on the wall's Layout settings** — from, until, which
+  layout — behind a marker the handler reads them by, so a stale tab saving a
+  timezone leaves the schedule alone. A slot is called a *layout* wherever a
+  household reads it, because `canvas` is a retired noun on those pages.
+- **The measurement is the boundary, not the rule.** A wall loaded ten seconds
+  before 06:30 on the harness's clock, `/d/manifest` then blocked at the
+  network, swaps on its own tick with zero manifests delivered and its canvas
+  rectangle unmoved; a wall whose server has been killed and whose device
+  clock is fixed at 07:00 draws the morning canvas out of IndexedDB on a
+  reload, and the everyday one at 09:00. The mutation is a window one minute
+  later than the wall's clock: same load, same wait, no swap.
 
 ### 5.3 A fallback for an empty box — substitution **built**, yield not
 
@@ -554,7 +604,8 @@ convenience rather than a capability. Listed for completeness and last.
   way the inherited-number pattern already seeds a field. Contrast guidance from
   the theme builder, non-blocking, reused.
 - **Wall settings › Layout:** gutter step, default widget style, snap
-  divisions, and the schedule (5.2) as rows of *from – to – canvas*.
+  divisions, and the schedule (5.2) as rows of *from – to – canvas* (built:
+  *from – until – which layout*, since `canvas` is a retired noun there).
 - **Inspector, for a flagged box:** the omission note gains a "When this has
   nothing to show" control (5.3) beside the sentence that already explains the
   flag.
@@ -693,7 +744,18 @@ reads a class name.
   frame, decoded; a template with a group applies through `applyTemplate` and
   round-trips through the editor's save.
 - **5.2** Drive the wall's clock across a schedule boundary with `HARNESS_HOUR`
-  and assert the canvas swapped, offline, from the stored copy.
+  and assert the canvas swapped, offline, from the stored copy. **Built**,
+  `browser-scheduled-canvas.test.ts`: the app's clock moved to ten seconds
+  before the window (`shiftClock`, so the wall reads it off `x-server-time`),
+  the manifest blocked, the swap read back after one tick with zero manifests
+  delivered; then the server killed, the device clock fixed inside and outside
+  the window, and the reload drawing the right canvas from IndexedDB each
+  time. The one-minute mutation does not swap. `browser-editor-slots.test.ts`
+  drives the editor: an edit on one slot dirty across a switch, clean after
+  undo, both slots posted by one Save, a layout started from the current one
+  and removed again. `layout-schedule.test.ts` pins the byte-identical
+  unscheduled document, the moving ETag, the panel frame unmoved, the window
+  parity and every refusal at the two boundaries.
 - **5.3** A Weather box with no location on a fresh wall draws its fallback,
   and the box union (`wall-density`'s `contentSharePercent`) does not fall.
   **Substitution's is built**, `browser-when-empty.test.ts`: two fresh walls
@@ -718,8 +780,8 @@ reads a class name.
 2. 4.1 — the lane, the server-side resolver, the honours table entries.
    **Built**, with §4.4's default widget style beside it.
 3. 4.2 — one widget at a time, clock first, each with its measurement.
-4. 5.3 substitution (**built**), then 5.2, then 5.1 with multi-select, then 5.3
-   yield as a decision on its own.
+4. 5.3 substitution (**built**), then 5.2 (**built**), then 5.1 with
+   multi-select, then 5.3 yield as a decision on its own.
 5. 7, if asked for, behind its three preconditions, and the CSP on its own
    before any of it.
 

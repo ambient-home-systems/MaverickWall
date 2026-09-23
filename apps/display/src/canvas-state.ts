@@ -127,3 +127,22 @@ export function isCanvasDirty(
 ): boolean {
   return stashDirty || canvasSnapshot(active) !== savedSnapshot;
 }
+
+/**
+ * The key one canvas is stashed and saved under: its orientation and its slot
+ * (RFC 014 §5.2). The default canvas has no slot, so its key ends at the bar.
+ * A pure pair, here rather than in the editor, because the save loop and the
+ * dirtiness comparison both read it and the editor is a closure no test can
+ * reach.
+ */
+export function canvasKey(orientation: 'portrait' | 'landscape', slot: string | null): string {
+  return `${orientation}|${slot ?? ''}`;
+}
+
+/** `canvasKey` read back: the orientation and the slot, null for the default. */
+export function parseCanvasKey(key: string): ['portrait' | 'landscape', string | null] {
+  const at = key.indexOf('|');
+  const orientation = key.slice(0, at) === 'landscape' ? 'landscape' : 'portrait';
+  const slot = key.slice(at + 1);
+  return [orientation, slot === '' ? null : slot];
+}

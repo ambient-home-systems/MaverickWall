@@ -258,8 +258,59 @@ export const layoutWidgets = sqliteTable('layout_widgets', {
    * is the widget's own; validated at the boundary rather than trusted here.
    */
   config: text('config'),
+  /**
+   * Which of the wall's *scheduled* canvases this widget is on (RFC 014 §5.2).
+   *
+   * A wall may hold several named canvases per orientation and draw the one
+   * the household's clock selects — a school-morning arrangement from 06:30 to
+   * 08:30, the everyday one otherwise. **Null is the default canvas**, which is
+   * every row that existed before this column did and every row a wall that
+   * has never been scheduled writes: the migration adds the column and touches
+   * nothing, so a canvas already hanging reads exactly as it did. A named slot
+   * is a short lower-case name (`layout-slots.ts` is the rule), bounded per
+   * screen there rather than here because a `CHECK` cannot count rows.
+   *
+   * The schedule that picks between them is `layout_schedule`, below. Read
+   * with `IS ?` like `screen_id`, because `= NULL` matches nothing.
+   */
+  slot: text('slot'),
   ...timestamps,
 });
+
+/**
+ * When a wall draws which of its named canvases (RFC 014 §5.2).
+ *
+ * One row per window: between `from_hhmm` and `to_hhmm` in the wall's own
+ * zone, draw the canvas named `slot` instead of the default. The window wraps
+ * past midnight exactly as the daylight theme's and an interrupt rule's do —
+ * `from > to` is "from tonight until tomorrow morning" — and the two are
+ * validated by the same all-or-nothing rule at the boundary. Outside every
+ * window, or for a slot with no canvas in the orientation the wall is hung
+ * at, the default canvas draws: never a blank (rule nine).
+ *
+ * `position` is the order the household wrote the rows in, and the first
+ * window containing the moment wins, so two overlapping rows are not an
+ * error and never an empty wall. The whole table travels in the manifest,
+ * because the wall has to swap at the boundary offline, from its stored copy.
+ * A plain `screen_id` rather than a foreign key, for the reason
+ * `layout_widgets.screen_id` gives: `deleteScreen` and `clearLayout` sweep
+ * it themselves.
+ */
+export const layoutSchedule = sqliteTable(
+  'layout_schedule',
+  {
+    id: text('id').primaryKey(),
+    screenId: text('screen_id').notNull(),
+    position: integer('position', { mode: 'number' }).notNull(),
+    slot: text('slot').notNull(),
+    fromHhmm: text('from_hhmm').notNull(),
+    toHhmm: text('to_hhmm').notNull(),
+    ...timestamps,
+  },
+  (table) => ({
+    byScreen: uniqueIndex('layout_schedule_screen_position_idx').on(table.screenId, table.position),
+  }),
+);
 
 /**
  * A household-authored display theme.
