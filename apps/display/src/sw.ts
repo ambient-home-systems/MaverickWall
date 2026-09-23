@@ -55,6 +55,7 @@ const SHELL = [
   '/assets/display.css',
   '/assets/main.js',
   '/assets/clock.js',
+  '/assets/clock-face.js',
   '/assets/density.js',
   '/assets/glyphs.js',
   '/assets/gutter.js',

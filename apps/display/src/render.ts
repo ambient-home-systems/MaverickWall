@@ -9,6 +9,14 @@ import type {
   TodoItemModel,
 } from './viewmodel.js';
 import { DISPLAY_LOCALE, localDate, localTime } from './viewmodel.js';
+import {
+  FACE_DIAL_PATH,
+  FACE_HUB_PATH,
+  analogueFace,
+  clockVariant,
+  stackedDateLines,
+  wallClockReading,
+} from './clock-face.js';
 import { agendaTimeFitsBeside, weekColumnsFit } from './density.js';
 import type { PanelData, PanelReading } from './viewmodel.js';
 import type { ManifestWidget, CanvasBackground } from './manifest.js';
@@ -1148,10 +1156,16 @@ function renderBanners(model: DisplayModel): HTMLElement | undefined {
  */
 /* ----------------------------------------------------------- FREEFORM --- */
 
-/** The clock, as a widget: the time the today block already shows, on its own. */
+/**
+ * The clock, as a widget: the time the today block already shows, on its own —
+ * in whichever of its three designed variants the household chose (RFC 014
+ * §4.2). What each variant *is* lives in `clock-face.ts`; this only builds it.
+ */
 function renderClockWidget(model: DisplayModel, config?: unknown): HTMLElement {
+  const variant = clockVariant(config);
+  if (variant === 'analogue') return renderAnalogueClock(model);
   const view = clockWidgetView(config);
-  const box = el('div', 'fw-clock');
+  const box = el('div', variant === 'stacked' ? 'fw-clock clk-stacked' : 'fw-clock');
   /*
    * `model.clock` is already in the household's own format, so following it
    * costs nothing; an override re-reads the same corrected wall time through
@@ -1166,7 +1180,63 @@ function renderClockWidget(model: DisplayModel, config?: unknown): HTMLElement {
   // eight of them and "20:26" is five, and one constant cannot serve both.
   face.style.setProperty('--clock-chars', String(Math.max(1, time.length)));
   box.appendChild(face);
-  if (view.date) box.appendChild(el('div', 'today-date', model.todayLabel));
+  if (variant === 'stacked') {
+    /*
+     * The date is the stacked form's second half rather than an option on it,
+     * so `showDate` is not read here: a stacked clock with no date is the
+     * plain one, and the editor offers that switch on `plain` alone.
+     *
+     * Both lines are sized against the longer of the two, for the reason the
+     * digits are sized per character — "23 September" is twelve and
+     * "Wednesday" nine, and a line a box cannot hold clips rather than wraps.
+     */
+    const lines = stackedDateLines(model.now, model.timezone);
+    box.style.setProperty(
+      '--clk-date-chars',
+      String(Math.max(1, lines.weekday.length, lines.date.length)),
+    );
+    box.appendChild(el('div', 'clk-day', lines.weekday));
+    box.appendChild(el('div', 'clk-date', lines.date));
+  } else if (view.date) {
+    box.appendChild(el('div', 'today-date', model.todayLabel));
+  }
+  return box;
+}
+
+/**
+ * The analogue face: a picture, drawn at the shorter side of its box.
+ *
+ * Built with `createElementNS` and `setAttribute`, `glyphNode`'s rule, and
+ * rebuilt whole on every draw like everything else on the wall — the hands
+ * are redrawn at the new reading on the next tick and never move between two.
+ * The dial is scaffolding and the hands are the reading, so the two are
+ * separate paths the stylesheet inks separately; each hand is its own path so
+ * the angle it points at is the first point of its data and can be read back.
+ */
+function renderAnalogueClock(model: DisplayModel): HTMLElement {
+  const box = el('div', 'fw-clock clk-analogue');
+  const reading = wallClockReading(model.now, model.timezone);
+  const face = analogueFace(reading.hour, reading.minute);
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'currentColor');
+  svg.setAttribute('class', 'clk-face');
+  // A picture of the time, named as the time for anything that reads it out.
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', model.clock);
+  svg.setAttribute('focusable', 'false');
+  const path = (d: string, className: string): void => {
+    const node = document.createElementNS(ns, 'path');
+    node.setAttribute('d', d);
+    node.setAttribute('class', className);
+    svg.appendChild(node);
+  };
+  path(FACE_DIAL_PATH, 'clk-dial');
+  path(face.hourPath, 'clk-hand clk-hand-hour');
+  path(face.minutePath, 'clk-hand clk-hand-minute');
+  path(FACE_HUB_PATH, 'clk-hub');
+  box.appendChild(svg);
   return box;
 }
 

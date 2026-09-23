@@ -16,6 +16,15 @@
 
 ## Unreleased
 
+**The clock comes in three looks.** Select a clock on your wall and the
+**Style** tab now opens with **Look**: **Plain** is the clock you have today,
+**Stacked** puts the weekday and the date on lines of their own under the
+time, and **Analogue** draws a clock face with an hour hand and a minute hand
+that fills its box. The face moves on with the wall's own clock and has no
+seconds hand, because the wall only redraws every fifteen seconds. An e-paper
+panel draws all three in black and white, and a panel following a wall can
+wear a different look from the wall itself. Nothing changes until you pick one.
+
 **A widget can have its own colours and type.** Every widget on a wall has
 always worn the wall's theme, and the only thing you could change on one was
 a card behind it. On the widget's **Style** tab there is a new section,

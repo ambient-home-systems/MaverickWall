@@ -2479,7 +2479,7 @@ body {
   font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
   font-size: min(
     calc(var(--buw) * 130 / var(--clock-chars, 5)),
-    calc(var(--buh) * 52)
+    calc(var(--buh) * var(--clock-h, 52))
   );
   /*
    * And on a measured wall, never larger than the clock role.
@@ -2502,9 +2502,9 @@ body {
    * measured, and a clock that inherits `body`'s 14px is rule nine.
    */
   font-size: min(
-    var(--t-wall-clock, 100vh),
+    var(--t-wall-clock, var(--clock-cap, 100vh)),
     calc(var(--buw) * 130 / var(--clock-chars, 5)),
-    calc(var(--buh) * 52)
+    calc(var(--buh) * var(--clock-h, 52))
   );
   line-height: 1;
   color: var(--ink);
@@ -2545,7 +2545,7 @@ body {
   font-size: min(
     var(--t-wall-clock, calc(var(--t-event) * 1.8)),
     calc(var(--buw) * 130 / var(--clock-chars, 5)),
-    calc(var(--buh) * 52)
+    calc(var(--buh) * var(--clock-h, 52))
   );
 }
 .fw-clock .today-date {
@@ -2554,6 +2554,107 @@ body {
   color: var(--muted);
   margin-top: calc(var(--buh) * 2);
 }
+
+/*
+ * The clock's designed variants (RFC 014 §4.2), and the mechanism is two custom
+ * properties rather than two more rules.
+ *
+ * Every size the digits can take is decided by the three rules above, and one
+ * of them exists only to win a specificity accident on a landscape wall. A
+ * variant restating the digits' `font-size` would have to restate it at
+ * (0,5,0) to beat that one, and the next variant at (0,6,0) — which is exactly
+ * how the landscape clock went unsized for as long as it did. So the rules
+ * read `--clock-h` (the share of the box's height the digits may take) and
+ * `--clock-cap` (their ceiling on a wall nobody has measured), each with
+ * today's value as its fallback, and a variant sets the property. Unset — which
+ * is every plain clock, and every clock on every wall until a household picks
+ * another — both compute to exactly what they computed before they existed.
+ */
+
+/*
+ * Stacked: the digits over the weekday over the date, each on its own line.
+ *
+ * `--clock-cap` is the half worth reading. The plain clock's ceiling on an
+ * unmeasured *portrait* wall is `100vh` — "no cap" — deliberately, because
+ * capping it would move a wall nobody measured, and that is why the shipped
+ * Classic clock draws 89.9px against a 37.4px agenda title: 2.4x, where the
+ * design rule says 1.8. A variant nobody has chosen yet has no drawing to
+ * preserve, so this one takes the design rule on every wall: 1.8x the event
+ * size, which is the lede's own fallback expression. On a measured wall the
+ * clock role is already that ratio and the cap is not reached for.
+ *
+ * `--clock-h` gives the digits 44% of the box rather than 52, which is the room
+ * the second date line costs: the two scaffold lines take up to 12% of the
+ * height each at their 1.15 leading, plus a 3% gap.
+ */
+.fw-clock.clk-stacked {
+  --clock-h: 44;
+  --clock-cap: calc(var(--t-event) * 1.8);
+  /*
+   * The width the box's content actually has: its own width less the padding
+   * `.fw` spends, which is the gutter step or the widget's own inset. The
+   * digits' per-character term was written against the whole box and gets
+   * away with it because five digits in a condensed face are narrow; twelve
+   * capitals in the display face are not, and in a small box the padding is
+   * most of the difference between a line that fits and one that clips.
+   */
+  --clk-room-w: calc(var(--buw) * 100 - var(--fw-inset, var(--fw-gutter, var(--s4))));
+}
+/*
+ * The date lines are the scaffold role, which is the register the agenda's own
+ * weekday and month use — a date under a clock labels the time rather than
+ * being what anybody walked over to read. The role on a measured wall, the
+ * agenda's own rem where nobody has measured it, and never more than the box
+ * can hold across its longer line: `--clk-date-chars` is set by the renderer
+ * from the two strings, the way `--clock-chars` is from the digits, and 1.25
+ * over it is an advance of 0.8em a character — a capital in the display face
+ * at 700 plus the scaffold's 0.12em of tracking, measured at 0.67em across
+ * "23 SEPTEMBER" and 0.76em across "WEDNESDAY", the widest capitals the
+ * calendar sets here — so the longer line shrinks rather than clipping.
+ * `nowrap` is the digits' belt.
+ */
+.fw-clock .clk-day,
+.fw-clock .clk-date {
+  font-family: var(--disp); font-stretch: var(--disp-stretch, 100%);
+  font-size: min(
+    var(--t-wall-scaffold, 1.65rem),
+    calc(var(--clk-room-w, var(--buw) * 100) * 1.25 / var(--clk-date-chars, 12)),
+    calc(var(--buh) * 12)
+  );
+  font-weight: 700;
+  letter-spacing: var(--ls-scaffold);
+  text-transform: uppercase;
+  line-height: 1.15;
+  color: var(--ink-scaffold);
+  white-space: nowrap;
+}
+.fw-clock .clk-day { margin-top: calc(var(--buh) * 3); }
+
+/*
+ * Analogue: a face, which is a picture rather than type. It takes no type role
+ * — nothing in it is text, so it is not in the tabular-figures walk either —
+ * and it is the size of the shorter side of the room its box has: the wrapper
+ * fills the box's content area and the SVG fills the wrapper, and a square
+ * `viewBox` drawn into a rectangle is drawn at the rectangle's shorter side,
+ * centred, which is `min(width, height)` with no arithmetic here to get wrong.
+ *
+ * The dial is scaffolding and inks as such; the hands are the reading and ink
+ * as the event does. Filled, both: see `clock-face.ts`.
+ */
+.fw > .fw-clock.clk-analogue {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+}
+.clk-analogue > .clk-face {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  color: var(--ink-event, var(--ink));
+}
+.clk-face .clk-dial { fill: var(--ink-scaffold, var(--muted)); }
 
 .fw-shift { justify-content: center; }
 /*

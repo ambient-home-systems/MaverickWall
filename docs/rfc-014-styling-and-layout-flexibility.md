@@ -12,7 +12,10 @@ step across both budgets (`screens.layout_gutter`, migration `0047`,
 `apps/server/src/gutter.ts`, `apps/display/src/gutter.ts`,
 `apps/server/test/browser-canvas-gutter.test.ts`) and its own default widget
 style (`screens.layout_style`, migration `0048`,
-`apps/server/test/wall-style-settings.test.ts`); nothing else here is built ·
+`apps/server/test/wall-style-settings.test.ts`); and §4.2's first row, the
+clock's three variants (`config.variant`, `apps/display/src/clock-face.ts`,
+`apps/server/src/epaper/clock-face.ts`,
+`apps/server/test/browser-clock-variants.test.ts`); nothing else here is built ·
 Owner: — · First drafted 2026-09-15 ·
 Arises from the question "could a household style each widget with a CSS
 block?" · Relates to `apps/server/src/api/widget-schema.ts`,
@@ -221,7 +224,7 @@ This is most of what "a unique design per module" means in practice: a different
 face, a different ground, a different accent, tighter or looser, larger or
 smaller, per widget. It costs no new mechanism.
 
-### 4.2 Designed variants per widget type
+### 4.2 Designed variants per widget type — the clock **built**
 
 The calendar already has four cell treatments (`text`, `dots`, `pills`,
 `swiss`) and two densities, and Swiss mode is the model: a *mode*, drawn on
@@ -230,7 +233,7 @@ other widgets have none. Each gets a small `variant` enum:
 
 | Widget | Variants worth drawing |
 |---|---|
-| clock | `plain` (today), `stacked` (time over date), `analogue` (a filled-path face, no hands animation) |
+| clock — **built** | `plain` (today), `stacked` (time over date), `analogue` (a filled-path face, no hands animation) |
 | weather | `strip` (today), `column`, `today-only` (one large reading, the forecast as a single line) |
 | shift | `badge` (today), `line` (one row, the ladder's own one-rung form as a choice), `calendar-strip` (the run as seven small cells) |
 | homeassistant | `list` (today), `grid` (readings as a 2-up or 3-up), `strip` |
@@ -238,7 +241,19 @@ other widgets have none. Each gets a small `variant` enum:
 | countdown | `number` (today), `bar` (days elapsed of the whole), `calendar` (the target on a small month) |
 
 Each variant is a designed alternative and each is a `browser-*` measurement
-before it ships, the way Swiss mode was. This is how the project has always
+before it ships, the way Swiss mode was. **The clock's row is built** — `variant` is one enum
+on `widgetConfigBody` for every type, the way `mode` is, and each renderer
+filters to its own allowlist, so a value a type does not know is "not for me"
+and draws that type's default. Absent is `plain`, so no stored config or ETag
+moved; `stacked` keeps the 1.8x cap over the lede on the time line, on an
+unmeasured wall too, and draws the weekday and the date in the scaffold role;
+`analogue` is a filled face on the 24 grid in `glyphs.ts`'s idiom with two
+wedge hands and no seconds hand, sized to the shorter side of its box and
+taking no type role. A panel honours all three (`PANEL_HONOURS`, `INK_LANE`),
+rasterising the face from the same geometry the wall's SVG is drawn from
+(`clock-face-parity.test.ts`); `EPAPER_RENDERER_VERSION` did not move, because
+nothing stored carries a variant yet. The other five rows wait, one widget a
+session. This is how the project has always
 delivered flexibility — as an enum somebody drew rather than a string somebody
 typed — and it is the only form of it the panel can follow.
 
@@ -631,6 +646,17 @@ reads a class name.
   paired 1080x1920 and 1920x1080 wall, no run under the floor, nothing clipped,
   and the panel frame *different* from the default variant where the honours
   table says it is honoured and *identical* where it says it is not.
+  **The clock's is built**, `browser-clock-variants.test.ts`, on an
+  unmeasured wall and a 32" television at both sizes: `plain` measures
+  exactly what a clean worktree of `main` drew, absent and spelled out;
+  `stacked` holds its digits at 1.8x the agenda's title or under, its three
+  lines in order and nothing clipped — read as `scrollWidth`, and in two
+  dragged-small boxes where its own height share and width term are what
+  bind; `analogue` fills 99.8% of its box's short side, holds no text, and
+  points its hands at the harness's eleven o'clock, read back out of the path
+  data. The panel's frames (`epaper-clock-variants.test.ts`) are `main`'s
+  bytes for plain at three sizes and four configs, and different for the
+  other two. Fifteen mutations, all red.
 - **5.1** Group children resolve to the same pixels on the wall and on a panel
   frame, decoded; a template with a group applies through `applyTemplate` and
   round-trips through the editor's save.

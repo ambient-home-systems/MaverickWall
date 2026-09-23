@@ -197,6 +197,10 @@ const PROBES: Readonly<Record<string, readonly unknown[]>> = {
   showHours: [false],
   showRun: [false],
   clockFormat: ['12'],
+  // A designed variant (RFC 014 §4.2). Every type is probed with every value,
+  // so a Weather widget handed a clock's `analogue` is proved to draw nothing
+  // different — "not for me" — and the clock is proved to draw both.
+  variant: ['stacked', 'analogue'],
   showDate: [false],
   showLow: [false],
   showIcon: [false],
