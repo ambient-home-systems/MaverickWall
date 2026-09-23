@@ -15,7 +15,11 @@ style (`screens.layout_style`, migration `0048`,
 `apps/server/test/wall-style-settings.test.ts`); and §4.2's first row, the
 clock's three variants (`config.variant`, `apps/display/src/clock-face.ts`,
 `apps/server/src/epaper/clock-face.ts`,
-`apps/server/test/browser-clock-variants.test.ts`); nothing else here is built ·
+`apps/server/test/browser-clock-variants.test.ts`); and §5.3's substitution
+half, a fallback for an empty box (`config.whenEmpty`, resolved in
+`keepWidgetsWithSomethingToSay`, `apps/server/test/browser-when-empty.test.ts`)
+— its yield half is not built and is a separate decision; nothing else here is
+built ·
 Owner: — · First drafted 2026-09-15 ·
 Arises from the question "could a household style each widget with a CSS
 block?" · Relates to `apps/server/src/api/widget-schema.ts`,
@@ -484,7 +488,7 @@ carries both orientations: the wall must draw the right one offline, from its
 stored copy, at the moment the clock crosses the boundary. The ETag needs
 nothing — the slots are in the layout, which is in the preimage.
 
-### 5.3 A fallback for an empty box
+### 5.3 A fallback for an empty box — substitution **built**, yield not
 
 `CLAUDE.md` names the hole an unconfigured or empty widget leaves as "the bill"
 for retiring `auto`: `keepWidgetsWithSomethingToSay` drops the widget and the
@@ -506,6 +510,34 @@ Substitution ships first and yield is a separate decision, because yield moves
 rectangles and the e-paper panel's partial refresh depends on rectangles that
 do not move. On a panel, yield is honoured only as a full refresh, and the
 honours table says so.
+
+**Substitution is built, and yield is not.** `whenEmpty` is one strict object
+on `widgetConfigBody` — `{ type, config }`, `type` from `WIDGET_TYPES`, and
+`config` the widget's own config with `whenEmpty` and `ink` *omitted* from it,
+so `whenEmpty.config.whenEmpty` is a rejected key the way `ink.ink` is and
+"one level deep" is a fact about the shape. It is resolved in exactly one
+place, `keepWidgetsWithSomethingToSay`, which the wall's canvas and the
+panel's frame already share: a widget with nothing to say becomes its fallback
+— same id, same box, same `z`, marked `substituted: true` on the manifest
+widget — provided the fallback has something to say itself, and **the
+substitution runs before the never-empty guard**, so a canvas of nothing but
+empty boxes with fallbacks draws the fallbacks rather than the placeholders.
+Two things were decided in building it that this section did not say:
+
+- **`whenEmpty` never reaches the wall.** It is resolved before the manifest
+  is written, so `displayConfig` drops the key; carried, a to-do fallback's
+  entity id would have travelled inside a box that is not a to-do widget,
+  where `list`'s rewrite never looks — rule 12 one level down.
+- **The honours table carries it only on the types that can be left out**
+  (Weather, Home Assistant, Shift, To-do). The table is derived by rendering,
+  and a fallback on a clock or a calendar can never move ink, because neither
+  is ever omitted.
+
+The inspector offers it under the omission note — *Leave the box empty* or
+*Show another widget*, a type picker that never offers a type the wall would
+leave out too, and that type's minimum content (a note's words, a countdown's
+name and date, a checklist's lines). A picture and a module's panel are not
+offered, since each needs a picker of its own.
 
 ### 5.4 The snap grid and the numeric fields
 
@@ -664,6 +696,16 @@ reads a class name.
   and assert the canvas swapped, offline, from the stored copy.
 - **5.3** A Weather box with no location on a fresh wall draws its fallback,
   and the box union (`wall-density`'s `contentSharePercent`) does not fall.
+  **Substitution's is built**, `browser-when-empty.test.ts`: two fresh walls
+  through the add page on the full Classic canvas, one with a note behind its
+  Weather box — the note drawn in that box on the wall, ink in the same box on
+  a following panel's decoded frame where the plain wall's panel has none, and
+  `contentSharePercent` 86.0% → 100.0% at 1080x1920. The fallback never
+  replacing a widget with something to say and the substitute-before-guard
+  ordering are unit assertions (`widget-omission.test.ts`,
+  `epaper-ink.test.ts`), and the editor's accessible name following a change
+  of fallback in place is `browser-editor.test.ts` §10. Six mutations, all
+  red.
 - **7** An enumerated-bypass table against the pure sanitiser in the shape of
   `safeNextPath`'s: `@import` in every spelling the parser accepts, `url()`
   inside `image-set()` and `cursor`, a selector escaping through `,`, a
@@ -676,8 +718,8 @@ reads a class name.
 2. 4.1 — the lane, the server-side resolver, the honours table entries.
    **Built**, with §4.4's default widget style beside it.
 3. 4.2 — one widget at a time, clock first, each with its measurement.
-4. 5.3 substitution, then 5.2, then 5.1 with multi-select, then 5.3 yield as a
-   decision on its own.
+4. 5.3 substitution (**built**), then 5.2, then 5.1 with multi-select, then 5.3
+   yield as a decision on its own.
 5. 7, if asked for, behind its three preconditions, and the CSP on its own
    before any of it.
 

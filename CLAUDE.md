@@ -2710,6 +2710,76 @@ the wall itself just has a gap. **A layout that reflows and a layout that does
 not are not the same feature with different ergonomics**, and the fallback that
 one of them made unnecessary has to be rebuilt for the other.
 
+**Half of that fallback is rebuilt now, and it is the half that moves no
+rectangle (RFC 014 §5.3).** A widget can name `whenEmpty: { type, config }` —
+another widget to draw in its box when it has nothing to say. It is resolved
+in **one place**, `keepWidgetsWithSomethingToSay`, which the wall's canvas and
+the panel's frame already went through together, so a panel following a wall
+cannot disagree about what a box holds: the empty widget *becomes* its
+fallback — same id, same rectangle, same `z`, `substituted: true` on the
+manifest widget — provided the fallback has something to say itself, and one
+that has not is dropped exactly as the widget would have been. Only the
+omitted are substituted, so **a fallback never replaces a real widget**, and
+that sentence is an assertion on both renderers rather than a comment.
+
+**The order is the trap, and it is written as a test that goes red when
+reversed.** The never-empty guard keeps every *original* when nothing
+survives, so guarding first sees a canvas of two empty boxes each naming a
+note, keeps both, and draws two placeholders over two answers the household
+had already written. Substitute, *then* guard; and when even the fallbacks
+have nothing, the guard hands back the arranged originals rather than a
+mixture. The editor's preview transcribes the same order in `omission.ts`,
+which is `widgetOmitted`'s seam one rule along, and is held to it by its own
+unit test.
+
+**The schema bounds it by shape.** `whenEmpty.config` is the widget's config
+with `whenEmpty` and `ink` *omitted* rather than re-declared, so a fallback's
+fallback is a rejected key — `ink.ink`'s rule — and a fallback carries no ink
+lane, because a panel substitutes where its wall does and an override there
+would be a panel saying something the wall does not. **And `whenEmpty` never
+reaches the wall**: `displayConfig` drops it, since it is resolved before the
+manifest is written, and carried it would have taken a to-do fallback's
+*entity id* to the wall inside a box that is not a to-do widget, where
+`list`'s rewrite never looks. Found by writing the to-do case, not by reading.
+
+**It is in `PANEL_HONOURS` for the four types that can be left out, not for
+every type.** Resolution happens before either renderer, which is why it is
+in the table at all; but the table is a fact derived by rendering
+(`epaper-ink.test.ts` now probes through the omission, on a household with
+nothing set up), and a fallback on a clock, a calendar, a note, a countdown, a
+picture or a module's panel can never move ink, because none of them is ever
+omitted. Naming it there would be the one entry the table exists not to carry.
+
+**The editor says it in all three sentences and follows it in place.** The
+inspector's omission note gains *When this has nothing to show* — *Leave the
+box empty* or *Show another widget*, a type picker that never offers a type
+the wall would leave out too, and the chosen type's minimum content (a note's
+words, a countdown's name and date, a checklist's lines; a picture and a
+module's panel are not offered, each needing a picker of its own). The flag
+reads "Shows Notes instead", the note says so, and `boxAriaLabel` carries
+"shows Notes instead" — re-read by `refreshLabels` in place, which is §8's
+fault one control along and `browser-editor.test.ts` §10 is its guard. That
+test caught a real one on its first run: switching the fallback's type carried
+the config captured when the panel was *built*, so a note typed since was
+dropped by a look at the countdown.
+
+**Measured on a fresh wall**, two of them through the add page on the full
+Classic canvas with no location and no rota (`browser-when-empty.test.ts`):
+the note is drawn in the Weather box on the glass, a following 7.5" panel's
+decoded frame has ink in that box where the plain wall's panel has none, and
+`wall-density`'s `contentSharePercent` goes **86.0% → 100.0%** at 1080x1920 —
+the hole, closed without a rectangle moving. Six mutations, all red.
+
+**Yield is not built, and that is a decision rather than a backlog item.**
+"Give my room to the box below" moves rectangles, and moving rectangles is the
+two things this document spends paragraphs defending: what the household
+dragged is what is drawn, and the e-paper panel's refresh contract, whose
+whole premise is that a region's rectangle is a function of the panel and the
+tier and never of the content. A yield that fires when a chore board empties
+is a full refresh on a battery panel for a hole substitution already fills.
+It is RFC 014 §5.3's second half and its own decision; nothing here makes it
+cheaper or dearer to take.
+
 The wall's `renderFreeform` places each widget on a
 canvas of the authored aspect, letterboxed to fit and correct through a
 rotation; the reused sections (calendar, weather, house, shift) are laid out at
