@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.66.0
+
 **A wall can carry your own CSS, and so can each widget on it.** Open a
 wall, then Wall settings › Advanced › **Custom CSS**. There is one field for
 the whole wall and one for every widget, with a live preview beside them.
