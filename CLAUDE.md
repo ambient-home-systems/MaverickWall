@@ -7828,13 +7828,15 @@ built: the first widens the agenda's date column, which is a density decision
 with its own measurement, and the second has no panel style to read them for
 until P5.1.
 
-**3907 tests passing, and 1 skipped, over 276 files**: calendar 153 over 10 ·
-core 314 over 9 · display 628 over 36 · server 2812 over 221, measured on a
-clone whose tags had been fetched and with `MW_BROWSER_EXECUTABLE` naming the
-provisioned Chromium. Against the 3830 over 271 above, +77 tests and +5 files,
-which is this change's own count (four new server files of 62, three tests in
-`admin-saved`, one display file of 12) — agreement, recorded as an observation
-and not a method. No ratchet baseline moved.
+**3952 tests passing, 1 skipped and 5 expected failures, over 283 files**:
+calendar 153 over 10 · core 314 over 9 · display 638 over 36 · server 2847
+over 228 plus P2.1's five `it.fails`, measured with a real Chromium
+(`MW_BROWSER_EXECUTABLE`) on the tree after `main` was merged into this
+branch. Against P2.1's 3875 over 278 above, +77 passing and +5 files, which
+is this change's own count (four new server files of 62, three tests in
+`admin-saved`, one display file of 12); before the merge the same diff read
+3907 over 276 against 3830 over 271. Agreement both times, recorded as an
+observation and not a method. No ratchet baseline moved.
 
 ---
 
