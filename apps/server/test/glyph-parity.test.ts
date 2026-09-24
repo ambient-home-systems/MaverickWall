@@ -55,7 +55,7 @@ describe('the glyph vocabulary is one vocabulary', () => {
     const keys = block(DISPLAY, 'export const GLYPH_KEYS = [', '] as const;');
     for (const key of GLYPH_KEYS) expect(keys).toContain(`'${key}'`);
     expect(block(SERVER, 'const CLOUD =', '\n};')).toContain('thunderstorm:');
-    expect(GLYPH_KEYS.length).toBe(29);
+    expect(GLYPH_KEYS.length).toBe(34);
   });
 });
 

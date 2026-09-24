@@ -58,6 +58,13 @@ export const GLYPH_KEYS = [
   'problem',
   'lock',
   'person',
+  // The read-only domains a household can watch since Q8 (P5.3). A lock is
+  // `lock` above; a helper toggle draws as `switch`.
+  'light',
+  'switch',
+  'fan',
+  'cover',
+  'thermostat',
 ] as const;
 
 /** The cloud every overcast sky is built on, so all six read as one family. */
@@ -189,6 +196,44 @@ export const GLYPH_PATHS: Readonly<Record<GlyphKey, string>> = {
   person:
     'M8 6.4a4 4 0 1 1 8 0a4 4 0 1 1-8 0Z' +
     'M4.5 21.6c0-4.2 3.3-7 7.5-7s7.5 2.8 7.5 7Z',
+  /* A pendant lamp — a cord, a shade and the bulb under it — rather than a bulb
+     on its own, because `illuminance` already is one: a reading of how bright
+     the room is and a light somebody switched on must not be one picture. */
+  light:
+    'M11.1 1.4h1.8v5.4h-1.8Z' +
+    'M8.2 6.2h7.6L20.6 14.2H3.4Z' +
+    'M8.9 15.4a3.1 3.1 0 1 1 6.2 0a3.1 3.1 0 1 1-6.2 0Z',
+  /* The power symbol: a ring broken at the top and the bar through the gap. One
+     subpath for the ring, the outer arc clockwise and the inner one back
+     anticlockwise, so it is a C rather than a disc minus a disc. `power` is the
+     lightning bolt, which is how much a house is drawing, not a switch. */
+  switch:
+    'M16.88 6.04A8.5 8.5 0 1 1 7.12 6.04L8.39 7.84A6.3 6.3 0 1 0 15.61 7.84Z' +
+    'M10.9 2.2h2.2v9.3h-2.2Z',
+  /* Three blades round a hub, two up and one down, a propeller rather than a
+     pinwheel. Four blades drew a clean pinwheel on this grid and a hooked cross
+     at 12 pixels, which is a symbol this wall will never draw, so both media
+     have three. Each blade is an ellipse drawn as two clockwise arcs. */
+  fan:
+    'M21.85 8.25A3.4 4.9 80 0 1 12.2 9.95A3.4 4.9 80 0 1 21.85 8.25Z' +
+    'M10.32 22.4A3.4 4.9 200 0 1 13.68 13.2A3.4 4.9 200 0 1 10.32 22.4Z' +
+    'M3.83 5.35A3.4 4.9 320 0 1 10.13 12.85A3.4 4.9 320 0 1 3.83 5.35Z' +
+    'M9.4 12a2.6 2.6 0 1 1 5.2 0a2.6 2.6 0 1 1-5.2 0Z',
+  /* A blind: a head rail, four slats and the pull cord. The cord is what keeps
+     it from `fog` and `wind`, which are also stacks of bars, and from `garage`,
+     whose slats sit under a roof. */
+  cover:
+    'M2 2.4h20v2.6h-20Z' +
+    'M3.4 6.6h14.4v2h-14.4ZM3.4 10.2h14.4v2h-14.4ZM3.4 13.8h14.4v2h-14.4ZM3.4 17.4h14.4v2h-14.4Z' +
+    'M19.9 5h1.3v12.8h-1.3ZM19.35 19a1.2 1.2 0 1 1 2.4 0a1.2 1.2 0 1 1-2.4 0Z',
+  /* A wall thermostat: a square frame and a dial with its marker cut out. Not a
+     round dial in a ring, which is `pressure`, and not a thermometer, which is
+     `temperature`: that is a reading of the room, and this is the thing that
+     decides it. Frame, counter, dial and marker nest +1 -1 +1 -1. */
+  thermostat:
+    'M5 2.5h14a2.5 2.5 0 0 1 2.5 2.5v14a2.5 2.5 0 0 1-2.5 2.5H5a2.5 2.5 0 0 1-2.5-2.5V5A2.5 2.5 0 0 1 5 2.5Z' +
+    'M5 5v14h14V5Z' +
+    'M7 12a5 5 0 1 1 10 0a5 5 0 1 1-10 0ZM11.3 7.8v3.6h1.4v-3.6Z',
 };
 
 export type GlyphKey = (typeof GLYPH_KEYS)[number];

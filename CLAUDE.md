@@ -437,7 +437,8 @@ were rewritten before any code depended on the change.
   stays out (Q4).
 - **D3** — the closed icon set is opened for occasion motifs. On a browser wall
   those are bundled emoji artwork; drawn one-bit motifs for e-paper are deferred.
-  The twenty-nine drawn keys are still the whole of what a panel can draw.
+  The drawn keys — thirty-four since P5.3 added five for the read-only Home
+  Assistant domains — are still the whole of what a panel can draw.
 - **D4** — a Home Assistant tile-card look is adopted. Hard rule 12 is
   unchanged: a tile shows state and controls nothing.
 - **D5** — the Store's Countdown entry is kept and renamed.
@@ -5828,7 +5829,7 @@ three real feeds, which is the right way to check this and is not the same thing
 > reinstates what is described below: an emoji set as text and resolved by
 > the device's font is still the bug, and an e-paper panel still draws only
 > the drawn glyphs. "The set is deliberately closed" remains true of the
-> twenty-nine keys a panel can draw.
+> thirty-four keys a panel can draw.
 
 **And then the emoji went, which is a rule this document had already written
 down and the product had been breaking on every screen since it shipped.** The
@@ -7744,6 +7745,89 @@ this change's own count: 11 in the walker, 7 in the add-page file, 1 in the
 merge the same diff read 3846 over 274 against 3830 over 271, the same +16
 and +5. As with the paragraphs above, that agreement is an observation and
 not a method.
+
+**P5.3's server half shipped: the data a Home Assistant tile card needs, and
+seven more domains to read it from.** The tile look itself (`variant: 'tile'`,
+`HOUSE_TILE_TIERS`, the panel's outlined boxes) is the display half and did
+not ship here. What did is four things, all in
+`modules/homeassistant/entities.ts` and the cache write beside it. **A `tone`
+per reading** (`'active' | 'alert' | null`), from `toneFor`: a door open is an
+alert, a light on is merely a fact, a temperature is neither. It is tested
+table-first: `TONES` in `ha-units.test.ts` is one row per sentence a household
+would agree with or not, 54 of them, and a test fails when a watchable domain
+has no row. **A `changedAt`**, which is Home Assistant's `last_changed`, until
+now read only by `signals()`. **Seven read-only domains (Q8, the plan's
+proposed default, built as proposed)**: `light`, `switch`, `input_boolean`,
+`fan`, `cover`, `lock`, `climate`, each worded as a tile says it ("On · 60%",
+"Open · 40%", "Unlocked", "Heating · 21°"). Reading one is a GET of
+`/api/states`, which this module has always made, so `HA_SERVICES` is still
+two members and `ha-write-boundary.test.ts` is green and unedited. And **five
+glyphs** (`light`, `switch`, `fan`, `cover`, `thermostat`), drawn on the 24
+grid for the wall and the admin and redrawn at 12 pixels for the panel.
+
+**The cache keeps an allowlist of attributes per domain, read on the way in
+and again on the way out.** The shortcut would have been to cache the whole
+attributes object. That would have put `entity_picture` in a table a backup
+carries, and on a real light that attribute is a Home Assistant path with a
+token in its query string: an address and a credential in one field. The
+fake now sends that attribute, and `rgb_color`, `changed_by`, `hvac_modes` and
+five more like them. The test reads the whole `ha_entity_cache` table back as
+text and finds none of them. A binary sensor's row is still
+`{"device_class":"door"}` byte for byte, so every row already in a database
+reads back unchanged.
+
+**The fault this found is the more useful half.** The house panel carried a
+`fetchedAt` that moved on every thirty-second poll. The panel is in
+`manifestEtag`'s preimage and the e-paper frame's ETag hashes the manifest's,
+so every household with a reading on a wall was sent a new manifest every
+half minute, and every panel beside it a new frame. Nothing read the field.
+The to-do panel had left out its own `lastFetchedAt` for exactly this reason
+and said so. This one was found because `changedAt` promises "the manifest
+moves only when the state does", and that could not be tested next to a field
+that moved on every poll. The field is gone, and two tests now hold a second
+poll of an unchanged house to the same manifest ETag and the same frame ETag.
+**The fake had the same fault one layer down**: it restamped `last_changed`
+from `Date.now()` on every request, so no test could have told a manifest
+that moves with the house from one that moves with the clock. Its stamps are
+relative to the moment it was stood up now, and the kitchen's moves only when
+a test changes the temperature, as Home Assistant's does.
+
+**"The list draws exactly what it drew" is a measurement, not a reading of
+the diff.** `main`'s `entities.ts` from just before this change was compiled
+beside the new one and run over 111 cases: every existing domain, every
+device class either renderer names, and every state that matters, each in two
+watch variants. Its answers are committed as
+`test/fixtures/ha-readings-before-tiles.json`, and the new `toReading` is held
+to them on every field but the two it adds: the six the list draws and P1.3's
+`key`, which it picks readings by. The wall's
+`houseFrom` and the panel's frame are held identical with and without `tone`,
+`changedAt` and `fetchedAt`. Ten mutations were checked, each by reverting
+one fix, and all ten are red: the tone table, the allowlist on the way in,
+the allowlist on the way out, `changedAt`, `fetchedAt` against the manifest,
+`fetchedAt` against the frame, a domain dropped, a doubled climate unit, an
+old wording moved, and a panel cell dropped. **Two decisions are worth knowing
+before a reader re-argues them.** The fan is three blades on both media,
+because four drew a clean pinwheel on the 24 grid and a hooked cross at 12
+pixels, which is a symbol this wall will never draw. And `light` is a pendant
+lamp rather than a bulb, because `illuminance` already is one.
+
+**Still unproven where it counts:** no real Home Assistant has been asked for
+a light, a lock or a thermostat, and every attribute shape here is copied
+from Home Assistant's own documentation into a fake.
+
+**3952 tests passing, 1 skipped and 5 expected
+failures, over 278 files**: calendar 153 over 10 · core 314 over 9 · display
+627 over 35 · server 2858 over 224 plus the five `it.fails`. Measured with a
+real Chromium (`MW_BROWSER_EXECUTABLE`) on a clone whose tags had been
+fetched, on this change rebased onto `main` after P2.1's first half. Against
+P2.1's 3875 over 278 above, that is +77 tests and no new files: 69 in
+`ha-units.test.ts` (54 of them the tone table's rows), 5 in
+`homeassistant.test.ts`, 2 in `epaper-house-widget.test.ts` and 1 in the
+display's `viewmodel.test.ts`. One earlier full run went red on
+`epaper-ink`'s "draws nothing else for calendar", which timed out at 5s while
+a second suite run overlapped it (load average 12 on 4 cores). Run alone, it
+takes 2633ms on this tree and 2593ms on a clean worktree of `main`, so it is
+written down here rather than chased.
 
 ---
 

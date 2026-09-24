@@ -14,7 +14,7 @@ export const entry: CatalogEntry = {
     'program (node server.mjs) you start yourself, so Install asks for that ' +
     'program’s address. For a countdown on your wall, use the built-in ' +
     'Countdown widget instead — this is the reference a module author copies.',
-  // The glyph vocabulary is twenty-nine drawings and has no hourglass: a store
+  // The glyph vocabulary is thirty-four drawings and has no hourglass: a store
   // entry does not get to add a drawing to it. The gauge is the nearest thing
   // in it that reads as a dial counting down. Decision D3 (2026-09-24) opened
   // the icon set for occasion motifs, and on a browser wall those — and this

@@ -6,8 +6,10 @@ import { parseCalendarList, type CalendarEntity } from './calendars.js';
 import type { Keyring } from '../../secrets/keyring.js';
 import type { Fetcher } from '@maverick-wall/core';
 import {
+  cachedAttributes,
   glyphFor,
   parseStates,
+  pickAttributes,
   readState,
   toReading,
   type DisplayMode,
@@ -62,10 +64,13 @@ function modeOf(stored: string): DisplayMode {
  * new wording on the next poll rather than on the next release.
  */
 function stateFrom(row: WatchRow): HaState {
+  const dot = row.entityId.indexOf('.');
+  const domain = dot < 0 ? '' : row.entityId.slice(0, dot);
   let deviceClass: string | null = null;
+  let parsed: unknown = null;
   if (row.attributes !== null) {
     try {
-      const parsed: unknown = JSON.parse(row.attributes);
+      parsed = JSON.parse(row.attributes);
       if (typeof parsed === 'object' && parsed !== null) {
         const value = (parsed as Record<string, unknown>)['device_class'];
         if (typeof value === 'string') deviceClass = value;
@@ -76,15 +81,18 @@ function stateFrom(row: WatchRow): HaState {
     }
   }
 
-  const dot = row.entityId.indexOf('.');
   return {
     entityId: row.entityId,
-    domain: dot < 0 ? '' : row.entityId.slice(0, dot),
+    domain,
     state: row.state ?? '',
     friendlyName: row.friendlyName ?? row.entityId,
     unit: row.unit,
     deviceClass,
     lastChangedAt: row.lastChangedAt,
+    // Through the allowlist a second time, on the way *out*: a row written by
+    // hand or by some future release cannot carry a key onward that the
+    // allowlist does not name.
+    attributes: pickAttributes(domain, parsed),
   };
 }
 
@@ -121,9 +129,23 @@ const SELECT_WATCHED = `SELECT entity_id AS entityId, label, display_mode AS dis
      FROM ha_entity_cache WHERE watched = 1
     ORDER BY sort_order, entity_id`;
 
+/**
+ * The house, as the manifest carries it.
+ *
+ * **No `fetchedAt`.** It used to carry the oldest row's fetch time, which moves
+ * on every thirty-second poll whether or not anything in the house did — and
+ * the panel is inside `manifestEtag`'s preimage, so every household with a
+ * reading on its wall was sent a new manifest every half minute, and every
+ * e-paper panel beside it a new frame, since the frame's ETag hashes the
+ * manifest's. Nothing ever read it: the wall and the panel both read
+ * `readings` and `note`, and a reading's own `stale` is what says a value has
+ * gone old. The to-do panel left its `lastFetchedAt` out for exactly this
+ * reason and said so; this one had not, and P5.3's `changedAt` is what made it
+ * visible — a field whose whole promise is "the manifest moves only when the
+ * state does" could not be tested next to one that moved on every poll.
+ */
 export interface HomePanel {
   readonly readings: readonly EntityReading[];
-  readonly fetchedAt: number;
   /** Set when the last poll failed, so the wall can say so quietly. */
   readonly note: string | null;
 }
@@ -166,14 +188,12 @@ export const haModule: PanelModule = {
       ),
     );
 
-    const oldest = rows.reduce((least, row) => Math.min(least, row.fetchedAt), Infinity);
     const error = context.db
       .prepare(`SELECT last_error AS lastError FROM ha_settings WHERE id = 'singleton'`)
       .get() as { lastError: string | null } | undefined;
 
     return {
       readings,
-      fetchedAt: Number.isFinite(oldest) ? oldest : 0,
       /*
        * A stale reading is shown, and said.
        *
@@ -281,7 +301,9 @@ export const haModule: PanelModule = {
         for (const state of states) {
           update.run(
             state.state,
-            JSON.stringify({ device_class: state.deviceClass }),
+            // `device_class` and the domain's allowlisted attributes, never
+            // the whole object — see `ATTRIBUTE_ALLOWLIST`.
+            cachedAttributes(state),
             state.friendlyName,
             state.unit,
             state.lastChangedAt,

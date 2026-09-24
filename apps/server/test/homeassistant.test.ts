@@ -27,8 +27,10 @@ import {
   fakeHomeAssistant,
   inDays,
   TOKEN,
+  UNLISTED_ATTRIBUTE_MARKERS,
   type FakeHa,
 } from './fake-home-assistant.js';
+import { ATTRIBUTE_ALLOWLIST } from '../src/modules/homeassistant/entities.js';
 
 /**
  * Home Assistant, driven against a real HTTP server.
@@ -704,6 +706,225 @@ describe('readings on the wall', () => {
     // Rule nine. A reading that is a few minutes old beats a hole in the wall.
     expect(panel.readings[0]?.value).toBe('19.4');
     expect(panel.note).not.toBeNull();
+  });
+
+  /**
+   * The seven read-only domains (Q8, P5.3), with everything a tile needs and
+   * nothing it could ask another question with.
+   *
+   * The assertion the whole integration rests on — "sends the wall a value
+   * and never a way to ask for another" — run again with the domains that are
+   * also things Home Assistant can *control* on the wall. A lock is the one
+   * that matters: its reading may say "Unlocked", and the document carrying it
+   * must hold nothing a compromised tablet could use to change that.
+   */
+  const READ_ONLY = [
+    'light.living_room',
+    'switch.kettle',
+    'input_boolean.guest_mode',
+    'fan.bedroom',
+    'cover.kitchen_blind',
+    'lock.front_door',
+    'climate.hallway',
+  ] as const;
+
+  async function watchReadOnly(h: Harness): Promise<void> {
+    const response = await h.call('/admin/home-assistant/entities/add', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        entities: READ_ONLY.map((entity_id) => ({ entity_id })),
+        display_mode: 'label_value',
+      }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, added: READ_ONLY.length });
+  }
+
+  it('reads the seven read-only domains, and never puts an entity id, the token or the address on the wall', async () => {
+    const h = await harness();
+    const ha = await fakeHomeAssistant();
+    await connect(h, ha);
+    await watchReadOnly(h);
+    await h.pollHa();
+
+    const manifest = await h.manifest();
+    const document = JSON.stringify(manifest);
+    for (const entityId of READ_ONLY) expect(document).not.toContain(entityId);
+    expect(document).not.toContain(TOKEN);
+    expect(document).not.toContain(ha.base);
+    expect(document).not.toContain('127.0.0.1');
+    for (const marker of UNLISTED_ATTRIBUTE_MARKERS) expect(document).not.toContain(marker);
+
+    const panel = manifest.panels['home'] as {
+      readings: { label: string; value: string; unit: string | null; glyph: string; tone: string | null }[];
+    };
+    const by = new Map(panel.readings.map((reading) => [reading.label, reading]));
+    expect(by.get('Living room')).toMatchObject({ value: 'On · 60%', glyph: 'light', tone: 'active' });
+    expect(by.get('Kettle')).toMatchObject({ value: 'Off', glyph: 'switch', tone: null });
+    expect(by.get('Guest mode')).toMatchObject({ value: 'On', glyph: 'switch', tone: 'active' });
+    expect(by.get('Bedroom fan')).toMatchObject({ value: 'On · 40%', glyph: 'fan', tone: 'active' });
+    expect(by.get('Kitchen blind')).toMatchObject({ value: 'Open · 40%', glyph: 'cover', tone: 'active' });
+    expect(by.get('Front door lock')).toMatchObject({ value: 'Unlocked', glyph: 'lock', tone: 'alert' });
+    expect(by.get('Hallway')).toMatchObject({ value: 'Heating · 21°', unit: null, glyph: 'thermostat', tone: 'active' });
+    expect(panel.readings).toHaveLength(READ_ONLY.length);
+
+    // Reading every one of those was a GET. Hard rule 12 is about POSTs, and
+    // this poll made none.
+    expect(ha.posts).toEqual([]);
+  });
+
+  it('never lets an attribute the allowlist does not name reach the cache', async () => {
+    const h = await harness();
+    const ha = await fakeHomeAssistant();
+    await connect(h, ha);
+    await watchReadOnly(h);
+    await h.form('/admin/home-assistant/entities', {
+      entity_id: 'binary_sensor.freezer_door',
+      label: '',
+      display_mode: 'label_value',
+    });
+    await h.pollHa();
+
+    const rows = h.db
+      .prepare('SELECT entity_id AS entityId, attributes FROM ha_entity_cache')
+      .all() as { entityId: string; attributes: string | null }[];
+    expect(rows).toHaveLength(READ_ONLY.length + 1);
+    for (const row of rows) {
+      const domain = row.entityId.slice(0, row.entityId.indexOf('.'));
+      const allowed = ['device_class', ...((ATTRIBUTE_ALLOWLIST as Record<string, readonly string[]>)[domain] ?? [])];
+      const stored = Object.keys(JSON.parse(row.attributes ?? '{}') as Record<string, unknown>);
+      for (const key of stored) expect(allowed, `${row.entityId} stored ${key}`).toContain(key);
+    }
+    // And nothing else in the table either, read as a whole: an unlisted value
+    // must not have found its way in by some other column.
+    const table = JSON.stringify(h.db.prepare('SELECT * FROM ha_entity_cache').all());
+    for (const marker of UNLISTED_ATTRIBUTE_MARKERS) expect(table).not.toContain(marker);
+    // What *is* kept is what the tiles need.
+    const light = rows.find((row) => row.entityId === 'light.living_room');
+    expect(JSON.parse(light?.attributes ?? '{}')).toEqual({ device_class: null, brightness: 153 });
+    // An old domain is stored exactly as it was before the allowlist existed.
+    const door = rows.find((row) => row.entityId === 'binary_sensor.freezer_door');
+    expect(door?.attributes).toBe('{"device_class":"door"}');
+  });
+
+  it('reads the cache through the same allowlist, so a row written by hand carries nothing onward', async () => {
+    // The allowlist runs on the way in *and* on the way out. A row written by
+    // some other release, or by somebody with `sqlite3` open, holding an
+    // out-of-range brightness and a key nobody listed, reads as a light that is
+    // on — not "On · 118%", and not anything the wall could ask with.
+    const h = await harness();
+    const at = Date.now();
+    h.db
+      .prepare(
+        `INSERT INTO ha_entity_cache (entity_id, state, attributes, friendly_name, watched,
+                                      display_mode, sort_order, fetched_at, last_changed_at)
+         VALUES ('light.by_hand', 'on', ?, 'By hand', 1, 'label_value', 0, ?, ?)`,
+      )
+      .run(JSON.stringify({ device_class: null, brightness: 300, entity_picture: '/api/x?token=t' }), at, at - 1000);
+    const panel = haModule.contribute({ db: h.db, now: at } as never) as {
+      readings: Record<string, unknown>[];
+    };
+    expect(panel.readings).toHaveLength(1);
+    expect(panel.readings[0]).toMatchObject({ value: 'On', tone: 'active', changedAt: at - 1000 });
+    expect(JSON.stringify(panel)).not.toContain('token=t');
+  });
+
+  /**
+   * `changedAt` travels, and the manifest moves when the house does and at no
+   * other time.
+   *
+   * The second half is the one with a history. The panel carried a `fetchedAt`
+   * that moved on every thirty-second poll, and the manifest's ETag hashes the
+   * panel — so a wall with one temperature on it was sent a new document every
+   * half minute, and so was the e-paper frame beside it, whose ETag hashes the
+   * manifest's. `changedAt` is an instant rather than an age precisely so it
+   * does not move with the clock; it would have been pointless beside a field
+   * that did.
+   */
+  it('carries when a state changed, and moves the manifest only when one does', async () => {
+    const h = await harness();
+    const ha = await fakeHomeAssistant();
+    await connect(h, ha);
+    await h.form('/admin/home-assistant/entities', {
+      entity_id: 'sensor.kitchen_temperature',
+      label: 'Kitchen',
+      display_mode: 'label_value',
+    });
+    await h.form('/admin/home-assistant/entities', {
+      entity_id: 'binary_sensor.freezer_door',
+      label: 'Freezer',
+      display_mode: 'label_value',
+    });
+
+    const served = async (): Promise<Map<string, number>> => {
+      const response = await fetch(`${ha.base}/api/states`, { headers: { authorization: `Bearer ${TOKEN}` } });
+      const states = (await response.json()) as { entity_id: string; last_changed: string }[];
+      return new Map(states.map((entry) => [entry.entity_id, Date.parse(entry.last_changed)]));
+    };
+    const read = async (): Promise<{ etag: string | null; changed: Map<string, number | null> }> => {
+      const response = await h.call('/d/manifest', { headers: { authorization: `Bearer ${h.displayToken}` } });
+      const body = (await response.json()) as { panels: { home: { readings: { label: string; changedAt: number | null }[] } } };
+      return {
+        etag: response.headers.get('etag'),
+        changed: new Map(body.panels.home.readings.map((reading) => [reading.label, reading.changedAt])),
+      };
+    };
+    const later = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 20));
+
+    await h.pollHa();
+    const first = await read();
+    const house = await served();
+    expect(first.etag).not.toBeNull();
+    // Home Assistant's own `last_changed`, carried as it was sent.
+    expect(first.changed.get('Kitchen')).toBe(house.get('sensor.kitchen_temperature'));
+    expect(first.changed.get('Freezer')).toBe(house.get('binary_sensor.freezer_door'));
+
+    // A second poll of a house where nothing happened.
+    await later();
+    await h.pollHa();
+    const again = await read();
+    expect(again.etag, 'a poll that changed nothing moved the manifest').toBe(first.etag);
+
+    // The kitchen warms up.
+    await later();
+    ha.kitchen = '20.1';
+    await h.pollHa();
+    const warmer = await read();
+    expect(warmer.etag).not.toBe(first.etag);
+    expect(warmer.changed.get('Kitchen')).toBeGreaterThan(first.changed.get('Kitchen') ?? Infinity);
+    expect(warmer.changed.get('Freezer'), 'a door nobody touched').toBe(first.changed.get('Freezer'));
+  });
+
+  it('leaves an e-paper frame alone across a poll that changed nothing', async () => {
+    // The half of the `fetchedAt` fault that costs a battery. A panel's frame
+    // ETag hashes the manifest's, so a manifest that moved every thirty
+    // seconds was a full frame download every thirty seconds, on hardware
+    // documented as a glance class that sleeps between them.
+    const h = await harness();
+    const ha = await fakeHomeAssistant();
+    await connect(h, ha);
+    await h.form('/admin/home-assistant/entities', {
+      entity_id: 'sensor.kitchen_temperature',
+      label: 'Kitchen',
+      display_mode: 'label_value',
+    });
+    h.db
+      .prepare(`UPDATE screens SET kind = 'epaper', panel_width = 800, panel_height = 480 WHERE id = 'wall'`)
+      .run();
+    const frame = async (): Promise<string | null> =>
+      (await h.call(`/d/epaper/${h.displayToken}.png`)).headers.get('etag');
+
+    await h.pollHa();
+    const first = await frame();
+    expect(first).not.toBeNull();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await h.pollHa();
+    expect(await frame(), 'a poll that changed nothing sent the panel a new frame').toBe(first);
+
+    ha.kitchen = '20.1';
+    await h.pollHa();
+    expect(await frame()).not.toBe(first);
   });
 
   it('ignores a domain a wall has no use for', async () => {
