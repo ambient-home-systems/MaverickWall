@@ -70,6 +70,7 @@ const SHELL = [
   '/assets/store.js',
   '/assets/theme.js',
   '/assets/tiers.js',
+  '/assets/variants.js',
   '/assets/viewmodel.js',
   '/assets/watchdog.js',
   '/assets/widget-options.js',

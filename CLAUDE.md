@@ -8075,6 +8075,112 @@ The calendar-sync fix then added four tests to two files that already existed
 no new file. The arithmetic and the reading agree again; that is worth
 recording, and it is still not a method. No ratchet baseline moved.
 
+**Every type with a designed look has a list of them now, and only the
+clock's draw anything yet (plan item P4.1, the groundwork Phase 5 builds on).**
+The shared `variant` enum grew fifteen values: weather `strip`, `today`,
+`range`, `colour`, `playful`; countdown `number`, `page`, `ticket`,
+`occasion`, `progress`, `month`; Home Assistant `list`, `tile`; calendar
+`planner`, `bold`. `apps/display/src/variants.ts` is `clockVariant`
+generalised — `VARIANTS` holds one ordered list per type with the default
+first, `VARIANT_LABELS` is mapped over it so a value without a label is a
+type error rather than a blank choice, and `variantOf(type, config)` reads a
+value another type owns as "not for me", drawn as that type's default. The
+block between its markers is transcribed into `epaper/variants.ts` and
+`variants-parity.test.ts` holds the two to the character, holds the panel's
+file to declaring nothing outside the block (`tier-parity`'s lesson: a table
+added outside the compared text sails through a comparison of the text), and
+holds the enum to be exactly the lists' union. Both renderers of the clock
+read through it now.
+
+**The calendar's default has no name, and that is a decision rather than an
+omission.** The plan names two calendar looks and nothing for the one every
+calendar already draws, so its list starts with the empty string: an
+absence, which the editor's picker writes as a missing key (the "Follow the
+household" idiom) and the schema refuses as a value. Nothing needs to store
+it, because a panel draws a calendar one way whatever look the wall wears and
+no ink lane will ever write "the default" for one; a parity test asserts that
+no type whose default is an absence is offered on the ink lane.
+
+**The Look picker reads the table, and past three looks it is a grid.** A
+type without looks draws no row; up to three is the clock's segmented row;
+weather's five and countdown's six are the same buttons laid out three across
+(`.le-look-grid`, tokens only), because a row of six breaks its labels in a
+258px column. Asserted from where the buttons landed — computed `display`, the
+number of distinct rows, no two overlapping — not from the class.
+`buildClockConfig`'s early returns became `VARIANT_HIDES`, a table mapped over
+every value, applied by the editor after a type's own controls are built:
+stacked hides the date switch, analogue hides it and the time format, and
+every other look hides **nothing**, because it still draws its default and a
+working control taken off the screen is the other half of the `options.json`
+rule. The browser test holds a forecast's Content tab under Today to the
+strip's, control for control.
+
+**A Look is honoured on a clock and ignored everywhere else, so the ignore
+table learned a scope.** `PANEL_IGNORES` was one flat list of keys ignored on
+every type, and `variant` cannot be that: the clock draws its three on one
+bit. An entry can now name `types`, and four do — one sentence per type
+saying what its panel draws instead ("a panel draws the forecast as its strip,
+whichever look is chosen") — and the editor shows a note only on the types it
+is about. `epaper-ink.test.ts` asks "both tables" per type rather than per
+key, requires every type with looks to be honoured xor noted (and a type
+without looks to be neither), probes **every value the schema holds**, read
+off the enum rather than listed, and adds a value-by-value block: on every
+type, a look moves the frame if and only if that type honours `variant` and
+the look is one of its own non-default values. That block is strictly the
+stronger question, so the generic "draws nothing else" and "draws none of
+them" loops skip `variant` — probing eighteen values there took the calendar's
+body from 2.7s to 3.4s in isolation, in a file whose history is a 2.2s body
+timing out at 5s on a loaded runner.
+
+**The clock is byte-identical, and that is measured rather than argued.**
+The plain panel frames were already pinned to hashes from before `variant`
+existed; stacked and analogue were not, and a resolver swap is exactly what
+could quietly move one. They are pinned now, four configs at three panel
+sizes each, to hashes rendered on a clean worktree of 35ea84d, the commit this
+landed on. `EPAPER_RENDERER_VERSION` is unmoved at 9, and no ratchet baseline
+moved. On the wall, `browser-widget-looks.test.ts` draws one box per new look
+beside one with none, in equal-sized rows at 1080x1920 and 1920x1080, and
+holds every element in each — tag, class, words, rectangle relative to its
+box, computed size and weight — to its default sibling's. Its first draft
+read a hidden element's rectangle relative to the box, and a `display: none`
+element reports the page's origin, so identical boxes at different positions
+"differed"; hidden elements are recorded as unplaced now.
+
+**Eighteen mutations, all red**, each for its own reason: the enum losing a
+value, a label drifting on the panel, either resolver taking any string, an
+export outside the panel's block, a note removed, scoped onto the clock or
+unscoped, the panel's clock resolving through the weather list, the panel or
+the wall drawing a weather look, stacked hiding nothing, the grid class, the
+grid rule, the default written on the wall, the editor's notes unscoped, and
+the clock's pruning read off the wrong config. Two were refused by the
+typechecker first (an unused name) and were rewritten until they compiled,
+because a build failure proves nothing about a test. One guard is a belt: the
+editor never writes the empty string, but that branch is reachable only from
+an ink lane no absence-default type is offered on, so the parity assertion
+about the ink lane is the fence.
+
+**Still unproven where it counts, and one thing is knowingly true that a
+household would notice.** The picker now offers twelve looks that draw
+their type's default, which is the "option that does nothing" this document
+warns about; it is the plan's groundwork shape, the sessions that design each
+look (P5.1–P5.4) are what make them real, and a release cut before any of
+them would ship those choices. Nobody has used the grid on a real phone or in
+a real supervisor's sidebar.
+
+**4049 tests passing, 1 skipped and 1 expected failure, over 289 files**:
+calendar 153 over 10 · core 314 over 9 · display 647 over 37 · server 2935
+over 233, the expected failure being P3's `TODO(S14)`. Measured with a real
+Chromium (`MW_BROWSER_EXECUTABLE`) on the tree after `main` was merged into
+this branch, which by then carried P1.2, P1.3, P2.1–P2.3 and P3. Against the
+4006 over 286 recorded above, this change adds 43 tests and three files:
+display 638 + 9 is 647, and server 2901 + 34 is 2935. Forty-one of those are
+the tests P4.1 wrote, and the other two were found rather than shrugged at:
+listing the tests on both sides and diffing them shows `motion.test.ts` and
+`motion-scope.test.ts` each *generate* a test per module in the wall's import
+graph, so a new module the wall imports is a new test in each — "variants.ts
+does not mention motion". Nobody writes those two, which is exactly why an
+incrementer misses them. No ratchet baseline moved.
+
 ---
 
 ## Open decisions

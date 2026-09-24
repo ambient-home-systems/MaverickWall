@@ -64,6 +64,7 @@ import {
   type WeatherField,
 } from './ladder.js';
 import { calendarView } from './calendar-view.js';
+import { variantOf } from './variants.js';
 import { withInk } from './honours.js';
 import { childCells, groupChildren, topLevelWidgets } from './group-cells.js';
 import { clockLabel, type EpaperModel } from './viewmodel.js';
@@ -328,13 +329,14 @@ const STACKED_DATE_BUDGET = '30 SEPTEMBER';
  */
 function drawClock(fb: Framebuffer, m: EpaperMetrics, box: Box, model: EpaperModel, config: Config): void {
   /*
-   * The variant (RFC 014 §4.2), read exactly as the wall's `clockVariant`
-   * reads it: one of the clock's three, and anything else — absent, or a value
-   * that belongs to another widget type — is `plain`, the clock this function
-   * drew before the key existed. So no stored canvas's frame moves and
-   * `EPAPER_RENDERER_VERSION` does not either.
+   * The variant (RFC 014 §4.2), read through the same resolver the wall reads
+   * it through — `variantOf` in `variants.ts`, transcribed character for
+   * character: one of the clock's three, and anything else — absent, or a
+   * value that belongs to another widget type — is `plain`, the clock this
+   * function drew before the key existed. So no stored canvas's frame moves
+   * and `EPAPER_RENDERER_VERSION` does not either.
    */
-  const variant = str(config, 'variant');
+  const variant = variantOf('clock', config);
   if (variant === 'analogue') {
     /*
      * A face at the box's short side, centred — a picture has no alignment to

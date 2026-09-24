@@ -10,7 +10,16 @@ import {
 import { inkOverrideBody, widgetConfigBody } from '../src/api/widget-schema.js';
 import { widgetStyleBody } from '../src/api/widget-style.js';
 import type { Framebuffer } from '../src/epaper/framebuffer.js';
-import { INK_KEYS, INK_LANE, PANEL_HONOURS, PANEL_IGNORES, WIDGET_ROW_KEYS, withInk } from '../src/epaper/honours.js';
+import {
+  INK_KEYS,
+  INK_LANE,
+  PANEL_HONOURS,
+  PANEL_IGNORES,
+  WIDGET_ROW_KEYS,
+  withInk,
+  type PanelIgnores,
+} from '../src/epaper/honours.js';
+import { VARIANTS, hasVariants, variantsFor } from '../src/epaper/variants.js';
 import { renderFreeformEpaper, type PlacedEpaperWidget } from '../src/epaper/widgets.js';
 import { buildEpaperModel } from '../src/epaper/viewmodel.js';
 
@@ -242,10 +251,17 @@ const PROBES: Readonly<Record<string, readonly unknown[]>> = {
   showHours: [false],
   showRun: [false],
   clockFormat: ['12'],
-  // A designed variant (RFC 014 §4.2). Every type is probed with every value,
-  // so a Weather widget handed a clock's `analogue` is proved to draw nothing
-  // different — "not for me" — and the clock is proved to draw both.
-  variant: ['stacked', 'analogue'],
+  /*
+   * A designed variant (RFC 014 §4.2). Every type is probed with **every value
+   * the schema holds** — read off the enum rather than listed here, so a look
+   * added for a type later is probed the day it is added (plan item P4.1). A
+   * Weather widget handed a clock's `analogue` is proved to draw nothing
+   * different ("not for me"), the clock is proved to draw its two, and every
+   * look the plan added ahead of its drawing is proved to draw nothing yet on
+   * the type it belongs to — which is what the scoped notes in
+   * `PANEL_IGNORES` say. `LOOKS` below asks the same thing value by value.
+   */
+  variant: widgetConfigBody.shape.variant.unwrap().options,
   showDate: [false],
   // A group's layout and its grid width (RFC 014 §5.1): every other type is
   // proved to draw nothing different for either, and the group both.
@@ -322,7 +338,26 @@ function movesInk(type: string, key: string): boolean {
 }
 
 const TYPES = Object.keys(BASES);
-const IGNORED = new Set(PANEL_IGNORES.map((entry) => entry.key));
+/**
+ * Whether a note is about this type: every note is about every type, except
+ * the scoped ones — a Look is honoured on a clock and said to be ignored on a
+ * forecast (plan item P4.1), so its notes name the types they are true of.
+ */
+const isAbout = (entry: PanelIgnores, type: string): boolean =>
+  entry.types === undefined || entry.types.includes(type);
+const ignoredOn = (type: string, key: string): boolean =>
+  PANEL_IGNORES.some((entry) => entry.key === key && isAbout(entry, type));
+/**
+ * Keys asked value by value in their own block rather than by `movesInk` in
+ * the loops below. A Look is the one: `movesInk` asks whether *any* value
+ * moves a frame, and `a Look, value by value` asks which ones do on every
+ * type, which is strictly the stronger question — and probing all eighteen
+ * values again in the "draws nothing else" and "draws none of them" loops
+ * took the calendar's body from 2.7s to 3.4s in isolation, in a file whose
+ * own history is a 2.2s body timing out at 5s on a loaded CI runner.
+ * `draws every key … is said to honour` still asks it of the clock.
+ */
+const ASKED_BY_VALUE: ReadonlySet<string> = new Set(['variant']);
 /*
  * Every stored option, one level down into the style lane: `style` itself is
  * not a setting a panel can honour or ignore as one thing — its `inset` moves
@@ -370,7 +405,7 @@ describe('what a panel honours, checked against the panel', () => {
     const honoured = new Set(PANEL_HONOURS[type] ?? []);
     const unhonoured = SCHEMA_KEYS.filter((key) => !honoured.has(key));
     it(`draws nothing else for ${type}`, () => {
-      for (const key of unhonoured.filter((key) => !key.startsWith('style.'))) {
+      for (const key of unhonoured.filter((key) => !key.startsWith('style.') && !ASKED_BY_VALUE.has(key))) {
         expect(movesInk(type, key), `${type}.${key} moves ink but is not in PANEL_HONOURS`).toBe(
           false,
         );
@@ -394,6 +429,12 @@ describe('what a panel cannot honour, and says so', () => {
       expect(entry.label.length).toBeGreaterThan(0);
       // Written for somebody in a kitchen: a reason, not a category.
       expect(entry.why.length).toBeGreaterThan(12);
+      // A scoped note names real types, and at least one — an empty scope is
+      // a note about nothing, which the editor would never show.
+      if (entry.types !== undefined) {
+        expect(entry.types.length, `${entry.key} is scoped to no type`).toBeGreaterThan(0);
+        for (const type of entry.types) expect(TYPES, `${entry.key} names ${type}`).toContain(type);
+      }
     }
   });
 
@@ -416,7 +457,7 @@ describe('what a panel cannot honour, and says so', () => {
        * one of these did move ink, a household would be told a setting is
        * ignored while watching it work.
        */
-      for (const entry of PANEL_IGNORES) {
+      for (const entry of PANEL_IGNORES.filter((one) => isAbout(one, type) && !ASKED_BY_VALUE.has(one.key))) {
         expect(movesInk(type, entry.key), `${type}.${entry.key} is ignored but moves ink`).toBe(
           false,
         );
@@ -429,9 +470,73 @@ describe('what a panel cannot honour, and says so', () => {
     // be placed deliberately instead of falling between the two tables.
     for (const key of SCHEMA_KEYS) {
       const honouredSomewhere = TYPES.some((type) => (PANEL_HONOURS[type] ?? []).includes(key));
-      expect(honouredSomewhere || IGNORED.has(key), `${key} is in neither table`).toBe(true);
-      expect(honouredSomewhere && IGNORED.has(key), `${key} is in both tables`).toBe(false);
+      const ignoredSomewhere = TYPES.some((type) => ignoredOn(type, key));
+      expect(honouredSomewhere || ignoredSomewhere, `${key} is in neither table`).toBe(true);
+      /*
+       * "Both tables" is asked per type now rather than per key: a Look is
+       * honoured on a clock and ignored on a forecast, which is two facts about
+       * two renderers, and only a type told both at once is a contradiction.
+       */
+      for (const type of TYPES) {
+        const honoured = (PANEL_HONOURS[type] ?? []).includes(key);
+        expect(honoured && ignoredOn(type, key), `${type}.${key} is in both tables`).toBe(false);
+      }
     }
+  });
+
+  it('says what happens to a Look on every type that has looks, and on no other', () => {
+    /*
+     * A type with looks either honours `variant` or carries a note saying what
+     * its panel draws instead — never neither, which would leave a household
+     * who picked a weather look on the wall with no sentence on the panel. And
+     * a type with no looks carries no note about one: a note about a control
+     * the editor never draws is a sentence about nothing.
+     */
+    for (const type of TYPES) {
+      const honoured = (PANEL_HONOURS[type] ?? []).includes('variant');
+      const noted = PANEL_IGNORES.some((entry) => entry.key === 'variant' && entry.types?.includes(type) === true);
+      if (hasVariants(type)) expect(honoured !== noted, `${type}: honoured ${honoured}, noted ${noted}`).toBe(true);
+      else expect(honoured || noted, `${type} has no looks to honour or ignore`).toBe(false);
+    }
+    // And every type with looks is one this file probes.
+    for (const type of Object.keys(VARIANTS)) expect(TYPES, type).toContain(type);
+  });
+});
+
+describe('a Look, value by value', () => {
+  /*
+   * `movesInk` asks whether *any* value of a key moves a frame, which proves a
+   * key is read and says nothing about which of its values are. For a Look
+   * the values are the whole question (plan item P4.1): the clock draws its
+   * two non-default looks and nothing for anybody else's, and every other
+   * type's looks — added ahead of their drawings — draw that type's default.
+   * So every schema value is rendered on every type and held to exactly that:
+   * a value moves the frame if, and only if, the type honours `variant` and
+   * the value is one of its own looks other than its default.
+   */
+  const LOOKS: readonly string[] = PROBES['variant'] as readonly string[];
+
+  for (const type of TYPES) {
+    it(`draws only its own looks, on ${type}`, () => {
+      const honours = (PANEL_HONOURS[type] ?? []).includes('variant');
+      const own = variantsFor(type);
+      for (const base of BASES[type] ?? []) {
+        // With a title too, the way `movesInk` probes every key.
+        for (const start of [base, { ...base, showTitle: true, title: 'Base' }]) {
+          const before = frame(type, start);
+          for (const value of LOOKS) {
+            const drawsIt = honours && own.includes(value) && value !== own[0];
+            const moved = frame(type, { ...start, variant: value }) !== before;
+            expect(moved, `${type} ${JSON.stringify(start)} with variant ${value}`).toBe(drawsIt);
+          }
+        }
+      }
+    });
+  }
+
+  it('probes every value the schema holds', () => {
+    expect([...LOOKS].sort()).toEqual([...widgetConfigBody.shape.variant.unwrap().options].sort());
+    expect(LOOKS.length).toBe(18);
   });
 });
 
