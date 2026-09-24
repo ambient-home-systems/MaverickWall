@@ -8035,33 +8035,45 @@ contradict nothing today and is kept anyway: `canvasPanelInputs` reads each
 widget's config through `withInk`, as the draw does. No key the ink lane offers
 changes which slice a widget reads, so the mutation that drops it stays green.
 
-**The fifteen-minute churn P3.5 names is still there for any household with a
-calendar, and that was measured rather than argued.** Every calendar sync
-stamps `last_success_at`, including the "feed unchanged" path. The manifest
-carries it as `sources[].lastSuccessAt`, which the manifest-minus-`panels` hash
-still includes. Driven through a real paired panel, the job's own
-`recordUnchanged` write turned the next request's `304` into a `200` with a new
-ETag. The panel reads no `sources` and no `notices` at all, so dropping them
-from the preimage is the obvious next change. It is outside P3.5's letter,
-which is about `panels`, and is recorded here and in the pull request rather
-than made.
+**The calendar sync churned every panel too, and that was found by measuring
+and then fixed.** Every calendar sync stamps `last_success_at`, the "feed
+unchanged" path included (`recordUnchanged`), and the manifest carries it as
+`sources[].lastSuccessAt`. Driven through a real paired panel, the job's own
+write turned the next request's `304` into a `200`. Narrowing `panels` alone
+therefore left the fifteen-minute refresh in place for any household with a
+calendar, and every thirty seconds for a Home Assistant calendar. Nothing in
+`epaper/` reads `sources` or `notices`. So `drawnManifest` empties both,
+beside `panels`, before the manifest is hashed. `screen` stays in the hash,
+though a panel draws none of it either, because `todo-tick.test.ts` holds a
+panel's `allow_todo` to moving its ETag the way `allow_chores` does. The fields
+are emptied rather than deleted, so a field added to the manifest later is
+hashed by default. That is the safe way round: an unneeded field costs a
+refresh, and a drawn field left out of the hash leaves a panel on an old
+picture. `epaper-endpoint.test.ts` drives the job's own writer against a real
+paired panel: a check that found nothing and a check that failed both answer
+`304`, while the wall's `/d/manifest` ETag moves, which is the control.
+`epaper-frame-etag.test.ts` adds both to its mutation table. Reverting the fix
+reddens three tests, each half alone reddens two or three, and dropping
+`screen` as well reddens two.
 
 Merging `main` into this branch surfaced one fault in P2.3's new "Use this
 place" handler. It wrote the weather settings without the air quality switch,
 which `tsc` refused, and `weather-geocoding.test.ts` now holds the switch
 through the lookup and the choice.
 
-**4002 tests passing, 1 skipped and 1 expected failure, over 286 files**:
-calendar 153 over 10 · core 314 over 9 · display 638 over 36 · server 2897
+**4006 tests passing, 1 skipped and 1 expected failure, over 286 files**:
+calendar 153 over 10 · core 314 over 9 · display 638 over 36 · server 2901
 over 231, the expected failure being this change's `TODO(S14)`. Measured with
 a real Chromium (`MW_BROWSER_EXECUTABLE`) on the tree after `main` was merged
 into this branch a second time, which by then had taken P2.3 and P2.1's
 second half with P2.2, and with it P2.1's five `it.fails` became ordinary
 passes. Against that merge's own 3912 over 280 above, this branch adds 90
 tests and six files: S08's 77 over five, and S09's 13 over one, plus the
-expected failure. Display 626 + 12 is 638 and server 2819 + 65 + 13 is 2897,
-so the arithmetic and the reading agree again, which is recorded and is still
-not a method. No ratchet baseline moved.
+expected failure. Display 626 + 12 is 638 and server 2819 + 65 + 13 is 2897.
+The calendar-sync fix then added four tests to two files that already existed
+(three in `epaper-frame-etag`, one in `epaper-endpoint`), which gives 2901 and
+no new file. The arithmetic and the reading agree again; that is worth
+recording, and it is still not a method. No ratchet baseline moved.
 
 ---
 

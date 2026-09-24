@@ -87,11 +87,12 @@ models the conditions, and adds the UV index and rainfall amounts.
 show.** A panel used to get a fresh picture whenever anything changed: a Home
 Assistant reading on a widget it did not have, a to-do list it did not show,
 and, with the weather above, the current conditions every fifteen minutes
-even on a panel with no weather on it. On a battery panel every new picture
-is a full redraw, a flash and a little of the battery. A panel is now sent one
-only when something it draws has changed. It still gets a new one each time
-your calendars are checked, about every fifteen minutes, even when nothing on
-them has changed.
+even on a panel with no weather on it. It also got one each time your
+calendars were checked, about every fifteen minutes, even when nothing on them
+had changed. On a battery panel every new picture is a full redraw, a flash
+and a little of the battery. A panel is now sent one only when something it
+draws has changed. Each panel gets one new picture when you update, and after
+that only when something on it changes.
 
 ## 0.67.0
 

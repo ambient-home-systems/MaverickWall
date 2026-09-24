@@ -209,12 +209,60 @@ describe('a panel with no weather on it', () => {
   });
 
   it('still moves for what the panel draws outside the modules — an event renamed', () => {
-    // The manifest minus `panels` is still hashed whole: this is the guard on
-    // somebody "narrowing" the rest of it by accident.
+    // The manifest less `panels`, `sources` and `notices` is still hashed
+    // whole: this is the guard on somebody "narrowing" the rest of it by
+    // accident.
     const renamed = structuredClone(BASE) as Manifest & { days: { events: { title: string }[] }[] };
     renamed.days[0]!.events[0]!.title = 'Orthodontist';
     expect(draw(renamed, NO_WEATHER).etag).not.toBe(draw(BASE, NO_WEATHER).etag);
     expect(draw(renamed).etag).not.toBe(draw(BASE).etag);
+  });
+});
+
+/**
+ * Fifteen minutes on, the calendar job has checked the feed and found nothing
+ * new. It stamps `last_success_at` all the same (`recordUnchanged`), and the
+ * manifest carries it as `sources[].lastSuccessAt`.
+ */
+const CHECKED: Manifest = {
+  ...BASE,
+  sources: BASE.sources.map((source) => ({ ...source, lastSuccessAt: NOW + 10 * MINUTE })),
+};
+
+/** The same feed failing, and the wall's notice saying so. */
+const FAILING: Manifest = {
+  ...BASE,
+  sources: BASE.sources.map((source) => ({ ...source, lastError: 'HTTP 503', consecutiveFailures: 3 })),
+  notices: [{ level: 'warn', code: 'source-failing', message: 'Family has not updated since 09:00.' }],
+};
+
+describe('a calendar sync that changed nothing on the panel', () => {
+  it('keeps the ETag of a panel that draws the calendar, and of the built-in layout', () => {
+    // The control: the documents really differ, and a browser wall — which
+    // draws the notices, and is told a calendar is healthy by `sources` — is
+    // right to get a new manifest for them.
+    expect(manifestEtag(CHECKED)).not.toBe(manifestEtag(BASE));
+    expect(manifestEtag(FAILING)).not.toBe(manifestEtag(BASE));
+
+    for (const changed of [CHECKED, FAILING]) {
+      expect(draw(changed, NO_WEATHER).etag).toBe(draw(BASE, NO_WEATHER).etag);
+      expect(draw(changed).etag).toBe(draw(BASE).etag);
+    }
+  });
+
+  it('draws the same frame, which is what makes keeping the ETag right', () => {
+    for (const changed of [CHECKED, FAILING]) {
+      expect(draw(changed, NO_WEATHER).bits).toBe(draw(BASE, NO_WEATHER).bits);
+      expect(draw(changed).bits).toBe(draw(BASE).bits);
+    }
+  });
+
+  it('still moves it for the screen, which a panel does not draw either', () => {
+    // `screen` is kept in the hash deliberately — `todo-tick.test.ts` holds a
+    // panel's own switches to moving it — so narrowing the preimage further
+    // is a decision rather than a tidy-up.
+    const allowed = { ...BASE, screen: { ...BASE.screen, allowChores: true } } as Manifest;
+    expect(draw(allowed, NO_WEATHER).etag).not.toBe(draw(BASE, NO_WEATHER).etag);
   });
 });
 
@@ -390,6 +438,10 @@ const MUTATIONS: readonly { name: string; touches: string; manifest: Manifest }[
       (panels['mymod']!['items'] as Record<string, unknown>[])[0]!['value'] = 'Low';
     }),
   },
+  // No probe reads these, and that is the point: they are the wall's calendar
+  // health, which every sync writes and no panel draws.
+  { name: 'a calendar checked, and unchanged', touches: 'calendar health', manifest: CHECKED },
+  { name: 'a calendar failing, and the wall saying so', touches: 'calendar health', manifest: FAILING },
 ];
 
 describe('what a panel draws is what its ETag hashes', () => {
