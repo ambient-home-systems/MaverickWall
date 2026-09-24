@@ -369,10 +369,11 @@ none by the e-ink presets of the wall-size picker (plan item P4.4). A literal
 `box-shadow` in a widget rule is still wrong, because it is the one shadow a
 household on an OLED or e-ink screen could not switch off. An e-paper panel
 draws none. A shadow is never the only thing separating two boxes: space, a
-rule and a ground step still come first. Enforced once S13 lands by
+rule and a ground step still come first. Enforced by
 `builtin-themes-parity.test.ts`, which holds each built-in's value in the
-bundle and on the server to each other; that a panel ignores a stored `shadow`
-is already proved by rendering in `epaper-ink.test.ts`.
+bundle and on the server to each other, and by `browser-widget-shadow.test.ts`,
+which reads the computed `box-shadow` on a real wall; that a panel ignores a
+stored `shadow` is proved by rendering in `epaper-ink.test.ts`.
 
 **The Phase-Locked-Motion Rule.** *(Was the No-Motion Rule, rewritten
 2026-09-24 for D7.)* The old rule said no transition or animation on any surface

@@ -240,6 +240,13 @@ export interface Manifest {
     readonly panelHeightMm?: number;
     readonly readDistanceMm?: number;
     /**
+     * Whether this wall is sized as one of the e-ink panels on the wall-size
+     * picker, which draws no shadow whatever its theme says (decision D8,
+     * plan item P4.4). Absent on every other wall and on an older server, and
+     * both draw the theme's own shadow.
+     */
+    readonly eink?: boolean;
+    /**
      * How much room this wall leaves between its widgets, as a step on the
      * spacing scale (RFC 014 §4.4). Absent on a wall whose household has not
      * chosen — which is every wall until one does — and on a server older than

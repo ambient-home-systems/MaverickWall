@@ -47,6 +47,9 @@ function init(root: HTMLElement): void {
   // The shape segControl (RFC 014 §4.3) — a radio per built-in shape, plus
   // 'neutral' for none. Read like any other field: whichever is checked.
   const shapeInputs = Array.from(form.querySelectorAll('[name="shape"]')) as HTMLInputElement[];
+  // The shadow segControl (P4.4): None is stored as the token's own value and
+  // Soft as an absence, so the preview derives exactly what the wall will.
+  const shadowInputs = Array.from(form.querySelectorAll('[name="shadows"]')) as HTMLInputElement[];
 
   // The iframe's <html>, once it has loaded — where the theme tokens are set so
   // they cascade through the whole preview document.
@@ -58,6 +61,7 @@ function init(root: HTMLElement): void {
     // own default applies rather than an empty font-family.
     for (const control of tokenControls) if (control.value !== '') base[control.name] = control.value;
     base['--radius'] = radiusInput?.value ?? '0.4rem';
+    if (shadowInputs.find((input) => input.checked)?.value === 'none') base['--shadow-card'] = 'none';
     return base;
   };
 
@@ -82,6 +86,7 @@ function init(root: HTMLElement): void {
   }
   radiusInput?.addEventListener('change', apply);
   for (const input of shapeInputs) input.addEventListener('change', apply);
+  for (const input of shadowInputs) input.addEventListener('change', apply);
 
   // The preview: the real wall, drawn once, then re-themed live. A failure just
   // leaves the form fully usable without the preview.

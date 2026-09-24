@@ -1807,10 +1807,21 @@ function applyWidgetFormat(
     box.style.borderRadius = 'var(--fw-radius)';
     box.style.overflow = 'hidden';
   }
-  // The drop shadow control is gone: a shadow bands on e-ink, burns in on
-  // OLED, and buys nothing at reading distance. `c['shadow']` is deliberately
-  // never read — a widget with `shadow: true` already in its stored config
-  // simply draws without one, rather than needing a migration to remove it.
+  /*
+   * The drop shadow is honoured again (decision D8, plan item P4.4), and it is
+   * the theme's rather than the widget's: the box casts `--shadow-card`, which
+   * each theme sets — soft on Panels and Household, paper-like on Almanac,
+   * none on Blueprint and Swiss — and which a wall sized as an e-ink panel
+   * sets to none (`applyTheme`'s `eink`). So a household with an OLED or e-ink
+   * screen can switch every shadow off in one place, which a literal here
+   * could never offer; that is why the value is a `var()` and never a length.
+   *
+   * It was dropped for a while — a shadow bands on e-ink and burns in on OLED
+   * — and the stored key was left alone rather than migrated, so a widget
+   * that kept `shadow: true` through that time lights up now as intended. The
+   * e-paper panel draws none: `shadow` stays in `PANEL_IGNORES`.
+   */
+  if (c['shadow'] === true) box.style.boxShadow = 'var(--shadow-card, none)';
 }
 
 /** Wrap a widget body with its title when one is set to show, else pass through. */

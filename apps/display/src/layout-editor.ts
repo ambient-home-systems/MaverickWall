@@ -1659,7 +1659,13 @@ function boot(): void {
     // With the resolved tokens, so a custom theme previews as itself rather
     // than as the bundle's fallback — and so the style lane's seeded values
     // (`styleBase`) and the preview describe the same wall.
-    applyTheme(previewWall, manifest.theme.active, manifest.theme.activeTokens, manifest.theme.activeShape);
+    applyTheme(
+      previewWall,
+      manifest.theme.active,
+      manifest.theme.activeTokens,
+      manifest.theme.activeShape,
+      manifest.screen?.eink === true,
+    );
 
     // The wall as it will actually draw — always free-form now. It draws straight
     // into the shadow wall: the reused sections measure themselves and scale to
@@ -3994,10 +4000,11 @@ function boot(): void {
    * empty space, and a household pressing Rounded on a forecast saw nothing
    * move.
    *
-   * There is no drop-shadow control here any more: a shadow bands on e-ink,
-   * burns in on OLED, and buys nothing at reading distance. A widget that
-   * already has `shadow: true` in its stored config simply draws without one
-   * now — nothing here rewrites that key, so it is dead rather than migrated.
+   * The drop-shadow control was taken out for a while — a shadow bands on
+   * e-ink and burns in on OLED — and is back (decision D8, plan item P4.4)
+   * as a request for the *theme's* shadow, which a theme or an e-ink wall can
+   * switch off. Nothing rewrote the stored key in between, so a widget that
+   * kept `shadow: true` draws one again.
    */
   function buildFormatConfig(widget: Widget, cfg: Record<string, unknown>): void {
     buildLookField(widget, cfg);
@@ -4108,6 +4115,31 @@ function boot(): void {
         ),
       );
     }
+
+    /*
+     * Drop shadow — restored (decision D8, plan item P4.4), and offered on
+     * every widget, not only behind a ground: a shadow is cast outside the
+     * box, so unlike a rounded corner it shows on a bare one too.
+     *
+     * What it draws is the *theme's* card shadow rather than one this control
+     * chooses, which is the whole of the design: a household with an OLED or
+     * e-ink screen switches every shadow on the wall off in one place — the
+     * theme, or an e-ink size under Device and time — rather than widget by
+     * widget. The hint says so, because on Blueprint or Swiss this switch does
+     * nothing until the theme changes, and a control that silently does
+     * nothing is the `options.json` bug. Not annotated for the ink lane: a
+     * panel draws no shadow (`PANEL_IGNORES`), and the lane's note says so
+     * when this is set.
+     */
+    configPanel.appendChild(
+      switchRow(
+        'Drop shadow',
+        'Casts the theme’s card shadow behind this widget. Blueprint, Swiss and a wall sized as an ' +
+          'e-ink panel draw none.',
+        cfg['shadow'] === true,
+        (checked) => setConfig(widget, 'shadow', checked ? true : undefined),
+      ),
+    );
 
     buildStyleLane([widget], cfg);
   }

@@ -178,8 +178,16 @@ describe('the generate route, through to the wall', () => {
     expect(tokens['--bg']).toBe(expected['--bg']);
     expect(tokens['--accent']).toBe(expected['--accent']);
     expect(tokens['--s-day-tint']).toMatch(/^#[0-9a-fA-F]{6}$/);
+    /*
+     * `--shadow-card` (decision D8, plan item P4.4) is the one token that is
+     * not a colour, so it cannot be a hex: it is a resolved shadow — the soft
+     * one, derived for this dark ground — or `none`. The letter moved when the
+     * shadow became a theme token; the intent did not: every value arrives
+     * resolved, and nothing is a name the wall would have to look up.
+     */
+    expect(tokens['--shadow-card']).toBe('0 0.15rem 0.6rem rgba(0, 0, 0, 0.45)');
     for (const [token, value] of Object.entries(tokens)) {
-      if (token === '--radius') continue;
+      if (token === '--radius' || token === '--shadow-card') continue;
       expect(value, `${token} should arrive as a resolved hex`).toMatch(/^#[0-9a-fA-F]{6}$/);
     }
   });

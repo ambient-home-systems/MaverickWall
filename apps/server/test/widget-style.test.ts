@@ -108,9 +108,17 @@ describe('resolution', () => {
   it('emits exactly what the lane set, plus the derived tokens that input feeds', () => {
     const accent = resolveStyleTokens(PANELS, [], { '--accent': '#FF0000' });
     expect(accent).toEqual({ '--accent': '#FF0000' });
-    // `--muted` feeds one derived token and no other.
+    // `--muted` feeds two derived tokens and no other: the quiet ink, a
+    // straight copy, and the idle Home Assistant state (P4.5), which is the
+    // muted ink pushed toward `--ink` until it clears 4.5:1 on both grounds —
+    // `#808080` does not on Panels' ground, so it comes back lifted. The
+    // letter moved when that token joined `STYLE_DERIVED`; the intent — a
+    // lane emits exactly what its own tokens feed — did not.
     const muted = resolveStyleTokens(PANELS, [], { '--muted': '#808080' });
-    expect(muted).toEqual({ '--muted': '#808080', '--ink-quiet': '#808080' });
+    expect(Object.keys(muted!).sort()).toEqual(['--ink-quiet', '--muted', '--state-idle']);
+    expect(muted!['--ink-quiet']).toBe('#808080');
+    expect(contrast(muted!['--state-idle']!, PANELS['--bg'])).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(muted!['--state-idle']!, PANELS['--panel'])).toBeGreaterThanOrEqual(4.5);
   });
 
   it('re-derives the scaffold against the widget’s own ground, clearing 4.5:1 (the RFC’s case)', () => {

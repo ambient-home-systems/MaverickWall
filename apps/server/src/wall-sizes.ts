@@ -36,9 +36,12 @@ export interface WallSizePreset {
   readonly readAtMm: number;
   /**
    * An e-ink panel running the browser wall — a Boox, a Kindle-class tablet —
-   * rather than a lit screen. What turns a wall's Motion default off (plan
-   * P4.3, `wall-motion.ts`): e-ink redraws the whole picture for every frame
-   * of an animation, and bands and ghosts doing it.
+   * rather than a lit screen. Two things read it: what turns a wall's Motion
+   * default off (plan P4.3, `wall-motion.ts`), because e-ink redraws the whole
+   * picture for every frame of an animation and bands and ghosts doing it; and
+   * `isEinkWall`, which sets the wall's card shadow to none whatever its theme
+   * says (decision D8, plan item P4.4), because a shadow is grey and grey on
+   * e-ink is dither that bands.
    */
   readonly eink?: true;
 }
@@ -123,6 +126,23 @@ export function matchWallSize(
       Math.max(preset.widthMm, preset.heightMm) === long &&
       Math.min(preset.widthMm, preset.heightMm) === short,
   );
+}
+
+/**
+ * Whether a wall is sized as one of the e-ink presets above.
+ *
+ * Asked of the stored pair as a set, through `matchWallSize`, so a panel hung
+ * either way up is still the panel it is; and only of a wall whose measurement
+ * is whole (`physicalWall`), because a size with no distance is the same state
+ * as none everywhere else in this file and must not be half of one here.
+ */
+export function isEinkWall(
+  widthMm: number | null | undefined,
+  heightMm: number | null | undefined,
+  distanceMm: number | null | undefined,
+): boolean {
+  if (physicalWall(widthMm, heightMm, distanceMm) === undefined) return false;
+  return matchWallSize(widthMm ?? null, heightMm ?? null)?.eink === true;
 }
 
 /**

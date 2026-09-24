@@ -103,9 +103,17 @@ export const STYLE_INSET_CSS: readonly string[] = [
 /**
  * Which derived tokens depend on which base tokens.
  *
- * The same twelve `withTints` and `customTokens` derive, written as the
- * inputs each one reads — so a lane emits a derived token exactly when it
- * moved one of those inputs, and never re-states one the theme hand-tuned.
+ * What `withTints` and `customTokens` derive, written as the inputs each one
+ * reads — so a lane emits a derived token exactly when it moved one of those
+ * inputs, and never re-states one the theme hand-tuned.
+ *
+ * The designed styles' palette (plan item P4.5) joined it: the readable
+ * colours are measured against both grounds and mixed toward the ink, so a
+ * lane that moves any of the three re-derives them against the box it paints,
+ * and a sky is tinted toward the ground. Two derived tokens are deliberately
+ * absent: each sky's ink, which is a constant a lane cannot move, and
+ * `--shadow-card`, which is the *theme's* choice — a lane that set a cream
+ * ground on a Blueprint wall must not grow the soft shadow Blueprint said no to.
  */
 export const STYLE_DERIVED: readonly { readonly token: string; readonly from: readonly string[] }[] = [
   { token: '--ink-event', from: ['--ink'] },
@@ -120,6 +128,31 @@ export const STYLE_DERIVED: readonly { readonly token: string; readonly from: re
   { token: '--s-break-badge', from: ['--s-break', '--bg'] },
   { token: '--s-straight-tint', from: ['--s-straight', '--bg'] },
   { token: '--s-straight-badge', from: ['--s-straight', '--bg'] },
+  { token: '--wx-sun', from: ['--ink', '--bg', '--panel'] },
+  { token: '--wx-cloud', from: ['--ink', '--bg', '--panel'] },
+  { token: '--wx-rain', from: ['--ink', '--bg', '--panel'] },
+  { token: '--wx-snow', from: ['--ink', '--bg', '--panel'] },
+  { token: '--wx-storm', from: ['--ink', '--bg', '--panel'] },
+  { token: '--wx-fog', from: ['--ink', '--bg', '--panel'] },
+  { token: '--temp-cold', from: ['--ink', '--bg', '--panel'] },
+  { token: '--temp-cool', from: ['--ink', '--bg', '--panel'] },
+  { token: '--temp-warm', from: ['--ink', '--bg', '--panel'] },
+  { token: '--temp-hot', from: ['--ink', '--bg', '--panel'] },
+  { token: '--state-active', from: ['--ink', '--bg', '--panel'] },
+  { token: '--state-alert', from: ['--ink', '--bg', '--panel'] },
+  { token: '--state-idle', from: ['--muted', '--ink', '--bg', '--panel'] },
+  { token: '--sky-day-top', from: ['--bg'] },
+  { token: '--sky-day-bottom', from: ['--bg'] },
+  { token: '--sky-night-top', from: ['--bg'] },
+  { token: '--sky-night-bottom', from: ['--bg'] },
+  { token: '--sky-cloud-top', from: ['--bg'] },
+  { token: '--sky-cloud-bottom', from: ['--bg'] },
+  { token: '--sky-rain-top', from: ['--bg'] },
+  { token: '--sky-rain-bottom', from: ['--bg'] },
+  { token: '--sky-snow-top', from: ['--bg'] },
+  { token: '--sky-snow-bottom', from: ['--bg'] },
+  { token: '--sky-storm-top', from: ['--bg'] },
+  { token: '--sky-storm-bottom', from: ['--bg'] },
 ];
 
 // ---- end style tables ----

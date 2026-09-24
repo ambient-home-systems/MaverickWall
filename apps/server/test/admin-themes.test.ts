@@ -391,6 +391,61 @@ describe('the theme builder', () => {
 });
 
 /**
+ * The Shadows control (decision D8, plan item P4.4): None or Soft, where Soft
+ * is the derived default and is stored as an absence.
+ */
+describe('the theme builder’s shadows', () => {
+  it('stores None as the token itself, and Soft — or no field at all — as nothing', async () => {
+    const h = await harness();
+    await h.form('/admin/themes', themeFields('Dark room', { shadows: 'none' }));
+    await h.form('/admin/themes', themeFields('Kitchen', { shadows: 'soft' }));
+    await h.form('/admin/themes', themeFields('Old form'));
+    const byName = new Map(readThemes(h.db).map((theme) => [theme.name, theme]));
+    expect(byName.get('Dark room')?.tokens['--shadow-card']).toBe('none');
+    expect(byName.get('Kitchen')?.tokens['--shadow-card']).toBeUndefined();
+    expect(byName.get('Old form')?.tokens['--shadow-card']).toBeUndefined();
+  });
+
+  it('refuses any other answer, rather than coercing it', async () => {
+    const h = await harness();
+    const bad = await h.form('/admin/themes', themeFields('Bad', { shadows: '0 0 10px red' }));
+    expect(bad.status).toBe(400);
+    expect(readThemes(h.db)).toHaveLength(0);
+  });
+
+  it('reaches the wall a theme is worn on: none as none, soft as a derived shadow', async () => {
+    const h = await harness();
+    await h.form('/admin/themes', themeFields('Dark room', { shadows: 'none' }));
+    await h.form('/admin/themes', themeFields('Kitchen'));
+    const byName = new Map(readThemes(h.db).map((theme) => [theme.name, theme.id]));
+    const poll = async (token: string): Promise<Record<string, string>> =>
+      (
+        (await (
+          await h.call('/d/manifest', { headers: { authorization: `Bearer ${token}` } })
+        ).json()) as { theme: { activeTokens: Record<string, string> } }
+      ).theme.activeTokens;
+    const none = await poll(wearing(h.db, 'w1', 'Bedroom', `custom:${byName.get('Dark room')}`));
+    const soft = await poll(wearing(h.db, 'w2', 'Kitchen', `custom:${byName.get('Kitchen')}`));
+    expect(none['--shadow-card']).toBe('none');
+    expect(soft['--shadow-card']).toMatch(/^0 [0-9.]+rem [0-9.]+rem rgba\(/);
+    // And the designed styles' palette travels with the theme (P4.5).
+    expect(soft['--wx-rain']).toMatch(/^#[0-9A-Fa-f]{6}$/);
+    expect(soft['--sky-storm-ink']).toMatch(/^#[0-9A-Fa-f]{6}$/);
+  });
+
+  it('renders the control checked on what is stored, Soft when nothing is', async () => {
+    const h = await harness();
+    await h.form('/admin/themes', themeFields('Dark room', { shadows: 'none' }));
+    const id = readThemes(h.db)[0]?.id ?? '';
+    const page = await (await h.call(`/admin/themes/${id}`)).text();
+    expect(page).toContain('<input type="radio" name="shadows" value="none" checked>');
+    expect((page.match(/name="shadows"[^>]*checked/g) ?? []).length).toBe(1);
+    const fresh = await (await h.call('/admin/themes/new')).text();
+    expect(fresh).toContain('<input type="radio" name="shadows" value="soft" checked>');
+  });
+});
+
+/**
  * One control, wherever the choice is taken (RFC 015 §3.5, phase 3).
  *
  * A wall's theme used to be chosen on `/admin/walls/new` as a grid of cards and
