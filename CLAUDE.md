@@ -7548,6 +7548,61 @@ files — exactly the three new files' own count (`admin-external-links.test.ts`
 the reading agree, and is recorded as an observation rather than a method:
 the paragraphs above this one have been wrong about that five times running.
 
+**A Shift widget set to two people draws both of them (P1.2).** The
+manifest, the editor's picker and `shiftWidgetView` all kept both people; the
+second was lost in the wall's tier pass. `tierShift` read the tier off the
+whole box as if it held one badge, drew a card at that tier for every person,
+and the belt — which keeps the first item and hides whatever ends past the
+foot — took the second person off the glass, because Classic's rota box is one
+badge tall. Measured before the fix on a paired Classic wall with two rota
+workers: two badges drawn, one visible ("AmyDays" at 1080x1920, a two-rung
+card; "Amy: Days · …" at 1920x1080, a line), and `data-tier-items` saying 2 at
+both. Three changes, as the plan gives them. **The tier is chosen per badge**
+— `stackedItemHeight`, the inner height less the gaps between cards over the
+number of people, which is the inner height exactly for one person. **Where a
+card does not fit per person, every person is a line** (`shiftBadgesToLines`,
+pure, beside `laddersToOneLine`, which it defers to for one person). And **the
+stamp is the count visible after the belt**, not the rota's.
+
+**The plan's second step did not fit as written, and measuring is what said
+so.** It names `shiftLineBadge` for the several-people form, and that line is
+the *headline* at full size: 76px a person on the 1920x1080 Classic box, which
+gives each of two people 41. A headline-sized list is a list of one. The panel
+has never drawn it that way — `epaper/widgets.ts` draws more than one person as
+a compact line each at its **body** rung — so the wall's several-people lines
+(`.fw-shift.is-lines`) are drawn at the event role, the size a name takes in a
+box that holds several, with the month cell's step-2 chrome on the card and
+between cards. The one-person line is untouched. "A full badge" in the plan is
+read as *a card*, so a box with room for a two-rung card per person still draws
+cards; the other reading (lines whenever any rung is cut) changes nothing on
+Classic, where both the whole box and one badge's share resolve below a full
+card, and the requested mutation could not have gone red.
+
+**Four mutations, each on a rebuilt bundle, and which size each reddens is the
+record.** The tier from the whole box again reddens 1080x1920 and leaves
+1920x1080 green, honestly — that box is below a card even for one person, so
+both computations land on the same floor. The lines at the headline's size
+redden both sizes. The lines in the card's own step-4 chrome redden 1920x1080
+only. The stamp taken before the belt reddens only
+`browser-shift-two-people.test.ts`'s short box, the one place the belt hides
+anybody, because on Classic both people now fit and the two stamps agree.
+**`wall-density` and `browser-classic-proportions` did not move for a
+one-person wall**, measured rather than inferred from green: both files were
+run on a clean worktree of `main` and on this branch with every measurement
+they take written out — ten viewport readings, six ratio readings and eight box
+readings, rota chip included — and the two sets are identical as text. No
+baseline moved and none needed to. The calendar's own `shifts[0]` is
+untouched; that is P5.4, in S20.
+
+**3837 tests passing, and 1 skipped, over 272 files**: calendar 153 over 10 ·
+core 314 over 9 · display 620 over 35 · server 2750 over 218, measured on a
+clone whose tags had been fetched and with `MW_BROWSER_EXECUTABLE` naming the
+provisioned Chromium, for the revision mismatch S01 recorded. Against 3830
+over 271 above, that is +7 tests and +1 file: four unit tests in
+`widget-tiers.test.ts` and the new browser file's three. The arithmetic and
+the reading agree a second time running, which is still an observation and
+not a method.
+
 **P1.3 shipped: nothing on the Home Assistant or Store screens claims a wall
 it has not reached.** Adding a reading watches an entity; a *Home Assistant
 widget* is what draws it, and Classic — every wall's seed — has none, so "Add
@@ -7626,14 +7681,16 @@ ETag change at upgrade, because the house panel gains `key`; no
 `EPAPER_RENDERER_VERSION` bump, since the only pixels that move are the
 accented-label case above.
 
-**3852 tests passing, and 1 skipped, over 274 files**: calendar 153 over 10 ·
-core 314 over 9 · display 622 over 35 · server 2763 over 220, measured with
-`pnpm test` on a clone whose tags had been fetched and with
-`MW_BROWSER_EXECUTABLE` naming the provisioned Chromium (this container's
-`playwright-core` looks for a revision the directory does not hold, as the S01
-paragraph records). Against 3830 over 271 the difference is +22 and +3, which
-is what the diff adds — display +6, server +16 over three new files — and the
-arithmetic agreeing is, again, an observation and not the method.
+**3859 tests passing, and 1 skipped, over 275 files**: calendar 153 over 10 ·
+core 314 over 9 · display 626 over 35 · server 2766 over 221, measured with
+`pnpm test` on the tree merged with P1.2, on a clone whose tags had been
+fetched and with `MW_BROWSER_EXECUTABLE` naming the provisioned Chromium (this
+container's `playwright-core` looks for a revision the directory does not
+hold, as the S01 paragraph records). Against P1.2's 3837 over 272 above, the
+difference is +22 and +3, which is what this diff adds — display +6, server
++16 over three new files — and the arithmetic agreeing is, again, an
+observation and not the method. Measured before the merge, on its own, the
+same diff read 3852 over 274 against 3830 over 271.
 **Still unproven where it counts:** no real Home Assistant, no real wall and
 no real phone has shown any of it.
 
