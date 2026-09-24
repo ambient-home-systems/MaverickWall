@@ -55,11 +55,11 @@ import {
 } from './placement.js';
 import {
   canGroup,
-  canUngroup,
   canvasBoxOf,
   cellIndexAt,
   groupWidgets,
   moveChildTo,
+  ungroupTarget,
   ungroupWidget,
 } from './grouping.js';
 import { MARQUEE_MIN, enclosedBy, marqueeBetween, toggleSelected } from './selection.js';
@@ -1094,7 +1094,11 @@ function boot(): void {
   ungroupButton.addEventListener('click', () => ungroupSelected());
   function refreshGroupButtons(): void {
     groupButton.hidden = !canGroup(state.widgets, selection);
-    ungroupButton.hidden = !canUngroup(state.widgets, selection);
+    // Offered for a selected group *and* for a selected child — a group's own
+    // box is under its children, so a child is what a household has under the
+    // pointer, and an Ungroup that only answered to the group was one they
+    // could not find (`ungroupTarget`).
+    ungroupButton.hidden = ungroupTarget(state.widgets, selection) === undefined;
   }
 
   // Templates sits beside Add widget as its quieter neighbour: both start a
@@ -2048,7 +2052,13 @@ function boot(): void {
     for (const widget of topLevelWidgets(state.widgets).sort((a, b) => a.z - b.z)) {
       ordered.push(widget, ...(children.get(widget.id) ?? []));
     }
-    for (const widget of ordered) overlay.appendChild(overlayNode(widget));
+    for (const widget of ordered) {
+      overlay.appendChild(overlayNode(widget));
+      // A group's grip is a sibling of its box, not a child of it: the box is
+      // a stacking context under its children, and a grab handle that could
+      // be covered is not one (see `gripNode`).
+      if (widget.type === 'group') overlay.appendChild(gripNode(widget));
+    }
     /*
      * Place the name chips again now the boxes are in the document.
      *
@@ -2065,6 +2075,8 @@ function boot(): void {
           `.le-widget[data-id="${widget.id}"] > .le-widget-label`,
         );
         if (label !== null) placeLabel(label, canvasBoxOf(state.widgets, widget));
+        const grip = gripOf(widget.id);
+        if (grip !== null) placeGrip(grip, canvasBoxOf(state.widgets, widget));
       }
     }
     hint.style.display = state.widgets.length === 0 ? '' : 'none';
@@ -2296,6 +2308,83 @@ function boot(): void {
     box.style.height = `${rect.h * 100}%`;
     const label = box.querySelector<HTMLElement>('.le-widget-label');
     if (label !== null) placeLabel(label, rect);
+    /*
+     * A group's children move with it, on every pointer move (RFC 014 §5.1).
+     *
+     * A child's rectangle is a function of its group's, so a group that has
+     * been dragged, nudged or typed into a new place has moved every child —
+     * but only this box was being repositioned, and the children caught up
+     * on the next full redraw, which a drag never does until release. So a
+     * household dragging a group watched its outline leave its own widgets
+     * behind, which is the report "they don't move together". The stacking
+     * follows too, because a child's rung is its parent's and a drag raises
+     * the parent on its first move.
+     */
+    if (widget.type === 'group') {
+      for (const childBox of overlay.querySelectorAll<HTMLElement>(`.le-widget[data-parent="${widget.id}"]`)) {
+        const child = state.widgets.find((one) => one.id === childBox.dataset['id']);
+        if (child === undefined) continue;
+        positionBox(childBox, child);
+        childBox.style.zIndex = String(overlayZ(child));
+      }
+      const grip = gripOf(widget.id);
+      if (grip !== null) placeGrip(grip, rect);
+    }
+  }
+
+  /** A group's grip, by the group's id — a sibling of the box in the overlay. */
+  function gripOf(id: string): HTMLElement | null {
+    return overlay.querySelector<HTMLElement>(`.le-group-grip[data-for="${id}"]`);
+  }
+
+  /**
+   * The grip a group is moved by: its name chip, made grabbable.
+   *
+   * A group's own box sits *under* its children — a tap has to reach the
+   * child and not the group behind it — so before this the only way to
+   * select a group was its Layers row, and there was no way to drag one at
+   * all. The chip that names it hangs outside the box, where no child is, so
+   * that is the one part of a group a pointer can always reach; it takes the
+   * pointer (the ordinary chip does not) and a press on it is a press on the
+   * group's box. It is a sibling of the box rather than its child because the
+   * box is a stacking context under its children and a grip inside it could
+   * be covered by the neighbour it hangs beside; as a sibling it stacks over
+   * every box, which is what a grab handle has to do. Not a tab stop and
+   * hidden from a screen reader, because the box itself is both and already
+   * carries the group's name.
+   */
+  function gripNode(widget: Widget): HTMLElement {
+    const grip = document.createElement('span');
+    grip.className = 'le-widget-label le-group-grip' + (selection.includes(widget.id) ? ' is-selected' : '');
+    grip.dataset['for'] = widget.id;
+    grip.textContent = nameOf(widget);
+    grip.title = 'Drag to move the group';
+    grip.setAttribute('aria-hidden', 'true');
+    grip.addEventListener('pointerdown', (event) => {
+      const box = overlay.querySelector<HTMLElement>(`.le-widget[data-id="${widget.id}"]`);
+      if (box !== null) startDrag(event, widget, box, false);
+    });
+    placeGrip(grip, canvasBoxOf(state.widgets, widget));
+    return grip;
+  }
+
+  /**
+   * Place a group's grip above its box, or below when the box is against
+   * the top of the layout — `placeLabel`'s rule, in the overlay's own
+   * coordinates because the grip is not inside the box it names.
+   */
+  function placeGrip(grip: HTMLElement, rect: Box): void {
+    grip.style.left = `${rect.x * 100}%`;
+    grip.style.maxWidth = `${(1 - rect.x) * 100}%`;
+    if (chipHeight === 0) chipHeight = grip.offsetHeight;
+    const canvasHeight = overlay.clientHeight;
+    const needed = chipHeight + 2;
+    const above = rect.y * canvasHeight;
+    const below = (1 - rect.y - rect.h) * canvasHeight;
+    const isBelow = above < needed && below > above;
+    grip.classList.toggle('is-below', isBelow);
+    // 2px of clearance, matching the chip's own calc() in the stylesheet.
+    grip.style.top = isBelow ? `calc(${(rect.y + rect.h) * 100}% + 2px)` : `${rect.y * 100}%`;
   }
 
   /*
@@ -2601,6 +2690,8 @@ function boot(): void {
       const name = nameOf(widget);
       const label = box.querySelector('.le-widget-label');
       if (label !== null) label.textContent = name;
+      const grip = gripOf(widget.id);
+      if (grip !== null) grip.textContent = name;
       const omission = omissionOf(widget);
       const why = omission?.why;
       const instead = insteadName(omission);
@@ -2665,10 +2756,25 @@ function boot(): void {
   function markSelection(): void {
     // A set now (RFC 014 §5.1), and still two classes toggled in place: a
     // Shift+click adds a box without rebuilding the one that has focus.
+    // Which groups have a child in the selection: the group's outline takes
+    // the accent for a selected child too, so a household who has just tapped
+    // one widget of a group can see which others it is grouped with.
+    const parentsSelected = new Set<string>();
+    for (const widget of state.widgets) {
+      const parentId = parentIdOf(widget);
+      if (parentId !== undefined && selection.includes(widget.id)) parentsSelected.add(parentId);
+    }
     for (const box of overlay.querySelectorAll<HTMLElement>('.le-widget')) {
-      const on = selection.includes(box.dataset['id'] ?? '');
+      const id = box.dataset['id'] ?? '';
+      const on = selection.includes(id);
       box.classList.toggle('is-selected', on);
+      box.classList.toggle('is-parent-selected', parentsSelected.has(id));
       box.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    for (const grip of overlay.querySelectorAll<HTMLElement>('.le-group-grip')) {
+      const id = grip.dataset['for'] ?? '';
+      grip.classList.toggle('is-selected', selection.includes(id));
+      grip.classList.toggle('is-parent-selected', parentsSelected.has(id));
     }
     for (const row of layersPanel.querySelectorAll<HTMLElement>('.le-layer')) {
       row.classList.toggle('is-selected', selection.includes(row.dataset['id'] ?? ''));
@@ -3267,8 +3373,9 @@ function boot(): void {
    * list's order and what an arrow key or a drag on a child changes.
    *
    * Written out in full rather than as an absence — `row` is what an absent
-   * layout means, but a household who chose it has chosen it, and a group
-   * made by Group is `free` on purpose. Both keys are annotated, which is the
+   * layout means, but a household who chose it has chosen it, and Group
+   * writes a row or a column from the shape of what it grouped
+   * (`defaultGroupLayout`). Both keys are annotated, which is the
    * default every control here takes; whether the ink lane *offers* them is
    * the server's table (`INK_LANE`), which lists nothing for a group today —
    * a panel lays a group out exactly as its wall does — so `pruneToLane`
@@ -4998,7 +5105,9 @@ function boot(): void {
    * is selected after. One `record()` for the whole change — three boxes
    * re-parented and rewritten as fractions of their union is one thing the
    * household did, and one Ctrl+Z is what takes it back. The arithmetic is
-   * `grouping.ts`; nothing on the glass moves, because the group is `free`.
+   * `grouping.ts`, which starts the group as a row or a column of equal
+   * cells, so the boxes visibly become one thing — and Undo is what takes
+   * that back to the pixel if it was not wanted.
    */
   function groupSelected(): void {
     if (!canGroup(state.widgets, selection)) return;
@@ -5010,10 +5119,14 @@ function boot(): void {
     markDirty();
   }
 
-  /** The selected group taken apart, its widgets back where they were and selected. */
+  /**
+   * The selected group taken apart, its widgets back where they were and
+   * selected — or the group a selected child belongs to, which is the one a
+   * household reaches from the layout (`ungroupTarget`).
+   */
   function ungroupSelected(): void {
-    const id = primary();
-    if (id === undefined || !canUngroup(state.widgets, selection)) return;
+    const id = ungroupTarget(state.widgets, selection);
+    if (id === undefined) return;
     record();
     const members = (groupChildren(state.widgets).get(id) ?? []).map((child) => child.id);
     state.widgets = ungroupWidget(state.widgets, id);
