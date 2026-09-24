@@ -8399,17 +8399,23 @@ where it counts:** nobody has looked at a shadow on a real OLED tablet or a
 browser-driven e-ink panel, and the palette's colours have been measured and not
 yet seen in a style a household can pick.
 
-**3875 tests passing, and 1 skipped, over 273 files**: calendar 153 over 10 ·
-core 314 over 9 · display 639 over 36 · server 2769 over 218, measured with a
-real Chromium on a clone whose tags had been fetched, and green on the first
-full run *after* it went red twice: `admin-vocabulary` caught the builder's
-first sentence calling a wall a "screen", and `theme-generate` held every
-resolved token to a hex, which a shadow is not. Both are fixed rather than
-allow-listed — the sentence reworded, the test given a sentence saying why its
-letter moved. Against 3830 over 271 the difference is +45 tests and +2 files,
-and this time the arithmetic agrees with the reading: display +23 in one new
-file, server +22 in one new file and four touched. That is recorded as an
-observation, for the reason every paragraph above says it should be.
+**4143 tests passing, 1 skipped and 1 expected failure, over 296 files**:
+calendar 153 over 10 · core 314 over 9 · display 689 over 39 · server 2987
+over 238, measured with a real Chromium on the tree merged with `main` (after
+P1.2, P4.3 and the rest had landed there), on a clone whose tags had been
+fetched. Before that merge the branch alone measured 3875 over 273, green on
+its first full run *after* it went red twice: `admin-vocabulary` caught the
+builder's first sentence calling a wall a "screen", and `theme-generate` held
+every resolved token to a hex, which a shadow is not. Both are fixed rather
+than allow-listed — the sentence reworded, the test given a sentence saying why
+its letter moved. The merge's one real overlap was `WALL_SIZE_PRESETS`' `eink`
+field, which P4.3 had added for the Motion default and this branch for the
+shadow — the same field with the same values, so it is one field whose comment
+names both readers. Against `main`'s 4098 over 294 the difference is +45 tests
+and +2 files, which is this branch's own count (display +23 in one new file,
+server +22 in one new file and four touched): the arithmetic agrees with the
+reading, and that is recorded as an observation, for the reason every paragraph
+above says it should be.
 
 ---
 
