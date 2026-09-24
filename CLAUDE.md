@@ -337,10 +337,12 @@ After #294 stopped the browser tests sleeping through fixed waits, the same
 model on that run's timings puts three at 170, 122 and 186s and four at 147,
 85, 143 and 109s, so it is four. **Measured, the gain is small and inside
 the noise, and that is worth knowing before reading one run as a verdict.**
-The run that switched took 192, 109, 148 and 113s (4m05s end to end). The same
-tests on three shards took 228, 219 and 182s at their slowest across three
-runs (4m39s, 4m29s and 3m53s). So four beats three's average by about 18s,
-while three alone varies by 46s from one run to the next. The model's 39s
+Two runs on four took 192, 109, 148 and 113s (4m05s end to end) and 183, 112,
+155 and 82s (3m51s). The same tests on three shards took 228, 219 and 182s at
+their slowest across three runs (4m39s, 4m29s and 3m53s). So four's slowest
+shard averages about 188s against three's 210s, and end to end about 3m58s
+against 4m20s: about 22s better, while three alone varies by 46s from one run
+to the next. The model's 39s
 is an upper bound rather than a promise, because per-file times move with what
 runs beside them. Shard 1 is the laggard at four, holding about 147s of work
 against the others' 85–143s. The step reads the total from
