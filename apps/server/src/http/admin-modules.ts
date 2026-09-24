@@ -30,6 +30,8 @@ import { CATALOG, catalogEntry, previewFor, type CatalogEntry, type RecipeEntry,
 import { parse, text, z } from '../validation.js';
 import { readSaved, savedRedirect } from './saved.js';
 import { selfHref } from './self.js';
+import { householdSetUp } from '../modules/index.js';
+import { shownOnTag, wallsAndWhatTheyDraw, wallsShowingModule, type WallDrawing } from './wall-reach.js';
 
 /**
  * The module store (docs/rfc-002-module-catalog-and-recipes.md).
@@ -320,8 +322,21 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
     }
   }
 
-  function moduleCard(module: ExternalModuleRow): string {
+  function moduleCard(module: ExternalModuleRow, walls: readonly WallDrawing[]): string {
     const at = now();
+    /*
+     * Where it is drawn (P1.3). Installing a module registers it; a Module
+     * widget on a wall's layout, set to this module, is what puts its panel on
+     * a wall — so a module can be installed, working and on no wall at all,
+     * and the row says so, with the one thing that changes it.
+     */
+    const shownOn = wallsShowingModule(walls, module.id);
+    const reach =
+      shownOnTag(shownOn) +
+      (shownOn.length > 0
+        ? ''
+        : `<p class="hint">A wall shows it once a Module widget on its layout is set to ` +
+          `${escapeHtml(module.name)}.</p>`);
     // Left as hand-built HTML: a status tag carrying a colour dot ahead of its
     // word, which is the one shape `tag()` deliberately does not offer — its own
     // doc comment bans a glyph beside the word that already says it. The rest of
@@ -357,6 +372,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
           `</div>` +
           `<div class="host">${escapeHtml(module.url)}</div>` +
           health +
+          reach +
           `</div>` +
           `<details class="ovf" data-overflow>` +
           `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
@@ -422,6 +438,8 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
   /** The Store: what you've installed, and the catalogue to install from. */
   function storePage(c: Context, error?: string): string {
     const modules = readExternalModules(deps.db);
+    // Asked once for every row, and only when there is a row to ask for.
+    const walls = modules.length === 0 ? [] : wallsAndWhatTheyDraw(deps.db, householdSetUp(deps.db));
     return page({
       self: selfHref(c),
       modules: navModules(deps.db),
@@ -437,7 +455,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
         (error === undefined ? '' : errorBlock(error)) +
         (modules.length === 0
           ? ''
-          : section('Installed', undefined, modules.map(moduleCard).join(''))) +
+          : section('Installed', undefined, modules.map((module) => moduleCard(module, walls)).join(''))) +
         section('Store', undefined, CATALOG.modules.map(catalogCard).join('')) +
         `<p class="hint">This store ships with Maverick Wall ` +
         `and grows by contribution — anyone can add a module with a pull request ` +
@@ -470,7 +488,10 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
       title: 'Advanced — Maverick Wall',
       nav: 'modules',
       heading: 'Advanced',
-      action: { label: 'Back to the Store', href: 'admin/modules' },
+      // The way back is the header's back link: the app bar's action slot is
+      // only ever an "Add …" (P2.1), and a filled "Back to…" there read as
+      // this page's one main act.
+      back: { label: 'Store', href: 'admin/modules' },
       intro:
         'Two power tools, off the everyday path: write a recipe by hand, or add a ' +
         'module that runs as its own service on your network.',
@@ -548,7 +569,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
       title: 'Add a recipe — Maverick Wall',
       nav: 'modules',
       heading: 'Add a recipe',
-      action: { label: 'Back to Advanced', href: 'admin/modules/advanced' },
+      back: { label: 'Advanced', href: 'admin/modules/advanced' },
       intro:
         'A recipe is a module with no service to host: it names a public web feed ' +
         'and how to draw it, and Maverick Wall does the fetching. A recipe is data, ' +
@@ -691,7 +712,10 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
       title: `Install ${entry.name} — Maverick Wall`,
       nav: 'modules',
       heading: `Install ${entry.name}`,
-      action: { label: 'Back to the Store', href: 'admin/modules' },
+      // The way back is the header's back link: the app bar's action slot is
+      // only ever an "Add …" (P2.1), and a filled "Back to…" there read as
+      // this page's one main act.
+      back: { label: 'Store', href: 'admin/modules' },
       intro: entry.description,
       body:
         `<form method="post" action="admin/modules/install/${encodeURIComponent(entry.id)}">` +
@@ -707,7 +731,9 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
             : ''
           : `<h2 class="add">Settings</h2>${fields}`) +
         secretsBlock +
-        `<button type="submit" style="margin-top:16px">Add to the wall</button></form>` +
+        // "Install", not "Add to the wall": this registers the module and
+        // places nothing (P1.3). Its row in the Store says which walls draw it.
+        `<button type="submit" style="margin-top:16px">Install</button></form>` +
         `<p class="hint">A recipe is data, never code. It reads a web feed and shows ` +
         `a value from it — it never runs anything, and never receives anything ` +
         `about your household.</p>`,

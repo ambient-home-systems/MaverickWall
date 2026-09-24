@@ -18,6 +18,8 @@ import { createHaCalendarSyncHandler } from '../src/jobs/ha-calendar-sync.js';
 import { resolveConnection, SUPERVISOR_BASE } from '../src/modules/homeassistant/client.js';
 import { buildDiagnostics } from '../src/api/diagnostics.js';
 import { seedDefaultRules } from '../src/api/rules.js';
+import { replaceLayout } from '../src/api/queries.js';
+import { haReadingHandle } from '../src/api/manifest.js';
 import type { SqliteDatabase } from '../src/db/open.js';
 import type { JobRecord } from '@maverick-wall/core';
 import {
@@ -532,7 +534,59 @@ describe('readings on the wall', () => {
       label: '',
       display_mode: 'icon_state',
     });
+    await h.form('/admin/home-assistant/entities', {
+      entity_id: 'sensor.kitchen_temperature',
+      label: 'Kitchen',
+      display_mode: 'label_value',
+    });
     await h.pollHa();
+    /*
+     * And Home Assistant widgets that show *some* readings, placed where the
+     * wall draws them (P1.3). A widget stores the entity ids it picked, so
+     * this is where rule 12 is most easily broken: the layout travels in the
+     * same document as the panel, and a selection copied through untouched
+     * would put `binary_sensor.freezer_door` on the wall inside a widget's
+     * config however carefully the panel leaves it out — the to-do widget's
+     * `list` hole, one widget along. Every way a selection is stored is here:
+     * an entity id (the editor's spelling now), a label (every widget saved
+     * before it), an ink lane's override (a panel's own list, which the wall
+     * is sent and never reads), and on a named layout an entity nobody
+     * watches any more — the case that is an entity id *and* matches nothing.
+     */
+    for (const orientation of ['portrait', 'landscape'] as const) {
+      replaceLayout(h.db, 'wall', orientation, {
+        mode: 'freeform',
+        aspect: orientation === 'landscape' ? 1.7778 : 0.5625,
+        widgets: [
+          {
+            id: `by-id-${orientation}`, type: 'homeassistant', x: 0, y: 0, w: 1, h: 0.5, z: 0,
+            config: { readings: ['binary_sensor.freezer_door'] },
+          },
+          {
+            id: `by-label-${orientation}`, type: 'homeassistant', x: 0, y: 0.5, w: 1, h: 0.5, z: 1,
+            config: { readings: ['Kitchen'], ink: { readings: ['sensor.kitchen_temperature'] } },
+          },
+        ],
+        background: null,
+      });
+    }
+    replaceLayout(
+      h.db,
+      'wall',
+      'portrait',
+      {
+        mode: 'freeform',
+        aspect: 0.5625,
+        widgets: [
+          {
+            id: 'unwatched', type: 'homeassistant', x: 0, y: 0, w: 1, h: 1, z: 0,
+            config: { readings: ['sensor.garden_shed'] },
+          },
+        ],
+        background: null,
+      },
+      'evening',
+    );
     // And a watched to-do list beside the reading (RFC 012), whose first read
     // runs inline — so the panel below carries items when the document is
     // checked, not an empty list that would prove nothing about them.
@@ -554,12 +608,46 @@ describe('readings on the wall', () => {
     expect(document).not.toContain('supported_features');
     expect((manifest.panels['todo'] as { lists: unknown[] }).lists).toHaveLength(1);
 
-    const panel = manifest.panels['home'] as { readings: { value: string; glyph: string }[] };
+    const panel = manifest.panels['home'] as {
+      readings: { key: string; label: string; value: string; glyph: string }[];
+    };
     // `on` means open, and only the device class knows that.
     expect(panel.readings[0]?.value).toBe('Open');
     // A glyph *key* both renderers draw themselves, never a character: an emoji
     // here is a third-party asset resolved on whatever tablet is looking.
     expect(panel.readings[0]?.glyph).toBe('door');
+
+    // The widgets, and what each selection became (P1.3).
+    expect(document).not.toContain('sensor.kitchen_temperature');
+    expect(document).not.toContain('sensor.garden_shed');
+    const keyOf = (label: string): string | undefined =>
+      panel.readings.find((reading) => reading.label === label)?.key;
+    const freezer = keyOf('Freezer door');
+    const kitchen = keyOf('Kitchen');
+    expect(freezer, 'every reading carries the handle a widget names it by').toMatch(/^[0-9a-f]{16}$/);
+    expect(kitchen).toMatch(/^[0-9a-f]{16}$/);
+    const layout = (manifest as unknown as {
+      layout: {
+        portrait: { widgets: { id: string; config: Record<string, unknown> }[] };
+        landscape: { widgets: { id: string; config: Record<string, unknown> }[] };
+        slots?: { slot: string; portrait: { widgets: { id: string; config: Record<string, unknown> }[] } }[];
+      };
+    }).layout;
+    const placed = [...layout.portrait.widgets, ...layout.landscape.widgets];
+    const configOf = (id: string): Record<string, unknown> | undefined =>
+      placed.find((widget) => widget.id === id)?.config;
+    for (const orientation of ['portrait', 'landscape']) {
+      // An entity id becomes the handle of the reading it names.
+      expect(configOf(`by-id-${orientation}`)?.['readings']).toEqual([freezer]);
+      // A label becomes the handle of the reading carrying it — no migration.
+      expect(configOf(`by-label-${orientation}`)?.['readings']).toEqual([kitchen]);
+      // And the ink lane's override the same way, though the wall never reads it.
+      expect((configOf(`by-label-${orientation}`)?.['ink'] as { readings?: unknown })?.readings).toEqual([kitchen]);
+    }
+    // An entity nobody watches is still a handle — one that matches nothing.
+    const evening = layout.slots?.find((slot) => slot.slot === 'evening')?.portrait.widgets[0]?.config;
+    expect(evening?.['readings']).toEqual([haReadingHandle('sensor.garden_shed')]);
+    expect(panel.readings.map((reading) => reading.key)).not.toContain(haReadingHandle('sensor.garden_shed'));
   });
 
   it('never puts the address on the wall, even when the connection is refused', async () => {
@@ -1042,7 +1130,10 @@ describe('Home Assistant calendars, from the Calendars screen', () => {
     const ha = await fakeHomeAssistant();
     await connect(h, ha);
 
-    const page = await (await h.call('/admin/calendars')).text();
+    // On the add page's chooser, since P2.1 took every way of adding a
+    // calendar off the Calendars list: the page it is read from moved, and
+    // what it offers did not.
+    const page = await (await h.call('/admin/calendars/new')).text();
     expect(page).toContain('From Home Assistant');
     expect(page).toContain('calendar.family');
     expect(page).toContain('Family');
@@ -1071,7 +1162,10 @@ describe('Home Assistant calendars, from the Calendars screen', () => {
     await connect(h, ha);
     await h.form('/admin/home-assistant/calendars', { entity_id: 'calendar.family' });
 
-    const page = await (await h.call('/admin/calendars')).text();
+    // The chooser, where the offer lives since P2.1 — on the list page this
+    // would pass whatever the offer did, because the list draws none.
+    const page = await (await h.call('/admin/calendars/new')).text();
+    expect(page, 'the chooser is the page under test').toContain('href="admin/calendars/new/address"');
     // The only calendar the fake has, so the whole section goes rather than
     // standing there empty explaining itself.
     expect(page).not.toContain('From Home Assistant');

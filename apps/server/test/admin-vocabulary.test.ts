@@ -287,6 +287,27 @@ async function crawl(): Promise<readonly Rendered[]> {
   const userCode = ((await started.json()) as { userCode?: string }).userCode ?? '';
   expect(userCode, 'a pending pairing code is what makes the approve page reachable').not.toBe('');
 
+  /*
+   * P2.1's add pages each have a branch a household meets only before anybody
+   * is in the house — step one of a rotation says "add someone first" instead
+   * of drawing its form — and People and Chores draw an empty state then and
+   * cards after. Those are read here, before one person is added, and then the
+   * crawl below reads the other branch: a crawl of an empty household would
+   * never have seen the rotation form at all, and one of a full household
+   * never the sentence that stands in for it.
+   */
+  const beforeAnybody: Rendered[] = [];
+  for (const path of ['/admin/shifts/new', '/admin/people', '/admin/chores', '/admin/shifts']) {
+    const html = await (await home.call(path)).text();
+    beforeAnybody.push({
+      path: `${path}#before-anybody`,
+      text: textOf(html),
+      attrs: [...html.matchAll(ATTRS)].map((m) => decode(m[1] as string)),
+    });
+  }
+  const person = await home.post('/admin/people', { name: 'Sam', color: '#4C7FD1' });
+  expect(person.status, 'a person makes the rotation form drawable').toBe(302);
+
   const seen = new Set<string>();
   const queue = [
     '/admin',
@@ -295,7 +316,7 @@ async function crawl(): Promise<readonly Rendered[]> {
     ...shownOnce,
     removedPath,
   ];
-  const out: Rendered[] = [];
+  const out: Rendered[] = [...beforeAnybody];
 
   while (queue.length > 0) {
     const path = queue.shift() as string;
@@ -403,6 +424,21 @@ describe('the admin, read out loud', () => {
         // The gallery, and the builder behind it. Both carry theme names.
         '/admin/themes',
         '/admin/themes/new',
+        /*
+         * Every add page P2.1 made, each reached the only way a household
+         * reaches it: from its list's app-bar "Add …", and for calendars from
+         * the chooser behind that. None is linked from the navigation, so a
+         * list that lost its action would take its add page out of this sweep
+         * silently — which is why they are named.
+         */
+        '/admin/calendars/new',
+        '/admin/calendars/new/address',
+        '/admin/calendars/new/caldav',
+        '/admin/people/new',
+        '/admin/shifts/new',
+        '/admin/shifts/types',
+        '/admin/shifts/types/new',
+        '/admin/chores/new',
       ]) {
         expect(seen, `the crawl never reached ${required}`).toContain(required);
       }

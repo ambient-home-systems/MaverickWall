@@ -16,6 +16,43 @@
 
 ## Unreleased
 
+**A Shift widget showing two people now shows both of them.** When two people
+on the rota were working the same day, the wall drew the first person's badge
+and quietly left the second off, because the box was sized for one badge and
+the wall made both of them full size. On the standard layout that was every
+household with two shift workers, every day both were on. Now, when the box
+has room for one badge each, both get one; when it does not, each person gets
+one line of their own in their own colour — "Amy: Days", "Ben: Mids" —
+which is what an e-paper panel has always shown in the same place.
+
+**Home Assistant readings say which walls they are on.** Adding a reading
+chooses what a **Home Assistant widget** can show; it never put anything on a
+wall by itself, and Classic, which every wall starts on, has no such widget.
+The button said "Add to the wall" anyway. It now says **Add reading**, the
+list is called **Your readings**, and every reading says where it is: "On:
+Kitchen, Hall", or "Not on any wall yet". When no wall has the widget, a card
+at the top says so and links to each wall's layout. The Store's recipe button
+is **Install** for the same reason, and each installed module says which walls
+show it.
+
+**Renaming a reading no longer takes it off your walls.** A Home Assistant
+widget set to show particular readings remembered them by name, so renaming
+one quietly dropped it from every widget that had picked it. Widgets now
+remember the reading itself. Widgets you set up before this keep working as
+they are, and switch over the next time you save the wall's layout.
+
+**"Add" is in the same place on every settings list.** Calendars, People,
+Work Schedule, Shift types, Chores and Themes each have one **Add …** button
+at the top right, and it opens a page of its own for the new thing, instead
+of a form at the bottom of the list that you had to scroll down to find.
+Adding a calendar starts by asking where it comes from — an iCal address, an
+iCloud or CalDAV account, or Home Assistant — and the note about reaching
+Google, iCloud and Microsoft 365 through Home Assistant is on that page now,
+where you are when you need it. "Generate from a colour" is on the Add a
+theme page, and the pages under the Store take you back with the link at the
+top left rather than a big button. Walls and the Home Assistant screens get
+the same treatment in a later release.
+
 **The weather now knows what it is like outside right now, not just what the
 days will bring.** The wall checks the current conditions every fifteen
 minutes — with the National Weather Service, measured at your nearest weather

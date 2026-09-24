@@ -569,6 +569,13 @@ export function announcement(model: DisplayModel): string | undefined {
 }
 
 export interface HouseReadingModel {
+  /**
+   * The handle a Home Assistant widget's `readings` names this reading by
+   * (P1.3) — never the entity id, which this bundle never receives. Absent
+   * from a server older than the handle, and then a widget's selection is
+   * matched on the label the way it always was.
+   */
+  readonly key?: string | undefined;
   readonly label: string;
   readonly value: string;
   /** A key from `glyphs.ts`, or `undefined` — see `WeatherDayModel.glyph`. */
@@ -601,6 +608,9 @@ export interface InterruptModel {
  * shaped here rather than trusted, so a server one version ahead costs this
  * panel and nothing else.
  */
+/** The shape of a reading handle (`haReadingHandle` on the server): hex, and short. */
+const READING_HANDLE = /^[0-9a-f]{8,64}$/;
+
 export function houseFrom(panel: unknown): {
   readings: HouseReadingModel[];
   note: string | undefined;
@@ -613,7 +623,7 @@ export function houseFrom(panel: unknown): {
   for (const entry of raw) {
     if (typeof entry !== 'object' || entry === null) continue;
     const reading = entry as {
-      label?: unknown; value?: unknown; unit?: unknown; glyph?: unknown;
+      key?: unknown; label?: unknown; value?: unknown; unit?: unknown; glyph?: unknown;
       mode?: unknown; stale?: unknown;
     };
     /*
@@ -631,6 +641,10 @@ export function houseFrom(panel: unknown): {
     if (label === undefined || value === undefined) continue;
     const unit = text(reading.unit, 16) ?? '';
     readings.push({
+      // A handle the server minted, or nothing: it is only ever compared with
+      // another handle, so a key that is not the shape of one is dropped rather
+      // than kept as a string that could match a stray label.
+      ...(typeof reading.key === 'string' && READING_HANDLE.test(reading.key) ? { key: reading.key } : {}),
       label,
       // The unit is joined here rather than kept apart, because every mode
       // that shows a value shows it with its unit and nothing styles them

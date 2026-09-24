@@ -567,6 +567,20 @@ describe('text from somewhere else', () => {
     expect((readings[0]?.value ?? '').length).toBeLessThanOrEqual(60);
   });
 
+  it('keeps the handle a widget picks a reading by, and nothing shaped otherwise', () => {
+    // P1.3: the handle is only ever compared with another handle, so a key that
+    // is not the shape of one is dropped rather than kept as a string that
+    // could match a stray label.
+    const { readings } = houseFrom({
+      readings: [
+        { key: '0123456789abcdef', label: 'Kitchen', value: '19.4' },
+        { key: 'sensor.hall', label: 'Hall', value: '18.1' },
+      ],
+    });
+    expect(readings[0]?.key).toBe('0123456789abcdef');
+    expect(readings[1]?.key).toBeUndefined();
+  });
+
   it('drops a reading that is nothing but invisible characters', () => {
     // A label of zero-width marks is a label a household cannot see and cannot
     // tell apart from the one next to it.

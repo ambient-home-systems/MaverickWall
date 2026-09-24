@@ -247,13 +247,19 @@ describe('the wizard asks for no network access until something needs it', () =>
   );
 });
 
+/*
+ * The admin add form is on `admin/calendars/new/address` since P2.1 took it
+ * off the Calendars list, so both cases open that page: the letter moved —
+ * which URL a household types into — and the intent did not. The form still
+ * posts to `admin/calendars`, which is what `controls` looks it up by.
+ */
 describe('the admin add form opens the disclosure it points at', () => {
   it(
     'leaves it shut when nothing has been refused',
     async () => {
       const home = await fresh();
       const page = await pageFor(home);
-      await page.goto(`${home.base}/admin/calendars`, { waitUntil: 'load' });
+      await page.goto(`${home.base}/admin/calendars/new/address`, { waitUntil: 'load' });
 
       const shown = await controls(page, 'admin/calendars');
       expect(shown.present).toBe(3);
@@ -277,7 +283,7 @@ describe('the admin add form opens the disclosure it points at', () => {
     async () => {
       const home = await fresh({ feed: true });
       const page = await pageFor(home);
-      await page.goto(`${home.base}/admin/calendars`, { waitUntil: 'load' });
+      await page.goto(`${home.base}/admin/calendars/new/address`, { waitUntil: 'load' });
 
       await page.fill('form[action="admin/calendars"] input[name="name"]', 'Second calendar');
       await page.fill('form[action="admin/calendars"] input[name="url"]', home.feedUrl!);

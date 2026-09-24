@@ -737,14 +737,24 @@ describe('destructive actions ask first', () => {
    * became an assertion about *containment*: Remove is behind the overflow now,
    * which is a stronger claim than a class pair.
    */
-  it('draws Add as the one filled button on the Calendars page', async () => {
+  /*
+   * P2.1 moved the add form to a page of its own, so the letter moved: the
+   * two buttons are read on `admin/calendars/new/address`, and the list's
+   * single app-bar "Add a calendar" is a link to the chooser rather than to a
+   * fragment of itself. The intent is unchanged — one filled button per
+   * screen, and never a second primary whose only effect is to scroll to the
+   * first.
+   */
+  it('draws Add as the one filled button on the add page, and the list links there', async () => {
     const h = await harness();
-    const page = await (await h.call('/admin/calendars')).text();
+    const page = await (await h.call('/admin/calendars/new/address')).text();
     expect(page).toContain('<button class="secondary" type="submit" name="action" value="test">');
     expect(page).toContain('<button type="submit" name="action" value="save">Add</button>');
-    // And no second primary in the app bar competing with it while the form
-    // it would scroll to is already on screen.
-    expect(page).not.toContain('admin/calendars#add');
+
+    const list = await (await h.call('/admin/calendars')).text();
+    expect(list).toContain('<a class="btn btn-sm" href="admin/calendars/new">Add a calendar</a>');
+    expect(list).not.toContain('admin/calendars#add');
+    expect(list).not.toContain('name="action" value="save"');
   });
 });
 
