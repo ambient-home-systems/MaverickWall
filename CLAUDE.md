@@ -7883,6 +7883,198 @@ same diff read 3893 over 279 against S05's 3875 over 278, the same +18 and +1.
 The arithmetic agrees, which, as every paragraph above says, is an observation
 and not a method.
 
+**The weather panel carries what it is like now, the next day of hours, and
+more about each day (plan items P3.1–P3.4, P3.6–P3.8, session S08). Nothing on
+a wall or a panel draws any of it yet** — the styles that will are S14 and S15
+— **and it must not ship without S09 (P3.5)**: `current` changes every fifteen
+minutes, `manifestEtag` hashes the whole document, and until S09 narrows the
+e-paper preimage every paired panel's frame ETag moves on that cadence, weather
+widget or not. The panel gains `current`, `hourly`, `units` and `air`, and each
+day gains `precipChance`, `precipAmount`, `windMax`, `uvMax`, `sunrise`,
+`sunset` and `detail`. **Every one is optional and spread**, and that is
+asserted as text: a cache holding only a forecast row written by the previous
+release assembles to the exact string the previous release produced, so a
+household with nothing new keeps its manifest and its ETag byte for byte;
+emitting `units` unconditionally or `current: null` turns it red.
+
+**Every parser reads real bytes.** Open-Meteo answers the cloud environment, so
+a full forecast for Washington (imperial) and London (metric), two air-quality
+answers and a sunrise/sunset spread — ten places, 25 June to 9 October — were
+captured live with the exact URLs the code builds, and the README beside them
+says so. NWS does not answer a cloud address, so its parsers read the owner's
+five captures under `fixtures/nws/real/`, and **those bytes found a fault on
+the first run**: every hourly period carries `"name": ""`, which the daily
+period schema — whose one required field is the row's name — refused all 156
+of. The hourly reader has its own schema. They also showed NWS's hourly
+`isDaytime` is a 06:00–18:00 clock (18:00 is "night" before a 19:02 sunset), so
+day and night come from the sun instead. **One capture the owner task asked for
+is not among them**, the observation with a null temperature; the fallback is
+tested against KDCA's real observation with that one value set to null, in the
+shape the same document uses for four other quantities, and
+`fixtures/nws/real/README.md` records it as missing rather than papering over
+it.
+
+**Sunrise and sunset are calculated for every provider** by `sun.ts`, the NOAA
+algorithm, pure, with the zone's offset handed in. Against Open-Meteo's own
+answer for 1,726 events it is within two minutes everywhere the sun is not
+grazing the horizon, and within five on the 34 days it is — the crossing moves
+by 1/sin(hour angle), which is geometry rather than error, and the test says so
+rather than excluding those days. It agrees with Open-Meteo on every day with
+no sunrise or no sunset, which Open-Meteo marks with a sentinel (sunrise at
+00:00, daylight 0 or 86,400 s) that the parser now reads as absence. Two facts
+about the reference were measured, not assumed: Open-Meteo computes for the
+grid cell it reports (the requested point is up to eleven minutes off at 86°N),
+and it truncates to the minute (mean +0.52 across 1,794 events). **Its local
+times are in one fixed offset for the whole answer**, even across a clock
+change — Sydney's sunrises run on without a jump over 4 October — so sun times
+are turned back into instants with `utc_offset_seconds` and re-printed in the
+household's zone; the Sydney case is the test that can see it, because a
+Washington fixture in September has no clock change to fail on.
+
+**Current conditions older than ninety minutes are not "now"**, applied twice:
+at assembly (`presentCurrent`, where NWS falls back to the hourly period
+covering now, `source: 'modelled'`, and Open-Meteo, whose conditions already are
+a model, falls back to nothing), and again in the wall's `weatherFrom` against
+its own clock, because an offline wall redrawing its IndexedDB copy is the one
+place the server's rule cannot reach. The job runs every fifteen minutes and
+asks each part whether it is due — conditions every fifteen, forecasts and air
+hourly, with three minutes' slack for the scheduler's jitter — and a failed
+part keeps its last copy and stays due. Open-Meteo's one answer carries every
+part, and only the due parts are written, so the days are not re-stamped every
+fifteen minutes. **Moving to fifteen minutes nearly quadrupled one request**:
+a location NWS cannot resolve would have asked `/points` every run instead of
+hourly; it waits for the forecast now, with one exception for a gridpoint
+cached by the previous release, which is asked for its hourly and station URLs
+once, at once. NWS stays in Fahrenheit and mph whatever the setting, as its page
+already said, and its SI observations are converted to match. **Air quality is
+off until switched on (Q5, the proposed default)**, names
+`air-quality-api.open-meteo.com` beside the switch before anything has been
+asked, reads the European index in a `Europe/` zone and the US one elsewhere,
+and forgets its reading when switched off (migration `0052`, one generated
+`ADD COLUMN`, read). The wall's `weatherFrom` carries `summary` now, which it
+had dropped since the day it was written.
+
+**Thirty-three mutations were checked and all are red**, 24 of them on the
+server's first pass. One display mutation stayed green at first — not handing
+`weatherFrom` the wall's clock — because the only `buildModel` test drew a
+reading forty minutes old; it draws one ninety-one minutes old too now. And one
+assertion was vacuous as first written: "switching air quality on brings the
+job forward" read `next_run_at ?? 0` on a database with no `job_state` row, so
+it passed whatever the code did; it seeds the row now. The list view's
+optional rain chance (P3.7) and the e-paper reader of the new fields were not
+built: the first widens the agenda's date column, which is a density decision
+with its own measurement, and the second has no panel style to read them for
+until P5.1.
+
+**3952 tests passing, 1 skipped and 5 expected failures, over 283 files**:
+calendar 153 over 10 · core 314 over 9 · display 638 over 36 · server 2847
+over 228 plus P2.1's five `it.fails`, measured with a real Chromium
+(`MW_BROWSER_EXECUTABLE`) on the tree after `main` was merged into this
+branch. Against P2.1's 3875 over 278 above, +77 passing and +5 files, which
+is this change's own count (four new server files of 62, three tests in
+`admin-saved`, one display file of 12); before the merge the same diff read
+3907 over 276 against 3830 over 271. Agreement both times, recorded as an
+observation and not a method. No ratchet baseline moved.
+
+**An e-paper panel's frame ETag hashes what its widgets draw, not the whole
+manifest (plan item P3.5, session S09).** The preimage used to include
+`manifestEtag(manifest)`, and the manifest carries every module's panel whether
+or not a given panel draws it. A Home Assistant reading moved every paired
+panel, and so did a to-do list, and S08's current conditions would have moved
+every panel every fifteen minutes, weather widget or not. A panel that sees a
+new ETag downloads a new frame, and a battery panel does a full refresh to show
+it. The frame now hashes the manifest with `panels` emptied, plus
+`canvasPanelInputs`: for each widget on the canvas, what its draw reads.
+
+**`panelInput` in `epaper/widgets.ts` is the one place a widget reads a
+module's panel, and the design is that `drawWidget` no longer receives the
+manifest at all.** Each draw is handed `panelInput`'s answer, so it cannot read
+anything the ETag does not hash; there is nothing else for it to read. Each
+answer is as narrow as the draw it feeds:
+- The forecast strip reads `forecastDays`' output (a name, a high, a low and a
+  glyph per day). So `current`, `hourly`, `air`, `units`, `fetchedAt` and a
+  day's `detail` and rain chance cannot move a frame.
+- A list-backed to-do widget reads its own list, and a typed checklist reads no
+  panel at all.
+- The house, the chore board and a module's panel read their whole slice,
+  because each draw reads it whole.
+- The built-in layout reads no panel, because `renderEpaper` draws from the
+  model.
+
+`epaper-frame-etag.test.ts` holds this in both directions, and the direction
+that can hurt a household is derived by rendering rather than from a table.
+Fourteen probes (every widget type, a list-backed and a typed to-do, a group,
+and the built-in layout) meet eleven mutations. Every frame that changed by a
+single bit got a new ETag, which is the half that stops a panel keeping an old
+picture for ever. A panel's ETag moves only for something one of its widgets
+reads. Each read has a mutation that reaches the glass, so the probes are
+probing. The weather panel in that file comes from the real parsers over the
+owner's captured NWS documents. Twelve mutations were checked and all are red,
+including the one the brief named: reverting to `manifestEtag(manifest)`
+reddens "keeps its ETag across two manifests that differ only in `current`".
+
+**No pixel moved, so `EPAPER_RENDERER_VERSION` stays 9.** Every `epaper-*`
+file passes unchanged, including `epaper-clock-variants`' `MAIN_HASHES` and
+`epaper-todo-widget`'s pinned frames. Every paired panel's ETag does move once,
+at the upgrade that ships this, because the preimage changed shape. That is one
+full refresh per panel.
+
+**Nothing on a panel draws current conditions yet, and the brief's positive
+test is therefore an `it.fails`, owned by S14.** P5.1's `today` style is the
+first draw that will. The test is written against that style's name, and
+because `panelInput` is the only way a draw reaches `current`, the session that
+builds the draw makes it pass and has to drop `.fails`: P2.1's device for
+S06's screens. The stamp the brief asks for is built: `epaperCurrent` is the
+only reader that hands a panel draw the current temperature, and it hands it
+with its time, "54F at 08:00". The degree sign is not in the panel's faces, so
+the unit rides on the number the way the strip's low already does.
+`weather-job.test.ts` checks it against panels assembled from the real
+captures: the KDCA station at 08:00, the Open-Meteo model at 08:30, twelve-hour
+clocks, and nothing once the reading is ninety minutes old. One line in it can
+contradict nothing today and is kept anyway: `canvasPanelInputs` reads each
+widget's config through `withInk`, as the draw does. No key the ink lane offers
+changes which slice a widget reads, so the mutation that drops it stays green.
+
+**The calendar sync churned every panel too, and that was found by measuring
+and then fixed.** Every calendar sync stamps `last_success_at`, the "feed
+unchanged" path included (`recordUnchanged`), and the manifest carries it as
+`sources[].lastSuccessAt`. Driven through a real paired panel, the job's own
+write turned the next request's `304` into a `200`. Narrowing `panels` alone
+therefore left the fifteen-minute refresh in place for any household with a
+calendar, and every thirty seconds for a Home Assistant calendar. Nothing in
+`epaper/` reads `sources` or `notices`. So `drawnManifest` empties both,
+beside `panels`, before the manifest is hashed. `screen` stays in the hash,
+though a panel draws none of it either, because `todo-tick.test.ts` holds a
+panel's `allow_todo` to moving its ETag the way `allow_chores` does. The fields
+are emptied rather than deleted, so a field added to the manifest later is
+hashed by default. That is the safe way round: an unneeded field costs a
+refresh, and a drawn field left out of the hash leaves a panel on an old
+picture. `epaper-endpoint.test.ts` drives the job's own writer against a real
+paired panel: a check that found nothing and a check that failed both answer
+`304`, while the wall's `/d/manifest` ETag moves, which is the control.
+`epaper-frame-etag.test.ts` adds both to its mutation table. Reverting the fix
+reddens three tests, each half alone reddens two or three, and dropping
+`screen` as well reddens two.
+
+Merging `main` into this branch surfaced one fault in P2.3's new "Use this
+place" handler. It wrote the weather settings without the air quality switch,
+which `tsc` refused, and `weather-geocoding.test.ts` now holds the switch
+through the lookup and the choice.
+
+**4006 tests passing, 1 skipped and 1 expected failure, over 286 files**:
+calendar 153 over 10 · core 314 over 9 · display 638 over 36 · server 2901
+over 231, the expected failure being this change's `TODO(S14)`. Measured with
+a real Chromium (`MW_BROWSER_EXECUTABLE`) on the tree after `main` was merged
+into this branch a second time, which by then had taken P2.3 and P2.1's
+second half with P2.2, and with it P2.1's five `it.fails` became ordinary
+passes. Against that merge's own 3912 over 280 above, this branch adds 90
+tests and six files: S08's 77 over five, and S09's 13 over one, plus the
+expected failure. Display 626 + 12 is 638 and server 2819 + 65 + 13 is 2897.
+The calendar-sync fix then added four tests to two files that already existed
+(three in `epaper-frame-etag`, one in `epaper-endpoint`), which gives 2901 and
+no new file. The arithmetic and the reading agree again; that is worth
+recording, and it is still not a method. No ratchet baseline moved.
+
 ---
 
 ## Open decisions

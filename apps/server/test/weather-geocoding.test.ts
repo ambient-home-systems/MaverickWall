@@ -252,6 +252,32 @@ describe('looking up a place', () => {
     expect(stored.units).toBe('metric');
   });
 
+  it('keeps the air quality switch through the lookup and the choice', async () => {
+    // Merging this screen with the air quality switch (P3.8) is where it would
+    // be lost: the lookup re-renders the form and "Use this place" saves it,
+    // and a switch either of them forgets is a consent the household gave and
+    // the page silently took back.
+    const geocoder = await fakeGeocoder(LONDON);
+    const h = await harness(fetcherFor(geocoder.base));
+
+    const lookup = await (
+      await h.form('/admin/weather/find-place', { ...BASE_FIELDS, air_quality_enabled: '1', place: 'London' })
+    ).text();
+    expect(/<input type="checkbox" name="air_quality_enabled"[^>]*>/.exec(lookup)?.[0]).toContain('checked');
+
+    const chosen = await h.form('/admin/weather/use-place', {
+      ...BASE_FIELDS,
+      air_quality_enabled: '1',
+      place_choice: '51.50853,-0.12574',
+    });
+    expect(chosen.status).toBe(302);
+    expect(readWeatherSettings(h.db).airQuality).toBe(true);
+
+    // And unticked is off, not "whatever it was".
+    await h.form('/admin/weather/use-place', { ...BASE_FIELDS, place_choice: '51.50853,-0.12574' });
+    expect(readWeatherSettings(h.db).airQuality).toBe(false);
+  });
+
   it('refuses "Use this place" with nothing chosen, and writes nothing', async () => {
     const geocoder = await fakeGeocoder(LONDON);
     const h = await harness(fetcherFor(geocoder.base));

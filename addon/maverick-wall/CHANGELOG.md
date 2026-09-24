@@ -63,6 +63,37 @@ are named the same way and both finish on **Add wall**. "Approve a pairing
 code", for a wall that is already showing one, is a link at the top of the
 Walls page and on the Add a wall page.
 
+**The weather now knows what it is like outside right now, not just what the
+days will bring.** The wall checks the current conditions every fifteen
+minutes — with the National Weather Service, measured at your nearest weather
+station; with Open-Meteo, from its model — along with the next twenty-four
+hours, each day's chance of rain, its wind, its sunrise and sunset, and (from
+Open-Meteo) its UV index and how much rain is expected. None of it is drawn on
+the wall yet: it is what the new weather styles, coming next, are built from.
+The forecast itself is still fetched once an hour, as before.
+
+**Air quality, if you want it.** The Weather page has a new **Show air
+quality** switch. It is off until you turn it on, because it asks a second
+service, `air-quality-api.open-meteo.com`, for a reading once an hour — whichever
+forecast you use — and the switch says so before it asks anything. Turning it
+off forgets the last reading.
+
+**The Weather page says what each forecast gives you.** Under "Forecast from"
+it now explains the difference: the National Weather Service covers the United
+States and measures the conditions at a station; Open-Meteo covers the world,
+models the conditions, and adds the UV index and rainfall amounts.
+
+**An e-paper panel is no longer sent a new picture for something it does not
+show.** A panel used to get a fresh picture whenever anything changed: a Home
+Assistant reading on a widget it did not have, a to-do list it did not show,
+and, with the weather above, the current conditions every fifteen minutes
+even on a panel with no weather on it. It also got one each time your
+calendars were checked, about every fifteen minutes, even when nothing on them
+had changed. On a battery panel every new picture is a full redraw, a flash
+and a little of the battery. A panel is now sent one only when something it
+draws has changed. Each panel gets one new picture when you update, and after
+that only when something on it changes.
+
 ## 0.67.0
 
 **Grouping widgets now does what you would expect.** Press **Group** on two

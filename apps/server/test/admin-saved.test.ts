@@ -792,3 +792,54 @@ describe('the mechanical sweep of confirmations', () => {
     expect(added.headers.get('location')).toBe('/admin/shifts/types?saved=shift-type-added');
   });
 });
+
+/*
+ * The Air quality switch (plan item P3.8), through the real app and the one
+ * form. Off until the household turns it on (Q5), and it names the host it
+ * would contact before it has contacted anything — the update check's rule.
+ */
+describe('the Air quality switch', () => {
+  const airSwitch = (html: string): string | undefined =>
+    /<input type="checkbox" name="air_quality_enabled"[^>]*>/.exec(html)?.[0];
+  const stored = (h: Awaited<ReturnType<typeof harness>>): number =>
+    (h.db.prepare(`SELECT air_quality_enabled AS on_ FROM household_settings WHERE id = 'singleton'`).get() as
+      { on_: number }).on_;
+
+  it('starts off, and says which host it would ask and what each provider gives', async () => {
+    const h = await harness();
+    const html = await (await h.call('/admin/alerts')).text();
+    expect(airSwitch(html)).toBeDefined();
+    expect(airSwitch(html)).not.toContain(' checked');
+    expect(html).toContain('air-quality-api.open-meteo.com');
+    // The provider description: what each one actually hands a wall.
+    expect(html).toContain('measured at the nearest weather station');
+    expect(html).toContain('modelled rather than measured');
+    expect(stored(h)).toBe(0);
+  });
+
+  it('is saved on when ticked and off when not, with the rest of the form', async () => {
+    const h = await harness();
+    const base = {
+      weather_form: '1', weather_enabled: '1', weather_provider: 'openmeteo', weather_units: 'metric',
+      latitude: '51.5', longitude: '-0.1',
+    };
+    expect((await h.form('/admin/weather', { ...base, air_quality_enabled: '1' })).status).toBe(302);
+    expect(stored(h)).toBe(1);
+    expect(airSwitch(await (await h.call('/admin/alerts')).text())).toContain(' checked');
+    // An unticked checkbox is not sent, and the form's marker is what makes
+    // its absence mean "off".
+    expect((await h.form('/admin/weather', base)).status).toBe(302);
+    expect(stored(h)).toBe(0);
+  });
+
+  it('comes back ticked on a 400, as the household left it', async () => {
+    const h = await harness();
+    const refused = await h.form('/admin/weather', {
+      weather_form: '1', weather_enabled: '1', latitude: '999', longitude: '-0.1',
+      weather_provider: 'nws', weather_units: 'imperial', air_quality_enabled: '1',
+    });
+    expect(refused.status).toBe(400);
+    expect(airSwitch(await refused.text())).toContain(' checked');
+    expect(stored(h)).toBe(0);
+  });
+});

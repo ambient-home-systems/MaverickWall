@@ -14,6 +14,7 @@ import { readSaved, savedRedirect } from './saved.js';
 import { ago, navModules, type AdminDeps } from './admin.js';
 import { selfHref } from './self.js';
 import { isUnitedStatesZone } from '../timezone.js';
+import { AIR_QUALITY_HOST } from '../modules/weather/open-meteo.js';
 
 /**
  * The screen's one form (RFC 009 Phase 3.1).
@@ -35,6 +36,7 @@ import { isUnitedStatesZone } from '../timezone.js';
 const weatherBody = z.object({
   weather_enabled: checkbox(),
   alerts_enabled: checkbox(),
+  air_quality_enabled: checkbox(),
   latitude: optionalText(20),
   longitude: optionalText(20),
   // A select always sends its value, so these are plain optional text with a
@@ -59,6 +61,7 @@ const weatherBody = z.object({
 const haLocationBody = z.object({
   weather_enabled: checkbox(),
   alerts_enabled: checkbox(),
+  air_quality_enabled: checkbox(),
   weather_provider: optionalText(20),
   weather_units: optionalText(20),
 });
@@ -119,6 +122,7 @@ function fromTheForm(body: Record<string, unknown>): boolean {
 interface WeatherEcho {
   readonly weatherEnabled: boolean;
   readonly alertsEnabled: boolean;
+  readonly airQuality: boolean;
   readonly latitude: string;
   readonly longitude: string;
   readonly provider: string;
@@ -132,6 +136,7 @@ function echoOf(body: Record<string, unknown>): WeatherEcho {
   return {
     weatherEnabled: typeof body['weather_enabled'] === 'string',
     alertsEnabled: typeof body['alerts_enabled'] === 'string',
+    airQuality: typeof body['air_quality_enabled'] === 'string',
     latitude: str('latitude'),
     longitude: str('longitude'),
     provider: str('weather_provider'),
@@ -217,6 +222,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
     longitude: number | null;
     provider: 'nws' | 'openmeteo';
     units: 'imperial' | 'metric';
+    airQuality: boolean;
   }): void {
     writeWeatherSettings(deps.db, {
       enabled: value.weatherEnabled,
@@ -224,6 +230,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       longitude: value.longitude,
       provider: value.provider,
       units: value.units,
+      airQuality: value.airQuality,
     });
     /*
      * The poll is brought forward on the *transition*, not on every save.
@@ -382,6 +389,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       longitude: lon.ok ? lon.value : null,
       provider: shaped.value.weather_provider === 'openmeteo' ? 'openmeteo' : 'nws',
       units: shaped.value.weather_units === 'metric' ? 'metric' : 'imperial',
+      airQuality: shaped.value.air_quality_enabled,
     });
     return savedRedirect(c, '/admin/alerts', 'weather');
   });
@@ -469,12 +477,14 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
           alertsEnabled: posted.value.alerts_enabled,
           provider: posted.value.weather_provider === 'openmeteo' ? ('openmeteo' as const) : ('nws' as const),
           units: posted.value.weather_units === 'metric' ? ('metric' as const) : ('imperial' as const),
+          airQuality: posted.value.air_quality_enabled,
         }
       : {
           weatherEnabled: stored.enabled,
           alertsEnabled: readAlertsEnabled(),
           provider: stored.provider,
           units: stored.units,
+          airQuality: stored.airQuality,
         };
     writeAll({
       ...rest,
@@ -545,6 +555,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       units: posted.value.weather_units === 'metric' ? 'metric' : 'imperial',
       latitude: posted.value.place_choice.latitude,
       longitude: posted.value.place_choice.longitude,
+      airQuality: posted.value.air_quality_enabled,
     });
     return savedRedirect(c, '/admin/alerts', 'weather-location-place');
   });
@@ -670,6 +681,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
             : ('imperial' as const),
     };
     const alertsOn = echo?.alertsEnabled ?? readAlertsEnabled();
+    const airOn = echo?.airQuality ?? stored.airQuality;
 
     return (
       `<form method="post" action="admin/weather"${dirtyForm(echo !== undefined)}>` +
@@ -799,6 +811,20 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       `</div>` +
       `<p class="hint">The National Weather Service always reports in Fahrenheit; ` +
       `the units choice applies to Open-Meteo.</p>` +
+      /*
+       * What each provider actually gives a wall (plan item P3.8), because the
+       * two are no longer the same strip with a different map behind it: one
+       * measures the conditions and one models them, and only one has the UV
+       * index and the day's rainfall. A household choosing between them is
+       * choosing between those, not between two names.
+       */
+      `<p class="hint"><b>National Weather Service</b> — the United States only. ` +
+      `The conditions now are measured at the nearest weather station, and come ` +
+      `from its hourly forecast when the station has no reading. Each day has ` +
+      `its chance of rain, its wind and the forecaster’s own words.</p>` +
+      `<p class="hint"><b>Open-Meteo</b> — worldwide, with no account or key. ` +
+      `The conditions now are modelled rather than measured. Each day also has ` +
+      `its UV index and how much rain is expected.</p>` +
 
       (weather.provider === 'openmeteo'
         ? `<p class="hint">Open-Meteo covers the whole world and needs no account ` +
@@ -809,6 +835,23 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
             'It covers the United States only. Outside the US, switch “Forecast from” ' +
               'to Open-Meteo above.',
           )) +
+
+      /*
+       * Its own switch, off until the household turns it on (Q5), and it says
+       * which host it asks before anybody has asked it anything — the update
+       * check's rule: a person exploring the settings must not reach a third
+       * party before they have read what the switch does.
+       */
+      switchRow({
+        label: 'Show air quality',
+        name: 'air_quality_enabled',
+        checked: airOn,
+        hint:
+          `Asks ${AIR_QUALITY_HOST}, a second Open-Meteo service, once an hour — ` +
+          'whichever forecast you chose above. The request carries this location ' +
+          'and nothing else, and needs no account or key. Turning it off forgets ' +
+          'the last reading.',
+      }) +
 
       // Still inside the one form — a <section> nests fine inside a <form>
       // and does not split it, so the Alerts run keeps its own heading and
