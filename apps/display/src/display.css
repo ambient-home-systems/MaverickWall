@@ -2718,6 +2718,36 @@ body {
   flex-direction: column;
   gap: var(--s3);
 }
+/*
+ * Several people, each on one line — the form a rota takes when a card does
+ * not fit per person (`shiftBadgesToLines`).
+ *
+ * **A list, drawn at the list's size, and that is the panel's rule rather than
+ * a smaller headline.** The one-person line above is the headline at full size
+ * because one person owns the whole box; several people share it, and
+ * `epaper/widgets.ts` has always drawn more than one as a compact line each at
+ * its *body* rung, never its headline. The wall's twin is the event role — the
+ * size a name is drawn in a box that holds several, which is the month cell's —
+ * with the same fallback the month cell's names take on a wall nobody has
+ * measured. Measured on the shipped Classic box, the headline line is 76px a
+ * person at 1920x1080 where the box has 41 each, so a headline-sized list is a
+ * list of one: the fault being fixed, one form along.
+ *
+ * The chrome comes down with it, to a month cell's permission — step 2, total,
+ * per axis, on the card and between cards — because a row in a list is the
+ * thing that spends it: at 1920x1080 the card's own step-4 padding is 23px of
+ * the 41 one person gets. Only the block axis: the side inset is the card's,
+ * and it is what keeps the colour rule off the words.
+ */
+.fw-shift.is-several.is-lines { gap: var(--s2); }
+.fw-shift.is-lines .shift-badge.is-line {
+  padding-top: calc(var(--s2) / 2);
+  padding-bottom: calc(var(--s2) / 2);
+}
+.fw-shift.is-lines .shift-badge.is-line .what {
+  font-size: var(--t-micro);
+  font-size: var(--t-wall-event, max(var(--t-micro), var(--t-floor)));
+}
 
 /*
  * The reused sections (weather, house, shift, notes…) are drawn **in** the box.
@@ -3007,3 +3037,76 @@ body {
  * third-party module sending either never goes blank on upgrade (rule nine).
  */
 .gp-text { font-size: 2rem; color: var(--ink); line-height: 1.4; }
+
+/*
+ * The motion fixture's still frame (plan P4.3) — a dot and a bar, positioned
+ * in shares of their box. A test fixture no server sends: `motion-fixture.ts`
+ * says why it exists. Still by default, like everything else on the wall;
+ * what moves it is the scoped block below and nothing here.
+ */
+.fx-fixture { position: relative; width: 100%; height: 100%; overflow: hidden; }
+.fx-fixture-loop {
+  position: absolute; left: 0; top: 20%;
+  width: 20%; height: 30%;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.fx-fixture-once {
+  position: absolute; left: 0; right: 0; bottom: 10%;
+  height: 20%;
+  background: var(--muted);
+}
+
+/*
+ * **Motion on a browser wall, and all of it is in this one block** (plan P4.3,
+ * decision D7).
+ *
+ * The wall rebuilds its whole document every fifteen seconds, so an animation
+ * is a new animation on every tick and restarts from nought unless something
+ * says where it was. `motion.ts` is that something: it writes each animated
+ * element's `animation-duration` and a negative `animation-delay` taken from
+ * the corrected wall clock (a loop), or from the moment a one-shot first fired
+ * (a burst), inline. What is declared here is only *what* moves — the keyframes
+ * and the name that binds them — and four things about it are the rule rather
+ * than taste, each held by `apps/display/test/motion.test.ts`:
+ *
+ *  - **Inside `prefers-reduced-motion: no-preference`.** A household who has
+ *    asked their system for less motion is served none, with no setting of
+ *    ours to find. A keyframe set is inside it as well as every binding, so
+ *    the rule is one fence rather than two.
+ *  - **Under `.canvas[data-motion="on"]`**, which `main.ts` writes from the
+ *    wall's own Motion switch (`screens.motion`; null is on, and the e-ink
+ *    sizes default it off). An admin preview's canvas carries no attribute at
+ *    all, so a preview is always still.
+ *  - **`transform` and `opacity` only**, in every keyframe. Both are
+ *    composited; anything else is a layout or a paint on every frame, on a
+ *    cheap tablet bolted to a wall for a year.
+ *  - **No duration and no delay here.** The phase is computed from the
+ *    duration, so the duration is stated once, in TypeScript, where it is
+ *    computed; a second copy here is how the two would come to disagree.
+ *
+ * An e-paper panel reaches none of this: its frame is a packed raster drawn on
+ * the server, and every style draws its still frame there.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  /* The fixture's loop: a dot drifting across its box and back to the start. */
+  @keyframes fx-fixture-drift {
+    from { transform: translateX(0); }
+    to { transform: translateX(400%); }
+  }
+  /* The fixture's one-shot: a bar arriving from below, once per event. */
+  @keyframes fx-fixture-arrive {
+    from { opacity: 0; transform: translateY(100%); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .canvas[data-motion="on"] .fx-fixture-loop {
+    animation-name: fx-fixture-drift;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+  }
+  .canvas[data-motion="on"] .fx-fixture-once.fx-playing {
+    animation-name: fx-fixture-arrive;
+    animation-timing-function: ease-out;
+    animation-fill-mode: both;
+  }
+}

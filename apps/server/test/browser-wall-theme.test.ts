@@ -156,7 +156,7 @@ describe('creating a wall', () => {
         try {
           const page = await context.newPage();
           await home.signIn(page);
-          await page.goto(`${home.base}/admin/walls/new`, { waitUntil: 'load' });
+          await page.goto(`${home.base}/admin/walls/new/browser`, { waitUntil: 'load' });
           await themeCardsReady(page);
 
           // 1. Nothing is chosen. A preselected card is a default wearing a
@@ -193,6 +193,16 @@ describe('creating a wall', () => {
             page.locator('.addbar button[type="submit"]').click(),
           ]);
           expect(refused[0].status(), 'a body with no theme was accepted').toBe(400);
+          /*
+           * The re-rendered page, loaded — not merely a theme radio attached.
+           * The server draws the cards, so `themeCardsReady` is satisfied the
+           * moment the 400's document parses (or by the outgoing one), before
+           * `template-gallery.js` has run and written the suggestion this
+           * reads; a module script holds the load event, so waiting for it is
+           * waiting for the suggestion. Found as one red in a full run, and
+           * reproduced every time by delaying that script's fetch.
+           */
+          await page.waitForURL('**/admin/screens', { waitUntil: 'load' });
           await themeCardsReady(page);
           expect(await page.inputValue('input[name="name"]'), 'the name was thrown away').toBe(
             'Kitchen',

@@ -35,9 +35,13 @@ export interface WallSizePreset {
   /** Where somebody stands to *read* one of these, not to glance at it. */
   readonly readAtMm: number;
   /**
-   * An e-ink panel driven by a browser. Such a wall draws no shadow whatever
-   * its theme says (decision D8, plan item P4.4), because a shadow is grey
-   * and grey on e-ink is dither that bands; `isEinkWall` is the reading.
+   * An e-ink panel running the browser wall — a Boox, a Kindle-class tablet —
+   * rather than a lit screen. Two things read it: what turns a wall's Motion
+   * default off (plan P4.3, `wall-motion.ts`), because e-ink redraws the whole
+   * picture for every frame of an animation and bands and ghosts doing it; and
+   * `isEinkWall`, which sets the wall's card shadow to none whatever its theme
+   * says (decision D8, plan item P4.4), because a shadow is grey and grey on
+   * e-ink is dither that bands.
    */
   readonly eink?: true;
 }

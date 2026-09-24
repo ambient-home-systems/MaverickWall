@@ -737,14 +737,24 @@ describe('destructive actions ask first', () => {
    * became an assertion about *containment*: Remove is behind the overflow now,
    * which is a stronger claim than a class pair.
    */
-  it('draws Add as the one filled button on the Calendars page', async () => {
+  /*
+   * P2.1 moved the add form to a page of its own, so the letter moved: the
+   * two buttons are read on `admin/calendars/new/address`, and the list's
+   * single app-bar "Add a calendar" is a link to the chooser rather than to a
+   * fragment of itself. The intent is unchanged — one filled button per
+   * screen, and never a second primary whose only effect is to scroll to the
+   * first.
+   */
+  it('draws Add as the one filled button on the add page, and the list links there', async () => {
     const h = await harness();
-    const page = await (await h.call('/admin/calendars')).text();
+    const page = await (await h.call('/admin/calendars/new/address')).text();
     expect(page).toContain('<button class="secondary" type="submit" name="action" value="test">');
     expect(page).toContain('<button type="submit" name="action" value="save">Add</button>');
-    // And no second primary in the app bar competing with it while the form
-    // it would scroll to is already on screen.
-    expect(page).not.toContain('admin/calendars#add');
+
+    const list = await (await h.call('/admin/calendars')).text();
+    expect(list).toContain('<a class="btn btn-sm" href="admin/calendars/new">Add a calendar</a>');
+    expect(list).not.toContain('admin/calendars#add');
+    expect(list).not.toContain('name="action" value="save"');
   });
 });
 
@@ -780,5 +790,56 @@ describe('the mechanical sweep of confirmations', () => {
     });
     expect(added.status).toBe(302);
     expect(added.headers.get('location')).toBe('/admin/shifts/types?saved=shift-type-added');
+  });
+});
+
+/*
+ * The Air quality switch (plan item P3.8), through the real app and the one
+ * form. Off until the household turns it on (Q5), and it names the host it
+ * would contact before it has contacted anything — the update check's rule.
+ */
+describe('the Air quality switch', () => {
+  const airSwitch = (html: string): string | undefined =>
+    /<input type="checkbox" name="air_quality_enabled"[^>]*>/.exec(html)?.[0];
+  const stored = (h: Awaited<ReturnType<typeof harness>>): number =>
+    (h.db.prepare(`SELECT air_quality_enabled AS on_ FROM household_settings WHERE id = 'singleton'`).get() as
+      { on_: number }).on_;
+
+  it('starts off, and says which host it would ask and what each provider gives', async () => {
+    const h = await harness();
+    const html = await (await h.call('/admin/alerts')).text();
+    expect(airSwitch(html)).toBeDefined();
+    expect(airSwitch(html)).not.toContain(' checked');
+    expect(html).toContain('air-quality-api.open-meteo.com');
+    // The provider description: what each one actually hands a wall.
+    expect(html).toContain('measured at the nearest weather station');
+    expect(html).toContain('modelled rather than measured');
+    expect(stored(h)).toBe(0);
+  });
+
+  it('is saved on when ticked and off when not, with the rest of the form', async () => {
+    const h = await harness();
+    const base = {
+      weather_form: '1', weather_enabled: '1', weather_provider: 'openmeteo', weather_units: 'metric',
+      latitude: '51.5', longitude: '-0.1',
+    };
+    expect((await h.form('/admin/weather', { ...base, air_quality_enabled: '1' })).status).toBe(302);
+    expect(stored(h)).toBe(1);
+    expect(airSwitch(await (await h.call('/admin/alerts')).text())).toContain(' checked');
+    // An unticked checkbox is not sent, and the form's marker is what makes
+    // its absence mean "off".
+    expect((await h.form('/admin/weather', base)).status).toBe(302);
+    expect(stored(h)).toBe(0);
+  });
+
+  it('comes back ticked on a 400, as the household left it', async () => {
+    const h = await harness();
+    const refused = await h.form('/admin/weather', {
+      weather_form: '1', weather_enabled: '1', latitude: '999', longitude: '-0.1',
+      weather_provider: 'nws', weather_units: 'imperial', air_quality_enabled: '1',
+    });
+    expect(refused.status).toBe(400);
+    expect(airSwitch(await refused.text())).toContain(' checked');
+    expect(stored(h)).toBe(0);
   });
 });

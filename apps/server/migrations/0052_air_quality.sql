@@ -1,0 +1,1 @@
+ALTER TABLE `household_settings` ADD `air_quality_enabled` integer DEFAULT false NOT NULL;

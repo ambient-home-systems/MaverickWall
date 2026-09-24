@@ -160,11 +160,15 @@ const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 const bytesOf = async (response: Response): Promise<Uint8Array> => new Uint8Array(await response.arrayBuffer());
 
 describe('the eInk Displays page', () => {
-  it('shows the add form', async () => {
+  it('shows the add form, one step behind the Walls chooser', async () => {
     const h = await harness();
-    const html = await (await h.call(`${B}/admin/epaper`)).text();
-    expect(html).toContain('Add an e-paper wall');
+    const html = await (await h.call(`${B}/admin/walls/new/epaper`)).text();
+    expect(html).toContain('<h1>Add an e-paper wall</h1>');
     expect(html).toContain('Seeed 7.5'); // the preset option (the quote is HTML-escaped)
+    // Its old address, from before there was a chooser, still lands on it.
+    const old = await h.call(`${B}/admin/epaper`);
+    expect(old.status).toBe(302);
+    expect(old.headers.get('location')).toBe('/admin/walls/new/epaper');
   });
 
   it('creates a Seeed 7.5" screen and hands over a working URL and both recipes', async () => {

@@ -1,13 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  CLOCK_VARIANTS,
   FACE_CENTRE,
   FACE_DIAL_PATH,
   FACE_HOUR_HAND,
   FACE_MINUTE_HAND,
   analogueFace,
-  clockVariant,
   handAngles,
   handPolygon,
   stackedDateLines,
@@ -20,22 +18,12 @@ import {
  * The clock's designed variants, as data (RFC 014 §4.2).
  *
  * Everything a variant decides is decided in `clock-face.ts` so it can be
- * asked here, with no DOM: which variant a stored config means, what the
- * kitchen clock reads in the household's zone, where each hand points, and
- * which way every silhouette winds. The drawing itself is measured in a real
- * browser in `browser-clock-variants.test.ts`.
+ * asked here, with no DOM: what the kitchen clock reads in the household's
+ * zone, where each hand points, and which way every silhouette winds. Which
+ * variant a stored config means is `variants.ts`'s, and `variants.test.ts`
+ * asks it. The drawing itself is measured in a real browser in
+ * `browser-clock-variants.test.ts`.
  */
-
-describe('which variant a config means', () => {
-  it('is plain when absent, and plain for a value that belongs to another widget', () => {
-    expect(clockVariant(undefined)).toBe('plain');
-    expect(clockVariant({})).toBe('plain');
-    // One enum for every type: a value the clock does not draw is "not for me".
-    expect(clockVariant({ variant: 'strip' })).toBe('plain');
-    expect(clockVariant({ variant: 42 })).toBe('plain');
-    for (const variant of CLOCK_VARIANTS) expect(clockVariant({ variant })).toBe(variant);
-  });
-});
 
 describe('what the kitchen clock reads', () => {
   it('reads the hour and minute in the household’s zone, not the device’s', () => {

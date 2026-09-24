@@ -181,15 +181,40 @@ const widgetConfigFields = z
      * for one idea — so each renderer filters to its own allowlist and a value
      * a type does not know is "not for me", drawn as that type's default.
      *
-     * The clock is the first: `plain` (the clock every wall has drawn),
+     * The clock was the first: `plain` (the clock every wall has drawn),
      * `stacked` (the time over the weekday over the date) and `analogue` (a
      * filled face with two hands). **Absent means `plain`**, like every
      * default in this schema, so a canvas saved before this key existed sends
      * a byte-identical config and no stored ETag churns. `plain` is still a
      * member rather than only an absence, because the ink lane has to be able
      * to say "plain on the panel" beside a wall that says `stacked`.
+     *
+     * The September household review added a list per type (plan item P4.1),
+     * each with its default first: weather (`strip`, `today`, `range`,
+     * `colour`, `playful`), countdown (`number`, `page`, `ticket`,
+     * `occasion`, `progress`, `month`), Home Assistant (`list`, `tile`) and
+     * the calendar (`planner`, `bold`, its own look being an absence with no
+     * name). Which type draws which value is `VARIANTS` in
+     * `apps/display/src/variants.ts` and its transcription in
+     * `epaper/variants.ts`; `variants-parity.test.ts` holds this enum to be
+     * exactly their union. **Only the clock's draw anything yet** — every
+     * other value is stored, accepted and drawn as its type's default until
+     * the session that designs it.
      */
-    variant: z.enum(['plain', 'stacked', 'analogue']).optional(),
+    variant: z
+      .enum([
+        // clock
+        'plain', 'stacked', 'analogue',
+        // weather
+        'strip', 'today', 'range', 'colour', 'playful',
+        // countdown
+        'number', 'page', 'ticket', 'occasion', 'progress', 'month',
+        // homeassistant
+        'list', 'tile',
+        // calendar
+        'planner', 'bold',
+      ])
+      .optional(),
     /*
      * Group (RFC 014 §5.1) — how a group lays its children out inside its own
      * box: a `row` divides the group's inner box equally across its children in
@@ -226,8 +251,18 @@ const widgetConfigFields = z
      */
     showLow: z.boolean().optional(),
     showIcon: z.boolean().optional(),
-    // Home Assistant
-    readings: z.array(z.string().max(80)).max(50).optional(),
+    /*
+     * Home Assistant — which watched readings this widget shows, **by entity
+     * id** (P1.3); absent or empty is all of them. It held labels until then,
+     * so a rename took a reading off every widget that had picked it, and a
+     * widget saved before is still read correctly: `readingHandlesFor` treats
+     * an entry that is a current reading's label as that reading. The entity
+     * id never reaches a wall — `displayConfig` sends the handle in its place.
+     * 255 rather than the 80 a label needed, because that is what an entity id
+     * may be (`watchBody` accepts it) and a picker offering an id the save
+     * then refused would be a choice that cannot be made.
+     */
+    readings: z.array(z.string().max(255)).max(50).optional(),
     // Countdown — a target date (YYYY-MM-DD); the label rides in `title`.
     target: z
       .string()

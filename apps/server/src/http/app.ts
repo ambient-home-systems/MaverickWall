@@ -28,7 +28,7 @@ import {
 import { DEFAULT_AFTER_SIGN_IN, safeNextPath } from '../auth/next-path.js';
 import { createSetupTokenHolder, registerSetupRoutes, type SetupTokenHolder } from './setup.js';
 import { registerAdminRoutes } from './admin.js';
-import { createStaticFiles, defaultDisplayDir, defaultFontsDir } from './static.js';
+import { createStaticFiles, defaultDisplayDir, defaultEmojiDir, defaultFontsDir } from './static.js';
 import { acceptsGzip, gzipped } from './compress.js';
 import { ingress, ingressPath, isTrustedIngress } from './ingress.js';
 import { effectiveOrigin, isSecureRequest } from './forwarded.js';
@@ -194,6 +194,11 @@ export interface AppDeps {
    * compiled server; `FONTS_DIR` overrides it in the flattened image.
    */
   readonly fontsDir?: string;
+  /**
+   * Where the bundled emoji artwork lives. Defaults to the sibling of the
+   * compiled server; `EMOJI_DIR` overrides it in the flattened image.
+   */
+  readonly emojiDir?: string;
   /** Where the database and the encryption key live. */
   readonly dataDir: string;
   /**
@@ -400,6 +405,7 @@ export function createApp(deps: AppDeps): Hono {
 
   const staticFiles = createStaticFiles(deps.displayDir ?? defaultDisplayDir());
   const fontFiles = createStaticFiles(deps.fontsDir ?? defaultFontsDir());
+  const emojiFiles = createStaticFiles(deps.emojiDir ?? defaultEmojiDir());
 
   const auth = createAuth({ db: deps.db, secret: deps.auth.secret, baseUrl: deps.auth.baseUrl });
 
@@ -984,6 +990,8 @@ export function createApp(deps: AppDeps): Hono {
     readonly layoutStyle?: string | null;
     /** The wall's own CSS, already scoped (RFC 014 §7); null until written. */
     readonly customCss?: string | null;
+    /** Whether this wall may move; null is "never chosen" (plan P4.3). */
+    readonly motion?: number | null;
   }) => {
     const at = now();
     const household = readHousehold(deps.db);
@@ -1116,6 +1124,9 @@ export function createApp(deps: AppDeps): Hono {
         // The scoped text as stored (RFC 014 §7); `buildManifest` spreads an
         // absent one away, so a wall with none sends the document it always did.
         customCss: screenLike.customCss ?? null,
+        // As stored; `buildManifest` reads it with the size through
+        // `wallMotion` and says so only when the answer is "still".
+        motion: screenLike.motion ?? null,
         theme: screenLike.theme,
         timezone: screenLike.timezone,
         daytimeTheme: screenLike.daytimeTheme,
@@ -1167,6 +1178,7 @@ export function createApp(deps: AppDeps): Hono {
       layoutGutter: screen.layoutGutter,
       layoutStyle: screen.layoutStyle,
       customCss: screen.customCss,
+      motion: screen.motion,
     });
 
   // The push server, if boot wired one, builds from exactly this — see the dep.
@@ -2047,6 +2059,26 @@ export function createApp(deps: AppDeps): Hono {
    */
   app.get('/assets/fonts/:name', (c: Context) => {
     const file = fontFiles.read(c.req.param('name') ?? '');
+    if (file === undefined) return c.json({ error: 'not-found' }, 404);
+    return serveWithEtag(c, file, 'public, max-age=31536000, immutable');
+  });
+
+  /*
+   * The bundled emoji artwork, on its own path and directory (D6, plan item
+   * P4.2).
+   *
+   * The fonts route's own pattern: content-addressed by nothing that changes,
+   * so a long immutable cache is cheap to keep for a year. `SAFE_NAME` in
+   * `createStaticFiles` already refuses a slash or a leading dot — a traversal
+   * cannot be spelled — and the `.svg` check below is the second, narrower
+   * promise this route makes on top of that: every file in this directory is
+   * artwork, and nothing else is ever served from it, whatever somebody names
+   * a request after.
+   */
+  app.get('/assets/emoji/:name', (c: Context) => {
+    const name = c.req.param('name') ?? '';
+    if (!name.endsWith('.svg')) return c.json({ error: 'not-found' }, 404);
+    const file = emojiFiles.read(name);
     if (file === undefined) return c.json({ error: 'not-found' }, 404);
     return serveWithEtag(c, file, 'public, max-age=31536000, immutable');
   });

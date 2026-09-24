@@ -88,11 +88,13 @@ import {
   WALL_SIZE_CUSTOM,
   WALL_SIZE_PRESETS,
 } from '../wall-sizes.js';
+import { wallMotion } from '../wall-motion.js';
 import type { LogBuffer } from '../logbuffer.js';
 import {
   parseBackground,
   todoListHandle,
   widgetIsSetUp,
+  withReadingEntityIds,
   WIDGET_TYPES,
   type PlacedWidgetRow,
 } from '../api/manifest.js';
@@ -437,6 +439,16 @@ const screenBody = z.object({
    * a row *means* is decided in the handler against `layout-slots.ts`.
    */
   schedule_form: optionalText(1),
+  /*
+   * Whether this wall may move (plan P4.3). `motion_shown` is what the switch
+   * was drawn as, `1` or `0`, and it is the marker too: the handler writes the
+   * column only when the posted switch differs from it — the household moved
+   * it — and otherwise leaves it as it was, so a wall whose Motion nobody
+   * touched keeps the null that lets an e-ink size turn it off. A page cached
+   * from before the row existed posts neither, and changes nothing.
+   */
+  motion: checkbox(),
+  motion_shown: optionalText(1),
   ...Object.fromEntries(
     Array.from({ length: MAX_SCHEDULE_ROWS }, (_, i) => i + 1).flatMap((n) => [
       [`schedule_slot_${n}`, optionalText(24)],
@@ -575,7 +587,7 @@ import {
   THEMES,
 } from './theme-cards.js';
 import { readEnabledExternalModules, readExternalModules } from '../api/external-modules.js';
-import { readHaSettings } from '../modules/homeassistant/store.js';
+import { readHaSettings, watchedReadingChoices } from '../modules/homeassistant/store.js';
 import { resolveConnection } from '../modules/homeassistant/client.js';
 import { fetchCalendarEntities } from '../modules/homeassistant/index.js';
 import { isUnitedStatesZone } from '../timezone.js';
@@ -761,7 +773,7 @@ function wallTemplatePreviews(
 ): readonly Record<string, unknown>[] {
   return catalogue.map((t) => ({
     id: t.id,
-    // The name travels for the suggestion on `/admin/walls/new`: a card
+    // The name travels for the suggestion on `/admin/walls/new/browser`: a card
     // reading "Suggested for Sky Week" has to name the card the household just
     // pressed, and reading it back out of the DOM would be a second copy of a
     // string this JSON already holds (RFC 015 §3.1).
@@ -1281,9 +1293,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     }
     if (screens.length === 0) {
       attention.push({
-        title: 'No walls paired yet',
-        detail: 'Pair a tablet, a television or an e-paper panel to put the calendar on a screen.',
-        href: 'admin/walls', tag: 'Not set up', bad: false,
+        // "Add", not "Pair" (P2.2): pairing is the step that opens a browser
+        // wall's link, and an e-paper panel is never paired at all.
+        title: 'No walls yet',
+        detail: 'Add a tablet, a television or an e-paper panel to put the calendar on a wall.',
+        href: 'admin/walls/new', tag: 'Not set up', bad: false,
       });
     }
     for (const screen of screens) {
@@ -1531,14 +1545,29 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   // Calendars
   // -------------------------------------------------------------------------
 
-  app.get('/admin/calendars', async (c: Context) =>
+  app.get('/admin/calendars', (c: Context) => c.html(calendarsPage(c)));
+
+  /*
+   * Adding a calendar is a page of its own now (P2.1), and the first page is a
+   * chooser, because "a calendar" arrives three ways that share no field: an
+   * address, an account, or an entity Home Assistant already holds. The list
+   * above keeps no form, which is what lets its app bar carry the one "Add a
+   * calendar" without a second filled Add competing with it on the same screen.
+   */
+  app.get('/admin/calendars/new', async (c: Context) =>
     // One small request to Home Assistant, for the calendars it could offer.
     // It answers with none when there is no connection or the box is down, so
     // this page never waits on Home Assistant to be well (rule nine).
-    c.html(calendarsPage(c, {}, undefined, undefined, await fetchCalendarEntities(
-      deps.db, deps.keyring, deps.fetcher,
-    ))),
+    c.html(
+      calendarChooserPage(
+        c,
+        resolveConnection(deps.db, deps.keyring).ok,
+        await fetchCalendarEntities(deps.db, deps.keyring, deps.fetcher),
+      ),
+    ),
   );
+  app.get('/admin/calendars/new/address', (c: Context) => c.html(addressPage(c, {})));
+  app.get('/admin/calendars/new/caldav', (c: Context) => c.html(caldavAddPage(c, undefined)));
 
   /**
    * Test, then save — and testing is a first-class outcome.
@@ -1564,13 +1593,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // never does, on any branch — see `SourceEcho`, and RFC 013 §4.5.
       username: typeof body['auth_username'] === 'string' ? body['auth_username'] : '',
     };
-    if (!shaped.ok) return c.html(calendarsPage(c, echo, { message: shaped.message }), 400);
+    if (!shaped.ok) return c.html(addressPage(c, echo, { message: shaped.message }), 400);
 
     const testOnly = shaped.value.action === 'test';
     // A name is only required to *store* one. Testing an address is a
     // question, and asking it should not need the answer named first.
     if (!testOnly && shaped.value.name === undefined) {
-      return c.html(calendarsPage(c, echo, { message: 'Enter a name and an address.' }), 400);
+      return c.html(addressPage(c, echo, { message: 'Enter a name and an address.' }), 400);
     }
 
     const name = shaped.value.name ?? '';
@@ -1603,7 +1632,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     );
     if (!tested.ok) {
       return c.html(
-        calendarsPage(c, values, {
+        addressPage(c, values, {
           message: tested.message,
           ...(tested.suggestion !== undefined ? { suggestion: tested.suggestion } : {}),
           networkOptions: tested.networkOptions,
@@ -1613,7 +1642,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     }
 
     // Nothing stored yet: this is the person checking their own work.
-    if (testOnly) return c.html(calendarsPage(c, values, undefined, tested));
+    if (testOnly) return c.html(addressPage(c, values, undefined, tested));
 
     // Membership is a question for the database, not the schema. An owner who
     // has since gone is treated as "Everyone" rather than rejected — losing the
@@ -1640,7 +1669,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       now(),
     );
     if (!added.ok) {
-      return c.html(calendarsPage(c, values, { message: added.message }), 400);
+      return c.html(addressPage(c, values, { message: added.message }), 400);
     }
 
     return savedRedirect(c, '/admin/calendars', 'calendar-added');
@@ -1654,7 +1683,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     // the colour and the owner changed in the same row.
     const echo = sourceEchoOf(c.req.param('id') ?? '', body);
     if (!shaped.ok) {
-      return c.html(calendarsPage(c, {}, { message: shaped.message }, undefined, [], echo), 400);
+      return c.html(calendarsPage(c, { message: shaped.message }, echo), 400);
     }
 
     // Membership, and it cannot live in the schema: who exists is a question
@@ -1662,7 +1691,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const personId = shaped.value.person_id;
     if (personId !== undefined && !readPeopleAdmin(deps.db).some((p) => p.id === personId)) {
       return c.html(
-        calendarsPage(c, {}, { message: 'That person is no longer there.' }, undefined, [], echo),
+        calendarsPage(c, { message: 'That person is no longer there.' }, echo),
         400,
       );
     }
@@ -1751,6 +1780,27 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   }
 
   /**
+   * The CalDAV add flow's own state (RFC 013 §6.3.1, §6.7).
+   *
+   * One value carrying three mutually exclusive shapes rather than three
+   * parameters, because they *are* exclusive: a submission is a refusal, a
+   * question about a host, or a list of calendars to tick, and never two of
+   * those. Three optional parameters would make "confirm and pick at once"
+   * representable, which is a state no handler can produce and every reader
+   * would have to rule out.
+   */
+  interface CaldavState {
+    readonly echo?: CaldavEcho;
+    readonly error?: { message: string; suggestion?: string; networkOptions?: readonly NetworkOption[] };
+    readonly confirm?: { readonly pending: string; readonly host: string };
+    readonly pick?: {
+      readonly pending: string;
+      readonly host: string;
+      readonly calendars: readonly { readonly url: string; readonly displayName: string; readonly ctag?: string }[];
+    };
+  }
+
+  /**
    * One place that turns a discovery outcome into a page, because there are two
    * callers and three outcomes.
    *
@@ -1784,7 +1834,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       const id = existing ?? holdPendingCaldav(held, at);
       if (existing !== undefined) updatePendingCaldav(existing, held, at);
       return c.html(
-        calendarsPage(c, {}, undefined, undefined, [], undefined, {
+        caldavAddPage(c, {
           echo,
           confirm: { pending: id, host: result.needsConfirmation.host },
         }),
@@ -1793,7 +1843,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
     if (!result.ok) {
       return c.html(
-        calendarsPage(c, {}, undefined, undefined, [], undefined, {
+        caldavAddPage(c, {
           echo,
           error: {
             message: result.message,
@@ -1814,7 +1864,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     if (existing !== undefined) updatePendingCaldav(existing, resolved, at);
 
     return c.html(
-      calendarsPage(c, {}, undefined, undefined, [], undefined, {
+      caldavAddPage(c, {
         echo,
         pick: { pending: id, host: result.host, calendars: result.calendars },
       }),
@@ -1847,7 +1897,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       allowHttp: typeof body['allow_http'] === 'string',
     };
     if (!shaped.ok) {
-      return c.html(calendarsPage(c, {}, undefined, undefined, [], undefined, { echo, error: { message: shaped.message } }), 400);
+      return c.html(caldavAddPage(c, { echo, error: { message: shaped.message } }), 400);
     }
 
     const result = await testCaldavAccount(
@@ -1890,7 +1940,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // Expired, or a restart. Nothing to apologise for and nothing to recover:
       // the form is three fields and the household is standing at it.
       return c.html(
-        calendarsPage(c, {}, undefined, undefined, [], undefined, {
+        caldavAddPage(c, {
           error: {
             message: 'That took a little too long, so the password was not kept. Enter it again.',
           },
@@ -1933,7 +1983,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const held = readPendingCaldav(shaped.value.pending, now());
     if (held === undefined || held.principalUrl === undefined || held.homeSetUrl === undefined) {
       return c.html(
-        calendarsPage(c, {}, undefined, undefined, [], undefined, {
+        caldavAddPage(c, {
           error: {
             message: 'That took a little too long, so the password was not kept. Enter it again.',
           },
@@ -2334,10 +2384,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   // -------------------------------------------------------------------------
 
   app.get('/admin/people', (c: Context) => c.html(peoplePage(c)));
+  app.get('/admin/people/new', (c: Context) => c.html(newPersonPage(c)));
 
   app.post('/admin/people', async (c: Context) => {
-    const shaped = parse(personBody, (await c.req.parseBody()) as Record<string, unknown>);
-    if (!shaped.ok) return c.html(peoplePage(c, shaped.message), 400);
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const shaped = parse(personBody, body);
+    // The add page again, with what was typed: a refused colour must not also
+    // cost the name.
+    if (!shaped.ok) return c.html(newPersonPage(c, shaped.message, body), 400);
 
     createPerson(deps.db, randomBytes(8).toString('hex'), shaped.value.name, shaped.value.color);
     return savedRedirect(c, '/admin/people', 'person-added');
@@ -2533,21 +2587,33 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     return c.html(draftPage(c, draftFromPlan(plan, owner?.personId ?? '')));
   });
 
-  /** Step one: who, and where the answer comes from. */
+  /**
+   * Step one, as a page (P2.1): who, and where the answer comes from.
+   *
+   * It was a form at the foot of Work Schedule that posted here, which is why
+   * that page carried no app-bar action. The GET draws step one; the POST it
+   * submits to is unchanged and still answers with step two.
+   */
+  app.get('/admin/shifts/new', (c: Context) => c.html(newRotationPage(c)));
+
+  /** Step one's submission: who, and where the answer comes from. */
   app.post('/admin/shifts/new', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const shaped = parse(draftBody, body);
-    if (!shaped.ok) return c.html(shiftsPage(c, { message: shaped.message }), 400);
+    if (!shaped.ok) return c.html(newRotationPage(c, { message: shaped.message }, body), 400);
 
     const personId = shaped.value.person_id ?? '';
     const kind: PlanKind = shaped.value.kind === 'pattern' ? 'pattern' : 'calendar';
     const sourceId = shaped.value.source_id ?? '';
 
     if (!readPeopleAdmin(deps.db).some((person) => person.id === personId)) {
-      return c.html(shiftsPage(c, { message: 'Choose who the rotation is for.' }), 400);
+      return c.html(newRotationPage(c, { message: 'Choose who the rotation is for.' }, body), 400);
     }
     if (kind === 'calendar' && sourceId === '') {
-      return c.html(shiftsPage(c, { message: 'Choose which calendar the shifts are in.' }), 400);
+      return c.html(
+        newRotationPage(c, { message: 'Choose which calendar the shifts are in.' }, body),
+        400,
+      );
     }
 
     const draft: Draft = {
@@ -2630,19 +2696,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
   // The Walls list itself — `admin-walls.ts` (RFC 016). Registered here rather
   // than beside the other modules at the top of this function, because this is
-  // where its route was: `/admin/walls` must be declared ahead of
-  // `/admin/walls/new` and `/admin/walls/:id` below.
+  // where its route was: `/admin/walls` and the `/admin/walls/new` chooser must
+  // be declared ahead of `/admin/walls/:id` below.
   registerWallsRoutes(app, deps);
   // A wall's own CSS (RFC 014 §7) — admin-css.ts, beside the wall it belongs to.
   registerCssRoutes(app, deps);
   /*
-   * Declared ahead of `/admin/walls/:id`, for the reason the approve route
+   * The browser wall's add page, one step behind the chooser (P2.2). Declared
+   * ahead of the `/admin/walls/:id/…` family for the reason the approve route
    * states one screen along: a static segment must come before the param that
-   * would otherwise swallow it. Here the swallow is silent rather than loud —
-   * `:id` redirects an id it does not recognise to the Walls list, so "new"
-   * would bounce off the list instead of 404ing.
+   * would otherwise swallow it.
    */
-  app.get('/admin/walls/new', (c: Context) => c.html(newWallPage(c)));
+  app.get('/admin/walls/new/browser', (c: Context) => c.html(newWallPage(c)));
   app.get('/admin/walls/:id', (c: Context) => {
     const id = c.req.param('id') ?? '';
     /*
@@ -2968,6 +3033,24 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       schedule = rows;
     }
 
+    /*
+     * Whether this wall may move (plan P4.3), written only when it was moved.
+     *
+     * A switch always posts an answer, so "on" in the body cannot tell a
+     * household who chose motion from one who never looked at the row — and
+     * the difference is the whole of the e-ink default: a wall saved with a
+     * 7.5" e-ink size and the switch untouched must be still, not locked on by
+     * a switch that was drawn on while the size was still a television. So the
+     * form says what it drew, and a posted value equal to that is the column
+     * handed back unchanged — null stays null, and `wallMotion` goes on reading
+     * it against whatever size this save stores.
+     */
+    let motion: number | null = stored?.motion ?? null;
+    const motionShown = (shaped.value.motion_shown ?? '').trim();
+    if ((motionShown === '1' || motionShown === '0') && shaped.value.motion !== (motionShown === '1')) {
+      motion = shaped.value.motion ? 1 : 0;
+    }
+
     // Density overrides: empty follows the household default, a number is
     // range-checked here beside the theme and zone checks.
     const density = (
@@ -3031,6 +3114,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         readDistanceMm: size.distanceMm,
         layoutGutter,
         layoutStyle,
+        motion,
       })
     ) {
       return c.redirect('/admin/walls', 302);
@@ -3719,8 +3803,6 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
   function shiftsPage(c: Context, error?: { message: string; suggestion?: string }): string {
     const plans = readShiftPlansAdmin(deps.db);
-    const people = readPeopleAdmin(deps.db);
-    const sources = readAdminSources(deps.db);
 
     const planCard = (plan: typeof plans[number]): string => {
       const id = encodeURIComponent(plan.id);
@@ -3752,7 +3834,6 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       );
     };
 
-    const canAdd = people.length > 0;
     return page({
       self: selfHref(c),
       modules: navModules(deps.db),
@@ -3760,9 +3841,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       nav: 'shifts',
       heading: 'Work Schedule',
       saved: readSaved(c),
-      // No app-bar action: see the Calendars page for the rule. "Shift types"
-      // used to sit here — a filled button in the app bar for what is
-      // navigation, not an action — and is a link in the body now.
+      action: { label: 'Add a rotation', href: 'admin/shifts/new' },
       intro:
         'The wall colours each day by who is working. A rotation is either read ' +
         'from a calendar that already has the shifts in it, or set as a pattern ' +
@@ -3771,76 +3850,109 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
         `<p class="hint"><a class="link" href="admin/shifts/types">Shift types</a> — ` +
         `name and colour the kinds of shift the wall knows about.</p>` +
-        plans.map(planCard).join('') +
-        (canAdd
-          ? section(
-              'Add a rotation',
-              undefined,
-              /*
-               * The form opens on a choice that can be submitted.
-               *
-               * It used to open on "A calendar that already has them" over a
-               * calendar select whose first option was "—", so pressing
-               * Continue on the page as drawn was refused ("Choose which
-               * calendar the shifts are in"), and "Who" preselected whoever
-               * sorted first, who on the shipped fixture already had the only
-               * rotation on the page. Now: whoever has no rotation comes first
-               * and is preselected, a person who has one still can be chosen
-               * and says so; the calendar option is offered only when there is
-               * a calendar, with the first one preselected rather than a
-               * placeholder; and the calendar select is shown only while the
-               * calendar option is chosen — the chores form's script-free
-               * `data-cond`, under which both fields simply show with script
-               * off, as they did before.
-               */
-              `<form method="post" action="admin/shifts/new">` +
-                selectField({
-                  label: 'Who',
-                  name: 'person_id',
-                  optionsHtml: [...people]
-                    .sort(
-                      (a, b) =>
-                        Number(a.hasShiftRotation === 1) - Number(b.hasShiftRotation === 1),
-                    )
-                    .map(
-                      (candidate) =>
-                        `<option value="${escapeHtml(candidate.id)}">${escapeHtml(candidate.name)}` +
-                        `${candidate.hasShiftRotation === 1 ? ' (has a rotation)' : ''}</option>`,
-                    )
-                    .join(''),
-                }) +
-                selectField({
-                  label: 'Where the shifts come from',
-                  name: 'kind',
-                  attrs: 'data-cond',
-                  optionsHtml:
-                    (sources.length === 0
-                      ? ''
-                      : `<option value="calendar">A calendar that already has them</option>`) +
-                    `<option value="pattern">A pattern that repeats</option>`,
-                  ...(sources.length === 0
-                    ? { hint: 'Add a calendar first to read shifts from one.' }
-                    : {}),
-                }) +
+        (plans.length === 0
+          ? emptyState('No rotations yet.', { label: 'Add a rotation', href: 'admin/shifts/new' })
+          : plans.map(planCard).join('')),
+    });
+  }
+
+  /**
+   * Step one of adding a rotation, on a page of its own (P2.1).
+   *
+   * With nobody to give a rotation to it says so rather than drawing a form
+   * whose first select is empty — the sentence the list used to carry in the
+   * form's place.
+   */
+  function newRotationPage(
+    c: Context,
+    error?: { message: string; suggestion?: string },
+    values?: Record<string, unknown>,
+  ): string {
+    const people = readPeopleAdmin(deps.db);
+    const sources = readAdminSources(deps.db);
+    const typed = (key: string): string | undefined =>
+      typeof values?.[key] === 'string' ? (values[key] as string) : undefined;
+    const option = (value: string, label: string, selected: boolean): string =>
+      `<option value="${escapeHtml(value)}"${selected ? ' selected' : ''}>${label}</option>`;
+
+    const ordered = [...people].sort(
+      (a, b) => Number(a.hasShiftRotation === 1) - Number(b.hasShiftRotation === 1),
+    );
+    // Echoed on a 400; otherwise the browser's own first option, which the
+    // ordering above makes whoever has no rotation yet.
+    const who = typed('person_id');
+    const kind = typed('kind');
+    const source = typed('source_id');
+
+    return page({
+      self: selfHref(c),
+      modules: navModules(deps.db),
+      title: 'Add a rotation — Maverick Wall',
+      nav: 'shifts',
+      heading: 'Add a rotation',
+      back: { label: 'Work Schedule', href: 'admin/shifts' },
+      body:
+        (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
+        (people.length === 0
+          ? `<p>Add someone on the <a class="link" href="admin/people">People</a> page first — ` +
+            `a rotation belongs to a person.</p>`
+          : /*
+             * The form opens on a choice that can be submitted.
+             *
+             * It used to open on "A calendar that already has them" over a
+             * calendar select whose first option was "—", so pressing Continue
+             * on the page as drawn was refused ("Choose which calendar the
+             * shifts are in"), and "Who" preselected whoever sorted first, who
+             * on the shipped fixture already had the only rotation on the
+             * page. Now: whoever has no rotation comes first and is
+             * preselected, a person who has one still can be chosen and says
+             * so; the calendar option is offered only when there is a
+             * calendar, with the first one preselected rather than a
+             * placeholder; and the calendar select is shown only while the
+             * calendar option is chosen — the chores form's script-free
+             * `data-cond`, under which both fields simply show with script
+             * off, as they did before.
+             */
+            `<form method="post" action="admin/shifts/new">` +
+            selectField({
+              label: 'Who',
+              name: 'person_id',
+              optionsHtml: ordered
+                .map((candidate) =>
+                  option(
+                    candidate.id,
+                    `${escapeHtml(candidate.name)}` +
+                      `${candidate.hasShiftRotation === 1 ? ' (has a rotation)' : ''}`,
+                    candidate.id === who,
+                  ),
+                )
+                .join(''),
+            }) +
+            selectField({
+              label: 'Where the shifts come from',
+              name: 'kind',
+              attrs: 'data-cond',
+              optionsHtml:
                 (sources.length === 0
                   ? ''
-                  : `<div data-cond-show="calendar">` +
-                    selectField({
-                      label: 'Which calendar',
-                      name: 'source_id',
-                      optionsHtml: sources
-                        .map(
-                          (source) =>
-                            `<option value="${escapeHtml(source.id)}">${escapeHtml(source.name)}</option>`,
-                        )
-                        .join(''),
-                    }) +
-                    `</div>`) +
-                `<button type="submit">Continue</button></form>`,
-              'add',
-            )
-          : `<p>Add someone on the <a class="link" href="admin/people">People</a> page first — ` +
-            `a rotation belongs to a person.</p>`),
+                  : option('calendar', 'A calendar that already has them', kind === 'calendar')) +
+                option('pattern', 'A pattern that repeats', kind === 'pattern'),
+              ...(sources.length === 0
+                ? { hint: 'Add a calendar first to read shifts from one.' }
+                : {}),
+            }) +
+            (sources.length === 0
+              ? ''
+              : `<div data-cond-show="calendar">` +
+                selectField({
+                  label: 'Which calendar',
+                  name: 'source_id',
+                  optionsHtml: sources
+                    .map((one) => option(one.id, escapeHtml(one.name), one.id === source))
+                    .join(''),
+                }) +
+                `</div>`) +
+            `<button type="submit">Continue</button></form>`),
     });
   }
 
@@ -4315,31 +4427,54 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       nav: 'people',
       heading: 'People',
       saved: readSaved(c),
-      // No app-bar action: see the Calendars page for the rule. The add form
-      // is on this page, with the one filled Add.
+      action: { label: 'Add a person', href: 'admin/people/new' },
       intro:
         'Everyone the wall knows about. Their colour marks their events and ' +
         'their shifts, so pick ones that are easy to tell apart from across a room.',
       body:
         (error === undefined ? '' : errorBlock(error, suggestion)) +
-        people.map((person, index) => personCard(person, index === 0, index === people.length - 1)).join('') +
-        section(
-          'Add someone',
-          undefined,
-          `<form method="post" action="admin/people">` +
-            `<div class="row-fields">` +
-            textField({ label: 'Name', name: 'name', required: true, placeholder: 'Sam' }) +
-            // Pre-filled with the colour this person would be given anyway, so
-            // the picker agrees with what a household who never touches it
-            // gets. A fixed literal here was half of the bug: everyone came
-            // out blue.
-            textField({ label: 'Colour', name: 'color', type: 'color', value: nextPersonColor(deps.db) }) +
-            `</div>` +
-            `<p class="hint">A picture can be added once they exist. The colour is what ` +
-            `marks their events either way.</p>` +
-            `<button type="submit">Add</button></form>`,
-          'add',
-        ),
+        (people.length === 0
+          ? emptyState('Nobody here yet.', { label: 'Add a person', href: 'admin/people/new' })
+          : people
+              .map((person, index) => personCard(person, index === 0, index === people.length - 1))
+              .join('')),
+    });
+  }
+
+  /**
+   * Adding a person, on a page of its own (P2.1) — the form that used to sit
+   * at the foot of People, whose own filled Add is why that page carried no
+   * app-bar action. A 400 comes back here with what was typed.
+   */
+  function newPersonPage(c: Context, error?: string, values?: Record<string, unknown>): string {
+    const typed = (key: string): string | undefined =>
+      typeof values?.[key] === 'string' ? (values[key] as string) : undefined;
+    return page({
+      self: selfHref(c),
+      modules: navModules(deps.db),
+      title: 'Add a person — Maverick Wall',
+      nav: 'people',
+      heading: 'Add a person',
+      back: { label: 'People', href: 'admin/people' },
+      body:
+        (error === undefined ? '' : errorBlock(error)) +
+        `<form method="post" action="admin/people">` +
+        `<div class="row-fields">` +
+        textField({ label: 'Name', name: 'name', required: true, placeholder: 'Sam', value: typed('name') ?? '' }) +
+        // Pre-filled with the colour this person would be given anyway, so
+        // the picker agrees with what a household who never touches it
+        // gets. A fixed literal here was half of the bug: everyone came
+        // out blue.
+        textField({
+          label: 'Colour',
+          name: 'color',
+          type: 'color',
+          value: typed('color') ?? nextPersonColor(deps.db),
+        }) +
+        `</div>` +
+        `<p class="hint">A picture can be added once they exist. The colour is what ` +
+        `marks their events either way.</p>` +
+        `<button type="submit">Add</button></form>`,
     });
   }
 
@@ -5024,6 +5159,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `</div>`;
 
     // --- Device and time --------------------------------------------------
+    const motionOn = wallMotion(screen.motion, screen.panelWidthMm, screen.panelHeightMm);
     const device =
       wsetGroup('Identity', textField({ label: 'Wall name', name: 'name', required: true, value: screen.name })) +
       `<div class="wset-group">` +
@@ -5129,6 +5265,32 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `<p class="hint-1">Two facts about the hardware, like the mounting above: ` +
           `nothing else in here knows how large this wall is or how far away it is ` +
           `read from. Leave them unset and it draws exactly as it does today.</p>`,
+      ) +
+      /*
+       * Whether this wall may move (plan P4.3, decision D7) — beside the size
+       * because the size is what decides its default: an e-ink panel running
+       * the browser wall repaints the whole screen for every frame, so the
+       * e-ink sizes default it off. Drawn as the answer `wallMotion` gives for
+       * the stored row, which is what the wall is doing; `motion_shown` says
+       * what that was, so the handler can tell a switch the household moved
+       * from one they left alone (see the handler). Nothing on a wall moves
+       * yet except where a style that moves has been chosen, and the hint says
+       * so rather than promising animation somebody will go looking for.
+       */
+      wsetGroup(
+        'Motion',
+        `<div class="rows">` +
+          switchRow({
+            label: 'Motion',
+            name: 'motion',
+            checked: motionOn,
+            hint:
+              'Lets the styles that move — weather that drifts, a countdown that ' +
+              'celebrates — move on this wall. Off by default for an e-ink size. ' +
+              'A device set to reduce motion stays still either way.',
+          }) +
+          `<input type="hidden" name="motion_shown" value="${motionOn ? '1' : '0'}">` +
+          `</div>`,
       ) +
       wsetGroup(
         'Time',
@@ -5329,17 +5491,20 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     return page({
       self: selfHref(c),
       modules: navModules(deps.db),
-      title: 'Pair a new wall — Maverick Wall',
+      // The chooser's own words (P2.2): "Add a browser wall" is what was
+      // pressed, so it is what the page is called. "Pair" is the next page's
+      // verb — the QR and the code — and nothing before it.
+      title: 'Add a browser wall — Maverick Wall',
       nav: 'walls',
-      heading: 'Pair a new wall',
+      heading: 'Add a browser wall',
+      back: { label: 'Add a wall', href: 'admin/walls/new' },
       saved: readSaved(c),
       intro:
-        'A browser wall: a tablet, a monitor or a television with Maverick Wall open ' +
-        'in a browser. Name it and say what it is, and the next page has the QR and ' +
-        'the short code to open on the wall itself.',
+        'A tablet, a monitor or a television with Maverick Wall open in a browser. ' +
+        'Name it and say what it is, and the next page has the QR and the short ' +
+        'code to open on the wall itself.',
       body:
         (error === undefined ? '' : errorBlock(error)) +
-        `<p><a class="link" href="admin/walls">← Back to walls</a></p>` +
         `<form method="post" action="admin/screens" id="add">` +
         textField({
           label: 'Name',
@@ -5489,32 +5654,6 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   }
 
   /**
-   * The Home Assistant reading labels currently resolving, for the widget
-   * config picker — the exact labels a widget filters on. Read from the same
-   * manifest the wall gets (the house panel is household-wide), so the picker
-   * can never offer a label the wall would not recognise. Empty when there is
-   * no manifest builder or no Home Assistant connection.
-   */
-  function haReadingLabels(): string[] {
-    if (deps.previewManifest === undefined) return [];
-    try {
-      const manifest = deps.previewManifest(null) as {
-        panels?: { home?: { readings?: unknown } };
-      };
-      const raw = manifest?.panels?.home?.readings;
-      if (!Array.isArray(raw)) return [];
-      const labels: string[] = [];
-      for (const entry of raw) {
-        const label = (entry as { label?: unknown })?.label;
-        if (typeof label === 'string' && label !== '') labels.push(label);
-      }
-      return labels;
-    } catch {
-      return [];
-    }
-  }
-
-  /**
    * One display: the shared Default (`ownerId` null) or a paired screen.
    *
    * Everything about that wall in one place — its status and pairing, the
@@ -5571,6 +5710,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       ),
       widgets: widgetsOf(orientation, null),
     });
+    /*
+     * The watched readings, for the Home Assistant widget's picker (P1.3) —
+     * and what a widget saved when it picked readings by label is read
+     * against, so it opens with the right boxes ticked and its next save
+     * writes entity ids.
+     */
+    const readingChoices = watchedReadingChoices(deps.db);
     const widgetsOf = (orientation: 'portrait' | 'landscape', slot: string | null): readonly unknown[] =>
       readLayoutWidgets(deps.db, ownerKey, orientation, slot).map((widget) => ({
         id: widget.id,
@@ -5580,7 +5726,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         w: widget.w,
         h: widget.h,
         z: widget.z,
-        config: widget.config,
+        config: withReadingEntityIds(widget.config, readingChoices),
         // The group a child sits inside (RFC 014 §5.1), spread so a canvas
         // with no group serialises as it always did. Without it the editor
         // showed a grouped wall's children as boxes on the layout and its
@@ -5631,11 +5777,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       schedule: readLayoutSchedule(deps.db, ownerKey),
       maxSlots: MAX_LAYOUT_SLOTS,
       // Everything the config panel needs to offer a choice: the calendars that
-      // exist (id + name), and the Home Assistant reading labels currently
-      // resolving. Read here rather than fetched again so the editor can build
-      // its pickers without a second round trip.
+      // exist (id + name), and the watched Home Assistant readings (id, the
+      // name the wall draws, and the handle the panel keys it by). Read here
+      // rather than fetched again so the editor can build its pickers without
+      // a second round trip.
       calendars: readAdminSources(deps.db).map((s) => ({ id: s.id, name: s.name })),
-      readings: haReadingLabels(),
+      readings: readingChoices,
       // The registered modules, for the External widget's module picker.
       modules: readEnabledExternalModules(deps.db).map((m) => ({ id: m.id, name: m.name })),
       // The household, for the Shift widget's "whose rota" picker.
@@ -6426,7 +6573,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * for one submission each.
    */
   function caldavSection(
-    caldav: Parameters<typeof calendarsPage>[6],
+    caldav: CaldavState | undefined,
     people: readonly PersonRecord[],
   ): string {
     const echo = caldav?.echo;
@@ -6520,19 +6667,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     }
 
     /*
-     * The ordinary form, folded shut.
+     * The ordinary form, open, on a page of its own (P2.1).
      *
-     * A `<details>` for the same reason the two on the ICS form are: most
-     * households pasting an address here have an ICS feed, and three fields plus
-     * three switches for the minority is a page everybody else reads past. It
-     * opens itself whenever a submission came back with something to say, which
-     * is the `networkAccessDisclosure` rule — an error naming a remedy folded
-     * shut underneath it is not a remedy.
+     * It used to be folded shut behind a `<details>` near the foot of the
+     * Calendars list, because most households there were pasting an address and
+     * three fields plus three switches for the minority was a page everybody
+     * else read past. Reaching this page *is* choosing the minority, so the
+     * fold has nothing left to hide, and "Find my calendars" is the filled
+     * button because it is the one thing this page exists to do: the old
+     * reason it was outlined — a second primary competing with the ICS form's
+     * Add on the same screen — went with the ICS form, which has a page too.
      */
-    const open = caldav !== undefined;
-    return section(
-      'Add a CalDAV account',
-      'For iCloud, and for any server that speaks CalDAV. One sign-in reaches every calendar on the account.',
+    return (
       (caldav?.error === undefined
         ? ''
         : errorBlock(
@@ -6541,92 +6687,86 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
               ? networkAccessSuggestion(caldav.error.networkOptions ?? [])
               : caldav.error.suggestion,
           )) +
-        `<details class="disclose"${open ? ' open' : ''}>` +
-        `<summary>Add a CalDAV account</summary>` +
-        `<form method="post" action="admin/calendars/caldav">` +
-        textField({
-          label: 'Server address',
-          name: 'server_url',
-          required: true,
-          placeholder: 'https://caldav.icloud.com',
-          hint: 'For iCloud this is exactly https://caldav.icloud.com — the calendars themselves are found for you.',
-          value: echo?.serverUrl ?? '',
-        }) +
-        textField({
-          label: 'Username',
-          name: 'caldav_username',
-          required: true,
-          placeholder: 'you@example.com',
-          hint: 'For iCloud, your Apple ID.',
-          value: echo?.username ?? '',
-          attrs: 'autocomplete="off"',
-        }) +
-        textField({
-          label: 'Password',
-          name: 'caldav_password',
-          type: 'password',
-          required: true,
-          // Never a `value`, on any branch: the one field on this page that
-          // exists to stay out of the response and out of a browser's memory.
-          hint: 'For iCloud this must be an app-specific password, made at appleid.apple.com. Your Apple ID password will not work.',
-          attrs: 'autocomplete="off"',
-        }) +
-        networkAccessDisclosure({
-          allowPrivateNetwork: echo?.allowPrivateNetwork === true,
-          allowLoopback: echo?.allowLoopback === true,
-          allowHttp: echo?.allowHttp === true,
-          open: (caldav?.error?.networkOptions ?? []).length > 0,
-        }) +
-        /*
-         * Secondary, and the page's own rule is why.
-         *
-         * `calendarsPage` settles the hierarchy a few hundred lines down: "Add
-         * is the one thing this screen exists to do, so it is the filled button
-         * and the only one on the page", which is what put Test feed in the
-         * outlined variant beside it. A filled button here is a second primary
-         * competing with it for the commoner act — `browser-calendars.test.ts`
-         * caught exactly that, which is the assertion it exists for.
-         *
-         * The two buttons in the *confirm* and *pick* states above stay filled,
-         * and that is the same rule rather than an exception to it: those
-         * renders are a household mid-flow, drawn above the rows precisely
-         * because that is what they are doing now, and the button that finishes
-         * what they started is the primary of that page.
-         */
-        `<div class="row">` +
-        `<button class="secondary" type="submit">Find my calendars</button></div>` +
-        `</form></details>`,
+      `<form method="post" action="admin/calendars/caldav">` +
+      textField({
+        label: 'Server address',
+        name: 'server_url',
+        required: true,
+        placeholder: 'https://caldav.icloud.com',
+        hint: 'For iCloud this is exactly https://caldav.icloud.com — the calendars themselves are found for you.',
+        value: echo?.serverUrl ?? '',
+      }) +
+      textField({
+        label: 'Username',
+        name: 'caldav_username',
+        required: true,
+        placeholder: 'you@example.com',
+        hint: 'For iCloud, your Apple ID.',
+        value: echo?.username ?? '',
+        attrs: 'autocomplete="off"',
+      }) +
+      textField({
+        label: 'Password',
+        name: 'caldav_password',
+        type: 'password',
+        required: true,
+        // Never a `value`, on any branch: the one field on this page that
+        // exists to stay out of the response and out of a browser's memory.
+        hint: 'For iCloud this must be an app-specific password, made at appleid.apple.com. Your Apple ID password will not work.',
+        attrs: 'autocomplete="off"',
+      }) +
+      networkAccessDisclosure({
+        allowPrivateNetwork: echo?.allowPrivateNetwork === true,
+        allowLoopback: echo?.allowLoopback === true,
+        allowHttp: echo?.allowHttp === true,
+        open: (caldav?.error?.networkOptions ?? []).length > 0,
+      }) +
+      `<div class="row"><button type="submit">Find my calendars</button></div>` +
+      `</form>`
     );
   }
 
+  /**
+   * The Home Assistant half of the chooser: the calendars it could offer, one
+   * row each, or what connecting would buy.
+   *
+   * One row per calendar rather than one `<select>` over all of them, for the
+   * reason it has always been rows: the question somebody arrives with is
+   * *which* of my Home Assistant calendars are not on the wall yet, and a closed
+   * list says "there are some" and makes you open it to find out. Each posts to
+   * the same endpoint with the same field, so there is still one validation and
+   * one writer, and that endpoint answers with the Calendars list.
+   *
+   * With no connection it draws nothing, and the route section beneath it is
+   * the chooser's third option in that case: it tells a household with no
+   * connection that making one is the way to Google and iCloud (P2.1, RFC 013
+   * Phase B).
+   */
   function haCalendarSection(
+    connected: boolean,
     available: readonly { readonly entityId: string; readonly name: string }[],
     sources: readonly AdminSourceRow[],
   ): string {
+    /*
+     * No connection, no section: the route section under this one is what
+     * explains that connecting is a way in, and it renders either way (RFC 013
+     * Phase B). A second paragraph here saying the same thing would be the
+     * chooser offering an option it cannot honour.
+     */
+    if (!connected) return '';
     const already = new Set(
       sources.filter((s) => s.kind === 'homeassistant').map((s) => s.haEntityId),
     );
     const offer = available.filter((entity) => !already.has(entity.entityId));
+    // Nothing left to offer is no section either, rather than one standing
+    // there empty explaining itself.
     if (offer.length === 0) return '';
-
     return section(
       'From Home Assistant',
       `Home Assistant is connected and has ` +
         `${offer.length} calendar${offer.length === 1 ? '' : 's'} you have not added yet. ` +
         `Adding one here needs no address — its events come through the same ` +
         `connection, and it behaves exactly like a feed once it is in.`,
-      /*
-       * One row per calendar rather than one `<select>` over all of them.
-       *
-       * The select was the cheap thing to write and it hides the answer to the
-       * question somebody arrives with: *which* of my Home Assistant calendars
-       * are not on the wall yet. A closed list says "there are some" and makes
-       * you open it to find out, and adding two means two round trips through a
-       * control that has forgotten the first. `listRow` is the shape this
-       * always wanted — the entity's name, its id under it, the one action on
-       * the right — and it posts to the same endpoint with the same field, so
-       * there is still one validation and one writer.
-       */
       offer
         .map((entity) =>
           listRow(
@@ -6694,7 +6834,114 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     );
   }
 
+  /**
+   * The Calendars list: what is on the wall, and the one way to add another.
+   *
+   * **There is no add form on this page any more (P2.1), and that is what
+   * settles the objection this page used to carry.** It kept its create action
+   * out of the app bar on purpose: a filled "Add a calendar" there competed with
+   * the form's own filled Add while the form it would scroll to was already on
+   * the page — two primaries for one act. The answer is not to pick one of the
+   * two but to move the form: adding is `admin/calendars/new` now, a chooser
+   * between an address, an account and Home Assistant, so the app bar's action
+   * leads somewhere else rather than scrolling, and every list screen in the
+   * admin puts its "Add …" in the same place with the same verb.
+   */
   function calendarsPage(
+    c: Context,
+    /** A rejected save of one existing row. */
+    error?: { message: string; suggestion?: string },
+    /** That row's unsaved values, when a save of it came back at 400. */
+    echo?: SourceEcho,
+  ): string {
+    const at = now();
+    const sources = readAdminSources(deps.db);
+    const people = readPeopleAdmin(deps.db);
+
+    return page({
+      self: selfHref(c),
+      modules: navModules(deps.db),
+      title: 'Calendars — Maverick Wall',
+      nav: 'calendars',
+      heading: 'Calendars',
+      saved: readSaved(c),
+      action: { label: 'Add a calendar', href: 'admin/calendars/new' },
+      body:
+        // A row's error, above the rows, where the echoed row is.
+        (error === undefined ? '' : errorBlock(error.message, error.suggestion)) +
+        /*
+         * The empty state is a claim, so it sits on the branch that can make it:
+         * `sources.length === 0` is "this household has added no calendars". It
+         * offers the one action, which leads to the add page — it used to offer
+         * none, because the only thing it could have linked to was a form
+         * already on screen, and a control whose whole effect is to scroll is
+         * not an action.
+         */
+        (sources.length === 0
+          ? emptyState('No calendars yet.', { label: 'Add a calendar', href: 'admin/calendars/new' })
+          : sources
+              .map((source) =>
+                sourceRow(source, at, people, echo?.sourceId === source.id ? echo : undefined),
+              )
+              .join('')) +
+        caldavAccountsSection(sources),
+    });
+  }
+
+  /**
+   * Where a calendar comes from, asked first (P2.1).
+   *
+   * Three answers that share no field: an address somebody pastes, an account
+   * somebody signs in to, and a calendar Home Assistant already holds. The two
+   * forms have a page each; the Home Assistant calendars are one-press rows
+   * here, because each one is already the whole of its own form. The route to
+   * Google, iCloud and Microsoft 365 through Home Assistant (RFC 013 Phase B)
+   * is on this page because this is where somebody stands with that problem.
+   */
+  function calendarChooserPage(
+    c: Context,
+    connected: boolean,
+    haCalendars: readonly { readonly entityId: string; readonly name: string }[],
+  ): string {
+    const sources = readAdminSources(deps.db);
+    return page({
+      self: selfHref(c),
+      modules: navModules(deps.db),
+      title: 'Add a calendar — Maverick Wall',
+      nav: 'calendars',
+      heading: 'Add a calendar',
+      back: { label: 'Calendars', href: 'admin/calendars' },
+      body:
+        section(
+          'Where does it come from?',
+          undefined,
+          listRow('', {
+            title: 'An iCal or web address',
+            detail:
+              'A link a calendar gives you to subscribe to — a school, a club, ' +
+              'Outlook, Nextcloud, or Google’s secret iCal address.',
+            href: 'admin/calendars/new/address',
+          }) +
+            listRow('', {
+              title: 'An iCloud or CalDAV account',
+              detail: 'Sign in once and choose which of the account’s calendars go on the wall.',
+              href: 'admin/calendars/new/caldav',
+            }),
+        ) +
+        haCalendarSection(connected, haCalendars, sources) +
+        homeAssistantRouteSection(),
+    });
+  }
+
+  /**
+   * Adding a calendar by its address: the ICS form, on a page of its own.
+   *
+   * Everything it did on the Calendars list it does here — the echo on a 400,
+   * the network switches opening themselves when a refusal names one, the
+   * preview after Test feed — and every one of those re-renders this page,
+   * because the POST that produces them is this form's.
+   */
+  function addressPage(
     c: Context,
     values: {
       name?: string;
@@ -6704,7 +6951,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       allowHttp?: boolean;
       /** The account, echoed on a 400. Never the password — see `SourceEcho`. */
       username?: string;
-    } = {},
+    },
     error?: {
       message: string;
       suggestion?: string;
@@ -6717,42 +6964,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       networkOptions?: readonly NetworkOption[];
     },
     tested?: TestFeedResult,
-    /**
-     * The Home Assistant calendars on offer, when there are any.
-     *
-     * Passed in rather than looked up here, because this function is sync and
-     * the lookup is a request. Empty is the ordinary case — no Home Assistant,
-     * or a connection that is unwell — and draws nothing at all rather than an
-     * empty section explaining itself.
-     */
-    haCalendars: readonly { readonly entityId: string; readonly name: string }[] = [],
-    /** One row's unsaved values, when a save of that row came back at 400. */
-    echo?: SourceEcho,
-    /**
-     * The CalDAV add flow's own state (RFC 013 §6.3.1, §6.7).
-     *
-     * One parameter carrying three mutually exclusive shapes rather than three
-     * parameters, because they *are* exclusive: a submission is a refusal, a
-     * question about a host, or a list of calendars to tick, and never two of
-     * those. Three optional parameters would make "confirm and pick at once"
-     * representable, which is a state no handler can produce and every reader
-     * would have to rule out.
-     */
-    caldav?: {
-      readonly echo?: CaldavEcho;
-      readonly error?: { message: string; suggestion?: string; networkOptions?: readonly NetworkOption[] };
-      readonly confirm?: { readonly pending: string; readonly host: string };
-      readonly pick?: {
-        readonly pending: string;
-        readonly host: string;
-        readonly calendars: readonly { readonly url: string; readonly displayName: string; readonly ctag?: string }[];
-      };
-    },
   ): string {
-    const at = now();
-    const sources = readAdminSources(deps.db);
     const people = readPeopleAdmin(deps.db);
-
     const networkOptions = error?.networkOptions ?? [];
     /*
      * The switch-naming sentence wins wherever there is one.
@@ -6764,169 +6977,88 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
      */
     const networkSuggestion = networkAccessSuggestion(networkOptions);
     const suggestion = networkSuggestion !== '' ? networkSuggestion : error?.suggestion;
-    const errorHtml = error === undefined ? '' : errorBlock(error.message, suggestion);
 
     return page({
       self: selfHref(c),
       modules: navModules(deps.db),
-      title: 'Calendars — Maverick Wall',
+      title: 'Add a calendar address — Maverick Wall',
       nav: 'calendars',
-      heading: 'Calendars',
-      saved: readSaved(c),
-      /*
-       * No app-bar action, deliberately — and the same rule now holds on
-       * People, Chores, Walls and Work Schedule, which used to carry one each.
-       *
-       * `page()`'s action is a *filled* button for the top-right of the shell,
-       * and a filled "Add a calendar" there competes with the form's own
-       * filled Add while the form it would scroll to is already on the page:
-       * two primaries for one act. The app bar's slot is for an action that
-       * leads somewhere else (Themes' "New theme" opens the builder), not
-       * for a scroll. Half the pages had one and half did not, which read as
-       * the button meaning something different on each.
-       */
+      heading: 'Add a calendar address',
+      back: { label: 'Add a calendar', href: 'admin/calendars/new' },
       body:
+        (error === undefined ? '' : errorBlock(error.message, suggestion)) +
+        (tested === undefined ? '' : previewPanel(tested)) +
+        `<form method="post" action="admin/calendars">` +
+        textField({
+          label: 'Name',
+          name: 'name',
+          required: true,
+          placeholder: 'Family',
+          value: values.name ?? '',
+        }) +
+        textField({
+          label: 'Address',
+          name: 'url',
+          required: true,
+          placeholder: 'https://…/basic.ics',
+          value: values.url ?? '',
+        }) +
+        feedCredentialFields({ username: values.username ?? '' }) +
+        // Owner is offered at add time only when there is someone to pick,
+        // so a household with no people never sees a control that does
+        // nothing.
+        (people.length === 0
+          ? ''
+          : selectField({
+              label: 'Belongs to',
+              name: 'person_id',
+              hint: 'When a calendar belongs to someone, its events take their colour on the wall.',
+              optionsHtml:
+                `<option value="" selected>Everyone</option>` +
+                people
+                  .map(
+                    (person) =>
+                      `<option value="${escapeHtml(person.id)}">${escapeHtml(person.name)}</option>`,
+                  )
+                  .join(''),
+            })) +
+        networkAccessDisclosure({
+          allowPrivateNetwork: values.allowPrivateNetwork === true,
+          allowLoopback: values.allowLoopback === true,
+          allowHttp: values.allowHttp === true,
+          open: networkOptions.length > 0,
+        }) +
         /*
-         * A row's error belongs above the rows, not under "Add a calendar".
+         * Two buttons, one form — and the emphasis was the wrong way round.
          *
-         * One page, two error sources: the add form at the foot, and a rejected
-         * save of one existing calendar. The block has always been drawn under
-         * the add form's heading, which was right when that was the only way to
-         * fail — and became a real fault once a rejected row is echoed back at
-         * the top with Save live: the household sees their edits, an enabled
-         * Save, and the reason 2,000px further down under the wrong heading,
-         * which reads as a save that worked. The echo is what tells the two
-         * apart, because it is only ever set by a row's own handler.
+         * Test feed was the filled primary and Add the outlined secondary,
+         * so the optional diagnostic was styled as the goal and the goal as
+         * optional. Add is the one thing this page exists to do, so it is
+         * the filled button and the only one on the page. Testing first is
+         * still the cheap habit worth encouraging, so it keeps the
+         * left-hand position — order says "do this first", weight says
+         * "this is what you came for", and they are different sentences.
          */
-        (echo === undefined || error === undefined ? '' : errorHtml) +
-        /*
-         * The empty state is a claim, so it sits on the branch that can make it.
-         *
-         * `sources.length === 0` is "this household has added no calendars",
-         * which is exactly the sentence — not "the list is loading", not "you
-         * have filtered them all out". It used to be the page's `intro`: a grey
-         * lead line above an expanse of nothing, with the form it refers to
-         * three hundred pixels below it. It is where the rows would be now, and
-         * it names the one action, which is that form.
-         */
-        (sources.length === 0
-          ? /*
-             * And no action on it, which is `emptyState`'s rule read the way
-             * round it is written: *offer the one action*, where there is one
-             * to offer. On an empty Calendars page the add form is already on
-             * screen a few hundred pixels down — a button here would be a
-             * second primary whose whole effect is to scroll, which is the
-             * same objection that keeps an "Add a calendar" out of the app
-             * bar on this screen and which `admin-saved.test.ts` pins. The
-             * sentence names the thing that is missing and points at the form;
-             * a control that only moves the viewport is not an action.
-             */
-            emptyState('No calendars yet. Add the iCal address of one below.')
-          : sources
-              .map((source) =>
-                sourceRow(source, at, people, echo?.sourceId === source.id ? echo : undefined),
-              )
-              .join('')) +
-        /*
-         * A submission that came back with something to say goes **above the
-         * rows**, and the ordinary form goes near the foot.
-         *
-         * Same rule, same reason, as the row echo a few lines up: a POST
-         * re-renders the page with the viewport at the top, so a confirmation
-         * or a picker drawn where the form was — below the calendars, below
-         * Home Assistant, below "Add a calendar" — is an answer the household
-         * has to go looking for. The ordinary *form* belongs down there, after
-         * the ICS one, because pasting an address is the common case and this
-         * is the "my provider is iCloud" answer beside the "my provider is
-         * Google" one.
-         */
-        (caldav === undefined ? '' : caldavSection(caldav, people)) +
-        haCalendarSection(haCalendars, sources) +
-        caldavAccountsSection(sources) +
-        section(
-          'Add a calendar',
-          undefined,
-          (echo !== undefined || error === undefined ? '' : errorHtml) +
-            (tested === undefined ? '' : previewPanel(tested)) +
-            `<form method="post" action="admin/calendars">` +
-            textField({
-              label: 'Name',
-              name: 'name',
-              required: true,
-              placeholder: 'Family',
-              value: values.name ?? '',
-            }) +
-            textField({
-              label: 'Address',
-              name: 'url',
-              required: true,
-              placeholder: 'https://…/basic.ics',
-              value: values.url ?? '',
-            }) +
-            feedCredentialFields({ username: values.username ?? '' }) +
-            // Owner is offered at add time only when there is someone to pick,
-            // so a household with no people never sees a control that does
-            // nothing.
-            (people.length === 0
-              ? ''
-              : selectField({
-                  label: 'Belongs to',
-                  name: 'person_id',
-                  hint: 'When a calendar belongs to someone, its events take their colour on the wall.',
-                  optionsHtml:
-                    `<option value="" selected>Everyone</option>` +
-                    people
-                      .map(
-                        (person) =>
-                          `<option value="${escapeHtml(person.id)}">${escapeHtml(person.name)}</option>`,
-                      )
-                      .join(''),
-                })) +
-            networkAccessDisclosure({
-              allowPrivateNetwork: values.allowPrivateNetwork === true,
-              allowLoopback: values.allowLoopback === true,
-              allowHttp: values.allowHttp === true,
-              // Only for the add form's own refusal. A rejected row save is
-              // echoed at the top of the page and has nothing to do with these
-              // controls.
-              open: echo === undefined && networkOptions.length > 0,
-            }) +
-            /*
-             * Two buttons, one form — and the emphasis was the wrong way round.
-             *
-             * Test feed was the filled primary and Add the outlined secondary,
-             * so the optional diagnostic was styled as the goal and the goal as
-             * optional. Add is the one thing this screen exists to do, so it is
-             * the filled button and the only one on the page. Testing first is
-             * still the cheap habit worth encouraging, so it keeps the
-             * left-hand position — order says "do this first", weight says
-             * "this is what you came for", and they are different sentences.
-             */
-            `<div class="row">` +
-            `<button class="secondary" type="submit" name="action" value="test">Test feed</button>` +
-            `<button type="submit" name="action" value="save">Add</button>` +
-            `</div></form>`,
-          // A fragment somebody can link to (`admin/calendars#add`). The
-          // empty state above deliberately offers no action — it would only
-          // scroll to this form — so nothing on the page links here itself.
-          'add',
-        ) +
-        // The ordinary form, where a household who is not mid-flow meets it.
-        (caldav === undefined ? caldavSection(undefined, people) : '') +
-        /*
-         * Below the form, and the position is measured rather than chosen.
-         *
-         * Above it, on a household with no calendars yet, the first thing on
-         * the page a person can *press* was this section's own link — 873px
-         * down an 844px phone, so an empty Calendars page opened on a phone
-         * showed nothing actionable without scrolling. `browser-wall.test.ts`
-         * caught it, which is the assertion it exists for.
-         *
-         * It also reads better this way round: somebody arrives here to type an
-         * address, and this is what to do when their provider has none worth
-         * typing.
-         */
-        homeAssistantRouteSection(),
+        `<div class="row">` +
+        `<button class="secondary" type="submit" name="action" value="test">Test feed</button>` +
+        `<button type="submit" name="action" value="save">Add</button>` +
+        `</div></form>`,
+    });
+  }
+
+  /** Adding a CalDAV account: the form, the host question, or the picker. */
+  function caldavAddPage(c: Context, caldav: CaldavState | undefined): string {
+    return page({
+      self: selfHref(c),
+      modules: navModules(deps.db),
+      title: 'Add a CalDAV account — Maverick Wall',
+      nav: 'calendars',
+      heading: 'Add a CalDAV account',
+      back: { label: 'Add a calendar', href: 'admin/calendars/new' },
+      intro:
+        'For iCloud, and for any server that speaks CalDAV. One sign-in reaches every ' +
+        'calendar on the account.',
+      body: caldavSection(caldav, readPeopleAdmin(deps.db)),
     });
   }
 }
