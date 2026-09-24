@@ -127,11 +127,17 @@ function ratioOf(a: string, b: string): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-async function open(size = { width: 1080, height: 1920 }): Promise<{
+async function open(
+  size = { width: 1080, height: 1920 },
+  options: { readonly clock?: 'installed' } = {},
+): Promise<{
   page: Page;
   close: () => Promise<void>;
 }> {
   const context = await (await browser()).newContext({ viewport: size });
+  // Before the wall's script runs, so its fifteen-second tick is the fake one
+  // and `page.clock.runFor` can fire it (see the interrupt case below).
+  if (options.clock === 'installed') await context.clock.install();
   const page = await context.newPage();
   await page.goto(link, { waitUntil: 'load' });
   await settleWall(page);
@@ -420,7 +426,7 @@ describe('what the wall speaks', () => {
       )
       .run(JSON.stringify({ minSeverity: 'Minor' }), at(), at());
 
-    const { page, close } = await open();
+    const { page, close } = await open(undefined, { clock: 'installed' });
     try {
       const region = await page.evaluate(`
         (() => {
@@ -480,16 +486,36 @@ describe('what the wall speaks', () => {
             set(v) { window.__writes++; own.set.call(this, v); },
           });
           void proto;
+          window.__draws = 0;
+          new MutationObserver((records) => {
+            for (const record of records) {
+              record.addedNodes.forEach((added) => {
+                if (added instanceof HTMLElement &&
+                    (added.classList.contains('canvas') || added.querySelector('.canvas') !== null)) {
+                  window.__draws++;
+                }
+              });
+            }
+          }).observe(document.getElementById('wall'), { childList: true, subtree: true });
         })()`);
-      // Two ticks of the fifteen-second redraw, plus a margin.
-      await page.waitForTimeout(32_000);
+      /*
+       * Two ticks of the fifteen-second redraw, plus a margin — fired on the
+       * wall's own timer by the page's clock rather than waited out in real
+       * time, which was thirty-two seconds of this file's forty-five. The
+       * redraws are *counted*: "no second announcement" is only worth
+       * anything once something has shown two redraws happened, and a timer
+       * that never fired would otherwise pass here as a region that stayed
+       * quiet.
+       */
+      await page.clock.runFor(32_000);
       const after = (await page.evaluate(`
         (() => {
           const node = document.querySelector('[role="alert"]');
           return { sameNode: node !== null && node.getAttribute('data-witness') === '1',
-            writes: window.__writes, text: (node ? node.textContent : '').trim() };
-        })()`)) as { sameNode: boolean; writes: number; text: string };
+            writes: window.__writes, draws: window.__draws, text: (node ? node.textContent : '').trim() };
+        })()`)) as { sameNode: boolean; writes: number; draws: number; text: string };
 
+      expect(after.draws, 'the wall did not redraw twice, so this proves nothing').toBeGreaterThanOrEqual(2);
       expect(after.sameNode, 'the live region was rebuilt, so it announced again').toBe(true);
       expect(
         after.writes,

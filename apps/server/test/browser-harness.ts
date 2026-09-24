@@ -1145,6 +1145,49 @@ export function equipHousehold(db: SqliteDatabase, at: number): void {
 }
 
 /**
+ * Every face the wall's stylesheet declares, loaded.
+ *
+ * What `loadWallSettled` holds the manifest back for, asked of the page
+ * directly: `document.fonts` is the set `display.css`'s `@font-face` rules
+ * registered, and `load()` on each fetches it whether or not the text on the
+ * glass has asked for it yet — so a draw released after this measures the face
+ * a household's wall would, rather than whatever arrived first.
+ *
+ * Two things are deliberately forgiving, because the old fixed hold was:
+ *
+ *  - a face that *fails* to load is let through, as the timer let it through —
+ *    a missing font is somebody else's assertion, and swallowing it here keeps
+ *    this a wait rather than a test;
+ *  - the page may be gone by the time the route asks (a test that kills the
+ *    server or reloads mid-poll), and an evaluate against a destroyed context
+ *    throws — which, inside a route handler, would leave the request hanging
+ *    rather than failing anything.
+ *
+ * `FACES_CAP_MS` bounds it, so a face whose request never answers costs the
+ * load that much and no more; it is well past what a loopback font takes and
+ * well inside every file's `SLOW`.
+ */
+const FACES_CAP_MS = 10_000;
+
+async function faces(page: Page): Promise<void> {
+  const loaded = page
+    .evaluate(async () => {
+      const pending: Promise<unknown>[] = [];
+      document.fonts.forEach((face) => {
+        pending.push(face.load().catch(() => undefined));
+      });
+      await Promise.all(pending);
+    })
+    .catch(() => undefined);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const cap = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, FACES_CAP_MS);
+  });
+  await Promise.race([loaded, cap]);
+  clearTimeout(timer);
+}
+
+/**
  * Load a paired wall in a fresh browser context at `size`, past the font race.
  *
  * `applyMonthTier` and the widget tier pass (`render.ts`) measure the drawn
@@ -1184,17 +1227,32 @@ export async function loadWallSettled(
      *
      * Not a route the caller registers afterwards: Playwright matches handlers
      * most-recent-first, so a second route on the same manifest glob silently wins and
-     * the 750ms hold below stops happening — which takes this helper's whole
+     * the hold below stops happening — which takes this helper's whole
      * promise with it and leaves the caller with the cold-context flake it came
      * here to avoid. One handler, so the two cannot come apart.
      */
     readonly patchManifest?: (body: Record<string, unknown>) => void;
+    /**
+     * Put Playwright's clock in the page before it loads, so a test can move
+     * the wall's own timers with `page.clock.runFor` rather than sleeping.
+     *
+     * Installed rather than paused: it runs at the ordinary rate, so a load
+     * behaves exactly as it would without it, and only what a test *asks* to
+     * skip is skipped. What it buys is the fifteen-second tick — the wall's
+     * `setInterval(draw, TICK_MS)` is the fake one, so `runFor` fires the real
+     * callback on the real schedule and a test waits milliseconds for it
+     * instead of the tick itself. Here and not in a caller's own context,
+     * because it has to be in place before the wall's script sets its
+     * interval, and the settle below is the whole value of this helper.
+     */
+    readonly clock?: 'installed';
   } = {},
 ): Promise<{ readonly page: Page; readonly context: BrowserContext; readonly close: () => Promise<void> }> {
   const context = await (await browser()).newContext({
     viewport: size,
     ...(options.locale !== undefined ? { locale: options.locale } : {}),
   });
+  if (options.clock === 'installed') await context.clock.install();
   const page: Page = await context.newPage();
   /*
    * **Every** manifest is held, not only the first, and that is a correction
@@ -1212,14 +1270,19 @@ export async function loadWallSettled(
    * and passing on its own, which is precisely the shape of flake this file's
    * docstring warns about.
    *
-   * On the reload the fonts come from the HTTP cache, so 750ms is a long wait
-   * for something that has already happened; it is the same number either way
-   * rather than two, because a second constant here is a second thing to be
-   * wrong.
+   * **It is held until the faces have loaded, not for a fixed time.** It was
+   * 750ms on every request, which was a guess at how long the fonts take and
+   * the most expensive line in the browser suite: two of them per load, and
+   * over a hundred loads a run, spent mostly on the reload, where the fonts
+   * come from the HTTP cache and had already arrived. `faces` below asks the
+   * page to load every face `display.css` declares and releases the manifest
+   * when they are in — which is the condition the 750ms stood in for, stated
+   * rather than hoped, so it is stricter on a slow runner as well as quicker
+   * on a fast one.
    */
   const patchManifest = options.patchManifest;
   await page.route('**/d/manifest*', async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 750));
+    await faces(page);
     if (patchManifest === undefined) {
       await route.continue();
       return;
@@ -1246,8 +1309,9 @@ export async function loadWallSettled(
    * A banner is 76px of canvas at 2560x1440 and one whole day off the agenda,
    * so a measurement taken in that window is a measurement of a different wall.
    * `settleWall` waits for the fonts and a quarter of a second, which used to
-   * be longer than the reload's manifest took and is not longer than the hold
-   * above. Measured: it drew a banner about half the time.
+   * be longer than the reload's manifest took and was not longer than the
+   * fixed hold this helper used to place above it. Measured then: it drew a
+   * banner about half the time.
    */
   const first = page.waitForResponse((response) => response.url().includes('/d/manifest'), {
     timeout: 30_000,
