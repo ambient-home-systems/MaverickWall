@@ -64,7 +64,7 @@ Violating any of these is a failed task.
 - No absolute px in the display's type or layout. Every size on the wall derives from --px-arcmin, which derives from the screen's panel size and read distance. A hardcoded px legibility floor is the bug that made the month grid name zero events on a small panel: it is correct on one screen and wrong on all the others.
 - No scale-to-fit as a substitute for a density tier. A section that does not fit gives up content, not points. transform: scale() on a laid-out section is banned in new code — and there is none left in old code either: `fitToBox` is deleted, and `reflow-stability.test.ts` scans the stylesheet and the renderer for one. A uniform transform is photographic enlargement; it changes how big a widget looks and can never change what it says.
 - A widget reads its own box and chooses a form; it never draws everything and hides what spilled. The calendar's tiers are `tiers.ts` and the thresholds are in characters and ems of the event role, so one table is right on every panel — a new one belongs there rather than as a pixel threshold in a renderer. Hard rule 2 permits a container query for exactly this, and for nothing else yet.
-- **Emoji on a browser wall are bundled artwork, never a device font; anything an e-paper panel draws carries none at all.** *(Rewritten 2026-09-24 for decision D6; the plan is `docs/plan-2026-09-household-review.md`.)* The rule this replaces was "no emoji in anything a screen renders", and its reason is unchanged: the image ships no emoji font, so an emoji set as *text* is a third-party asset resolved on the device — it differs on every panel, some kiosks draw an empty box, and `asciiTitle` deletes it outright on e-ink. **That rule was written down and broken at the same time** — every forecast and every device class chose one until the first-party vocabulary replaced them. What changed is the remedy, not the reason. The owner wants emoji in a weather or countdown style, so the wall ships its own: a curated Twemoji set under `apps/server/assets/emoji/`, served from `/assets/emoji/<name>.svg` and drawn as an `<img>` from a *key* the manifest carries, never a code point (plan item P4.2), so every screen draws the same picture. A code point handed to the device's font in a designed style is still the bug this rule was written for. The one exception is stated so nobody "fixes" it: text a household typed itself, such as a countdown's title, renders in the device's own font (Q9), because it is their string and the wall does not rewrite it. E-paper keeps the drawn glyphs. **Until S11 lands this is stricter than it reads**: `no-emoji.test.ts` still refuses an emoji anywhere a screen reads from, which is correct while there is no artwork to draw. Once S11 lands it is narrowed to the e-paper renderer and its tests, with `asciiTitle` as the panel's guard, and gains the assertion that a designed wall style draws emoji as a bundled `<img>` and never as text. It scans comments too, because a comment is where the next one gets pasted from.
+- **Emoji on a browser wall are bundled artwork, never a device font; anything an e-paper panel draws carries none at all.** *(Rewritten 2026-09-24 for decision D6; the plan is `docs/plan-2026-09-household-review.md`.)* The rule this replaces was "no emoji in anything a screen renders", and its reason is unchanged: the image ships no emoji font, so an emoji set as *text* is a third-party asset resolved on the device — it differs on every panel, some kiosks draw an empty box, and `asciiTitle` deletes it outright on e-ink. **That rule was written down and broken at the same time** — every forecast and every device class chose one until the first-party vocabulary replaced them. What changed is the remedy, not the reason. The owner wants emoji in a weather or countdown style, so the wall ships its own: a curated Twemoji set under `apps/server/assets/emoji/`, served from `/assets/emoji/<name>.svg` and drawn as an `<img>` from a *key* the manifest carries, never a code point (plan item P4.2), so every screen draws the same picture. A code point handed to the device's font in a designed style is still the bug this rule was written for. The one exception is stated so nobody "fixes" it: text a household typed itself, such as a countdown's title, renders in the device's own font (Q9), because it is their string and the wall does not rewrite it. E-paper keeps the drawn glyphs. **S11 has landed the artwork and the test narrowing described above.** `no-emoji.test.ts` now scans only `apps/server/src/epaper/**` and its own `epaper-*` tests, with `asciiTitle` kept as the panel's guard; the wall side of the old ban is enforced by rendering instead of by a source scan — `browser-emoji.test.ts` proves a real paired wall draws `emojiNode`'s output as a same-origin `<img>`, never a code point in the live DOM. It scans comments too, because a comment is where the next one gets pasted from. No designed style consumes the vocabulary yet (P5.1 and P5.2 are later sessions); `emojiNode`/`emojiImg` are the seam they will draw through, proved directly rather than through a widget that does not exist.
 - **No stat tiles — but a designed widget style may make one reading its lede.** *(Amended 2026-09-24 for decision D1.)* A big number with a caption, or a 3-up row of them, is a dashboard idiom, and this is a calendar: the wall's job is the thing the household does not already know, and a row of tiles says the things they do. That is still out, on any widget. What D1 permits is narrower: a designed style — the weather "Today" card, a countdown's number — may carry **one** large reading, capped against the event role the way the clock is (1.8x, `WALL_TYPE_CAPS`), so the biggest number on the wall can never outsize an event name by more than the clock already may. The cap is the rule rather than the size; a large reading with no cap is a stat tile with a style name. Enforced once S15 and S16 land by each style's own ratio assertion at three sizes, the way `orientation.test.ts` holds the clock to 1.8x.
 - **Shadows on a browser wall come from one theme token, and a theme or an e-ink preset can switch them off.** *(Rewritten 2026-09-24 for decision D8.)* The rule this replaces was "no shadow on the display, at any size, in any theme", because a shadow bands on e-ink and burns in on OLED. Both are still true, and they are now the reason the shadow is a *token* rather than the reason for a ban: `--shadow-card` is set per theme (soft on Panels and Household, paper-like on Almanac, none on Blueprint and Swiss), derived for a custom theme, and set to none by the e-ink presets of the wall-size picker (plan item P4.4). A literal `box-shadow` in a widget rule is therefore still wrong — it is the one shadow a household with an OLED or e-ink screen could not turn off. An e-paper panel draws none: `shadow` stays in `PANEL_IGNORES`, which `epaper-ink.test.ts` already proves by rendering. Separation is still space, then a 1px rule, then a ground step, in that order; a shadow is a look a theme lays on top of that and never the only thing separating two boxes. Enforced once S13 lands by `builtin-themes-parity.test.ts`, which holds the token's per-theme values in the bundle and on the server to each other.
 - **Motion on a browser wall is phase-locked to the wall clock, gated by reduced motion and the wall's own switch, and moves only `transform` and `opacity`. An e-paper panel is always still.** *(Rewritten 2026-09-24 for decision D7.)* The rule this replaces was "no transition or animation on any surface a screen sees", because the wall has no pointer and redraws every 15 s: a transition there confirms nothing and reads as a flicker in a room, and `draw()` empties and rebuilds the whole wall on every tick, so a naive CSS animation restarts four times a minute. The owner decided weather and countdown styles may move, and that confetti may fall on a countdown's day. The reasons survive as the conditions (plan item P4.3): a looping effect takes a negative `animation-delay` from the corrected wall clock, so a rebuilt element resumes where the old one was; a one-shot fires once per event from a per-widget memory in `main.ts`, not once per tick; every `@keyframes`, `animation` and `transition` sits inside `prefers-reduced-motion: no-preference` and under `.canvas[data-motion="on"]`, the wall's Motion switch (`screens.motion`, null meaning on, Q6, and off by default on the e-ink presets); and only `transform` and `opacity` are animated, because anything else is layout or paint on every frame of an old tablet. The panel draws each style's still frame. **The ban was a convention for as long as it existed, and a convention is what a future contributor breaks** — reasonably, from a browser habit, in a file nobody re-reads — which is why its replacement is a build failure too. **S12 landed it, and the scope is what is enforced now.** `apps/display/test/motion.test.ts` parses `display.css` (source *and* the copy `dist/` serves) and refuses any `@keyframes` or animation binding outside `@media (prefers-reduced-motion: no-preference)`, any binding whose selector does not start at `.canvas[data-motion="on"]`, any keyframe that moves something other than `transform` or `opacity`, any transition at all, and any `animation-duration`, `animation-delay` or shorthand in the stylesheet — the duration is stated once, in `motion.ts`, where the phase is computed from it. It also holds `motion.ts` as **the one module** in `main.ts`'s import graph that says "animation", writing only `animationDuration` and `animationDelay`; every other wall module still carries none of the words. `apps/server/test/motion-scope.test.ts` holds the same scope on the stylesheet the server actually serves and the panel path to reaching no stylesheet at all, and `browser-motion.test.ts` measures a real Chromium: a loop's computed phase continuous across a tick, a one-shot that resumes through a redraw and does not refire, and nothing moving under reduced motion or with the switch off. The admin's rule is unchanged and `motion-scope.test.ts` keeps holding it: three durations and three easings, every declaration inside `prefers-reduced-motion: no-preference`, because the admin is a settings screen somebody is touching, where the same 180ms is the only thing telling them the tap landed.
@@ -454,11 +454,13 @@ were rewritten before any code depended on the change.
   from whatever source is necessary.
 
 **Nothing a household sees changed on that date, and the tests still enforce
-the old bans until the sessions that build the permissions land** — S11 narrows
-`no-emoji.test.ts`, S12 rewrites `motion.test.ts` and `motion-scope.test.ts`,
-S13 brings the shadow token under `builtin-themes-parity.test.ts`. A rule that
-permits more than its test does is the right way round for a few releases; the
-other way round is a rule nothing enforces.
+the old bans until the sessions that build the permissions land.** **S11 has
+landed**: `no-emoji.test.ts` narrows to the e-paper renderer and its tests, and
+the bundled Twemoji artwork ships (see below). S12 still needs to rewrite
+`motion.test.ts` and `motion-scope.test.ts`, and S13 still needs to bring the
+shadow token under `builtin-themes-parity.test.ts`. A rule that permits more
+than its test does is the right way round for a few releases; the other way
+round is a rule nothing enforces.
 
 **0.61.0 is the current release.** `main`, the tag and the published image
 agree with each other, and `advertise` is what keeps them that way — it writes
@@ -7548,6 +7550,722 @@ files — exactly the three new files' own count (`admin-external-links.test.ts`
 the reading agree, and is recorded as an observation rather than a method:
 the paragraphs above this one have been wrong about that five times running.
 
+**A Shift widget set to two people draws both of them (P1.2).** The
+manifest, the editor's picker and `shiftWidgetView` all kept both people; the
+second was lost in the wall's tier pass. `tierShift` read the tier off the
+whole box as if it held one badge, drew a card at that tier for every person,
+and the belt — which keeps the first item and hides whatever ends past the
+foot — took the second person off the glass, because Classic's rota box is one
+badge tall. Measured before the fix on a paired Classic wall with two rota
+workers: two badges drawn, one visible ("AmyDays" at 1080x1920, a two-rung
+card; "Amy: Days · …" at 1920x1080, a line), and `data-tier-items` saying 2 at
+both. Three changes, as the plan gives them. **The tier is chosen per badge**
+— `stackedItemHeight`, the inner height less the gaps between cards over the
+number of people, which is the inner height exactly for one person. **Where a
+card does not fit per person, every person is a line** (`shiftBadgesToLines`,
+pure, beside `laddersToOneLine`, which it defers to for one person). And **the
+stamp is the count visible after the belt**, not the rota's.
+
+**The plan's second step did not fit as written, and measuring is what said
+so.** It names `shiftLineBadge` for the several-people form, and that line is
+the *headline* at full size: 76px a person on the 1920x1080 Classic box, which
+gives each of two people 41. A headline-sized list is a list of one. The panel
+has never drawn it that way — `epaper/widgets.ts` draws more than one person as
+a compact line each at its **body** rung — so the wall's several-people lines
+(`.fw-shift.is-lines`) are drawn at the event role, the size a name takes in a
+box that holds several, with the month cell's step-2 chrome on the card and
+between cards. The one-person line is untouched. "A full badge" in the plan is
+read as *a card*, so a box with room for a two-rung card per person still draws
+cards; the other reading (lines whenever any rung is cut) changes nothing on
+Classic, where both the whole box and one badge's share resolve below a full
+card, and the requested mutation could not have gone red.
+
+**Four mutations, each on a rebuilt bundle, and which size each reddens is the
+record.** The tier from the whole box again reddens 1080x1920 and leaves
+1920x1080 green, honestly — that box is below a card even for one person, so
+both computations land on the same floor. The lines at the headline's size
+redden both sizes. The lines in the card's own step-4 chrome redden 1920x1080
+only. The stamp taken before the belt reddens only
+`browser-shift-two-people.test.ts`'s short box, the one place the belt hides
+anybody, because on Classic both people now fit and the two stamps agree.
+**`wall-density` and `browser-classic-proportions` did not move for a
+one-person wall**, measured rather than inferred from green: both files were
+run on a clean worktree of `main` and on this branch with every measurement
+they take written out — ten viewport readings, six ratio readings and eight box
+readings, rota chip included — and the two sets are identical as text. No
+baseline moved and none needed to. The calendar's own `shifts[0]` is
+untouched; that is P5.4, in S20.
+
+**3837 tests passing, and 1 skipped, over 272 files**: calendar 153 over 10 ·
+core 314 over 9 · display 620 over 35 · server 2750 over 218, measured on a
+clone whose tags had been fetched and with `MW_BROWSER_EXECUTABLE` naming the
+provisioned Chromium, for the revision mismatch S01 recorded. Against 3830
+over 271 above, that is +7 tests and +1 file: four unit tests in
+`widget-tiers.test.ts` and the new browser file's three. The arithmetic and
+the reading agree a second time running, which is still an observation and
+not a method.
+
+**P1.3 shipped: nothing on the Home Assistant or Store screens claims a wall
+it has not reached.** Adding a reading watches an entity; a *Home Assistant
+widget* is what draws it, and Classic — every wall's seed — has none, so "Add
+to the wall", the "On the wall" heading over the list and "Reading added" were
+three claims no code had checked. The picker says **Add reading** / **Add N
+readings**, the `<noscript>` form **Add reading**, the list **Your readings**,
+and the saved strip is two keys chosen by the branch — `ha-entity-added`
+("No wall shows it yet") or `ha-entity-added-shown` — because a token is a
+claim. The Store's recipe button is **Install**. Every reading and every
+installed module carries a tag, "On: Kitchen, Hall" or "Not on any wall yet",
+and when no wall draws readings at all one card at the top says why and links
+to each wall's layout. No open question (Q1–Q10) touches this item.
+
+**Where a thing is drawn is `http/wall-reach.ts`, and it reads what the
+renderers read rather than the widget types a wall holds.** A browser wall is
+both orientations and every named layout its schedule swaps in; a panel is one
+canvas — its own or the one it follows (`livePanelCanvasOwner`), in the one
+orientation it is hung (`epaperOrientation`), never a named layout, with its
+ink lane laid over (`withInk`), because a panel's `readings` override is the
+list it draws; a revoked wall is nobody's. What is drawn is
+`keepWidgetsWithSomethingToSay`'s answer, so a fallback counts and an omitted
+widget does not — except that the Home Assistant screen assumes the one
+prerequisite it is itself about, since a widget is left out while nothing is
+watched and the card would otherwise tell a household with the widget already
+placed that no wall has one, on the page where they add the first reading.
+
+**A widget picks readings by entity id now, and the wall receives handles.**
+Readings were stored by label because the label was the only name the
+manifest carried, so a rename silently took a reading off every widget that
+had picked it. `haReadingHandle` is `todoListHandle` one widget along: the
+house panel mints one per reading, `displayConfig` rewrites `readings` — and
+the ink lane's, which the wall is sent and never reads — for every type, and
+the wall matches handle to handle (`houseReadingsFor`, with a label fallback
+only for a reading from a server older than the handle). **An entry that
+matches nothing is hashed rather than passed through**, which is rule 12 and
+not tidiness: the commonest such entry is an entity nobody watches any more,
+which is to say an entity id. A stored label that is a current reading's
+resolves to it (`readingHandlesFor` for the wall and the panel alike,
+`readingEntityIds` for the editor's bootstrap), so no migration was written:
+the editor opens a legacy widget with the right boxes ticked, offers
+`{id, name, key}` choices, previews by the handle it was handed, and its next
+save writes ids. The schema's 80-character cap on an entry was a label's and
+refused a long entity id the picker had just offered; it is 255, the watch
+form's own bound.
+
+**Two findings, one fixed by the change and one not.** The panel compared the
+stored label with `asciiTitle` of the panel's, so a widget that picked
+"Température" drew "No readings yet" on e-paper while the wall drew it —
+confirmed by reverting to the old filter and watching the accented case alone
+go red. **Not fixed, and recorded here because it is rule 12:** a firing Home
+Assistant interrupt carries the rule's signal key in the manifest's
+`interrupts`, and that key is the entity id — measured, `["binary_sensor.freezer_door"]`
+— because acknowledgements are stored as `ruleId:signalKey`. It is outside
+P1.3 and changing it moves the dismiss endpoint's contract, so it is in the
+pull request as a finding rather than in the diff. `homeassistant.test.ts`
+now proves no entity id travels with a readings-filtered widget placed in both
+orientations, a legacy label, an ink override, and an unwatched id on a named
+layout; it does not fire a rule, which is exactly why it cannot see the other.
+
+**Eighteen mutations were checked and all eighteen are red**, across
+`browser-ha-readings` (a real paired wall and a real editor),
+`ha-reading-walls`, `homeassistant`, `epaper-house-readings` and
+`layout-save`. Two needed a second look, which is the useful part. A panel
+reading its followed wall's named layouts stayed green until the fixture put
+Hall's evening widget on landscape too — the panel draws landscape, so a
+portrait-only fixture could not tell the mutation from the fix. And the
+editor's "preview does not substitute" mutation first came back red for the
+wrong reason: the edit left an import unused, the display build failed, and the
+browser ran the *previous* mutation's bundle — a red run is evidence only once
+the build under it is the one being tested. Two existing tests changed their
+letter with a sentence saying why: `layout-save` reads a handle where it read
+`'Front door'`, and `epaper-house-widget`'s fixture readings carry the handle
+the panel now always carries. No ratchet baseline moved; Classic has no Home
+Assistant widget. A household with readings sees one manifest and one frame
+ETag change at upgrade, because the house panel gains `key`; no
+`EPAPER_RENDERER_VERSION` bump, since the only pixels that move are the
+accented-label case above.
+
+**3859 tests passing, and 1 skipped, over 275 files**: calendar 153 over 10 ·
+core 314 over 9 · display 626 over 35 · server 2766 over 221, measured with
+`pnpm test` on the tree merged with P1.2, on a clone whose tags had been
+fetched and with `MW_BROWSER_EXECUTABLE` naming the provisioned Chromium (this
+container's `playwright-core` looks for a revision the directory does not
+hold, as the S01 paragraph records). Against P1.2's 3837 over 272 above, the
+difference is +22 and +3, which is what this diff adds — display +6, server
++16 over three new files — and the arithmetic agreeing is, again, an
+observation and not the method. Measured before the merge, on its own, the
+same diff read 3852 over 274 against 3830 over 271.
+**Still unproven where it counts:** no real Home Assistant, no real wall and
+no real phone has shown any of it.
+
+**P2.1's first half shipped: every list screen's only create action is one
+"Add …" in the app bar, and it always opens a page of its own.** Calendars,
+People, Work Schedule, Shift types, Chores and Themes. The inline add forms
+are gone from the lists, and that is the answer to the objection `admin.ts`
+used to record for keeping them there, not a reversal of it: a filled "Add"
+in the app bar competed with the form's own filled Add on the same screen —
+two primaries for one act — so the form moved, and there is one primary
+because there is one form, elsewhere. Calendars' add page is a **chooser**
+(`/admin/calendars/new`): an iCal address and a CalDAV account each have a
+page, and Home Assistant's calendars are one-press rows drawn only when a
+connection has something to offer. RFC 013's "Google, iCloud and Microsoft
+365" section moved there, because the chooser is where somebody stands with
+that problem, and with no connection it is the chooser's explanation that
+connecting is a way in. Work Schedule's step one is a `GET` page, and step
+two is unchanged. Shift types keeps its presets on its add page. "Generate
+from a colour" is on the theme builder's add page. The Store family's
+"Back to…" links left the filled action slot for `pageHeader`'s `back`, so
+that slot is only ever "Add …". Measured at 390px, the long labels all fit:
+one line each, the widest "Add a shift type" at 129px, and the bar at the
+64px it is with no action at all. **The move is also where three screens
+learned to echo**: People, Chores and Shift types had never handed a refused
+body back, and a household sent to a page of its own to type something should
+not lose it there. `admin-add-placement.test.ts` walks every list page, with
+nobody in the house and with somebody, and asserts:
+
+- one app-bar "Add …" to a `/new` route;
+- no form on the list posting to that screen's create endpoints;
+- every one of those endpoints reachable from the add page.
+
+Walls and the four Home Assistant screens are in it as `it.fails` under
+`TODO(S06)`, which is their session. Two of the fifteen mutations were green
+on the first try, and both were the test's fault. The walker read only a
+household with a person in it, so a form put back on People's *empty*
+branch passed. And a label too long for a phone does not wrap — it is
+`nowrap` — it pushes the heading beside it onto a second line, which the
+first draft of the 390px test did not measure. Both are measured now.
+
+**3875 tests passing, 1 skipped and 5 expected failures, over 278 files**:
+calendar 153 over 10 · core 314 over 9 · display 626 over 35 · server 2782
+over 224 plus the five `it.fails`. Measured with a real Chromium
+(`MW_BROWSER_EXECUTABLE`, the same provisioning note as the P0 paragraph
+above) on the tree after `main` was merged into this branch, which had taken
+P1.2 and P1.3 in the meantime. Against P1.3's 3859 over 275 above, the
+difference is +16 passing, +5 expected failures and +3 files. That is exactly
+this change's own count: 11 in the walker, 7 in the add-page file, 1 in the
+390px file and 2 in `admin-components.test.ts`, with the one rewritten
+`browser-calendars` test replacing one rather than adding one. Before the
+merge the same diff read 3846 over 274 against 3830 over 271, the same +16
+and +5. As with the paragraphs above, that agreement is an observation and
+not a method.
+
+**A household with no coordinates and no Home Assistant can now set its
+weather location by typing a town, city or postcode (P2.3).** The Weather
+screen's "Look up" is a third submit inside the one form (`formaction`, the
+same mechanism as "Use my Home Assistant home location"), and it asks
+Open-Meteo's key-less geocoding service — a separate host from either
+forecast provider, public https only, through the SSRF-guarded fetcher — for
+up to five matches, each parsed with Zod **one result at a time** so one odd
+entry does not cost the other four. The page re-renders with the whole form
+echoed and the matches as radio choices ("London, England, United Kingdom");
+"Use this place" writes the chosen pair and saves the rest of the form,
+reading the same narrower `haLocationBody`-derived shape `use-ha-location`
+does, so a stray typed coordinate cannot fail it — there is no server-side
+session holding the five results between the lookup and this submit, so the
+coordinate pair a household picks *is* the value the radio carries. Three
+sentences, none bare: no place by that name, the lookup service not
+answering, and nothing typed.
+
+**The Enter-key trap this screen has already shipped once is closed at the
+source rather than avoided.** `defaultSubmit()` carries no `formaction`, so
+typing a town and pressing Enter — or pressing the visible Save with nothing
+but a town typed — both post to Save's own handler. Reading "no coordinates"
+there as "clear the location" would have been this screen's data-loss bug in
+a new shape, so Save itself treats a typed place with no coordinates as a
+lookup and only saves normally once there are coordinates or the form is
+genuinely blank.
+
+"Use this device's location" is a `hidden` button revealed only by
+`geolocate-button.js` when `window.isSecureContext && 'geolocation' in
+navigator` — which fails, by design, on most plain-http LAN installs and
+inside the Home Assistant sidebar iframe, and stays hidden rather than
+offering a control that then fails silently. **Its own fault was only ever
+going to be found by measuring**: `button,.btn` sets its own `display`, which
+beats the user agent's `[hidden]` the identical way `.row-fields[hidden]` and
+`.saverow [hidden]` already exist to fix — so the button was visible from the
+first render, on every install, and a browser test proved it before the fix
+and after. Proven in a real browser by overriding `isSecureContext` directly,
+since this harness's own loopback origin is a secure context on Chromium's
+own account (measured: `http://127.0.0.1` reports `isSecureContext: true`)
+and cannot otherwise demonstrate the failure this control exists to hide
+behind. Home Assistant not connected gets one line pointing at the
+connection screen instead of a button with nothing to press. The latitude and
+longitude fields stay, for fine-tuning — a found place's centre can sit over
+the county line from the actual house, and NWS alert zones are worked out
+from the exact point.
+
+The parser is checked against a real Open-Meteo geocoding response, committed
+as a fixture the way every other provider in this codebase is. Five mutations
+were checked — the Enter-key branch, the per-result parsing collapsed to a
+document-level parse, the `place_choice` regex loosened, the device-location
+button's hidden fix removed, and the Home Assistant not-connected line
+deleted — and all five are red. **3894 tests passing, 1 skipped and 5
+expected failures, over 279 files**: calendar 153 over 10 · core 314 over 9 ·
+display 626 over 35 · server 2801 over 225 plus the five `it.fails`, measured
+on the tree after `main` was merged into this branch, which had taken P1.2,
+P1.3 and P2.1 in the meantime, with `MW_BROWSER_EXECUTABLE` naming the
+provisioned Chromium for the revision mismatch S01 recorded. One browser test
+outside this diff, `browser-wall-theme.test.ts`'s theme-suggestion case, went
+red once in the full run and green alone and on an immediate rerun of the
+whole server suite — the font-race shape this document already records for a
+cold context under load, not a fault in this change. Against P2.1's 3875 over
+278 recorded just above, the difference is +19 tests and +1 file —
+`weather-geocoding.test.ts`'s own 18 plus one new browser test in
+`browser-admin.test.ts` — the fourth time running the arithmetic and the
+reading have agreed, and still not a method.
+
+**P2.1's second half and P2.2 shipped: Walls and the four Home Assistant list
+screens have their one "Add …" in the app bar too, and adding a wall is one
+door.** Readings, Calendars, To-do lists and "Tell me when…" each carry an
+app-bar **Add readings**, **Add a calendar**, **Add a list** and **Add a
+rule** to `…/new`, and the lists carry no form. The rule templates moved onto
+**Add a rule**, because a template starts a rule. Both old template addresses
+(`/admin/home-assistant?template=` and `…/alerts?template=`) answer a 302 to
+`…/alerts/new?template=` with the query intact. Every create refusal comes
+back on its add page, with one exception, stated at its site: a to-do list that
+was added and could not be read comes back on the list, where the new row is.
+The readings picker used to reload the page it was on, which was the list; on
+an add page that shows only the form again, so the mount names where to go
+(`data-done`). `browser-ha-add-readings.test.ts` drives that in a real browser
+and goes red on the old `reload()` with the bundle rebuilt. **The action is
+drawn whether or not a house is connected**, and its add page then says "not
+connected yet" and links to Connection, as the list does. An "Add" that came and
+went with the connection would be the one list in the admin whose create action
+was not always in the same place. Connection is not a collection and is
+unchanged.
+
+**Walls:** the three buttons under the header became one **Add a wall**, which
+leads to a chooser (`/admin/walls/new`) offering **Add a browser wall** and
+**Add an e-paper wall**, each with its one line. The two pages behind it
+(`/new/browser`, `/new/epaper`; `/admin/epaper` redirects to the second) are
+headed with the chooser row's exact words, and both end on **Add wall**, where
+the e-paper page said "Create". "Approve a pairing code" is a link in the
+list's lead line and under the chooser. "Pair" is kept for the step that pairs
+a browser (the QR and link page, and the "Pair it" on an unpaired card). The
+Overview's "No walls paired yet / Pair a tablet, a television or an e-paper
+panel … on a screen" is now "No walls yet / Add a tablet …", linking to the
+chooser. The wizard's last page and the Readings card say "Add a wall" too. No
+open question (Q1–Q10) touches either item.
+
+**The vocabulary crawl connects a fake house now**, which closes the blind spot
+its header had stated since it was written: "the Home Assistant page renders
+more once a connection exists (there is no fake HA here)". Every Home Assistant
+page is read unconnected first, the way the empty household's pages are, so
+connecting trades nothing away. The crawl then asserts each add page was read
+**with its form drawn**. That assertion was green against a crawl whose house
+never connected until the readings check stopped using "Add reading", which the
+page's own heading ("Add readings") contains either way. A new sweep refuses the
+retired phrasings ("Pair a browser wall", "Add an e-paper panel", "No walls
+paired yet"…) with a zero allow-list. It cannot see the Overview's no-walls row,
+because the crawl has walls; `admin-defaults` is what goes red there.
+
+Eighteen mutations were checked and all are red. Two needed a second test
+before they were. Hiding the HA "Add …" while disconnected stayed green until
+`ha-screens` read the list's app bar on a household that never connected. And
+the "form drawn" check above passed until its readings phrase changed. Measured
+at 390px: every app-bar label fits on one line in the 64px bar, the new ones
+from "Add a list" at 90.7px to "Add a calendar" at 124.5px. Every one of the ten
+Home Assistant pages puts its first control above the 355px the one old page
+did: the add pages at 92, 121, 121 and 185px, and the lists at 251, 316, 320 and
+207px, down from forms that sat lower on the same screens.
+
+**One red in the first full run was a race in a test this change touched, and
+it is fixed rather than re-run.** `browser-wall-theme` read the suggested theme
+after a refused POST. It waited only for a theme radio to be *attached*, which
+the server-rendered cards satisfy before `template-gallery.js` has written the
+suggestion. It passed five of five alone, and failed every time with that
+script's fetch delayed by 1.5s. It now waits for the re-rendered document's
+`load`, which a module script holds, and passes with the delay too.
+
+**3912 tests passing and 1 skipped, over 280 files**: calendar 153 over 10 ·
+core 314 over 9 · display 626 over 35 · server 2819 over 226. Measured with
+`pnpm test` and a real Chromium (`MW_BROWSER_EXECUTABLE`, as above), on the tree
+after `main` was merged in, which had taken P2.3 meanwhile. Against P2.3's 3894
+passing and 5 expected failures over 279, the five `it.fails` are now ordinary
+passes (+5), and this change adds 13 tests and one file. Before the merge the
+same diff read 3893 over 279 against S05's 3875 over 278, the same +18 and +1.
+The arithmetic agrees, which, as every paragraph above says, is an observation
+and not a method.
+
+**The weather panel carries what it is like now, the next day of hours, and
+more about each day (plan items P3.1–P3.4, P3.6–P3.8, session S08). Nothing on
+a wall or a panel draws any of it yet** — the styles that will are S14 and S15
+— **and it must not ship without S09 (P3.5)**: `current` changes every fifteen
+minutes, `manifestEtag` hashes the whole document, and until S09 narrows the
+e-paper preimage every paired panel's frame ETag moves on that cadence, weather
+widget or not. The panel gains `current`, `hourly`, `units` and `air`, and each
+day gains `precipChance`, `precipAmount`, `windMax`, `uvMax`, `sunrise`,
+`sunset` and `detail`. **Every one is optional and spread**, and that is
+asserted as text: a cache holding only a forecast row written by the previous
+release assembles to the exact string the previous release produced, so a
+household with nothing new keeps its manifest and its ETag byte for byte;
+emitting `units` unconditionally or `current: null` turns it red.
+
+**Every parser reads real bytes.** Open-Meteo answers the cloud environment, so
+a full forecast for Washington (imperial) and London (metric), two air-quality
+answers and a sunrise/sunset spread — ten places, 25 June to 9 October — were
+captured live with the exact URLs the code builds, and the README beside them
+says so. NWS does not answer a cloud address, so its parsers read the owner's
+five captures under `fixtures/nws/real/`, and **those bytes found a fault on
+the first run**: every hourly period carries `"name": ""`, which the daily
+period schema — whose one required field is the row's name — refused all 156
+of. The hourly reader has its own schema. They also showed NWS's hourly
+`isDaytime` is a 06:00–18:00 clock (18:00 is "night" before a 19:02 sunset), so
+day and night come from the sun instead. **One capture the owner task asked for
+is not among them**, the observation with a null temperature; the fallback is
+tested against KDCA's real observation with that one value set to null, in the
+shape the same document uses for four other quantities, and
+`fixtures/nws/real/README.md` records it as missing rather than papering over
+it.
+
+**Sunrise and sunset are calculated for every provider** by `sun.ts`, the NOAA
+algorithm, pure, with the zone's offset handed in. Against Open-Meteo's own
+answer for 1,726 events it is within two minutes everywhere the sun is not
+grazing the horizon, and within five on the 34 days it is — the crossing moves
+by 1/sin(hour angle), which is geometry rather than error, and the test says so
+rather than excluding those days. It agrees with Open-Meteo on every day with
+no sunrise or no sunset, which Open-Meteo marks with a sentinel (sunrise at
+00:00, daylight 0 or 86,400 s) that the parser now reads as absence. Two facts
+about the reference were measured, not assumed: Open-Meteo computes for the
+grid cell it reports (the requested point is up to eleven minutes off at 86°N),
+and it truncates to the minute (mean +0.52 across 1,794 events). **Its local
+times are in one fixed offset for the whole answer**, even across a clock
+change — Sydney's sunrises run on without a jump over 4 October — so sun times
+are turned back into instants with `utc_offset_seconds` and re-printed in the
+household's zone; the Sydney case is the test that can see it, because a
+Washington fixture in September has no clock change to fail on.
+
+**Current conditions older than ninety minutes are not "now"**, applied twice:
+at assembly (`presentCurrent`, where NWS falls back to the hourly period
+covering now, `source: 'modelled'`, and Open-Meteo, whose conditions already are
+a model, falls back to nothing), and again in the wall's `weatherFrom` against
+its own clock, because an offline wall redrawing its IndexedDB copy is the one
+place the server's rule cannot reach. The job runs every fifteen minutes and
+asks each part whether it is due — conditions every fifteen, forecasts and air
+hourly, with three minutes' slack for the scheduler's jitter — and a failed
+part keeps its last copy and stays due. Open-Meteo's one answer carries every
+part, and only the due parts are written, so the days are not re-stamped every
+fifteen minutes. **Moving to fifteen minutes nearly quadrupled one request**:
+a location NWS cannot resolve would have asked `/points` every run instead of
+hourly; it waits for the forecast now, with one exception for a gridpoint
+cached by the previous release, which is asked for its hourly and station URLs
+once, at once. NWS stays in Fahrenheit and mph whatever the setting, as its page
+already said, and its SI observations are converted to match. **Air quality is
+off until switched on (Q5, the proposed default)**, names
+`air-quality-api.open-meteo.com` beside the switch before anything has been
+asked, reads the European index in a `Europe/` zone and the US one elsewhere,
+and forgets its reading when switched off (migration `0052`, one generated
+`ADD COLUMN`, read). The wall's `weatherFrom` carries `summary` now, which it
+had dropped since the day it was written.
+
+**Thirty-three mutations were checked and all are red**, 24 of them on the
+server's first pass. One display mutation stayed green at first — not handing
+`weatherFrom` the wall's clock — because the only `buildModel` test drew a
+reading forty minutes old; it draws one ninety-one minutes old too now. And one
+assertion was vacuous as first written: "switching air quality on brings the
+job forward" read `next_run_at ?? 0` on a database with no `job_state` row, so
+it passed whatever the code did; it seeds the row now. The list view's
+optional rain chance (P3.7) and the e-paper reader of the new fields were not
+built: the first widens the agenda's date column, which is a density decision
+with its own measurement, and the second has no panel style to read them for
+until P5.1.
+
+**3952 tests passing, 1 skipped and 5 expected failures, over 283 files**:
+calendar 153 over 10 · core 314 over 9 · display 638 over 36 · server 2847
+over 228 plus P2.1's five `it.fails`, measured with a real Chromium
+(`MW_BROWSER_EXECUTABLE`) on the tree after `main` was merged into this
+branch. Against P2.1's 3875 over 278 above, +77 passing and +5 files, which
+is this change's own count (four new server files of 62, three tests in
+`admin-saved`, one display file of 12); before the merge the same diff read
+3907 over 276 against 3830 over 271. Agreement both times, recorded as an
+observation and not a method. No ratchet baseline moved.
+
+**An e-paper panel's frame ETag hashes what its widgets draw, not the whole
+manifest (plan item P3.5, session S09).** The preimage used to include
+`manifestEtag(manifest)`, and the manifest carries every module's panel whether
+or not a given panel draws it. A Home Assistant reading moved every paired
+panel, and so did a to-do list, and S08's current conditions would have moved
+every panel every fifteen minutes, weather widget or not. A panel that sees a
+new ETag downloads a new frame, and a battery panel does a full refresh to show
+it. The frame now hashes the manifest with `panels` emptied, plus
+`canvasPanelInputs`: for each widget on the canvas, what its draw reads.
+
+**`panelInput` in `epaper/widgets.ts` is the one place a widget reads a
+module's panel, and the design is that `drawWidget` no longer receives the
+manifest at all.** Each draw is handed `panelInput`'s answer, so it cannot read
+anything the ETag does not hash; there is nothing else for it to read. Each
+answer is as narrow as the draw it feeds:
+- The forecast strip reads `forecastDays`' output (a name, a high, a low and a
+  glyph per day). So `current`, `hourly`, `air`, `units`, `fetchedAt` and a
+  day's `detail` and rain chance cannot move a frame.
+- A list-backed to-do widget reads its own list, and a typed checklist reads no
+  panel at all.
+- The house, the chore board and a module's panel read their whole slice,
+  because each draw reads it whole.
+- The built-in layout reads no panel, because `renderEpaper` draws from the
+  model.
+
+`epaper-frame-etag.test.ts` holds this in both directions, and the direction
+that can hurt a household is derived by rendering rather than from a table.
+Fourteen probes (every widget type, a list-backed and a typed to-do, a group,
+and the built-in layout) meet eleven mutations. Every frame that changed by a
+single bit got a new ETag, which is the half that stops a panel keeping an old
+picture for ever. A panel's ETag moves only for something one of its widgets
+reads. Each read has a mutation that reaches the glass, so the probes are
+probing. The weather panel in that file comes from the real parsers over the
+owner's captured NWS documents. Twelve mutations were checked and all are red,
+including the one the brief named: reverting to `manifestEtag(manifest)`
+reddens "keeps its ETag across two manifests that differ only in `current`".
+
+**No pixel moved, so `EPAPER_RENDERER_VERSION` stays 9.** Every `epaper-*`
+file passes unchanged, including `epaper-clock-variants`' `MAIN_HASHES` and
+`epaper-todo-widget`'s pinned frames. Every paired panel's ETag does move once,
+at the upgrade that ships this, because the preimage changed shape. That is one
+full refresh per panel.
+
+**Nothing on a panel draws current conditions yet, and the brief's positive
+test is therefore an `it.fails`, owned by S14.** P5.1's `today` style is the
+first draw that will. The test is written against that style's name, and
+because `panelInput` is the only way a draw reaches `current`, the session that
+builds the draw makes it pass and has to drop `.fails`: P2.1's device for
+S06's screens. The stamp the brief asks for is built: `epaperCurrent` is the
+only reader that hands a panel draw the current temperature, and it hands it
+with its time, "54F at 08:00". The degree sign is not in the panel's faces, so
+the unit rides on the number the way the strip's low already does.
+`weather-job.test.ts` checks it against panels assembled from the real
+captures: the KDCA station at 08:00, the Open-Meteo model at 08:30, twelve-hour
+clocks, and nothing once the reading is ninety minutes old. One line in it can
+contradict nothing today and is kept anyway: `canvasPanelInputs` reads each
+widget's config through `withInk`, as the draw does. No key the ink lane offers
+changes which slice a widget reads, so the mutation that drops it stays green.
+
+**The calendar sync churned every panel too, and that was found by measuring
+and then fixed.** Every calendar sync stamps `last_success_at`, the "feed
+unchanged" path included (`recordUnchanged`), and the manifest carries it as
+`sources[].lastSuccessAt`. Driven through a real paired panel, the job's own
+write turned the next request's `304` into a `200`. Narrowing `panels` alone
+therefore left the fifteen-minute refresh in place for any household with a
+calendar, and every thirty seconds for a Home Assistant calendar. Nothing in
+`epaper/` reads `sources` or `notices`. So `drawnManifest` empties both,
+beside `panels`, before the manifest is hashed. `screen` stays in the hash,
+though a panel draws none of it either, because `todo-tick.test.ts` holds a
+panel's `allow_todo` to moving its ETag the way `allow_chores` does. The fields
+are emptied rather than deleted, so a field added to the manifest later is
+hashed by default. That is the safe way round: an unneeded field costs a
+refresh, and a drawn field left out of the hash leaves a panel on an old
+picture. `epaper-endpoint.test.ts` drives the job's own writer against a real
+paired panel: a check that found nothing and a check that failed both answer
+`304`, while the wall's `/d/manifest` ETag moves, which is the control.
+`epaper-frame-etag.test.ts` adds both to its mutation table. Reverting the fix
+reddens three tests, each half alone reddens two or three, and dropping
+`screen` as well reddens two.
+
+Merging `main` into this branch surfaced one fault in P2.3's new "Use this
+place" handler. It wrote the weather settings without the air quality switch,
+which `tsc` refused, and `weather-geocoding.test.ts` now holds the switch
+through the lookup and the choice.
+
+**4006 tests passing, 1 skipped and 1 expected failure, over 286 files**:
+calendar 153 over 10 · core 314 over 9 · display 638 over 36 · server 2901
+over 231, the expected failure being this change's `TODO(S14)`. Measured with
+a real Chromium (`MW_BROWSER_EXECUTABLE`) on the tree after `main` was merged
+into this branch a second time, which by then had taken P2.3 and P2.1's
+second half with P2.2, and with it P2.1's five `it.fails` became ordinary
+passes. Against that merge's own 3912 over 280 above, this branch adds 90
+tests and six files: S08's 77 over five, and S09's 13 over one, plus the
+expected failure. Display 626 + 12 is 638 and server 2819 + 65 + 13 is 2897.
+The calendar-sync fix then added four tests to two files that already existed
+(three in `epaper-frame-etag`, one in `epaper-endpoint`), which gives 2901 and
+no new file. The arithmetic and the reading agree again; that is worth
+recording, and it is still not a method. No ratchet baseline moved.
+
+**Every type with a designed look has a list of them now, and only the
+clock's draw anything yet (plan item P4.1, the groundwork Phase 5 builds on).**
+The shared `variant` enum grew fifteen values: weather `strip`, `today`,
+`range`, `colour`, `playful`; countdown `number`, `page`, `ticket`,
+`occasion`, `progress`, `month`; Home Assistant `list`, `tile`; calendar
+`planner`, `bold`. `apps/display/src/variants.ts` is `clockVariant`
+generalised — `VARIANTS` holds one ordered list per type with the default
+first, `VARIANT_LABELS` is mapped over it so a value without a label is a
+type error rather than a blank choice, and `variantOf(type, config)` reads a
+value another type owns as "not for me", drawn as that type's default. The
+block between its markers is transcribed into `epaper/variants.ts` and
+`variants-parity.test.ts` holds the two to the character, holds the panel's
+file to declaring nothing outside the block (`tier-parity`'s lesson: a table
+added outside the compared text sails through a comparison of the text), and
+holds the enum to be exactly the lists' union. Both renderers of the clock
+read through it now.
+
+**The calendar's default has no name, and that is a decision rather than an
+omission.** The plan names two calendar looks and nothing for the one every
+calendar already draws, so its list starts with the empty string: an
+absence, which the editor's picker writes as a missing key (the "Follow the
+household" idiom) and the schema refuses as a value. Nothing needs to store
+it, because a panel draws a calendar one way whatever look the wall wears and
+no ink lane will ever write "the default" for one; a parity test asserts that
+no type whose default is an absence is offered on the ink lane.
+
+**The Look picker reads the table, and past three looks it is a grid.** A
+type without looks draws no row; up to three is the clock's segmented row;
+weather's five and countdown's six are the same buttons laid out three across
+(`.le-look-grid`, tokens only), because a row of six breaks its labels in a
+258px column. Asserted from where the buttons landed — computed `display`, the
+number of distinct rows, no two overlapping — not from the class.
+`buildClockConfig`'s early returns became `VARIANT_HIDES`, a table mapped over
+every value, applied by the editor after a type's own controls are built:
+stacked hides the date switch, analogue hides it and the time format, and
+every other look hides **nothing**, because it still draws its default and a
+working control taken off the screen is the other half of the `options.json`
+rule. The browser test holds a forecast's Content tab under Today to the
+strip's, control for control.
+
+**A Look is honoured on a clock and ignored everywhere else, so the ignore
+table learned a scope.** `PANEL_IGNORES` was one flat list of keys ignored on
+every type, and `variant` cannot be that: the clock draws its three on one
+bit. An entry can now name `types`, and four do — one sentence per type
+saying what its panel draws instead ("a panel draws the forecast as its strip,
+whichever look is chosen") — and the editor shows a note only on the types it
+is about. `epaper-ink.test.ts` asks "both tables" per type rather than per
+key, requires every type with looks to be honoured xor noted (and a type
+without looks to be neither), probes **every value the schema holds**, read
+off the enum rather than listed, and adds a value-by-value block: on every
+type, a look moves the frame if and only if that type honours `variant` and
+the look is one of its own non-default values. That block is strictly the
+stronger question, so the generic "draws nothing else" and "draws none of
+them" loops skip `variant` — probing eighteen values there took the calendar's
+body from 2.7s to 3.4s in isolation, in a file whose history is a 2.2s body
+timing out at 5s on a loaded runner.
+
+**The clock is byte-identical, and that is measured rather than argued.**
+The plain panel frames were already pinned to hashes from before `variant`
+existed; stacked and analogue were not, and a resolver swap is exactly what
+could quietly move one. They are pinned now, four configs at three panel
+sizes each, to hashes rendered on a clean worktree of 35ea84d, the commit this
+landed on. `EPAPER_RENDERER_VERSION` is unmoved at 9, and no ratchet baseline
+moved. On the wall, `browser-widget-looks.test.ts` draws one box per new look
+beside one with none, in equal-sized rows at 1080x1920 and 1920x1080, and
+holds every element in each — tag, class, words, rectangle relative to its
+box, computed size and weight — to its default sibling's. Its first draft
+read a hidden element's rectangle relative to the box, and a `display: none`
+element reports the page's origin, so identical boxes at different positions
+"differed"; hidden elements are recorded as unplaced now.
+
+**Eighteen mutations, all red**, each for its own reason: the enum losing a
+value, a label drifting on the panel, either resolver taking any string, an
+export outside the panel's block, a note removed, scoped onto the clock or
+unscoped, the panel's clock resolving through the weather list, the panel or
+the wall drawing a weather look, stacked hiding nothing, the grid class, the
+grid rule, the default written on the wall, the editor's notes unscoped, and
+the clock's pruning read off the wrong config. Two were refused by the
+typechecker first (an unused name) and were rewritten until they compiled,
+because a build failure proves nothing about a test. One guard is a belt: the
+editor never writes the empty string, but that branch is reachable only from
+an ink lane no absence-default type is offered on, so the parity assertion
+about the ink lane is the fence.
+
+**Still unproven where it counts, and one thing is knowingly true that a
+household would notice.** The picker now offers twelve looks that draw
+their type's default, which is the "option that does nothing" this document
+warns about; it is the plan's groundwork shape, the sessions that design each
+look (P5.1–P5.4) are what make them real, and a release cut before any of
+them would ship those choices. Nobody has used the grid on a real phone or in
+a real supervisor's sidebar.
+
+**4049 tests passing, 1 skipped and 1 expected failure, over 289 files**:
+calendar 153 over 10 · core 314 over 9 · display 647 over 37 · server 2935
+over 233, the expected failure being P3's `TODO(S14)`. Measured with a real
+Chromium (`MW_BROWSER_EXECUTABLE`) on the tree after `main` was merged into
+this branch, which by then carried P1.2, P1.3, P2.1–P2.3 and P3. Against the
+4006 over 286 recorded above, this change adds 43 tests and three files:
+display 638 + 9 is 647, and server 2901 + 34 is 2935. Forty-one of those are
+the tests P4.1 wrote, and the other two were found rather than shrugged at:
+listing the tests on both sides and diffing them shows `motion.test.ts` and
+`motion-scope.test.ts` each *generate* a test per module in the wall's import
+graph, so a new module the wall imports is a new test in each — "variants.ts
+does not mention motion". Nobody writes those two, which is exactly why an
+incrementer misses them. No ratchet baseline moved.
+
+**S11 shipped P4.2: the bundled emoji artwork, and the wall no longer draws a
+forecast icon or a countdown's own picture through whatever font a tablet
+happens to carry.** D6 permits emoji on a browser wall precisely because it is
+drawn rather than typed. `apps/server/assets/emoji/` holds a curated 155-SVG
+subset of Twemoji — weather conditions, the six countdown occasions, the five
+advice-line pictures, a general countdown picker, and the Store's own
+hourglass — served from `/assets/emoji/<key>.svg`, immutably cached, SVG-only
+and slash-free (`http/static.ts`'s `defaultEmojiDir()`, the fonts route's own
+pattern: `EMOJI_DIR`, copied into the image beside the display bundle and the
+fonts, named at every one of the three places the fonts are — `static.ts`, the
+Dockerfile, the pruned-tree boot check). `apps/display/src/emoji.ts`
+(`emojiNode`) and `apps/server/src/emoji.ts` (`emojiImg`) are twin
+vocabularies, held character-for-character identical by
+`emoji-parity.test.ts`, the `glyph-parity.test.ts` seam — the manifest carries
+a **key**, never a code point.
+
+**No designed style draws from the vocabulary yet** — P5.1 and P5.2 are later
+sessions, and building an emoji-drawing style before the seam it draws through
+is proven would be two things resolved as one. So `emojiNode` is proved
+directly, in a real browser: `browser-emoji.test.ts` pairs a real wall,
+imports the compiled module the way the bundle itself would, appends the node
+the function builds, and confirms a same-origin `<img>` actually loads (not a
+broken reference), a key nobody curated draws nothing, and no emoji character
+ever reaches the rendered DOM as text — the one thing the old source-scan ban
+was ever actually checking, now checked by rendering rather than by reading.
+
+**`no-emoji.test.ts` narrows to the panel, and the wall's own proof moved from
+a source scan to a render.** It used to scan the whole display bundle, the
+admin and every module; D6 makes that scope wrong for a browser wall, so it
+reads only `apps/server/src/epaper/**` and its own `epaper-*` tests now, with
+`asciiTitle` kept as the panel's one guard — there is still no drawn,
+black-and-white artwork for a 1-bit screen (D3 defers that), so an emoji set
+as a character still vanishes on a panel exactly as it always has. Checked
+both directions: a stray code point planted in `epaper/render.ts` still turns
+the file red, and the identical plant in `apps/display/src/main.ts` — which
+the old, wider scan would have caught — now leaves it green.
+
+**Q3's default was taken: Twemoji, not OpenMoji.** CC-BY 4.0 is attribution
+only; OpenMoji's CC BY-SA 4.0 carries a share-alike term neither this
+repository nor a household running the image should have to reason about.
+`apps/server/assets/emoji/LICENSES.md` and the root `NOTICE` record the
+attribution. **Q9's default needed no code at all**: an emoji a household
+types into a countdown's own title still renders in the device's own font,
+because `emojiNode` is never called on anything but a curated key and nothing
+in this phase touches how typed text renders — a bundled colour font is a
+later decision, and only after it is measured on the oldest supported tablet.
+
+**The Store's Countdown entry draws the bundled hourglass now** (P1.1's own
+promise, D5), in place of the `pressure` gauge glyph it was left wearing while
+there was no artwork to draw. The catalogue schema's `glyph` stays required of
+every entry — a module's own panel reading may still carry one — and `emoji`
+is the new optional field a card draws instead when it names one
+(`catalog.ts`, `admin-modules.ts`).
+
+Eight mutations were checked by reverting the fix and watching the test go
+red: the store card's emoji swap, the Countdown entry's `emoji` field, the
+route's `.svg`-only and immutable-cache guards (each on its own),
+`emoji-parity.test.ts`'s label block, and `emojiNode`'s own unknown-key guard
+— plus `no-emoji.test.ts`'s narrowed scope, checked both ways: a stray code
+point in `epaper/render.ts` still reddens it, and the identical stray in
+`apps/display/src/main.ts`, which the old wider scan would have caught,
+leaves it green.
+
+**3842 tests passing, and 1 skipped, over 273 files**: calendar 153 over 10 ·
+core 314 over 9 · display 616 over 35 · server 2759 over 219, measured on a
+clone whose tags had been fetched. Against the 3830 over 271 recorded just
+above, the difference is +12 tests and +2 files — `emoji-parity.test.ts` (7),
+`browser-emoji.test.ts` (2), and one assertion added to each of
+`no-emoji.test.ts`, `catalog.test.ts` and `external-modules.test.ts` — which
+the arithmetic and the reading agree on, for the second time running rather
+than the fifth. **That count was taken on S11's own branch, before it carried
+`main`'s P1.2, P1.3, P2.1–P2.3, P3 and P4.1** — this paragraph sat beside the
+identical P4.1 paragraph above it for exactly the time it took to merge the
+two branches, which is the fault this document's header warns about arriving
+on schedule: two true counts, on two trees, side by side, neither labelled as
+provisional. Re-measured with a real Chromium after `main` was merged into
+this branch: **4061 tests passing, 1 skipped and 1 expected failure, over 291
+files** — calendar 153 over 10, core 314 over 9, display 647 over 37, server
+2947 over 235. Against the 4049 over 289 recorded above, that is +12 tests and
++2 files — the identical delta S11 shipped on its own branch, none of it lost
+and none of it double-counted in the merge. The arithmetic and the reading
+agree a third time running, because this delta never touched a file P4.1
+also touched.
 
 **A browser wall may move now, and nothing it draws restarts on the tick (plan
 P4.3, session S12).** `draw()` still empties and rebuilds the whole wall every
@@ -7571,7 +8289,7 @@ over. **The stylesheet declares only what moves**, in one
 from the duration and two places stating it is how they drift. An admin preview
 stamps no `data-motion`, so a preview is always still.
 
-**The Motion switch is `screens.motion`** (migration `0052`, generated and read:
+**The Motion switch is `screens.motion`** (migration `0053`, generated and read:
 one `ALTER TABLE ADD COLUMN`), on the wall's Device and time pane beside the
 size, read one way by `wallMotion`: null is on (Q6's proposed default), except on
 an e-ink preset, where null is off — `WALL_SIZE_PRESETS` gained `eink: true` for
@@ -7610,15 +8328,17 @@ rather than the one a test happens to sample. **Still unproven where it
 counts:** nothing a household can choose moves yet — the first real styles are
 S15's and S16's — and no old tablet has run an animation locked this way.
 
-**3867 tests passing, and 1 skipped, over 274 files**: calendar 153 over 10 ·
-core 314 over 9 · display 635 over 36 · server 2765 over 219, measured on a
-clone whose tags had been fetched and with `MW_BROWSER_EXECUTABLE` naming the
-provisioned Chromium (this container's `playwright-core` looks for a revision
-the directory does not hold, as the S01 paragraph above records). Against the
-3830 over 271 recorded above, this session's own files account for +3 files
-(`motion-phase`, `wall-motion`, `browser-motion`) and 15 + 10 + 5 tests, plus
-the rewritten `motion.test.ts` and three new tests in `motion-scope`; the rest
-of the difference is work merged in between, measured rather than explained.
+**4098 tests passing, 1 skipped and 1 expected failure, over 294 files**,
+measured on the tree merged with `main`: calendar 153 over 10 · core 314 over 9
+· display 666 over 38 · server 2965 over 237, on a clone whose tags had been
+fetched and with `MW_BROWSER_EXECUTABLE` naming the provisioned Chromium (this
+container's `playwright-core` looks for a revision the directory does not
+hold, as the S01 paragraph above records). Against the 4061 over 291 recorded
+above, that is +37 tests and +3 files: this branch's three new files
+(`motion-phase` 15, `wall-motion` 10, `browser-motion` 5), four more in the
+rewritten `motion.test.ts` and three in `motion-scope`. Main had taken
+migration `0052` for air quality while this was being built, so this one was
+regenerated as `0053` rather than renumbered by hand — it had never shipped.
 
 ---
 

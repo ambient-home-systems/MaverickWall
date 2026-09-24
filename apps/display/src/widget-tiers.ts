@@ -435,3 +435,39 @@ export function rungsByPriority<F extends string>(
 export function laddersToOneLine(tier: WidgetTier, full: number): boolean {
   return tier.rungs === 1 && full > 1;
 }
+
+/**
+ * The height one badge of a stack of `count` has: the box's inner height, less
+ * the gaps between the badges, shared equally.
+ *
+ * **A rota tier is a question about one badge, never about the box.** The wall
+ * used to hand `widgetTierFor` the whole box whoever was on the rota, so two
+ * people in a box one badge tall were each promised a card that box could only
+ * hold once — and the belt, which keeps the first item and hides whatever ends
+ * past the foot, took the second person off the glass. That is the Classic
+ * wall with two shift workers on it, on every day both are working. With one
+ * person there are no gaps and this is the inner height exactly, so a
+ * one-person wall is asked the question it was always asked.
+ */
+export function stackedItemHeight(innerH: number, count: number, gap: number): number {
+  if (!(count > 1)) return innerH;
+  const between = gap > 0 ? gap : 0;
+  return Math.max(0, (innerH - between * (count - 1)) / count);
+}
+
+/**
+ * Whether a rota drawn at this tier says each person on one line.
+ *
+ * One person is `laddersToOneLine`, unchanged. **Several people are a line each
+ * whenever a card does not fit per person** — the tier chosen for one badge is
+ * the floor — which is the panel's rule: `epaper/widgets.ts` has always drawn
+ * more than one person as a compact line each. A one-rung ladder is a line here
+ * too, where for one person it is a card, because the line form for several is
+ * a *list* drawn at the list's own size (`display.css`) and a one-rung card is
+ * the headline at full size, which a box with room for one of them per person
+ * does not have for two.
+ */
+export function shiftBadgesToLines(tier: WidgetTier, full: number, people: number): boolean {
+  if (people > 1) return tier.rungs <= 1;
+  return laddersToOneLine(tier, full);
+}

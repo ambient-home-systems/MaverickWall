@@ -124,7 +124,7 @@ describe('a starting-layout card against the wall it is a picture of', () => {
       try {
         const page: Page = await context.newPage();
         await wall.signIn(page);
-        await page.goto(`${wall.base}/admin/walls/new`, { waitUntil: 'load' });
+        await page.goto(`${wall.base}/admin/walls/new/browser`, { waitUntil: 'load' });
         await page.waitForSelector('.tpl-thumb[data-tpl="classic"]');
         await page.waitForFunction(
           () =>

@@ -616,14 +616,15 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
       modules: navModules(deps.db),
       title: 'Add an e-paper wall — Maverick Wall',
       nav: 'walls',
+      // The chooser's own words, as the browser wall's page is (P2.2).
       heading: 'Add an e-paper wall',
+      back: { label: 'Add a wall', href: 'admin/walls/new' },
       saved: readSaved(c),
       intro:
         'Low-power e-paper panels. Maverick Wall renders the picture; a device pulls it, ' +
         'or Home Assistant pushes it to a BLE tag. Add one to get its image URL and the recipes.',
       body:
         (error === undefined ? '' : errorBlock(error)) +
-        `<p><a class="link" href="admin/walls">← Back to walls</a></p>` +
         `<form method="post" action="admin/epaper" id="add">` +
         textField({
           label: 'Name',
@@ -718,8 +719,10 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
         `black &amp; white.</p>` +
         // Sticky at the foot while the form is on screen, for the reason the
         // wall's add page gives at length: the layout picker is pictures now,
-        // and the one required field is the name at the top.
-        `<div class="addbar"><button class="btn" type="submit">Create</button></div>` +
+        // and the one required field is the name at the top. "Add wall", the
+        // browser wall's own last word, where it said "Create" (P2.2): one
+        // act, one verb, whichever kind of wall it is.
+        `<div class="addbar"><button class="btn" type="submit">Add wall</button></div>` +
         `</form>` +
         `<div id="template-gallery" data-json="${escapeHtml(
           JSON.stringify({
@@ -745,7 +748,15 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
     });
   };
 
-  app.get('/admin/epaper', (c: Context) => c.html(epaperPage(c)));
+  /*
+   * The e-paper wall's add page, one step behind the Walls chooser (P2.2).
+   * `/admin/epaper` was its address before there was a chooser, and stays as
+   * a redirect for a bookmark or a page left open across the upgrade; the
+   * POST to it is unchanged, which is why a refusal still comes back on
+   * `/admin/epaper` with this same page drawn.
+   */
+  app.get('/admin/walls/new/epaper', (c: Context) => c.html(epaperPage(c)));
+  app.get('/admin/epaper', (c: Context) => c.redirect('/admin/walls/new/epaper', 302));
 
   /**
    * A screen's recipes, read-only (RFC 009, 1.8).

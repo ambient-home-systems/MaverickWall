@@ -1,5 +1,6 @@
 import { z } from '../validation.js';
 import { GLYPH_KEYS } from '../glyphs.js';
+import { EMOJI_KEYS } from '../emoji.js';
 import { recipeSchema } from '../modules/external/recipe.js';
 import { STORE_ENTRIES } from '../catalog/index.js';
 
@@ -39,15 +40,26 @@ const common = {
   description: z.string().min(1).max(280),
   /**
    * A key from the first-party glyph vocabulary — never a fetched image (rule
-   * three), and no longer an emoji either.
+   * three). `z.enum` rather than a string, so a catalogue entry naming a
+   * glyph nobody drew fails the build (`catalog.test.ts`) rather than a
+   * household's wall.
    *
-   * An emoji here was a third-party asset resolved on whatever device is
-   * looking, which the store card shares with the wall; and a store entry's
-   * mark can reach a panel, where an emoji is stripped to nothing. `z.enum`
-   * rather than a string, so a catalogue entry naming a glyph nobody drew fails
-   * the build (`catalog.test.ts`) rather than a household's wall.
+   * Every entry still names one, even where `emoji` below is what the card
+   * actually draws: the closed set is what a module's own panel reading may
+   * still carry (`epaper/widgets.ts`), so a glyph key is never wasted the way
+   * an unused field would be.
    */
   glyph: z.enum(GLYPH_KEYS),
+  /**
+   * A key from the bundled emoji artwork (D6, plan item P4.2), drawn on the
+   * card **instead of** `glyph` when present. The store card is admin
+   * markup, browser-rendered exactly as the wall is — never served to an
+   * e-paper panel — so D6's argument for the wall applies here unchanged:
+   * bundled artwork drawn as an `<img>`, same-origin, the same picture on
+   * every screen, rather than a code point resolved by whatever font the
+   * admin happens to be open in. `z.enum` for the same reason `glyph` is one.
+   */
+  emoji: z.enum(EMOJI_KEYS).optional(),
   /**
    * An optional preview of what the module draws — a "screenshot" spelled out in
    * glyphs and text, never a fetched image (rule three). A few short lines: the

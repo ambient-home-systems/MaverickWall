@@ -1709,13 +1709,20 @@ export interface WeatherSettings {
   readonly provider: 'nws' | 'openmeteo';
   /** `imperial` (°F) or `metric` (°C). */
   readonly units: 'imperial' | 'metric';
+  /**
+   * Whether to read air quality from Open-Meteo's second host (plan item P3.8).
+   * Optional on a write, where absent means "leave it as it is": the wizard
+   * saves the forecast settings and has no opinion about this switch.
+   */
+  readonly airQuality?: boolean;
 }
 
-export function readWeatherSettings(db: SqliteDatabase): WeatherSettings {
+export function readWeatherSettings(db: SqliteDatabase): WeatherSettings & { readonly airQuality: boolean } {
   const row = db
     .prepare(
       `SELECT weather_enabled AS enabled, latitude, longitude,
-              weather_provider AS provider, weather_units AS units
+              weather_provider AS provider, weather_units AS units,
+              air_quality_enabled AS airQuality
          FROM household_settings WHERE id = 'singleton'`,
     )
     .get() as
@@ -1725,6 +1732,7 @@ export function readWeatherSettings(db: SqliteDatabase): WeatherSettings {
         longitude: number | null;
         provider: string | null;
         units: string | null;
+        airQuality: number | null;
       }
     | undefined;
   return {
@@ -1733,6 +1741,7 @@ export function readWeatherSettings(db: SqliteDatabase): WeatherSettings {
     longitude: row?.longitude ?? null,
     provider: row?.provider === 'openmeteo' ? 'openmeteo' : 'nws',
     units: row?.units === 'metric' ? 'metric' : 'imperial',
+    airQuality: row?.airQuality === 1,
   };
 }
 
@@ -1784,11 +1793,21 @@ export function writeWeatherSettings(db: SqliteDatabase, settings: WeatherSettin
   const wasUsable = previous.enabled && previous.latitude !== null && previous.longitude !== null;
   const isUsable = settings.enabled && settings.latitude !== null && settings.longitude !== null;
 
+  /*
+   * Air quality is its own consent (Q5), so it has its own two transitions.
+   * Off forgets what it found — a reading from a request the household has
+   * withdrawn consent for is not theirs to keep, the update check's rule — and
+   * on asks at once, like any setting the household has just asked to see.
+   */
+  const air = settings.airQuality ?? previous.airQuality;
+  const airOff = previous.airQuality && !air;
+  const airOn = !previous.airQuality && air;
+
   const write = db.transaction(() => {
     db.prepare(
       `UPDATE household_settings
           SET weather_enabled = ?, latitude = ?, longitude = ?,
-              weather_provider = ?, weather_units = ?, updated_at = ?
+              weather_provider = ?, weather_units = ?, air_quality_enabled = ?, updated_at = ?
         WHERE id = 'singleton'`,
     ).run(
       settings.enabled ? 1 : 0,
@@ -1796,10 +1815,12 @@ export function writeWeatherSettings(db: SqliteDatabase, settings: WeatherSettin
       settings.longitude,
       settings.provider,
       settings.units,
+      air ? 1 : 0,
       Date.now(),
     );
 
     if (invalidated) db.prepare('DELETE FROM weather_cache').run();
+    else if (airOff) db.prepare(`DELETE FROM weather_cache WHERE cache_key = 'openmeteo:air'`).run();
     if (moved) {
       db.prepare(
         `UPDATE alert_zones SET enabled = 0, updated_at = ? WHERE provider = 'nws'`,
@@ -1873,9 +1894,10 @@ export function writeWeatherSettings(db: SqliteDatabase, settings: WeatherSettin
      *
      * `invalidated` is the cache being wrong (a move, a provider swap, a units
      * change) and the usable transition is the household asking to see it at
-     * all. Anything else already has the answer it needs.
+     * all, and so is air quality being switched on. Anything else already has
+     * the answer it needs.
      */
-    if (invalidated || (isUsable && !wasUsable)) {
+    if (invalidated || (isUsable && !wasUsable) || (airOn && isUsable)) {
       db.prepare(`UPDATE job_state SET next_run_at = 0 WHERE kind = 'weather-sync'`).run();
     }
   });

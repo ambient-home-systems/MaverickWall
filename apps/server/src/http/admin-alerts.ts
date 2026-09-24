@@ -8,11 +8,13 @@ import { LIFE_SAFETY_DISCLAIMER } from '../api/disclaimer.js';
 import { hasSomethingToWatch, hasWeatherLocation, readMatch, readRuleRows, setRuleEnabled } from '../api/rules.js';
 import { readWeatherSettings, writeWeatherSettings, readHousehold } from '../api/queries.js';
 import { call, resolveConnection } from '../modules/homeassistant/client.js';
+import { findPlace, GEOCODING_HOST, type PlaceMatch } from '../modules/weather/geocoding.js';
 import { checkbox, coordinate, optionalText, parse, z } from '../validation.js';
 import { readSaved, savedRedirect } from './saved.js';
 import { ago, navModules, type AdminDeps } from './admin.js';
 import { selfHref } from './self.js';
 import { isUnitedStatesZone } from '../timezone.js';
+import { AIR_QUALITY_HOST } from '../modules/weather/open-meteo.js';
 
 /**
  * The screen's one form (RFC 009 Phase 3.1).
@@ -34,6 +36,7 @@ import { isUnitedStatesZone } from '../timezone.js';
 const weatherBody = z.object({
   weather_enabled: checkbox(),
   alerts_enabled: checkbox(),
+  air_quality_enabled: checkbox(),
   latitude: optionalText(20),
   longitude: optionalText(20),
   // A select always sends its value, so these are plain optional text with a
@@ -41,6 +44,9 @@ const weatherBody = z.object({
   // an older form. Only the two known values are honoured.
   weather_provider: optionalText(20),
   weather_units: optionalText(20),
+  // The town/postcode field (P2.3). Never stored — it only ever feeds a
+  // lookup — so it has no counterpart in `writeWeatherSettings` at all.
+  place: optionalText(120),
 });
 
 /**
@@ -55,8 +61,42 @@ const weatherBody = z.object({
 const haLocationBody = z.object({
   weather_enabled: checkbox(),
   alerts_enabled: checkbox(),
+  air_quality_enabled: checkbox(),
   weather_provider: optionalText(20),
   weather_units: optionalText(20),
+});
+
+/**
+ * What "Look up" reads — `haLocationBody` plus the text typed into the place
+ * field, for the same reason: this endpoint never touches the coordinates
+ * either, so nothing about them can fail it.
+ */
+const placeLookupBody = haLocationBody.extend({
+  place: optionalText(120),
+});
+
+/**
+ * A chosen result from the place list, as its radio's own value.
+ *
+ * "lat,lon" rather than an index: there is no server-side session holding the
+ * five results between the lookup and this submit, so the coordinate pair
+ * *is* the choice, carried by the form the way every other value here is.
+ */
+const placeChoice = (): z.ZodType<{ readonly latitude: number; readonly longitude: number }> =>
+  z
+    .unknown()
+    .refine(
+      (value) => typeof value === 'string' && /^-?\d{1,3}(\.\d+)?,-?\d{1,3}(\.\d+)?$/.test(value),
+      { error: () => 'Choose one of the places above.' },
+    )
+    .transform((value) => {
+      const [lat, lon] = (value as string).split(',');
+      return { latitude: Number(lat), longitude: Number(lon) };
+    });
+
+/** What "Use this place" reads — `haLocationBody` plus which result was picked. */
+const usePlaceBody = haLocationBody.extend({
+  place_choice: placeChoice(),
 });
 
 /**
@@ -82,10 +122,12 @@ function fromTheForm(body: Record<string, unknown>): boolean {
 interface WeatherEcho {
   readonly weatherEnabled: boolean;
   readonly alertsEnabled: boolean;
+  readonly airQuality: boolean;
   readonly latitude: string;
   readonly longitude: string;
   readonly provider: string;
   readonly units: string;
+  readonly place: string;
 }
 
 /** The echo, read off the raw body — before any schema has had an opinion. */
@@ -94,10 +136,12 @@ function echoOf(body: Record<string, unknown>): WeatherEcho {
   return {
     weatherEnabled: typeof body['weather_enabled'] === 'string',
     alertsEnabled: typeof body['alerts_enabled'] === 'string',
+    airQuality: typeof body['air_quality_enabled'] === 'string',
     latitude: str('latitude'),
     longitude: str('longitude'),
     provider: str('weather_provider'),
     units: str('weather_units'),
+    place: str('place'),
   };
 }
 
@@ -178,6 +222,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
     longitude: number | null;
     provider: 'nws' | 'openmeteo';
     units: 'imperial' | 'metric';
+    airQuality: boolean;
   }): void {
     writeWeatherSettings(deps.db, {
       enabled: value.weatherEnabled,
@@ -185,6 +230,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       longitude: value.longitude,
       provider: value.provider,
       units: value.units,
+      airQuality: value.airQuality,
     });
     /*
      * The poll is brought forward on the *transition*, not on every save.
@@ -204,6 +250,32 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
     if (value.alertsEnabled && !wasOn) {
       deps.db.prepare(`UPDATE job_state SET next_run_at = 0 WHERE kind = 'alerts-sync'`).run();
     }
+  }
+
+  /**
+   * Look a typed place up, and answer with either the choices or why not
+   * (P2.3).
+   *
+   * Shared by the Look up button's own endpoint and by Save itself — see the
+   * Enter-key trap below — so the three sentences a lookup can end in are
+   * written once: no match, the service not answering, and (by the caller,
+   * before this is reached) nothing typed at all.
+   */
+  async function renderPlaceMatches(c: Context, place: string, echo: WeatherEcho): Promise<Response> {
+    const found = await findPlace(deps.fetcher, place);
+    if (!found.ok) return c.html(alertsPage(c, found.message, echo), 400);
+    if (found.matches.length === 0) {
+      return c.html(
+        alertsPage(
+          c,
+          'No place by that name. Try a nearby town, or add the state or country, the way ' +
+            '“Springfield, Illinois” does.',
+          echo,
+        ),
+        400,
+      );
+    }
+    return c.html(alertsPage(c, undefined, echo, found.matches));
   }
 
   /**
@@ -253,6 +325,25 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
      * they can only fix by being told.
      */
     const blank = shaped.value.latitude === undefined && shaped.value.longitude === undefined;
+    /*
+     * The Enter-key trap (P2.3).
+     *
+     * `defaultSubmit()` — what Enter resolves to — posts to this very handler,
+     * because it carries no `formaction` of its own. So typing a town and
+     * pressing Enter, or typing one and pressing the visible Save, both arrive
+     * here with a place and no coordinates: a household who has not yet found
+     * their numbers is not making a request to *clear* the location, they are
+     * asking to look one up. Reading that as "blank, so save nothing" would be
+     * this screen's own data-loss bug in a new shape — a typed place discarded
+     * in silence, exactly like the coordinates implicit submission used to
+     * overwrite.
+     *
+     * Only when there are no coordinates: a household who has both typed and a
+     * pasted pair meant the pair, and Save proceeds normally below.
+     */
+    if (blank && shaped.value.place !== undefined) {
+      return await renderPlaceMatches(c, shaped.value.place, echo);
+    }
     const lat = parse(coordinate('Latitude', 90), shaped.value.latitude);
     const lon = parse(coordinate('Longitude', 180), shaped.value.longitude);
     if (!blank && (!lat.ok || !lon.ok)) {
@@ -298,6 +389,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       longitude: lon.ok ? lon.value : null,
       provider: shaped.value.weather_provider === 'openmeteo' ? 'openmeteo' : 'nws',
       units: shaped.value.weather_units === 'metric' ? 'metric' : 'imperial',
+      airQuality: shaped.value.air_quality_enabled,
     });
     return savedRedirect(c, '/admin/alerts', 'weather');
   });
@@ -385,12 +477,14 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
           alertsEnabled: posted.value.alerts_enabled,
           provider: posted.value.weather_provider === 'openmeteo' ? ('openmeteo' as const) : ('nws' as const),
           units: posted.value.weather_units === 'metric' ? ('metric' as const) : ('imperial' as const),
+          airQuality: posted.value.air_quality_enabled,
         }
       : {
           weatherEnabled: stored.enabled,
           alertsEnabled: readAlertsEnabled(),
           provider: stored.provider,
           units: stored.units,
+          airQuality: stored.airQuality,
         };
     writeAll({
       ...rest,
@@ -398,6 +492,72 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       longitude: located.value.attributes.longitude,
     });
     return savedRedirect(c, '/admin/alerts', 'weather-location');
+  });
+
+  /**
+   * "Look up" (P2.3): the household typed a town, city or postcode and wants
+   * coordinates for it, with no Home Assistant connection required.
+   *
+   * A second submit inside the one form, exactly like "Use my Home Assistant
+   * home location" above and for the same reason: `formaction` carries
+   * whatever else is on screen, so a lookup never costs an edit in progress.
+   */
+  app.post('/admin/weather/find-place', async (c: Context) => {
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    if (!fromTheForm(body)) {
+      return c.html(
+        alertsPage(c, 'That page was out of date, so nothing was changed. Reload this page and try again.'),
+        400,
+      );
+    }
+    const shaped = parse(placeLookupBody, body);
+    const echo = echoOf(body);
+    if (!shaped.ok) return c.html(alertsPage(c, shaped.message, echo), 400);
+    if (shaped.value.place === undefined) {
+      return c.html(
+        alertsPage(
+          c,
+          'Type a town first — or use the latitude and longitude below, if you already have them.',
+          echo,
+        ),
+        400,
+      );
+    }
+    return renderPlaceMatches(c, shaped.value.place, echo);
+  });
+
+  /**
+   * "Use this place" (P2.3): write the chosen result's coordinates and save
+   * the rest of the form, the way "Use my Home Assistant home location" does.
+   *
+   * `usePlaceBody` is the narrower shape for the identical reason: this
+   * endpoint replaces the coordinates, so a stray typed pair the household
+   * never used cannot fail it. Unlike the Home Assistant button, there is no
+   * stored fallback for a body that is not this form — the coordinates live
+   * only in the radio the household just chose, so a page old enough to have
+   * lost that choice has nothing to fall back to and is refused instead.
+   */
+  app.post('/admin/weather/use-place', async (c: Context) => {
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    if (!fromTheForm(body)) {
+      return c.html(
+        alertsPage(c, 'That page was out of date, so nothing was changed. Reload this page and try again.'),
+        400,
+      );
+    }
+    const posted = parse(usePlaceBody, body);
+    const echo = echoOf(body);
+    if (!posted.ok) return c.html(alertsPage(c, posted.message, echo), 400);
+    writeAll({
+      weatherEnabled: posted.value.weather_enabled,
+      alertsEnabled: posted.value.alerts_enabled,
+      provider: posted.value.weather_provider === 'openmeteo' ? 'openmeteo' : 'nws',
+      units: posted.value.weather_units === 'metric' ? 'metric' : 'imperial',
+      latitude: posted.value.place_choice.latitude,
+      longitude: posted.value.place_choice.longitude,
+      airQuality: posted.value.air_quality_enabled,
+    });
+    return savedRedirect(c, '/admin/alerts', 'weather-location-place');
   });
 
   /** Whether National Weather Service alerts are on, as one reader. */
@@ -487,7 +647,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
    * manages the one control marked `data-dirty-save`, and a button whose whole
    * job is to fill a field in must work before anything has been edited.
    */
-  function weatherForm(echo?: WeatherEcho): string {
+  function weatherForm(echo?: WeatherEcho, matches?: readonly PlaceMatch[]): string {
     const stored = readWeatherSettings(deps.db);
     const haConnected = resolveConnection(deps.db, deps.keyring).ok;
     // The echo wins wherever there is one, so a 400 hands the form back exactly
@@ -497,6 +657,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       enabled: echo?.weatherEnabled ?? stored.enabled,
       latitude: echo === undefined ? number(stored.latitude) : echo.latitude,
       longitude: echo === undefined ? number(stored.longitude) : echo.longitude,
+      place: echo?.place ?? '',
       /*
        * Normalised to the two values the handler honours, never echoed raw.
        *
@@ -520,6 +681,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
             : ('imperial' as const),
     };
     const alertsOn = echo?.alertsEnabled ?? readAlertsEnabled();
+    const airOn = echo?.airQuality ?? stored.airQuality;
 
     return (
       `<form method="post" action="admin/weather"${dirtyForm(echo !== undefined)}>` +
@@ -540,6 +702,56 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
         name: 'weather_enabled',
         checked: weather.enabled,
       }) +
+
+      /*
+       * The easy way in (P2.3): a household with no coordinates and no Home
+       * Assistant can still say where they are. "Look up" is a third submit
+       * inside this one form, exactly like the Home Assistant button below —
+       * `formaction` carries whatever else is on screen, so a lookup never
+       * costs an edit in progress.
+       */
+      `<div class="row-fields">` +
+      textField({
+        label: 'Town, city or postcode',
+        name: 'place',
+        placeholder: 'e.g. Springfield, Illinois',
+        value: weather.place,
+        attrs: 'autocomplete="off"',
+      }) +
+      `</div>` +
+      `<div class="row">` +
+      `<button class="secondary" type="submit" formaction="admin/weather/find-place">Look up</button>` +
+      // Progressive enhancement: hidden until `geolocate-button.js` finds a
+      // secure context with `navigator.geolocation` in it — most plain-http
+      // LAN installs, and the Home Assistant sidebar iframe, will never reveal
+      // this, and that is fine as long as it stays hidden rather than broken.
+      `<button type="button" class="secondary" hidden data-geolocate>Use this device’s location</button>` +
+      `</div>` +
+      `<p class="hint">Sent to ${escapeHtml(GEOCODING_HOST)} — nothing about this household ` +
+      `travels with it beyond the words typed here.</p>` +
+
+      // Up to five matches, each a radio naming lat,lon as its own value —
+      // there is no server-side session to hold them between this request and
+      // the next, so the coordinate pair the household picks *is* the value
+      // "Use this place" carries.
+      (matches !== undefined && matches.length > 0
+        ? `<div class="field">` +
+          `<span class="field-label">Which one is it?</span>` +
+          `<div class="checks" role="radiogroup" aria-label="Which place is it?">` +
+          matches
+            .map(
+              (match) =>
+                `<label><input type="radio" name="place_choice" value="` +
+                `${escapeHtml(`${match.latitude},${match.longitude}`)}">` +
+                `<span>${escapeHtml(match.label)}</span></label>`,
+            )
+            .join('') +
+          `</div></div>` +
+          `<div class="row">` +
+          `<button class="secondary" type="submit" formaction="admin/weather/use-place">` +
+          `Use this place</button></div>`
+        : '') +
+
       `<div class="row-fields">` +
       textField({
         label: 'Latitude',
@@ -549,21 +761,26 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
         // empty field rather than an example of the shape one takes.
         placeholder: 'e.g. 38.8894',
         value: weather.latitude,
-        attrs: 'inputmode="decimal"',
+        attrs: 'inputmode="decimal" data-geolocate-lat',
       }) +
       textField({
         label: 'Longitude',
         name: 'longitude',
         placeholder: 'e.g. -97.7431',
         value: weather.longitude,
-        attrs: 'inputmode="decimal"',
+        attrs: 'inputmode="decimal" data-geolocate-lon',
       }) +
       `</div>` +
-      `<p class="hint">Press and hold your house in a phone map app to get both numbers. ` +
-      `The alert zones below are worked out from the same location.</p>` +
+      `<p class="hint">For fine-tuning: press and hold your house in a phone map app to get both ` +
+      `numbers exactly. A found place’s centre can sit just over the county line from a ` +
+      `household’s actual house, and the alert zones below are worked out from this exact point — ` +
+      `nudge the numbers here if a warning ever names the wrong county.</p>` +
 
-      // The easy way, for the common install: read the location Home Assistant
-      // already knows. Only offered when there is a connection to read it from.
+      // The other easy way in, for the common install: read the location Home
+      // Assistant already knows. Offered only when there is a connection to
+      // read it from; named where there is not, since that is the moment a
+      // household is standing in front of this problem with an answer one
+      // click away on a page they have not opened yet.
       (haConnected
         ? `<div class="row"><button class="secondary" type="submit" ` +
           `formaction="admin/weather/use-ha-location">Use my Home Assistant home location` +
@@ -571,7 +788,8 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
           `<p class="hint">Fills the latitude and longitude from Home Assistant’s ` +
           `home zone, so there are no numbers to look up. It saves the rest of this ` +
           `form at the same time.</p>`
-        : '') +
+        : `<p class="hint">Connect <a class="link" href="admin/home-assistant">Home Assistant</a> ` +
+          `for a one-click way to fill this in from its home zone.</p>`) +
 
       `<div class="row-fields">` +
       selectField({
@@ -593,6 +811,20 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       `</div>` +
       `<p class="hint">The National Weather Service always reports in Fahrenheit; ` +
       `the units choice applies to Open-Meteo.</p>` +
+      /*
+       * What each provider actually gives a wall (plan item P3.8), because the
+       * two are no longer the same strip with a different map behind it: one
+       * measures the conditions and one models them, and only one has the UV
+       * index and the day's rainfall. A household choosing between them is
+       * choosing between those, not between two names.
+       */
+      `<p class="hint"><b>National Weather Service</b> — the United States only. ` +
+      `The conditions now are measured at the nearest weather station, and come ` +
+      `from its hourly forecast when the station has no reading. Each day has ` +
+      `its chance of rain, its wind and the forecaster’s own words.</p>` +
+      `<p class="hint"><b>Open-Meteo</b> — worldwide, with no account or key. ` +
+      `The conditions now are modelled rather than measured. Each day also has ` +
+      `its UV index and how much rain is expected.</p>` +
 
       (weather.provider === 'openmeteo'
         ? `<p class="hint">Open-Meteo covers the whole world and needs no account ` +
@@ -603,6 +835,23 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
             'It covers the United States only. Outside the US, switch “Forecast from” ' +
               'to Open-Meteo above.',
           )) +
+
+      /*
+       * Its own switch, off until the household turns it on (Q5), and it says
+       * which host it asks before anybody has asked it anything — the update
+       * check's rule: a person exploring the settings must not reach a third
+       * party before they have read what the switch does.
+       */
+      switchRow({
+        label: 'Show air quality',
+        name: 'air_quality_enabled',
+        checked: airOn,
+        hint:
+          `Asks ${AIR_QUALITY_HOST}, a second Open-Meteo service, once an hour — ` +
+          'whichever forecast you chose above. The request carries this location ' +
+          'and nothing else, and needs no account or key. Turning it off forgets ' +
+          'the last reading.',
+      }) +
 
       // Still inside the one form — a <section> nests fine inside a <form>
       // and does not split it, so the Alerts run keeps its own heading and
@@ -643,7 +892,12 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
     );
   }
 
-  function alertsPage(c: Context, error?: string, echo?: WeatherEcho): string {
+  function alertsPage(
+    c: Context,
+    error?: string,
+    echo?: WeatherEcho,
+    matches?: readonly PlaceMatch[],
+  ): string {
     const zones = deps.db
       .prepare(
         /*
@@ -689,7 +943,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
         // Status first, then the one form, then the things that are not
         // settings: the zones, what is in force, and the ladder.
         forecastPreview() +
-        weatherForm(echo) +
+        weatherForm(echo, matches) +
 
         section(
           'Zones being watched',

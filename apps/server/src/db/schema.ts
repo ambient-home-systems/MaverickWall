@@ -92,6 +92,14 @@ export const householdSettings = sqliteTable('household_settings', {
    * match what NWS installs already show.
    */
   weatherUnits: text('weather_units').notNull().default('imperial'),
+  /**
+   * Whether to ask Open-Meteo's air-quality service for a reading (plan item
+   * P3.8). Off by default, and that is the decision rather than a timid
+   * default (Q5): it contacts a second host, `air-quality-api.open-meteo.com`,
+   * whichever provider draws the forecast, so turning it on is the consent —
+   * the update check's rule, one switch along.
+   */
+  airQualityEnabled: integer('air_quality_enabled', { mode: 'boolean' }).notNull().default(false),
   alertsEnabled: integer('alerts_enabled', { mode: 'boolean' }).notNull().default(true),
 
   /**

@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "e1cf7f38-48d4-4b0f-9cd1-3d5202e734de",
+  "id": "98444d57-5a36-4353-9511-44f4c7aa5ce4",
   "prevId": "586e72ee-9e92-4501-9609-e85f2d2f7d10",
   "tables": {
     "account": {
@@ -1668,6 +1668,14 @@
           "autoincrement": false,
           "default": "'imperial'"
         },
+        "air_quality_enabled": {
+          "name": "air_quality_enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
         "alerts_enabled": {
           "name": "alerts_enabled",
           "type": "integer",
@@ -2639,13 +2647,6 @@
         "custom_css_scoped": {
           "name": "custom_css_scoped",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "motion": {
-          "name": "motion",
-          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false

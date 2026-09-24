@@ -346,7 +346,14 @@ describe('rotating a stored password', () => {
 });
 
 describe('the route through Home Assistant', () => {
-  it('is on the Calendars page with no Home Assistant connected', async () => {
+  /*
+   * P2.1 moved this section, with every other way of adding a calendar, from
+   * the foot of the Calendars list to the add page's chooser. The letter moved
+   * — the page it is read from — and the intent did not: it is where somebody
+   * stands when their provider offers no address, and it renders with no
+   * connection at all.
+   */
+  it('is on the add-a-calendar chooser with no Home Assistant connected', async () => {
     /*
      * The whole point of this copy, and the thing today's screen would have got
      * wrong by default: the calendar picker beside it only appears once a
@@ -358,7 +365,7 @@ describe('the route through Home Assistant', () => {
      * the problem it describes.
      */
     const h = await harness();
-    const html = await (await h.call('/admin/calendars')).text();
+    const html = await (await h.call('/admin/calendars/new')).text();
 
     // Nothing here has connected Home Assistant, which is the state under test.
     expect(html).not.toContain('From Home Assistant');
@@ -375,30 +382,34 @@ describe('the route through Home Assistant', () => {
     expect(html).toContain('Home Assistant failing is all of them');
   });
 
-  it('sits below the add form, so an empty page has something to press', async () => {
+  it('sits below the two ways to add one, so the chooser opens on something to press', async () => {
     /*
      * Placement, asserted because it was wrong first and a browser found it.
      *
-     * Above the form, on a household with no calendars yet, this section's own
-     * link was the first thing on the page anybody could press — 873px down an
-     * 844px phone. `browser-wall.test.ts` measures that directly; this pins the
-     * *order* from a document a test can read without a browser, so the two
-     * cannot drift apart silently.
+     * Above the add form, on a household with no calendars yet, this section's
+     * own link was the first thing on the page anybody could press — 873px down
+     * an 844px phone. P2.1 moved both to the add page's chooser, so the letter
+     * moved with them: the order is now the chooser's two choices, then this.
+     * The intent is unchanged — the commoner act comes first and the "my
+     * provider has no address" answer after it.
      */
     const h = await harness();
-    const html = await (await h.call('/admin/calendars')).text();
-    const form = html.indexOf('action="admin/calendars"');
+    const html = await (await h.call('/admin/calendars/new')).text();
+    const address = html.indexOf('href="admin/calendars/new/address"');
+    const caldav = html.indexOf('href="admin/calendars/new/caldav"');
     const route = html.indexOf('Google, iCloud and Microsoft 365');
-    expect(form).toBeGreaterThan(-1);
-    expect(route).toBeGreaterThan(form);
+    expect(address).toBeGreaterThan(-1);
+    expect(caldav).toBeGreaterThan(address);
+    expect(route).toBeGreaterThan(caldav);
   });
 
   it('links relatively, so an ingress household stays inside the add-on', async () => {
     // An absolute `/admin/home-assistant` under the supervisor's ingress prefix
     // lands in Home Assistant's own UI. The single `<base>` is what carries a
-    // relative one, which is why every link in this admin is relative.
+    // relative one, which is why every link in this admin is relative. Read on
+    // the chooser, where the section lives now (P2.1).
     const h = await harness();
-    const html = await (await h.call('/admin/calendars')).text();
+    const html = await (await h.call('/admin/calendars/new')).text();
     expect(html).toContain('href="admin/home-assistant"');
     expect(html).not.toContain('href="/admin/home-assistant"');
   });

@@ -14,13 +14,13 @@ export const entry: CatalogEntry = {
     'program (node server.mjs) you start yourself, so Install asks for that ' +
     'program’s address. For a countdown on your wall, use the built-in ' +
     'Countdown widget instead — this is the reference a module author copies.',
-  // The glyph vocabulary is twenty-nine drawings and has no hourglass: a store
-  // entry does not get to add a drawing to it. The gauge is the nearest thing
-  // in it that reads as a dial counting down. Decision D3 (2026-09-24) opened
-  // the icon set for occasion motifs, and on a browser wall those — and this
-  // entry's hourglass — are bundled emoji artwork rather than new glyph keys
-  // (plan item P4.2). Until that artwork ships, the gauge stays.
+  // The glyph vocabulary is twenty-nine drawings and has no hourglass, and
+  // `glyph` is required of every entry regardless — the gauge is the nearest
+  // thing in the closed set that reads as a dial counting down, and it is
+  // what the schema keeps on file even though `emoji` below is what the card
+  // actually draws now that P4.2's bundled artwork has shipped.
   glyph: 'pressure',
+  emoji: 'hourglass',
   preview: ['42', 'days to Holiday'],
   kind: 'service',
   install: {

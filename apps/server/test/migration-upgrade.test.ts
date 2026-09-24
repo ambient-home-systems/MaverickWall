@@ -270,7 +270,7 @@ describe('upgrading a database that is already in use', () => {
       // 0048 (RFC 014 §4.1): no default style lane, which is the wall drawing
       // exactly what it drew — spread out of the manifest, never `{}`.
       layoutStyle: null,
-      // 0052 (plan P4.3): never chosen, which is on — and not 0, which would
+      // 0053 (plan P4.3): never chosen, which is on — and not 0, which would
       // still every wall in the world at one image pull.
       motion: null,
     });

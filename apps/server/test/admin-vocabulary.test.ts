@@ -28,16 +28,19 @@
  * wall, a real e-paper panel and a real pending pairing code, then crawled —
  * a page nobody can reach from `/admin` is a page whose copy nobody proofread,
  * and a hand-written list of paths is a list that goes stale the day a screen
- * is added. Two blind spots are stated rather than papered over: the Home
- * Assistant page renders more once a connection exists (there is no fake HA
- * here), and the layout editor's inspector is drawn client-side, so its own
- * strings are read out of the bundle rather than off a page.
+ * is added. One blind spot is stated rather than papered over: the layout
+ * editor's inspector is drawn client-side, so its own strings are read out of
+ * the bundle rather than off a page. There used to be a second — the Home
+ * Assistant screens render more once a connection exists, and there was no
+ * fake house here — which P2.2 closed by connecting one, having first read
+ * every Home Assistant page in its unconnected branch.
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { install, type Installation } from './browser-harness.js';
+import { closeFakeHomeAssistants, fakeHomeAssistant, TOKEN } from './fake-home-assistant.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -126,6 +129,7 @@ let crawling: Promise<readonly Rendered[]> | undefined;
 
 afterAll(async () => {
   await installation?.dispose();
+  await closeFakeHomeAssistants();
 });
 
 /**
@@ -287,6 +291,65 @@ async function crawl(): Promise<readonly Rendered[]> {
   const userCode = ((await started.json()) as { userCode?: string }).userCode ?? '';
   expect(userCode, 'a pending pairing code is what makes the approve page reachable').not.toBe('');
 
+  /*
+   * P2.1's add pages each have a branch a household meets only before anybody
+   * is in the house — step one of a rotation says "add someone first" instead
+   * of drawing its form — and People and Chores draw an empty state then and
+   * cards after. Those are read here, before one person is added, and then the
+   * crawl below reads the other branch: a crawl of an empty household would
+   * never have seen the rotation form at all, and one of a full household
+   * never the sentence that stands in for it.
+   */
+  const beforeAnybody: Rendered[] = [];
+  for (const path of ['/admin/shifts/new', '/admin/people', '/admin/chores', '/admin/shifts']) {
+    const html = await (await home.call(path)).text();
+    beforeAnybody.push({
+      path: `${path}#before-anybody`,
+      text: textOf(html),
+      attrs: [...html.matchAll(ATTRS)].map((m) => decode(m[1] as string)),
+    });
+  }
+  const person = await home.post('/admin/people', { name: 'Sam', color: '#4C7FD1' });
+  expect(person.status, 'a person makes the rotation form drawable').toBe(302);
+
+  /*
+   * A real fake house, so the Home Assistant add pages P2.1 made draw their
+   * forms (P2.2's brief: the crawl must reach every new add page, conditional
+   * sections included). Before it, this file's header named the Home
+   * Assistant screens as a blind spot — "there is no fake HA here" — and every
+   * one of the four add pages would have been read only in its "not connected
+   * yet" branch, the one branch with no form on it. The unconnected branch of
+   * each of the nine pages is read first, as the empty household's pages are
+   * above, so connecting does not trade one blind spot for the other.
+   */
+  for (const path of [
+    '/admin/home-assistant',
+    '/admin/home-assistant/connection',
+    '/admin/home-assistant/readings',
+    '/admin/home-assistant/readings/new',
+    '/admin/home-assistant/calendars',
+    '/admin/home-assistant/calendars/new',
+    '/admin/home-assistant/lists',
+    '/admin/home-assistant/lists/new',
+    '/admin/home-assistant/alerts',
+    '/admin/home-assistant/alerts/new',
+  ]) {
+    const html = await (await home.call(path)).text();
+    beforeAnybody.push({
+      path: `${path}#before-connecting`,
+      text: textOf(html),
+      attrs: [...html.matchAll(ATTRS)].map((m) => decode(m[1] as string)),
+    });
+  }
+  const house = await fakeHomeAssistant();
+  const connected = await home.post('/admin/home-assistant/connect', {
+    base_url: house.base,
+    token: TOKEN,
+    allow_lan: '1',
+    accept_http: '1',
+  });
+  expect(connected.status, 'the fake house must connect for the add forms to be drawn').toBe(302);
+
   const seen = new Set<string>();
   const queue = [
     '/admin',
@@ -295,7 +358,7 @@ async function crawl(): Promise<readonly Rendered[]> {
     ...shownOnce,
     removedPath,
   ];
-  const out: Rendered[] = [];
+  const out: Rendered[] = [...beforeAnybody];
 
   while (queue.length > 0) {
     const path = queue.shift() as string;
@@ -380,8 +443,11 @@ describe('the admin, read out loud', () => {
         '/admin',
         '/admin/walls',
         '/admin/walls/new',
+        // The two add pages behind the Walls chooser (P2.2). `/admin/epaper`
+        // is a redirect to the second now, so it is not a page this reads.
+        '/admin/walls/new/browser',
+        '/admin/walls/new/epaper',
         '/admin/calendars',
-        '/admin/epaper',
         '/admin/screens/approve',
         '/admin/system',
         /*
@@ -400,9 +466,30 @@ describe('the admin, read out loud', () => {
         '/admin/home-assistant/calendars',
         '/admin/home-assistant/lists',
         '/admin/home-assistant/alerts',
+        // And the four add pages behind them (P2.1), with a house connected so
+        // each one draws its form rather than "not connected yet".
+        '/admin/home-assistant/readings/new',
+        '/admin/home-assistant/calendars/new',
+        '/admin/home-assistant/lists/new',
+        '/admin/home-assistant/alerts/new',
         // The gallery, and the builder behind it. Both carry theme names.
         '/admin/themes',
         '/admin/themes/new',
+        /*
+         * Every add page P2.1 made, each reached the only way a household
+         * reaches it: from its list's app-bar "Add …", and for calendars from
+         * the chooser behind that. None is linked from the navigation, so a
+         * list that lost its action would take its add page out of this sweep
+         * silently — which is why they are named.
+         */
+        '/admin/calendars/new',
+        '/admin/calendars/new/address',
+        '/admin/calendars/new/caldav',
+        '/admin/people/new',
+        '/admin/shifts/new',
+        '/admin/shifts/types',
+        '/admin/shifts/types/new',
+        '/admin/chores/new',
       ]) {
         expect(seen, `the crawl never reached ${required}`).toContain(required);
       }
@@ -443,6 +530,25 @@ describe('the admin, read out loud', () => {
         seen.filter((p) => /^\/admin\/themes\/[0-9a-f]{8,}\/delete$/.test(p)).length,
         'the remove-a-theme confirmation',
       ).toBeGreaterThan(0);
+      /*
+       * And the add pages were read in their connected branch, with a form on
+       * each — the conditional section connecting a house exists to reach. A
+       * crawl whose house quietly failed to connect would still "reach" all
+       * four, on the page that says "not connected yet".
+       */
+      const rendered = await pages();
+      for (const [path, form] of [
+        // Not "Add reading", which the page's own heading ("Add readings")
+        // contains whether a form is drawn or not.
+        ['/admin/home-assistant/readings/new', 'Show it as'],
+        ['/admin/home-assistant/calendars/new', 'Add calendar'],
+        ['/admin/home-assistant/lists/new', 'Show this list'],
+        ['/admin/home-assistant/alerts/new', 'Add rule'],
+      ] as const) {
+        const read = rendered.find((p) => p.path === path);
+        expect(read?.text, `${path} was read with its form drawn`).toContain(form);
+        expect(read?.text).not.toContain('Home Assistant is not connected yet.');
+      }
       expect(seen.length, `too few pages to be a sweep: ${seen.length}`).toBeGreaterThan(25);
     },
     SLOW,
@@ -547,6 +653,30 @@ describe('the admin, read out loud', () => {
       expect(stale, `allow-list entries that match nothing any more: ${stale.join(', ')}`).toEqual(
         [],
       );
+    },
+    SLOW,
+  );
+
+  it(
+    'adds a wall, of either kind, and pairs only a browser',
+    async () => {
+      /*
+       * P2.2. The two doors on the Walls list were "Pair a browser wall" and
+       * "Add an e-paper panel" — the verb and the noun both differed for one
+       * act — over pages headed "Pair a new wall" and "Add an e-paper wall",
+       * and the Overview asked a household to "pair" an e-paper panel, which
+       * nothing ever pairs. The act is "Add a wall" everywhere now, and "Pair"
+       * is kept for the step that pairs a browser: the QR and the link, and
+       * the pairing code a wall shows. These are the retired phrasings, with
+       * a zero allow-list, the way "eInk" is.
+       */
+      const RETIRED = /\b(Pair a (?:new |browser )?wall|Pair a tablet|Add an e-paper panel|No walls paired yet)\b/g;
+      const { offenders, stale } = sweep(await pages(), RETIRED, []);
+      expect(
+        offenders,
+        `a retired way of saying "add a wall" is back:\n  ${offenders.join('\n  ')}`,
+      ).toEqual([]);
+      expect(stale).toEqual([]);
     },
     SLOW,
   );
