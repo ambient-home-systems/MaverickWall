@@ -22,7 +22,7 @@ import {
 import { readHousehold, readPeople } from '../api/queries.js';
 import { checkbox, optionalText, parse, text, z } from '../validation.js';
 import { escapeHtml, errorBlock, icon, page, selectField, textField } from './html.js';
-import { card, destructive, emptyState, section, tag } from './components.js';
+import { card, destructive, emptyState, tag } from './components.js';
 import { readSaved, savedRedirect } from './saved.js';
 import { navModules, type AdminDeps, reorderMenuItems } from './admin.js';
 import { selfHref } from './self.js';
@@ -197,10 +197,12 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
   const today = (): CivilDate => localToday(readHousehold(deps.db).timezone, now());
 
   app.get('/admin/chores', (c: Context) => c.html(choresPage(c)));
+  app.get('/admin/chores/new', (c: Context) => c.html(newChorePage(c)));
 
   app.post('/admin/chores', async (c: Context) => {
-    const shaped = parse(choreBody, (await c.req.parseBody()) as Record<string, unknown>);
-    if (!shaped.ok) return c.html(choresPage(c, shaped.message), 400);
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const shaped = parse(choreBody, body);
+    if (!shaped.ok) return c.html(newChorePage(c, shaped.message, body), 400);
     createChore(deps.db, {
       name: shaped.value.name,
       personId: personOrNull(shaped.value.person_id),
@@ -544,8 +546,7 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
       nav: 'chores',
       heading: 'Chores',
       saved: readSaved(c),
-      // No app-bar action: see the Calendars page for the rule. The add form
-      // is on this page, with the one filled Add.
+      action: { label: 'Add a chore', href: 'admin/chores/new' },
       intro:
         'What gets done around the house, and when. Chores are set up here and ' +
         'shown on the wall — this is the page you come back to twice a year, ' +
@@ -558,60 +559,77 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
             `them assigned — a chore inherits that person’s colour on the wall.</p>`
           : '') +
         (chores.length === 0
-          ? // No action offered: the "Add a chore" form is already on this
-            // page, directly below, with the page's one filled Add. A link here
-            // would only move the viewport — the same reasoning Calendars'
-            // empty state already carries.
-            emptyState(
-              'No chores yet. Add one below and it will appear here with the ' +
-                'next few days it falls due, so you can check it means what you meant.',
+          ? emptyState(
+              'No chores yet. Once you add one it appears here with the next few ' +
+                'days it falls due, so you can check it means what you meant.',
+              { label: 'Add a chore', href: 'admin/chores/new' },
             )
           : chores
               .map((chore, index) =>
                 choreCard(chore, from, index === 0, index === chores.length - 1),
               )
-              .join('')) +
+              .join('')),
+    });
+  }
 
-        section(
-          'Add a chore',
-          undefined,
-          `<form method="post" action="admin/chores">` +
-            `<div class="row-fields">` +
-            textField({ label: 'Name', name: 'name', required: true, placeholder: 'Put the bins out', attrs: 'maxlength="60"' }) +
-            selectField({ label: 'Who does it', name: 'person_id', optionsHtml: personOptions(null) }) +
-            `</div>` +
-            `<div class="row-fields">` +
-            selectField({
-              label: 'Repeats',
-              name: 'kind',
-              optionsHtml: kindOptions('weekdays'),
-              attrs: 'data-cond',
-            }) +
-            textField({ label: 'By (optional)', name: 'due_time', type: 'time' }) +
-            `</div>` +
-            dayChecks([], 'new') +
-            `<div class="row-fields" data-cond-show="everyNDays">` +
-            textField({ label: 'Every N days', name: 'every_n', type: 'number', attrs: 'min="1" max="365"' }) +
-            // Today, on the *add* form only: a chore being created has no anchor
-            // yet, so this is a suggestion rather than a claim about what was saved.
-            textField({ label: 'Starting', name: 'every_from', type: 'date', value: from }) +
-            `</div>` +
-            `<div class="row-fields" data-cond-show="monthlyDate">` +
-            textField({ label: 'Day of the month', name: 'month_day', type: 'number', attrs: 'min="1" max="28"' }) +
-            `</div>` +
-            `<div class="row-fields" data-cond-show="once">` +
-            textField({ label: 'On (just once)', name: 'once_date', type: 'date', value: from }) +
-            `</div>` +
-            `<p class="hint">Pick how it repeats, then fill in only the boxes that ` +
-            `belong to it. ` +
-            `“By” is a time of day the wall shows beside the chore; ` +
-            `leave it blank for any time that day.</p>` +
-            `<button type="submit">Add</button></form>`,
-          // A fragment somebody can link to (`admin/chores#add`). Nothing on
-          // this page does: there is no app-bar action, and the empty state
-          // above offers none.
-          'add',
-        ),
+  /**
+   * Adding a chore, on a page of its own (P2.1). The form that used to sit at
+   * the foot of Chores, which is why that page carried no app-bar action; a
+   * 400 comes back here with every field as it was typed, the ticked days
+   * included, so a missing "Every N days" does not also cost the name.
+   */
+  function newChorePage(c: Context, error?: string, values?: Record<string, unknown>): string {
+    const from = today();
+    const typed = (key: string): string | undefined =>
+      typeof values?.[key] === 'string' ? (values[key] as string) : undefined;
+    const ticked = DAY_NAMES.map((_, day) => day).filter(
+      (day) => typeof values?.[`day_${day}`] === 'string',
+    );
+    return page({
+      self: selfHref(c),
+      modules: navModules(deps.db),
+      title: 'Add a chore — Maverick Wall',
+      nav: 'chores',
+      heading: 'Add a chore',
+      back: { label: 'Chores', href: 'admin/chores' },
+      body:
+        (error === undefined ? '' : errorBlock(error)) +
+        `<form method="post" action="admin/chores">` +
+        `<div class="row-fields">` +
+        textField({ label: 'Name', name: 'name', required: true, placeholder: 'Put the bins out', value: typed('name') ?? '', attrs: 'maxlength="60"' }) +
+        selectField({
+          label: 'Who does it',
+          name: 'person_id',
+          optionsHtml: personOptions(typed('person_id') ?? null),
+        }) +
+        `</div>` +
+        `<div class="row-fields">` +
+        selectField({
+          label: 'Repeats',
+          name: 'kind',
+          optionsHtml: kindOptions(typed('kind') ?? 'weekdays'),
+          attrs: 'data-cond',
+        }) +
+        textField({ label: 'By (optional)', name: 'due_time', type: 'time', value: typed('due_time') ?? '' }) +
+        `</div>` +
+        dayChecks(ticked, 'new') +
+        `<div class="row-fields" data-cond-show="everyNDays">` +
+        textField({ label: 'Every N days', name: 'every_n', type: 'number', value: typed('every_n') ?? '', attrs: 'min="1" max="365"' }) +
+        // Today, on the *add* form only: a chore being created has no anchor
+        // yet, so this is a suggestion rather than a claim about what was saved.
+        textField({ label: 'Starting', name: 'every_from', type: 'date', value: typed('every_from') ?? from }) +
+        `</div>` +
+        `<div class="row-fields" data-cond-show="monthlyDate">` +
+        textField({ label: 'Day of the month', name: 'month_day', type: 'number', value: typed('month_day') ?? '', attrs: 'min="1" max="28"' }) +
+        `</div>` +
+        `<div class="row-fields" data-cond-show="once">` +
+        textField({ label: 'On (just once)', name: 'once_date', type: 'date', value: typed('once_date') ?? from }) +
+        `</div>` +
+        `<p class="hint">Pick how it repeats, then fill in only the boxes that ` +
+        `belong to it. ` +
+        `“By” is a time of day the wall shows beside the chore; ` +
+        `leave it blank for any time that day.</p>` +
+        `<button type="submit">Add</button></form>`,
     });
   }
 }

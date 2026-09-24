@@ -315,6 +315,41 @@ describe('the Weather screen', () => {
     },
     SLOW,
   );
+
+  /**
+   * "Use this device's location" stays hidden on a plain-http install (P2.3).
+   *
+   * The harness's own loopback server cannot demonstrate the failure this
+   * button exists to hide behind: Chromium treats `http://127.0.0.1` as a
+   * secure context by the same carve-out real hardware gets for `localhost`,
+   * so navigating there proves nothing about a household's `http://192.168.x.x`
+   * box. `isSecureContext` is overridden the way `browser-admin.test.ts`
+   * already simulates a state a real page cannot produce here (form-state
+   * restoration, above) — the mechanism under test is "does the script ask
+   * before revealing the button", and that is what the override answers.
+   */
+  it(
+    'stays hidden without a secure context, and reveals itself with one',
+    async () => {
+      const home = await fresh();
+      const context = await (await browser()).newContext();
+      const insecure = await context.newPage();
+      await insecure.addInitScript(() => {
+        Object.defineProperty(window, 'isSecureContext', { value: false, configurable: true });
+      });
+      await home.signIn(insecure);
+      await insecure.goto(`${home.base}/admin/alerts`, { waitUntil: 'load' });
+      expect(await insecure.locator('[data-geolocate]').isVisible()).toBe(false);
+
+      // The same installation and the same signed-in context, with nothing
+      // overridden this time: this harness's loopback origin is a secure
+      // context on its own account, and the button appears.
+      const secure = await context.newPage();
+      await secure.goto(`${home.base}/admin/alerts`, { waitUntil: 'load' });
+      expect(await secure.locator('[data-geolocate]').isVisible()).toBe(true);
+    },
+    SLOW,
+  );
 });
 
 // ===========================================================================
@@ -896,12 +931,16 @@ describe('the Chores screen', () => {
    * The add form's five mutually-exclusive schedule field groups, shown or
    * hidden as "Repeats" changes — and shown all at once is the fault this
    * is for: four chores made a page whose real content was three lines each.
+   *
+   * Both cases open `admin/chores/new`, where the form is since P2.1 took it
+   * off the list, rather than the list's old `#add` fragment. The letter moved
+   * and the intent did not: it is the same form, script-free and scripted.
    */
   it(
     'shows only the schedule fields that belong to the chosen repeat',
     async () => {
       const { page, home } = await signedIn();
-      await page.goto(`${home.base}/admin/chores#add`, { waitUntil: 'load' });
+      await page.goto(`${home.base}/admin/chores/new`, { waitUntil: 'load' });
 
       const weekdays = page.locator('form[action="admin/chores"] fieldset.checks');
       const everyN = page.locator('form[action="admin/chores"] [data-cond-show="everyNDays"]');
@@ -951,7 +990,7 @@ describe('the Chores screen', () => {
           page.click('button[type="submit"]'),
         ]);
 
-        await page.goto(`${home.base}/admin/chores#add`, { waitUntil: 'load' });
+        await page.goto(`${home.base}/admin/chores/new`, { waitUntil: 'load' });
         for (const group of ['everyNDays', 'monthlyDate', 'once']) {
           expect(
             await page
@@ -1007,10 +1046,24 @@ describe('adding a calendar from the Calendars screen', () => {
       const context = await (await browser()).newContext();
       const page = await context.newPage();
       await home.signIn(page);
+      /*
+       * The add form is a page of its own since P2.1, reached the way a
+       * household reaches it: the list's app-bar "Add a calendar", then the
+       * chooser's address option. The letter moved — where the form is — and
+       * the intent, that the row it lands on says Syncing…, did not.
+       */
       await page.goto(`${home.base}/admin/calendars`, { waitUntil: 'load' });
+      await Promise.all([
+        page.waitForURL(/\/admin\/calendars\/new$/),
+        page.locator('header.topbar a.btn', { hasText: 'Add a calendar' }).click(),
+      ]);
+      await Promise.all([
+        page.waitForURL(/\/admin\/calendars\/new\/address$/),
+        page.locator('a.mw-row-link', { hasText: 'An iCal or web address' }).click(),
+      ]);
 
-      // The add form at the foot of the page. A row's own settings form posts
-      // to `.../:id/settings`, so this action is the add form's alone.
+      // A row's own settings form posts to `.../:id/settings`, so this action
+      // is the add form's alone.
       const form = page.locator('form[action="admin/calendars"]');
       await form.locator('input[name="name"]').fill('Just added');
       await form.locator('input[name="url"]').fill(url ?? '');

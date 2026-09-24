@@ -351,7 +351,11 @@ describe('only one file in the product knows what these controls are called', ()
    */
   it('spells no control name anywhere but the table it renders from', async () => {
     const h = await harness();
-    const rendered = Object.values(renderedLabels(await (await h.call('/admin/calendars')).text()));
+    // Read off the add page, where the switches are since P2.1 took the add
+    // form off the Calendars list: the page moved, the labels did not.
+    const rendered = Object.values(
+      renderedLabels(await (await h.call('/admin/calendars/new/address')).text()),
+    );
     expect(rendered.length, 'read no labels off the page').toBe(3);
 
     const forbidden = [
@@ -451,7 +455,9 @@ describe('the Home Assistant screen asks the same question by the same name', ()
 
     // The same control name as the wizard's, which is the whole point of one
     // table: read the calendar screens' own rendering rather than restating it.
-    const wizard = await (await h.call('/admin/calendars')).text();
+    // The add page since P2.1, which is where the calendar screens' switches
+    // are drawn now; the intent — one name for one control — is unchanged.
+    const wizard = await (await h.call('/admin/calendars/new/address')).text();
     const shared = renderedLabels(wizard)['allow_http'];
     expect(shared, 'no plain-http control on the calendars screen').toBeTypeOf('string');
     expect(

@@ -797,6 +797,12 @@ input[type=file]{width:100%;padding:var(--mw-s-2);border-radius:var(--mw-r-1);
  * user agent's [hidden]{display:none}, so a hidden row-fields would sit
  * there in plain sight rather than actually disappear. */
 .row-fields[hidden]{display:none}
+/* Same reason, one control along: button,.btn below sets its own display,
+ * which beats the user agent's [hidden] the identical way — so the Weather
+ * screen's "Use this device's location" button (P2.3), server-rendered
+ * hidden until the geolocation script decides otherwise, would sit there in
+ * plain sight on every install until that script ran. */
+[data-geolocate][hidden]{display:none}
 
 /* ---- Buttons ---------------------------------------------------------------
  * The default is a filled button: 40px container, 4px corner, 20px of side
@@ -3150,10 +3156,11 @@ export interface ShellPageOptions extends CommonPageOptions {
    */
   readonly self: string;
   /**
-   * A primary action for the top-right of the shell's topbar, where a page has
-   * one — e.g. Themes' "New theme", which opens a page of its own. Not for a
-   * page whose add form is already on it: Calendars and Chores deliberately
-   * carry no app-bar action, because a link to a form on screen only scrolls.
+   * A list page's one create action, for the top-right of the shell's topbar:
+   * "Add …", leading to an add page of its own (P2.1). The slot is for that
+   * and nothing else — not a "Back to…", which is `back`, and never a link to
+   * a form on the same page, which would only scroll: a list page carries no
+   * add form, which is what lets this be its one primary.
    * Already-escaped label; relative href.
    */
   readonly action?: { readonly label: string; readonly href: string };
@@ -3222,6 +3229,16 @@ const WANTS_DIRTY_SCRIPT = /<form\b[^>]*\bdata-dirty(?=[\s=>])/;
  * drive it, not on every page in the admin.
  */
 const WANTS_CONDITIONAL_FIELDS_SCRIPT = /<select\b[^>]*\bdata-cond(?=[\s=>])/;
+
+/**
+ * Does this page hold a `<button data-geolocate>` — "Use this device's
+ * location" (P2.3) — the geolocation script should reveal?
+ *
+ * Same shape as `WANTS_DIRTY_SCRIPT` and the same reason: `geolocate-button.js`
+ * ships only to the one screen that has the button, rather than to every page
+ * in the admin.
+ */
+const WANTS_GEOLOCATE_SCRIPT = /<button\b[^>]*\bdata-geolocate(?=[\s>])/;
 
 /**
  * The strip itself: one sentence and a way to be rid of it.
@@ -3460,6 +3477,9 @@ export function page(options: PageOptions): string {
       : '') +
     (WANTS_CONDITIONAL_FIELDS_SCRIPT.test(options.body)
       ? `<script type="module" src="assets/conditional-fields.js"></script>`
+      : '') +
+    (WANTS_GEOLOCATE_SCRIPT.test(options.body)
+      ? `<script type="module" src="assets/geolocate-button.js"></script>`
       : '') +
     `</main></body></html>`
   );

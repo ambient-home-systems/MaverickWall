@@ -95,7 +95,7 @@ describe('adding a browser wall', () => {
       try {
         const page = await context.newPage();
         await wall.signIn(page);
-        await page.goto(`${wall.base}/admin/walls/new`, { waitUntil: 'load' });
+        await page.goto(`${wall.base}/admin/walls/new/browser`, { waitUntil: 'load' });
         await page.waitForSelector('.tpl-thumb[data-tpl]');
         await revealEveryCard(page);
         await page.waitForFunction(
@@ -143,7 +143,7 @@ describe('adding an e-paper panel', () => {
       try {
         const page = await context.newPage();
         await wall.signIn(page);
-        await page.goto(`${wall.base}/admin/epaper`, { waitUntil: 'load' });
+        await page.goto(`${wall.base}/admin/walls/new/epaper`, { waitUntil: 'load' });
         await page.waitForSelector('.tpl-thumb[data-tpl]');
         await revealEveryCard(page);
         const allInk = (): Promise<void> =>
@@ -296,7 +296,7 @@ describe('the submit on a phone', () => {
         try {
           const page = await context.newPage();
           await wall.signIn(page);
-          for (const path of ['/admin/walls/new', '/admin/epaper']) {
+          for (const path of ['/admin/walls/new/browser', '/admin/walls/new/epaper']) {
             await page.goto(`${wall.base}${path}`, { waitUntil: 'load' });
             await page.waitForSelector('.addbar button');
             const doc = await page.evaluate(() => document.body.scrollHeight);

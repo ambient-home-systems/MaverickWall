@@ -110,8 +110,13 @@ export const JOB_TIMINGS: Readonly<Record<string, JobTiming>> = {
     backoffMaxMs: 60 * 60_000,
   },
   'weather-sync': {
-    // NWS updates about hourly and asks clients not to poll harder.
-    intervalMs: 60 * 60_000,
+    /*
+     * Fifteen minutes, because current conditions are refreshed that often
+     * (plan item P3.2). Each run asks every part whether it is due, so the
+     * forecasts are still fetched hourly — NWS updates about hourly and asks
+     * clients not to poll harder — and a run with nothing due makes no request.
+     */
+    intervalMs: 15 * 60_000,
     jitterRatio: 0.2,
     backoffInitialMs: 5 * 60_000,
     backoffMaxMs: 6 * 60 * 60_000,

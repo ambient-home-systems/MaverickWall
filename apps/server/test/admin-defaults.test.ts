@@ -178,10 +178,14 @@ describe('the Overview says what needs attention and what the wall draws today',
     expect(html).not.toContain('Signed in as');
     expect(html).toContain('Needs attention');
     expect(html).toContain('No calendars yet');
-    expect(html).toContain('No walls paired yet');
-    // Each row is a link to where the thing is done.
+    // "No walls yet", not "paired": an e-paper wall is never paired, and
+    // pairing is one step of adding a browser wall (P2.2).
+    expect(html).toContain('No walls yet');
+    expect(html).not.toContain('No walls paired yet');
+    // Each row is a link to where the thing is done — adding a wall starts at
+    // its chooser.
     expect(html).toContain('href="admin/calendars"');
-    expect(html).toContain('href="admin/walls"');
+    expect(html).toContain('href="admin/walls/new"');
   });
 
   it('lists a wall that has never connected, and links to its page', async () => {
@@ -189,7 +193,7 @@ describe('the Overview says what needs attention and what the wall draws today',
     await h.form('/admin/screens', { name: 'Kitchen tablet', theme: 'panels' });
     const html = await h.text('/admin');
     expect(html).toContain('Kitchen tablet has never connected');
-    expect(html).not.toContain('No walls paired yet');
+    expect(html).not.toContain('No walls yet');
     const id = (h.db.prepare(`SELECT id FROM screens`).get() as { id: string }).id;
     expect(html).toContain(`href="admin/walls/${id}"`);
   });
@@ -212,6 +216,12 @@ describe('the Overview says what needs attention and what the wall draws today',
   });
 });
 
+/*
+ * P2.1 moved step one of adding a rotation from the foot of Work Schedule to a
+ * page of its own, `GET /admin/shifts/new`, so these read the form there: the
+ * letter moved — which page is fetched — and the intent, a form whose untouched
+ * state can be submitted, did not. The POST it submits to is unchanged.
+ */
 describe('the Add-a-rotation form opens on a choice that can be submitted', () => {
   /** The options of the named select, in order, with the one a browser would post first. */
   const options = (html: string, name: string): { value: string; label: string }[] => {
@@ -230,7 +240,7 @@ describe('the Add-a-rotation form opens on a choice that can be submitted', () =
   it('with no calendar, offers only a pattern, and Continue on the untouched form is accepted', async () => {
     const h = await harness();
     await h.form('/admin/people', { name: 'Amy', color: '#E8A33D' });
-    const html = await h.text('/admin/shifts');
+    const html = await h.text('/admin/shifts/new');
     expect(options(html, 'kind').map((o) => o.value)).toEqual(['pattern']);
     expect(html).not.toContain('name="source_id"');
     // The form as drawn, posted as a browser would post it untouched.
@@ -245,7 +255,7 @@ describe('the Add-a-rotation form opens on a choice that can be submitted', () =
     const h = await harness();
     await h.form('/admin/people', { name: 'Amy', color: '#E8A33D' });
     addSource(h, 'src-work', 'Work');
-    const html = await h.text('/admin/shifts');
+    const html = await h.text('/admin/shifts/new');
     expect(options(html, 'kind').map((o) => o.value)).toEqual(['calendar', 'pattern']);
     const calendars = options(html, 'source_id');
     expect(calendars[0]).toEqual({ value: 'src-work', label: 'Work' });
@@ -266,7 +276,7 @@ describe('the Add-a-rotation form opens on a choice that can be submitted', () =
     await h.form('/admin/people', { name: 'Amy', color: '#E8A33D' });
     await h.form('/admin/people', { name: 'Ben', color: '#4A90D9' });
     h.db.prepare(`UPDATE people SET has_shift_rotation = 1 WHERE name = 'Amy'`).run();
-    const who = options(await h.text('/admin/shifts'), 'person_id');
+    const who = options(await h.text('/admin/shifts/new'), 'person_id');
     expect(who.map((o) => o.label)).toEqual(['Ben', 'Amy (has a rotation)']);
   });
 });

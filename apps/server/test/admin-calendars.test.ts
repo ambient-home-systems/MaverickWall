@@ -518,7 +518,7 @@ describe('display settings', () => {
      * System has no colour to offer and no `theme` control to offer it with.
      */
     const h = await harness();
-    const add = await (await h.call('/admin/walls/new')).text();
+    const add = await (await h.call('/admin/walls/new/browser')).text();
     for (const theme of ['household', 'blueprint', 'panels', 'almanac', 'swiss']) {
       expect(add).toContain(`value="${theme}"`);
     }
@@ -846,12 +846,18 @@ describe('testing a feed before saving it', () => {
      * And the reason is above the rows, not two thousand pixels down under
      * "Add a calendar". With the row echoed back and its Save live, a message
      * under the wrong heading reads as a save that worked.
+     *
+     * P2.1 took the add form off this page altogether, so the letter moved:
+     * there is no "Add a calendar" heading left to be under, and the assertion
+     * is now that there is no add form here for the reason to be confused with.
+     * The intent — one error, by the row it is about — did not.
      */
     const firstError = html.indexOf('class="error"');
     expect(firstError, 'the reason must be on the page at all').toBeGreaterThan(-1);
     expect(firstError, 'above the row it is about').toBeLessThan(html.indexOf('/settings"'));
-    expect(firstError, 'and above "Add a calendar", which is a different form')
-      .toBeLessThan(html.indexOf('Add a calendar</h2>'));
+    expect(html, 'and no add form on the page to mistake it for').not.toContain(
+      'action="admin/calendars"',
+    );
 
     expect(html, 'the colour they changed in the same breath').toContain('#123456');
     expect(html, 'and the switch they turned off').not.toMatch(

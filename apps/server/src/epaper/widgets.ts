@@ -17,7 +17,13 @@
  */
 import { daysBetween } from '@maverick-wall/core';
 
-import { todoListHandle, todoListOf, type Manifest } from '../api/manifest.js';
+import {
+  readingHandlesFor,
+  readingIndexOf,
+  todoListHandle,
+  todoListOf,
+  type Manifest,
+} from '../api/manifest.js';
 
 import { drawText, measureText, rungAtMost, rungStep, shorterRung, tallerRung, type TypeRung } from './font.js';
 import { Framebuffer } from './framebuffer.js';
@@ -575,6 +581,12 @@ interface TodoLine {
   readonly done: boolean;
 }
 
+/** One watched list, as the panel draws it: how many are open, and each line. */
+interface TodoRead {
+  readonly open: number;
+  readonly items: readonly TodoLine[];
+}
+
 /**
  * The to-do panel's lists, read defensively — `readChorePanel`'s shape.
  *
@@ -583,8 +595,8 @@ interface TodoLine {
  * the widget's stored entity id to that handle itself, because it draws from
  * the household's rows rather than from the manifest's layout.
  */
-function readTodoPanel(panel: unknown): Map<string, { open: number; items: TodoLine[] }> {
-  const lists = new Map<string, { open: number; items: TodoLine[] }>();
+function readTodoPanel(panel: unknown): Map<string, TodoRead> {
+  const lists = new Map<string, TodoRead>();
   if (typeof panel !== 'object' || panel === null) return lists;
   const raw = (panel as { lists?: unknown }).lists;
   if (!Array.isArray(raw)) return lists;
@@ -623,7 +635,7 @@ function readTodoPanel(panel: unknown): Map<string, { open: number; items: TodoL
  * medium has — the chore board's own reasoning. Summaries go through
  * `asciiTitle` like every stranger's string here.
  */
-function drawTodo(fb: Framebuffer, m: EpaperMetrics, box: Box, panel: unknown, config: Config): void {
+function drawTodo(fb: Framebuffer, m: EpaperMetrics, box: Box, found: TodoRead | undefined, config: Config): void {
   const note = (text: string): void => {
     drawLines(fb, m, [text], box, rungToFit(text, box.w, m.body), 'left');
   };
@@ -639,7 +651,6 @@ function drawTodo(fb: Framebuffer, m: EpaperMetrics, box: Box, panel: unknown, c
       return;
     }
   } else {
-    const found = readTodoPanel(panel).get(todoListHandle(entityId));
     if (found === undefined) {
       note('(list not on Home Assistant)');
       return;
@@ -780,8 +791,59 @@ function forecastDays(panel: unknown): EpaperForecastDay[] {
   return out;
 }
 
-function drawWeather(fb: Framebuffer, m: EpaperMetrics, box: Box, manifest: Manifest, config: Config): void {
-  let days = forecastDays(manifest.panels['weather']);
+/**
+ * The current conditions, as a panel may draw them: the temperature and the
+ * time it was read, never the one without the other (P3.5).
+ *
+ * A browser wall redraws every fifteen seconds and a battery panel may sleep
+ * for an hour, so a panel's "52" can be an hour older than the wall's beside
+ * it — and a temperature with no time on it says it is the temperature *now*.
+ * So there is no reader that hands a draw the bare number: `text` is the
+ * reading and its stamp, "52F at 07:15", and a style that draws current
+ * conditions on a panel (P5.1's `today`) draws that. The degree sign is not in
+ * the panel's 0x20–0x7E faces, so the unit rides on the number the way the
+ * strip's low already carries it ("13F").
+ *
+ * The time is the reading's own — `observedAt`, which for a modelled reading is
+ * the hour it describes — in the household's zone and clock, through the same
+ * `clockLabel` the panel's header uses. Nothing draws this yet: it is here so
+ * the first draw that does cannot leave the stamp off, and so the frame's ETag
+ * has the reading's exact words to hash when that draw arrives.
+ */
+export interface EpaperCurrent {
+  /** "52F" — rounded, with the panel's unit letter when it has one. */
+  readonly temp: string;
+  /** "07:15", or "07:15 am" on a twelve-hour household. */
+  readonly at: string;
+  /** "52F at 07:15" — the only form a draw should use. */
+  readonly text: string;
+}
+
+export function epaperCurrent(panel: unknown, timezone: string, clock24: boolean): EpaperCurrent | undefined {
+  if (panel === null || typeof panel !== 'object') return undefined;
+  const current = (panel as { current?: unknown }).current;
+  if (current === null || typeof current !== 'object') return undefined;
+  const reading = current as { temp?: unknown; observedAt?: unknown };
+  if (typeof reading.temp !== 'number' || !Number.isFinite(reading.temp)) return undefined;
+  if (typeof reading.observedAt !== 'number' || !Number.isFinite(reading.observedAt)) return undefined;
+  const units = (panel as { units?: unknown }).units;
+  const unit =
+    units !== null && typeof units === 'object' && typeof (units as { temp?: unknown }).temp === 'string'
+      ? asciiTitle((units as { temp: string }).temp)
+      : '';
+  const temp = `${Math.round(reading.temp)}${unit}`;
+  const at = clockLabel(reading.observedAt, timezone, clock24);
+  return { temp, at, text: `${temp} at ${at}` };
+}
+
+function drawWeather(
+  fb: Framebuffer,
+  m: EpaperMetrics,
+  box: Box,
+  forecast: readonly EpaperForecastDay[],
+  config: Config,
+): void {
+  let days = [...forecast];
   if (days.length === 0) {
     drawLines(fb, m, ['No weather yet'], box, rungToFit('No weather yet', box.w, m.body), 'left');
     return;
@@ -956,6 +1018,8 @@ function drawWeather(fb: Framebuffer, m: EpaperMetrics, box: Box, manifest: Mani
  * the *words* is untouched, which is what the ladder actually promises.
  */
 interface EpaperReading {
+  /** The handle a widget's `readings` resolves to; absent from an older panel. */
+  readonly key: string | undefined;
   readonly label: string;
   readonly value: string;
   readonly mode: string;
@@ -969,9 +1033,10 @@ function houseReadings(panel: unknown): EpaperReading[] {
   const out: EpaperReading[] = [];
   for (const entry of raw) {
     if (entry === null || typeof entry !== 'object') continue;
-    const row = entry as { label?: unknown; value?: unknown; mode?: unknown; glyph?: unknown };
+    const row = entry as { key?: unknown; label?: unknown; value?: unknown; mode?: unknown; glyph?: unknown };
     if (typeof row.label !== 'string' || typeof row.value !== 'string') continue;
     out.push({
+      key: typeof row.key === 'string' ? row.key : undefined,
       label: asciiTitle(row.label),
       value: asciiTitle(row.value),
       mode: typeof row.mode === 'string' ? row.mode : 'label_value',
@@ -981,8 +1046,7 @@ function houseReadings(panel: unknown): EpaperReading[] {
   return out;
 }
 
-function drawHouse(fb: Framebuffer, m: EpaperMetrics, box: Box, manifest: Manifest, config: Config): void {
-  const panel = manifest.panels['home'] ?? manifest.panels['homeassistant'];
+function drawHouse(fb: Framebuffer, m: EpaperMetrics, box: Box, panel: unknown, config: Config): void {
   let readings = houseReadings(panel);
   const noReadings = (): void => {
     drawLines(fb, m, ['No readings yet'], box, rungToFit('No readings yet', box.w, m.body), 'left');
@@ -991,10 +1055,17 @@ function drawHouse(fb: Framebuffer, m: EpaperMetrics, box: Box, manifest: Manife
     noReadings();
     return;
   }
-  // Which readings, by the label the household sees — the manifest carries no
-  // entity id, exactly as the wall's widget reads it.
-  const wanted = list(config, 'readings').filter((r): r is string => typeof r === 'string');
-  if (wanted.length > 0) readings = readings.filter((r) => wanted.includes(r.label));
+  /*
+   * Which readings, by handle (P1.3). The panel draws from the stored config,
+   * so its entries are entity ids — or labels, on a widget saved before the
+   * editor wrote ids — and they resolve exactly as `displayConfig` resolves
+   * them for the wall, against the same panel, so the two cannot pick
+   * differently. This used to compare the stored label with `asciiTitle` of
+   * the panel's, which never matched a label with an accent in it: a panel
+   * showing "Température" drew "No readings yet" for a widget that asked for it.
+   */
+  const wanted = readingHandlesFor(list(config, 'readings'), readingIndexOf(panel)) ?? [];
+  if (wanted.length > 0) readings = readings.filter((r) => r.key !== undefined && wanted.includes(r.key));
   if (readings.length === 0) {
     noReadings();
     return;
@@ -1368,12 +1439,96 @@ function weekdayOf(date: string): string {
   return Number.isNaN(at.getTime()) ? '' : (WEEKDAYS[at.getUTCDay()] ?? '');
 }
 
+/**
+ * What one widget's draw takes out of `manifest.panels`, and all it takes (P3.5).
+ *
+ * A panel's frame ETag used to hash the whole manifest, so anything any module
+ * wrote moved every paired panel: a Home Assistant reading every thirty
+ * seconds, a to-do list every minute, and — once the weather carried current
+ * conditions — the weather every fifteen minutes, on panels with no weather on
+ * them. A panel that sees a new ETag downloads a new frame and a battery panel
+ * does a full refresh to show it, so the churn was a flash and a drained
+ * battery for a picture that had not changed.
+ *
+ * So this is the one place a widget reads a module's panel, and `drawWidget`
+ * is handed its answer rather than the manifest: **a draw cannot read anything
+ * the ETag does not hash**, because it has nothing else to read from. The
+ * frame hashes these answers (`canvasPanelInputs`) in place of `panels`. That
+ * is the general version of the change the plan asks for, and it is the same
+ * rule as `agendaRowsInBox`, one layer out: what is hashed and what is drawn
+ * have to be the same reading, or one of them is a guess about the other.
+ *
+ * Each answer is as narrow as the draw it feeds:
+ *
+ * - **Weather** is the forecast days as `forecastDays` reads them — a name, a
+ *   high, a low and a glyph each — so the fields the strip does not draw
+ *   (`current`, `hourly`, `air`, `units`, `fetchedAt`, a day's `detail` and
+ *   rain chance) cannot move a frame. A style that draws current conditions
+ *   (P5.1's `today`) adds `epaperCurrent`'s answer here, which is the only way
+ *   `current` can reach a draw and so the only way it can reach the ETag: a
+ *   panel that draws the reading gets a new frame when it changes, and one
+ *   that does not, does not.
+ * - **A to-do widget** reads its own list and nothing else, and a typed
+ *   checklist reads no panel at all.
+ * - **The house, the chore board and a module's panel** read their whole slice,
+ *   because each draw reads it whole.
+ *
+ * The widget's config is the one the draw is given — after the ink lane — so a
+ * panel-only override is read the way it is drawn.
+ */
+export type PanelInput =
+  | { readonly kind: 'none' }
+  | { readonly kind: 'weather'; readonly days: readonly EpaperForecastDay[] }
+  | { readonly kind: 'todo'; readonly list: TodoRead | undefined }
+  | { readonly kind: 'panel'; readonly panel: unknown };
+
+const NO_INPUT: PanelInput = { kind: 'none' };
+
+export function panelInput(type: string, manifest: Manifest, config: Config): PanelInput {
+  const panels = manifest.panels;
+  switch (type) {
+    case 'weather':
+      return { kind: 'weather', days: forecastDays(panels['weather']) };
+    case 'todo': {
+      const entityId = todoListOf(config);
+      if (entityId === undefined) return NO_INPUT;
+      return { kind: 'todo', list: readTodoPanel(panels['todo']).get(todoListHandle(entityId)) };
+    }
+    case 'chores':
+      return { kind: 'panel', panel: panels['chores'] };
+    case 'homeassistant':
+      return { kind: 'panel', panel: panels['home'] ?? panels['homeassistant'] };
+    case 'external': {
+      const mod = str(config, 'module');
+      return { kind: 'panel', panel: mod !== undefined ? panels[mod] : undefined };
+    }
+    default:
+      return NO_INPUT;
+  }
+}
+
+/**
+ * Every widget's input on one canvas, in the canvas's own order — what the
+ * frame's ETag hashes in place of `manifest.panels`.
+ *
+ * Every widget in the list, drawn or not: a box too small to draw, or a child
+ * whose group was dropped, costs a panel at most a refresh it did not need,
+ * where leaving one out could hide a change it did. The config goes through
+ * `withInk` exactly as `renderFreeformEpaper` sends it to the draw.
+ */
+export function canvasPanelInputs(
+  manifest: Manifest,
+  widgets: readonly PlacedEpaperWidget[],
+): readonly PanelInput[] {
+  return widgets.map((widget) => panelInput(widget.type, manifest, withInk(widget.config)));
+}
+
 function drawWidget(
   fb: Framebuffer,
   type: string,
   box: Box,
   model: EpaperModel,
-  manifest: Manifest,
+  input: PanelInput,
   m: EpaperMetrics,
   config: Config,
 ): void {
@@ -1396,21 +1551,20 @@ function drawWidget(
         alignOf(config),
       );
     case 'todo':
-      return drawTodo(fb, m, box, manifest.panels['todo'], config);
+      return drawTodo(fb, m, box, input.kind === 'todo' ? input.list : undefined, config);
     case 'chores':
-      return drawChores(fb, m, box, manifest.panels['chores'], config);
+      return drawChores(fb, m, box, input.kind === 'panel' ? input.panel : undefined, config);
     case 'weather':
-      return drawWeather(fb, m, box, manifest, config);
+      return drawWeather(fb, m, box, input.kind === 'weather' ? input.days : [], config);
     case 'homeassistant':
-      return drawHouse(fb, m, box, manifest, config);
+      return drawHouse(fb, m, box, input.kind === 'panel' ? input.panel : undefined, config);
     case 'external': {
-      const mod = str(config, 'module');
       const rows = config['count'];
       return drawPanel(
         fb,
         m,
         box,
-        mod !== undefined ? manifest.panels[mod] : undefined,
+        input.kind === 'panel' ? input.panel : undefined,
         'No data yet',
         typeof rows === 'number' && Number.isFinite(rows) && rows >= 1 ? Math.trunc(rows) : undefined,
       );
@@ -1514,7 +1668,7 @@ export function renderFreeformEpaper(
     const inner = drawFrame(fb, m, box, config);
     recordRegion(regions, `widget-inner:${position}`, inner);
     if (widget.type !== 'group') {
-      drawWidget(fb, widget.type, inner, model, manifest, m, config);
+      drawWidget(fb, widget.type, inner, model, panelInput(widget.type, manifest, config), m, config);
       return;
     }
     const members = widget.id === undefined ? [] : (children.get(widget.id) ?? []);
@@ -1528,7 +1682,7 @@ export function renderFreeformEpaper(
       const childConfig = withInk(child.config);
       const childInner = drawFrame(fb, m, childBox, childConfig);
       recordRegion(regions, `child-inner:${position}:${index}`, childInner);
-      drawWidget(fb, child.type, childInner, model, manifest, m, childConfig);
+      drawWidget(fb, child.type, childInner, model, panelInput(child.type, manifest, childConfig), m, childConfig);
     });
   });
   return fb;

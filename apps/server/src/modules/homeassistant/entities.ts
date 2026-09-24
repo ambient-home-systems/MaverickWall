@@ -1,5 +1,6 @@
 import { parseJsonOr, z } from '../../validation.js';
 import type { GlyphKey } from '../../glyphs.js';
+import { haReadingHandle } from '../../api/manifest.js';
 
 /**
  * Entity readings: parsing what Home Assistant says, and deciding how it reads.
@@ -252,6 +253,13 @@ export function readState(state: HaState): string {
  * be a way into the house.
  */
 export interface EntityReading {
+  /**
+   * The handle a widget's `readings` resolves to (`haReadingHandle`, P1.3) —
+   * minted here from the entity id, so the wall can match a reading a widget
+   * picked without ever holding the id it was picked by, and a rename, which
+   * changes `label`, cannot change it.
+   */
+  readonly key: string;
   readonly label: string;
   readonly value: string;
   readonly unit: string | null;
@@ -275,6 +283,7 @@ export const STALE_AFTER_MS = 15 * 60_000;
 export function toReading(state: HaState, watch: WatchedEntity, fetchedAt: number, now: number): EntityReading {
   const mode = watch.displayMode;
   return {
+    key: haReadingHandle(watch.entityId),
     label: watch.label ?? state.friendlyName,
     value: readState(state),
     // Duplicating the unit into the value would double it up in `value` mode,
