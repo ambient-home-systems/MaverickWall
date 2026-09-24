@@ -64,7 +64,7 @@ Violating any of these is a failed task.
 - No absolute px in the display's type or layout. Every size on the wall derives from --px-arcmin, which derives from the screen's panel size and read distance. A hardcoded px legibility floor is the bug that made the month grid name zero events on a small panel: it is correct on one screen and wrong on all the others.
 - No scale-to-fit as a substitute for a density tier. A section that does not fit gives up content, not points. transform: scale() on a laid-out section is banned in new code — and there is none left in old code either: `fitToBox` is deleted, and `reflow-stability.test.ts` scans the stylesheet and the renderer for one. A uniform transform is photographic enlargement; it changes how big a widget looks and can never change what it says.
 - A widget reads its own box and chooses a form; it never draws everything and hides what spilled. The calendar's tiers are `tiers.ts` and the thresholds are in characters and ems of the event role, so one table is right on every panel — a new one belongs there rather than as a pixel threshold in a renderer. Hard rule 2 permits a container query for exactly this, and for nothing else yet.
-- **Emoji on a browser wall are bundled artwork, never a device font; anything an e-paper panel draws carries none at all.** *(Rewritten 2026-09-24 for decision D6; the plan is `docs/plan-2026-09-household-review.md`.)* The rule this replaces was "no emoji in anything a screen renders", and its reason is unchanged: the image ships no emoji font, so an emoji set as *text* is a third-party asset resolved on the device — it differs on every panel, some kiosks draw an empty box, and `asciiTitle` deletes it outright on e-ink. **That rule was written down and broken at the same time** — every forecast and every device class chose one until the first-party vocabulary replaced them. What changed is the remedy, not the reason. The owner wants emoji in a weather or countdown style, so the wall ships its own: a curated Twemoji set under `apps/server/assets/emoji/`, served from `/assets/emoji/<name>.svg` and drawn as an `<img>` from a *key* the manifest carries, never a code point (plan item P4.2), so every screen draws the same picture. A code point handed to the device's font in a designed style is still the bug this rule was written for. The one exception is stated so nobody "fixes" it: text a household typed itself, such as a countdown's title, renders in the device's own font (Q9), because it is their string and the wall does not rewrite it. E-paper keeps the drawn glyphs. **Until S11 lands this is stricter than it reads**: `no-emoji.test.ts` still refuses an emoji anywhere a screen reads from, which is correct while there is no artwork to draw. Once S11 lands it is narrowed to the e-paper renderer and its tests, with `asciiTitle` as the panel's guard, and gains the assertion that a designed wall style draws emoji as a bundled `<img>` and never as text. It scans comments too, because a comment is where the next one gets pasted from.
+- **Emoji on a browser wall are bundled artwork, never a device font; anything an e-paper panel draws carries none at all.** *(Rewritten 2026-09-24 for decision D6; the plan is `docs/plan-2026-09-household-review.md`.)* The rule this replaces was "no emoji in anything a screen renders", and its reason is unchanged: the image ships no emoji font, so an emoji set as *text* is a third-party asset resolved on the device — it differs on every panel, some kiosks draw an empty box, and `asciiTitle` deletes it outright on e-ink. **That rule was written down and broken at the same time** — every forecast and every device class chose one until the first-party vocabulary replaced them. What changed is the remedy, not the reason. The owner wants emoji in a weather or countdown style, so the wall ships its own: a curated Twemoji set under `apps/server/assets/emoji/`, served from `/assets/emoji/<name>.svg` and drawn as an `<img>` from a *key* the manifest carries, never a code point (plan item P4.2), so every screen draws the same picture. A code point handed to the device's font in a designed style is still the bug this rule was written for. The one exception is stated so nobody "fixes" it: text a household typed itself, such as a countdown's title, renders in the device's own font (Q9), because it is their string and the wall does not rewrite it. E-paper keeps the drawn glyphs. **S11 has landed the artwork and the test narrowing described above.** `no-emoji.test.ts` now scans only `apps/server/src/epaper/**` and its own `epaper-*` tests, with `asciiTitle` kept as the panel's guard; the wall side of the old ban is enforced by rendering instead of by a source scan — `browser-emoji.test.ts` proves a real paired wall draws `emojiNode`'s output as a same-origin `<img>`, never a code point in the live DOM. It scans comments too, because a comment is where the next one gets pasted from. No designed style consumes the vocabulary yet (P5.1 and P5.2 are later sessions); `emojiNode`/`emojiImg` are the seam they will draw through, proved directly rather than through a widget that does not exist.
 - **No stat tiles — but a designed widget style may make one reading its lede.** *(Amended 2026-09-24 for decision D1.)* A big number with a caption, or a 3-up row of them, is a dashboard idiom, and this is a calendar: the wall's job is the thing the household does not already know, and a row of tiles says the things they do. That is still out, on any widget. What D1 permits is narrower: a designed style — the weather "Today" card, a countdown's number — may carry **one** large reading, capped against the event role the way the clock is (1.8x, `WALL_TYPE_CAPS`), so the biggest number on the wall can never outsize an event name by more than the clock already may. The cap is the rule rather than the size; a large reading with no cap is a stat tile with a style name. Enforced once S15 and S16 land by each style's own ratio assertion at three sizes, the way `orientation.test.ts` holds the clock to 1.8x.
 - **Shadows on a browser wall come from one theme token, and a theme or an e-ink preset can switch them off.** *(Rewritten 2026-09-24 for decision D8.)* The rule this replaces was "no shadow on the display, at any size, in any theme", because a shadow bands on e-ink and burns in on OLED. Both are still true, and they are now the reason the shadow is a *token* rather than the reason for a ban: `--shadow-card` is set per theme (soft on Panels and Household, paper-like on Almanac, none on Blueprint and Swiss), derived for a custom theme, and set to none by the e-ink presets of the wall-size picker (plan item P4.4). A literal `box-shadow` in a widget rule is therefore still wrong — it is the one shadow a household with an OLED or e-ink screen could not turn off. An e-paper panel draws none: `shadow` stays in `PANEL_IGNORES`, which `epaper-ink.test.ts` already proves by rendering. Separation is still space, then a 1px rule, then a ground step, in that order; a shadow is a look a theme lays on top of that and never the only thing separating two boxes. Enforced once S13 lands by `builtin-themes-parity.test.ts`, which holds the token's per-theme values in the bundle and on the server to each other.
 - **Motion on a browser wall is phase-locked to the wall clock, gated by reduced motion and the wall's own switch, and moves only `transform` and `opacity`. An e-paper panel is always still.** *(Rewritten 2026-09-24 for decision D7.)* The rule this replaces was "no transition or animation on any surface a screen sees", because the wall has no pointer and redraws every 15 s: a transition there confirms nothing and reads as a flicker in a room, and `draw()` empties and rebuilds the whole wall on every tick, so a naive CSS animation restarts four times a minute. The owner decided weather and countdown styles may move, and that confetti may fall on a countdown's day. The reasons survive as the conditions (plan item P4.3): a looping effect takes a negative `animation-delay` from the corrected wall clock, so a rebuilt element resumes where the old one was; a one-shot fires once per event from a per-widget memory in `main.ts`, not once per tick; every `@keyframes`, `animation` and `transition` sits inside `prefers-reduced-motion: no-preference` and under `.canvas[data-motion="on"]`, the wall's Motion switch (`screens.motion`, null meaning on, Q6, and off by default on the e-ink presets); and only `transform` and `opacity` are animated, because anything else is layout or paint on every frame of an old tablet. The panel draws each style's still frame. **The ban was a convention for as long as it existed, and a convention is what a future contributor breaks** — reasonably, from a browser habit, in a file nobody re-reads — which is why its replacement is a build failure too. **Until S12 lands the ban is still what is enforced**: `apps/display/test/motion.test.ts` holds `display.css` (source *and* the copy `dist/` serves), the wall's HTML, its offline shell and every module in `main.ts`'s import graph to carrying neither word at all, and `apps/server/test/motion-scope.test.ts` holds the panel path to reaching no stylesheet. Once S12 lands `motion.test.ts` and the display half of `motion-scope.test.ts` enforce the scope instead — no animation outside the scoped block, keyframes that touch only `transform` and `opacity` — the panel path still reaches no stylesheet at all, and a browser test holds an animation's computed time continuous across a redraw. The admin's rule is unchanged and `motion-scope.test.ts` keeps holding it: three durations and three easings, every declaration inside `prefers-reduced-motion: no-preference`, because the admin is a settings screen somebody is touching, where the same 180ms is the only thing telling them the tap landed.
@@ -454,11 +454,13 @@ were rewritten before any code depended on the change.
   from whatever source is necessary.
 
 **Nothing a household sees changed on that date, and the tests still enforce
-the old bans until the sessions that build the permissions land** — S11 narrows
-`no-emoji.test.ts`, S12 rewrites `motion.test.ts` and `motion-scope.test.ts`,
-S13 brings the shadow token under `builtin-themes-parity.test.ts`. A rule that
-permits more than its test does is the right way round for a few releases; the
-other way round is a rule nothing enforces.
+the old bans until the sessions that build the permissions land.** **S11 has
+landed**: `no-emoji.test.ts` narrows to the e-paper renderer and its tests, and
+the bundled Twemoji artwork ships (see below). S12 still needs to rewrite
+`motion.test.ts` and `motion-scope.test.ts`, and S13 still needs to bring the
+shadow token under `builtin-themes-parity.test.ts`. A rule that permits more
+than its test does is the right way round for a few releases; the other way
+round is a rule nothing enforces.
 
 **0.61.0 is the current release.** `main`, the tag and the published image
 agree with each other, and `advertise` is what keeps them that way — it writes
@@ -8180,6 +8182,90 @@ listing the tests on both sides and diffing them shows `motion.test.ts` and
 graph, so a new module the wall imports is a new test in each — "variants.ts
 does not mention motion". Nobody writes those two, which is exactly why an
 incrementer misses them. No ratchet baseline moved.
+
+**S11 shipped P4.2: the bundled emoji artwork, and the wall no longer draws a
+forecast icon or a countdown's own picture through whatever font a tablet
+happens to carry.** D6 permits emoji on a browser wall precisely because it is
+drawn rather than typed. `apps/server/assets/emoji/` holds a curated 155-SVG
+subset of Twemoji — weather conditions, the six countdown occasions, the five
+advice-line pictures, a general countdown picker, and the Store's own
+hourglass — served from `/assets/emoji/<key>.svg`, immutably cached, SVG-only
+and slash-free (`http/static.ts`'s `defaultEmojiDir()`, the fonts route's own
+pattern: `EMOJI_DIR`, copied into the image beside the display bundle and the
+fonts, named at every one of the three places the fonts are — `static.ts`, the
+Dockerfile, the pruned-tree boot check). `apps/display/src/emoji.ts`
+(`emojiNode`) and `apps/server/src/emoji.ts` (`emojiImg`) are twin
+vocabularies, held character-for-character identical by
+`emoji-parity.test.ts`, the `glyph-parity.test.ts` seam — the manifest carries
+a **key**, never a code point.
+
+**No designed style draws from the vocabulary yet** — P5.1 and P5.2 are later
+sessions, and building an emoji-drawing style before the seam it draws through
+is proven would be two things resolved as one. So `emojiNode` is proved
+directly, in a real browser: `browser-emoji.test.ts` pairs a real wall,
+imports the compiled module the way the bundle itself would, appends the node
+the function builds, and confirms a same-origin `<img>` actually loads (not a
+broken reference), a key nobody curated draws nothing, and no emoji character
+ever reaches the rendered DOM as text — the one thing the old source-scan ban
+was ever actually checking, now checked by rendering rather than by reading.
+
+**`no-emoji.test.ts` narrows to the panel, and the wall's own proof moved from
+a source scan to a render.** It used to scan the whole display bundle, the
+admin and every module; D6 makes that scope wrong for a browser wall, so it
+reads only `apps/server/src/epaper/**` and its own `epaper-*` tests now, with
+`asciiTitle` kept as the panel's one guard — there is still no drawn,
+black-and-white artwork for a 1-bit screen (D3 defers that), so an emoji set
+as a character still vanishes on a panel exactly as it always has. Checked
+both directions: a stray code point planted in `epaper/render.ts` still turns
+the file red, and the identical plant in `apps/display/src/main.ts` — which
+the old, wider scan would have caught — now leaves it green.
+
+**Q3's default was taken: Twemoji, not OpenMoji.** CC-BY 4.0 is attribution
+only; OpenMoji's CC BY-SA 4.0 carries a share-alike term neither this
+repository nor a household running the image should have to reason about.
+`apps/server/assets/emoji/LICENSES.md` and the root `NOTICE` record the
+attribution. **Q9's default needed no code at all**: an emoji a household
+types into a countdown's own title still renders in the device's own font,
+because `emojiNode` is never called on anything but a curated key and nothing
+in this phase touches how typed text renders — a bundled colour font is a
+later decision, and only after it is measured on the oldest supported tablet.
+
+**The Store's Countdown entry draws the bundled hourglass now** (P1.1's own
+promise, D5), in place of the `pressure` gauge glyph it was left wearing while
+there was no artwork to draw. The catalogue schema's `glyph` stays required of
+every entry — a module's own panel reading may still carry one — and `emoji`
+is the new optional field a card draws instead when it names one
+(`catalog.ts`, `admin-modules.ts`).
+
+Eight mutations were checked by reverting the fix and watching the test go
+red: the store card's emoji swap, the Countdown entry's `emoji` field, the
+route's `.svg`-only and immutable-cache guards (each on its own),
+`emoji-parity.test.ts`'s label block, and `emojiNode`'s own unknown-key guard
+— plus `no-emoji.test.ts`'s narrowed scope, checked both ways: a stray code
+point in `epaper/render.ts` still reddens it, and the identical stray in
+`apps/display/src/main.ts`, which the old wider scan would have caught,
+leaves it green.
+
+**3842 tests passing, and 1 skipped, over 273 files**: calendar 153 over 10 ·
+core 314 over 9 · display 616 over 35 · server 2759 over 219, measured on a
+clone whose tags had been fetched. Against the 3830 over 271 recorded just
+above, the difference is +12 tests and +2 files — `emoji-parity.test.ts` (7),
+`browser-emoji.test.ts` (2), and one assertion added to each of
+`no-emoji.test.ts`, `catalog.test.ts` and `external-modules.test.ts` — which
+the arithmetic and the reading agree on, for the second time running rather
+than the fifth. **That count was taken on S11's own branch, before it carried
+`main`'s P1.2, P1.3, P2.1–P2.3, P3 and P4.1** — this paragraph sat beside the
+identical P4.1 paragraph above it for exactly the time it took to merge the
+two branches, which is the fault this document's header warns about arriving
+on schedule: two true counts, on two trees, side by side, neither labelled as
+provisional. Re-measured with a real Chromium after `main` was merged into
+this branch: **4061 tests passing, 1 skipped and 1 expected failure, over 291
+files** — calendar 153 over 10, core 314 over 9, display 647 over 37, server
+2947 over 235. Against the 4049 over 289 recorded above, that is +12 tests and
++2 files — the identical delta S11 shipped on its own branch, none of it lost
+and none of it double-counted in the merge. The arithmetic and the reading
+agree a third time running, because this delta never touched a file P4.1
+also touched.
 
 ---
 
