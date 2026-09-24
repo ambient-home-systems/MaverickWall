@@ -10,6 +10,7 @@ import { createApp } from '../src/http/app.js';
 import { createSetupTokenHolder } from '../src/http/setup.js';
 import { createKeyring } from '../src/secrets/keyring.js';
 import { createFetcher } from '../src/net/fetcher.js';
+import { closeFakeHomeAssistants, fakeHomeAssistant, TOKEN } from './fake-home-assistant.js';
 
 /**
  * P2.1: one place for "Add", on every list screen.
@@ -32,8 +33,9 @@ import { createFetcher } from '../src/net/fetcher.js';
 
 const MIGRATIONS = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
 const roots: string[] = [];
-afterAll(() => {
+afterAll(async () => {
   for (const root of roots) rmSync(root, { recursive: true, force: true });
+  await closeFakeHomeAssistants();
 });
 
 let clientNumber = 0;
@@ -103,7 +105,25 @@ async function harness() {
   const seedPerson = async (): Promise<void> => {
     expect((await form('/admin/people', { name: 'Sam', color: '#4C7FD1' })).status).toBe(302);
   };
-  return { call, seedPerson };
+  /*
+   * A real fake house, for the four Home Assistant screens. Their add pages
+   * draw a form only when a house is connected — with none they say so and
+   * point at Connection, which is the honest page and one with no create form
+   * on it — so a walk of an unconnected household could not see the forms at
+   * all, and the endpoint half of this test would be asserting against an
+   * empty page.
+   */
+  const connectHouse = async (): Promise<void> => {
+    const ha = await fakeHomeAssistant();
+    const connected = await form('/admin/home-assistant/connect', {
+      base_url: ha.base,
+      token: TOKEN,
+      allow_lan: '1',
+      accept_http: '1',
+    });
+    expect(connected.status, 'the fake house must connect').toBe(302);
+  };
+  return { call, seedPerson, connectHouse };
 }
 
 /** Follow a relative href the way a browser resolves it against `<base href="/">`. */
@@ -128,13 +148,8 @@ interface ListScreen {
    * form on the add page or one page further (a chooser's destinations).
    */
   readonly creates: readonly string[];
-  /**
-   * A screen whose half of P2.1 has not landed. Its test is `it.fails`: it is
-   * expected to fail today and to start passing — and so to fail as an
-   * `it.fails` — the moment its session lands, which is when this flag comes
-   * off.
-   */
-  readonly todo?: string;
+  /** A Home Assistant screen, whose add page needs a connected house to draw its form. */
+  readonly house?: true;
 }
 
 const SCREENS: readonly ListScreen[] = [
@@ -144,24 +159,18 @@ const SCREENS: readonly ListScreen[] = [
   { path: '/admin/shifts/types', creates: ['admin/shifts/types', 'admin/shifts/types/preset'] },
   { path: '/admin/chores', creates: ['admin/chores'] },
   { path: '/admin/themes', creates: ['admin/themes', 'admin/themes/generate'] },
-  // TODO(S06): Walls and the Home Assistant screens are P2.1's second half and
-  // P2.2. Each fails today on the first assertion: no app-bar "Add …" action.
-  { path: '/admin/walls', creates: ['admin/screens', 'admin/epaper'], todo: 'S06' },
-  { path: '/admin/home-assistant/readings', creates: ['admin/home-assistant/entities'], todo: 'S06' },
-  { path: '/admin/home-assistant/calendars', creates: ['admin/home-assistant/calendars'], todo: 'S06' },
-  { path: '/admin/home-assistant/lists', creates: ['admin/home-assistant/lists'], todo: 'S06' },
-  { path: '/admin/home-assistant/alerts', creates: ['admin/home-assistant/rules'], todo: 'S06' },
+  { path: '/admin/walls', creates: ['admin/screens', 'admin/epaper'] },
+  { path: '/admin/home-assistant/readings', creates: ['admin/home-assistant/entities'], house: true },
+  { path: '/admin/home-assistant/calendars', creates: ['admin/home-assistant/calendars'], house: true },
+  { path: '/admin/home-assistant/lists', creates: ['admin/home-assistant/lists'], house: true },
+  { path: '/admin/home-assistant/alerts', creates: ['admin/home-assistant/rules'], house: true },
 ];
 
 describe('every list page puts its one "Add …" in the app bar, and its form elsewhere', () => {
   for (const screen of SCREENS) {
-    const test = screen.todo === undefined ? it : it.fails;
-    const name =
-      screen.todo === undefined
-        ? screen.path
-        : `${screen.path} — expected to fail until ${screen.todo} (TODO(${screen.todo}))`;
-    test(name, async () => {
+    it(screen.path, async () => {
       const h = await harness();
+      if (screen.house === true) await h.connectHouse();
       const before = await (await h.call(screen.path)).text();
       await h.seedPerson();
       const response = await h.call(screen.path);

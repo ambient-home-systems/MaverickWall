@@ -7,7 +7,7 @@ import {
   type AdminScreenRow,
 } from '../api/queries.js';
 import { navModules, type AdminDeps } from './admin.js';
-import { card, destructive, emptyState, listRow, tag } from './components.js';
+import { card, destructive, emptyState, listRow, section, tag } from './components.js';
 import { confirmDestroyPage, errorBlock, escapeHtml, icon, page } from './html.js';
 import { ago, presence, presenceDot, type Presence } from './presence.js';
 import { readSaved, savedRedirect } from './saved.js';
@@ -29,8 +29,9 @@ import { selfHref } from './self.js';
  * count) was prose with nothing to press; and the rarest action, approving a
  * device-flow code, carried the most structure. So:
  *
- *  - the two doors are buttons in an action row under the app bar, with the
- *    approve form demoted to a ghost link beside them (§3.1, §2.4);
+ *  - the two doors are one: an app-bar "Add a wall" leading to a chooser
+ *    between the two kinds (P2.2, replacing RFC 016 §3.1's row of buttons),
+ *    with approving a code a link in the lead line (§2.4);
  *  - every card reads `presence()` and nothing else for its state, and a card
  *    for a wall nothing has ever used carries the one thing to do about it,
  *    per kind — **Pair it** for a browser wall, **Set up the device** for a
@@ -269,6 +270,60 @@ function revokedDisclosure(revoked: readonly AdminScreenRow[], at: number): stri
   );
 }
 
+/** The Walls list's one create action, and its empty state's (P2.1, P2.2). */
+const ADD_A_WALL = { label: 'Add a wall', href: 'admin/walls/new' } as const;
+
+/**
+ * The two kinds, in the words the pages behind them use (P2.2).
+ *
+ * The chooser's title is the add page's heading, word for word, so the
+ * household presses "Add a browser wall" and lands on a page headed "Add a
+ * browser wall" — `add-display-parity` holds the two to each other. Each line
+ * says what the hardware is rather than how it connects, because that is the
+ * fact a household has in hand: they are holding a tablet, or a panel.
+ */
+export const WALL_KINDS = [
+  {
+    title: 'Add a browser wall',
+    detail: 'A tablet, a monitor or a television showing Maverick Wall as a web page.',
+    href: 'admin/walls/new/browser',
+  },
+  {
+    title: 'Add an e-paper wall',
+    detail: 'An ESPHome or OpenDisplay panel that shows a picture Maverick Wall draws.',
+    href: 'admin/walls/new/epaper',
+  },
+] as const;
+
+/**
+ * Adding a wall starts here: which kind (P2.2).
+ *
+ * The same shape as adding a calendar, which is the precedent P2.1 set for a
+ * thing that arrives in kinds that share no form — a list of rows, each the
+ * whole of its choice, then the page for that kind. Approving a pairing code
+ * is offered under them as a link, for the household who came here with a
+ * code a wall is already showing: it is a third way a wall arrives, and the
+ * rarest, so it is secondary rather than a third row.
+ */
+function chooseWallPage(c: Context, deps: AdminDeps): string {
+  return page({
+    self: selfHref(c),
+    modules: navModules(deps.db),
+    title: 'Add a wall — Maverick Wall',
+    nav: 'walls',
+    heading: 'Add a wall',
+    back: { label: 'Walls', href: 'admin/walls' },
+    body:
+      section(
+        'What kind of wall is it?',
+        undefined,
+        WALL_KINDS.map((kind) => listRow('', { title: kind.title, detail: kind.detail, href: kind.href })).join(''),
+      ) +
+      `<p class="hint">A wall already showing a pairing code? ` +
+      `<a class="link" href="admin/screens/approve">Approve a pairing code</a>.</p>`,
+  });
+}
+
 /**
  * The Walls list: every paired wall, browser and e-paper alike — one list,
  * one nav item, one card shape, with a kind chip on each card rather than two
@@ -288,23 +343,22 @@ export function displaysPage(c: Context, deps: AdminDeps, error?: string): strin
     w.screen.kind === 'epaper' ? epaperListCard(w.screen, w.p) : displayListCard(w.screen, w.p);
 
   /*
-   * The two doors, and the rare third, as buttons (RFC 016 §3.1). Filled,
-   * tonal and ghost are the three emphases the sheet already declares; every
-   * anchor wears `.btn` beside its variant, which `admin-button-anatomy`
-   * holds every page to. Deliberately not the app bar: `pageHeader` takes one
-   * action, and two equal doors are not one.
+   * One door (P2.2). The two kinds of wall used to be two buttons under the
+   * header — "Pair a browser wall" and "Add an e-paper panel", which differed
+   * in both the verb and the noun for one act — with the rare third,
+   * approving a device-flow code, as a ghost button beside them. Now the app
+   * bar carries the one "Add a wall", the place every list in the admin keeps
+   * its create action (P2.1), and it leads to a chooser between the two kinds.
    *
-   * The approve form used to be a whole section at the foot of the page, the
-   * same construction as adding a wall, for the path taken when a *wall*
-   * starts its own device flow. `GET /admin/screens/approve` with no code
-   * already renders that form, so the section is a link to it.
+   * Approving a code is not adding a wall from here: the wall started it, and
+   * the household arrives with a code in hand. So it is a link in the lead
+   * line rather than a second action — secondary, and still one tap away. The
+   * page it leads to already renders the code field with nothing typed.
    */
-  const actions =
-    `<div class="wall-actions">` +
-    `<a class="btn" href="admin/walls/new">Pair a browser wall</a>` +
-    `<a class="btn btn-tonal" href="admin/epaper#add">Add an e-paper panel</a>` +
-    `<a class="btn btn-ghost" href="admin/screens/approve">Approve a pairing code</a>` +
-    `</div>`;
+  const lead =
+    `<p class="note">Every wall in the house, browser and e-paper alike. ` +
+    `A wall showing a pairing code of its own? ` +
+    `<a class="link" href="admin/screens/approve">Approve a pairing code</a>.</p>`;
 
   return page({
     self: selfHref(c),
@@ -313,9 +367,10 @@ export function displaysPage(c: Context, deps: AdminDeps, error?: string): strin
     nav: 'walls',
     heading: 'Walls',
     saved: readSaved(c),
+    action: ADD_A_WALL,
     body:
       (error === undefined ? '' : errorBlock(error)) +
-      actions +
+      lead +
       /*
        * Every card here is a real, paired wall. The Default wall used to lead
        * the grid and was neither — nothing is paired to it and nothing draws
@@ -324,7 +379,7 @@ export function displaysPage(c: Context, deps: AdminDeps, error?: string): strin
        * System, and the canvas walls fell back to was copied onto them.
        */
       (walls.length === 0
-        ? emptyState('No walls yet.', { label: 'Pair a browser wall', href: 'admin/walls/new' })
+        ? emptyState('No walls yet.', ADD_A_WALL)
         : wallSummary(walls, at) + `<div class="grid g2">` + walls.map(cardFor).join('') + `</div>`) +
       revokedDisclosure(revoked, at),
   });
@@ -336,6 +391,13 @@ export function registerWallsRoutes(app: Hono, deps: AdminDeps): void {
   // `/admin/walls` is the one list and the one canonical route now (RFC 009
   // Phase 4) — its status, pairing, settings and layout.
   app.get('/admin/walls', (c: Context) => c.html(displaysPage(c, deps)));
+  /*
+   * The chooser. Declared here, ahead of `/admin/walls/:id` in `admin.ts`, for
+   * the reason that file gives: `:id` would take "new" for a wall's id and
+   * bounce it to this list. The two add pages behind it are two segments deep
+   * and registered beside the forms they draw.
+   */
+  app.get('/admin/walls/new', (c: Context) => c.html(chooseWallPage(c, deps)));
 
   const now = deps.now ?? ((): number => Date.now());
   const revokedScreens = (): AdminScreenRow[] =>

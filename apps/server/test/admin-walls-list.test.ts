@@ -196,27 +196,35 @@ describe('the Walls list is one card shape for every kind of wall', () => {
     expect(grid).toContain('800×480');
   });
 
-  it('offers the two doors and the rare third as buttons, and not as prose', async () => {
+  it('offers one door, in the app bar, and the rare third as a link in the lead line', async () => {
     const h = await harness();
     await h.form('/admin/screens', { name: 'Kitchen tablet', theme: 'panels' });
     const html = await h.text('/admin/walls');
     /*
-     * Both doors used to be `<a class="link">` inside a `<p class="hint">`,
-     * set in the body role in the middle of the prose explaining them and
-     * below every card on the page (RFC 016 §2.1); the approve form was a
-     * whole section at the foot (§2.4). Three buttons in one row now, at the
-     * three emphases the sheet declares, each wearing `.btn` beside its
-     * variant — `admin-button-anatomy` is what holds every anchor to that.
+     * P2.2 changed this test's letter, deliberately. RFC 016 §3.1 put the two
+     * doors in a row of buttons under the header — "Pair a browser wall" and
+     * "Add an e-paper panel", which differed in both the verb and the noun for
+     * one act — with approving a code as a ghost button beside them. Now the
+     * app bar carries one "Add a wall", the place every list in the admin keeps
+     * its create action (P2.1), and it leads to a chooser. What the RFC was
+     * after survives: the doors are buttons and not prose, and nothing about
+     * adding a wall is below the grid.
      */
-    const row = html.slice(html.indexOf('<div class="wall-actions">'), html.indexOf('</div>', html.indexOf('<div class="wall-actions">')));
-    expect(row).toContain('<a class="btn" href="admin/walls/new">Pair a browser wall</a>');
-    expect(row).toContain('<a class="btn btn-tonal" href="admin/epaper#add">Add an e-paper panel</a>');
-    expect(row).toContain('<a class="btn btn-ghost" href="admin/screens/approve">Approve a pairing code</a>');
-    // The row sits above the grid, not under it.
-    expect(html.indexOf('<div class="wall-actions">')).toBeLessThan(html.indexOf('<div class="grid g2">'));
+    const bar = /<header class="topbar">([\s\S]*?)<\/header>/.exec(html)?.[1] ?? '';
+    expect(bar).toContain('<a class="btn btn-sm" href="admin/walls/new">Add a wall</a>');
+    expect([...bar.matchAll(/<a class="btn[^"]*"/g)].length, 'one app-bar action').toBe(1);
+    expect(html).not.toContain('<div class="wall-actions">');
+    // The old door names are gone from the list, both of them.
+    expect(html).not.toContain('Pair a browser wall');
+    expect(html).not.toContain('Add an e-paper panel');
+    // Approving a code is a link in the lead line, above the grid.
+    const lead = html.indexOf('<p class="note">');
+    expect(lead).toBeGreaterThan(-1);
+    expect(lead).toBeLessThan(html.indexOf('<div class="grid g2">'));
+    const leadLine = html.slice(lead, html.indexOf('</p>', lead));
+    expect(leadLine).toContain('<a class="link" href="admin/screens/approve">Approve a pairing code</a>');
     // And the prose, the section and its field are gone.
     expect(html).not.toContain('Pair a new wall');
-    expect(html).not.toContain('Add an e-paper wall');
     expect(html).not.toContain('<h2>Approve a pairing code</h2>');
     expect(html).not.toContain('name="code"');
     expect(html).not.toContain('<h2>Add a wall</h2>');
@@ -224,11 +232,36 @@ describe('the Walls list is one card shape for every kind of wall', () => {
     expect(await h.text('/admin/screens/approve')).toContain('name="code"');
   });
 
-  it('draws an empty state whose action is the first door, with no walls', async () => {
+  it('leads to a chooser between the two kinds, with approving a code under them', async () => {
+    const h = await harness();
+    const response = await h.call('/admin/walls/new');
+    expect(response.status, 'the chooser is a page, not a redirect').toBe(200);
+    const html = await response.text();
+    expect(html).toContain('<h1>Add a wall</h1>');
+    // Two rows, each the whole of its choice, each with the one line saying
+    // what the hardware is — in list order, browser first.
+    const rows = [...html.matchAll(/<a class="mw-row-link" href="([^"]*)">([^<]*)<\/a>/g)].map(
+      (m) => [m[1], m[2]],
+    );
+    expect(rows).toEqual([
+      ['admin/walls/new/browser', 'Add a browser wall'],
+      ['admin/walls/new/epaper', 'Add an e-paper wall'],
+    ]);
+    expect(html).toContain('A tablet, a monitor or a television showing Maverick Wall as a web page.');
+    expect(html).toContain('An ESPHome or OpenDisplay panel');
+    expect(html).toContain('<a class="link" href="admin/screens/approve">Approve a pairing code</a>');
+    // The way back is the list.
+    expect(html).toContain('class="crumb crumb-back" href="admin/walls"');
+    // And the chooser is not itself a form: it only chooses.
+    expect(html.slice(html.indexOf('</header>'))).not.toContain('<form method="post"');
+  });
+
+  it('draws an empty state whose action is the one door, with no walls', async () => {
     const h = await harness();
     const html = await h.text('/admin/walls');
     expect(html).toContain('<div class="mw-empty">');
-    expect(html).toContain('<a class="btn" href="admin/walls/new">Pair a browser wall</a>');
+    const empty = html.slice(html.indexOf('<div class="mw-empty">'));
+    expect(empty).toContain('<a class="btn" href="admin/walls/new">Add a wall</a>');
     expect(html).not.toContain('<div class="grid g2">');
     expect(html).not.toContain('class="wall-summary"');
     expect(html).not.toContain('No walls paired yet. Add one below');

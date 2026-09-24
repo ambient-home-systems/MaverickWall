@@ -107,6 +107,11 @@ const PAGES = [
   '/admin/home-assistant/calendars',
   '/admin/home-assistant/lists',
   '/admin/home-assistant/alerts',
+  // The four add pages behind them (P2.1).
+  '/admin/home-assistant/readings/new',
+  '/admin/home-assistant/calendars/new',
+  '/admin/home-assistant/lists/new',
+  '/admin/home-assistant/alerts/new',
   '/admin/modules',
   '/admin/modules/advanced',
   // The prefill card only draws when `?install=` resolves to a service entry
@@ -115,8 +120,11 @@ const PAGES = [
   '/admin/modules/advanced?install=countdown-example',
   '/admin/modules/recipe',
   '/admin/walls',
+  // The chooser, and the two add pages behind it (P2.2). `/admin/epaper` is a
+  // redirect to the second now, so it is not a page to sweep.
   '/admin/walls/new',
-  '/admin/epaper',
+  '/admin/walls/new/browser',
+  '/admin/walls/new/epaper',
   '/admin/themes',
   '/admin/themes/new',
   '/admin/people',
