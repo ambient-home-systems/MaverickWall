@@ -2802,9 +2802,11 @@ body {
   text-align: center;
 }
 
-/* Image widget: an uploaded picture covering its box. */
+/* Image widget: an uploaded picture covering its box. Its corners follow the
+   box's Corners option: the box is padded, so rounding the box alone curves
+   empty space and leaves the picture square. */
 .fw-image { width: 100%; height: 100%; background-position: center; background-size: cover;
-  background-repeat: no-repeat; }
+  background-repeat: no-repeat; border-radius: var(--fw-radius, 0); }
 
 /* Notes: free text, kept as written. */
 .nt { display: flex; flex-direction: column; min-width: 0; }

@@ -16,6 +16,25 @@
 
 ## Unreleased
 
+**The forecast's "What it says" list tells the truth about what is drawn.**
+With all four rows ticked, "The overnight low" was shown struck through, as
+if the box were too small for it, while the wall drew it right beside the
+high. Ticking it again changed nothing, so it looked like a row that could
+not be turned on. It is only struck through now when the wall really leaves
+it out. That goes for the rota badge's list too.
+
+**Dragging a row in that list puts it where you drop it.** A row dragged up
+used to end up at the bottom. It follows your finger now and lands where you
+let go, and one Undo takes the whole drag back. You can also tick or untick a
+row by pressing its name, not only its small box.
+
+**Corners only appears where it can round something.** Rounding a widget's
+corners rounds its background. On a widget with no background the corners
+fell on empty space and nothing on the wall changed. Corners appears once
+**Card background** is on, or once the widget has its own background colour
+under Colours and type. On a picture it is always there, and it now rounds
+the picture itself.
+
 ## 0.66.0
 
 **A wall can carry your own CSS, and so can each widget on it.** Open a
