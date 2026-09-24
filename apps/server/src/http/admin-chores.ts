@@ -558,10 +558,10 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
             `them assigned — a chore inherits that person’s colour on the wall.</p>`
           : '') +
         (chores.length === 0
-          ? // No action offered: "Add a chore" is already the page's one primary
-            // action, in the app bar, pointing at the very form below. A second
-            // one here would only move the viewport — the same reasoning
-            // Calendars' empty state already carries.
+          ? // No action offered: the "Add a chore" form is already on this
+            // page, directly below, with the page's one filled Add. A link here
+            // would only move the viewport — the same reasoning Calendars'
+            // empty state already carries.
             emptyState(
               'No chores yet. Add one below and it will appear here with the ' +
                 'next few days it falls due, so you can check it means what you meant.',
@@ -607,7 +607,9 @@ export function registerChoreRoutes(app: Hono, deps: AdminDeps): void {
             `“By” is a time of day the wall shows beside the chore; ` +
             `leave it blank for any time that day.</p>` +
             `<button type="submit">Add</button></form>`,
-          // The fragment the app bar's own "Add a chore" action links to.
+          // A fragment somebody can link to (`admin/chores#add`). Nothing on
+          // this page does: there is no app-bar action, and the empty state
+          // above offers none.
           'add',
         ),
     });

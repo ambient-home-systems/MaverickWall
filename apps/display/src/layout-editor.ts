@@ -736,8 +736,9 @@ function boot(): void {
     : 'Nothing is placed yet — add a widget above. Until you do, the wall ' +
       'shows a short note in place of a layout rather than going blank.';
 
-  // The canvas background control (RFC 005 Phase 3): none, a solid colour, or a
-  // gradient. Per canvas, so it swaps with the orientation like the widgets do.
+  // The canvas background control (RFC 005 Phases 3 and 3b): none, a solid
+  // colour, a gradient, or an uploaded image. Per canvas, so it swaps with the
+  // orientation like the widgets do.
   const backgroundPanel = document.createElement('div');
   backgroundPanel.className = 'le-bg';
 
@@ -2538,7 +2539,8 @@ function boot(): void {
   }
 
   /**
-   * The canvas background control: none, a solid colour, or a two-stop gradient.
+   * The canvas background control: none, a solid colour, a two-stop gradient, or
+   * an uploaded image.
    * A property of the active canvas, so it is redrawn on an orientation switch.
    */
   function drawBackgroundPanel(): void {

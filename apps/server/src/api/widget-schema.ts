@@ -366,11 +366,11 @@ export const widgetConfigBody = laneConfigFields
   .strict();
 
 /**
- * A canvas background (RFC 005 Phase 3): a solid colour or a two-stop gradient.
+ * A canvas background (RFC 005 Phases 3 and 3b): a solid colour, a two-stop
+ * gradient, or a first-party uploaded image.
  *
  * Colours are the same `#rrggbb` hex the format controls use, rejected not
- * coerced (rule five). A first-party image background is Phase 3b and adds a
- * variant here. Shared so the editor's save route and the templates validate it
+ * coerced (rule five). Shared so the editor's save route and the templates validate it
  * the same way — a template can set no background a household could not.
  */
 const hex6 = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'A colour has to be a #rrggbb hex.');

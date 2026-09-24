@@ -1761,7 +1761,7 @@ pre.code{background:var(--mw-surface-2);
  * neighbour below and to the right. The test measures what is actually
  * reachable rather than trusting this line. */
 .le-handle::before{content:"";position:absolute;inset:-16px -2px -2px -16px}
-/* The canvas background control — none / solid / gradient, per canvas. */
+/* The canvas background control — none / solid / gradient / image, per canvas. */
 .le-bg{display:flex;flex-wrap:wrap;align-items:center;gap:var(--mw-s-3);margin:var(--mw-s-3) 0 0}
 .le-bg-label{
   font:var(--mw-t-label-sm);
@@ -2958,8 +2958,10 @@ export const SIGNOUT_CLOSE = '<!--/mw:signout-->';
  * though it were a wall setting, and the topbar's kicker — the group label —
  * read "Walls" over the Walls page and "Content" over the Overview.
  *
- * A group's tab goes to its first page. `href` is relative, so the single
- * `<base>` carries every link through ingress.
+ * A group is a heading over its items and nothing more: it renders no tab
+ * strip and has no page of its own, so there is no "first page" for a group to
+ * link to. Every item's `href` is relative, so the single `<base>` carries
+ * every link through ingress.
  */
 interface NavItem {
   readonly key: string;
@@ -3138,8 +3140,10 @@ export interface ShellPageOptions extends CommonPageOptions {
   readonly self: string;
   /**
    * A primary action for the top-right of the shell's topbar, where a page has
-   * one — e.g. "Add a calendar" linking to the add form. Already-escaped label;
-   * relative href.
+   * one — e.g. Themes' "New theme", which opens a page of its own. Not for a
+   * page whose add form is already on it: Calendars and Chores deliberately
+   * carry no app-bar action, because a link to a form on screen only scrolls.
+   * Already-escaped label; relative href.
    */
   readonly action?: { readonly label: string; readonly href: string };
   /**

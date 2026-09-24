@@ -518,8 +518,8 @@ const aspectOf = (value: number, fallback: number): number =>
   Number.isFinite(value) && value > 0 ? value : fallback;
 
 /**
- * A canvas background (RFC 005 Phase 3): a solid colour or a two-stop gradient.
- * A first-party image background is Phase 3b and adds a variant here.
+ * A canvas background (RFC 005 Phases 3 and 3b): a solid colour, a two-stop
+ * gradient, or a first-party uploaded image by its stored name.
  */
 export type CanvasBackground =
   | { readonly type: 'solid'; readonly color: string }

@@ -20,6 +20,10 @@
  * `month-spans-parity`, `tier-parity` and `calendar-view-parity` already sit at.
  * Read the drawing conventions — the 24 grid, and why every subpath is
  * clockwise but a counter — out of that file's own docstring.
+ *
+ * That docstring also records what the 2026-09-24 decisions changed: occasion
+ * motifs (D3) and emoji on a browser wall (D6) arrive as bundled artwork drawn
+ * as an `<img>`, not as keys in this vocabulary and never as a code point.
  */
 
 export const GLYPH_KEYS = [
