@@ -422,12 +422,13 @@ do not invent a ninth component without raising it first.
 > about a paragraph tells you the renderer under it was deleted. `git log`,
 > `pnpm test` and the file tree are authoritative; this is a narrative.
 
-**0.61.0 is the current release.** `main`, the tag and the published image
+**0.67.0 is the current release.** `main`, the tag and the published image
 agree with each other, and `advertise` is what keeps them that way — it writes
 `config.yaml`'s version last, after the image is built for both architectures,
 signed, pulled anonymously and verified.
 
-**This line read `0.58.0` while 0.61.0 was live, and it is worth one sentence
+**This line read `0.58.0` while 0.61.0 was live, and then `0.61.0` while 0.67.0
+was, and it is worth one sentence
 because of where it sits.** It is four paragraphs under a header warning that
 the counts here rot, in the one paragraph whose whole subject is that `main`,
 the tag and the image agree — so the sentence asserting that three things agree
