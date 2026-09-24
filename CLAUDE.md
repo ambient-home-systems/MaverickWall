@@ -7548,6 +7548,97 @@ files — exactly the three new files' own count (`admin-external-links.test.ts`
 the reading agree, and is recorded as an observation rather than a method:
 the paragraphs above this one have been wrong about that five times running.
 
+**The weather panel carries what it is like now, the next day of hours, and
+more about each day (plan items P3.1–P3.4, P3.6–P3.8, session S08). Nothing on
+a wall or a panel draws any of it yet** — the styles that will are S14 and S15
+— **and it must not ship without S09 (P3.5)**: `current` changes every fifteen
+minutes, `manifestEtag` hashes the whole document, and until S09 narrows the
+e-paper preimage every paired panel's frame ETag moves on that cadence, weather
+widget or not. The panel gains `current`, `hourly`, `units` and `air`, and each
+day gains `precipChance`, `precipAmount`, `windMax`, `uvMax`, `sunrise`,
+`sunset` and `detail`. **Every one is optional and spread**, and that is
+asserted as text: a cache holding only a forecast row written by the previous
+release assembles to the exact string the previous release produced, so a
+household with nothing new keeps its manifest and its ETag byte for byte;
+emitting `units` unconditionally or `current: null` turns it red.
+
+**Every parser reads real bytes.** Open-Meteo answers the cloud environment, so
+a full forecast for Washington (imperial) and London (metric), two air-quality
+answers and a sunrise/sunset spread — ten places, 25 June to 9 October — were
+captured live with the exact URLs the code builds, and the README beside them
+says so. NWS does not answer a cloud address, so its parsers read the owner's
+five captures under `fixtures/nws/real/`, and **those bytes found a fault on
+the first run**: every hourly period carries `"name": ""`, which the daily
+period schema — whose one required field is the row's name — refused all 156
+of. The hourly reader has its own schema. They also showed NWS's hourly
+`isDaytime` is a 06:00–18:00 clock (18:00 is "night" before a 19:02 sunset), so
+day and night come from the sun instead. **One capture the owner task asked for
+is not among them**, the observation with a null temperature; the fallback is
+tested against KDCA's real observation with that one value set to null, in the
+shape the same document uses for four other quantities, and
+`fixtures/nws/real/README.md` records it as missing rather than papering over
+it.
+
+**Sunrise and sunset are calculated for every provider** by `sun.ts`, the NOAA
+algorithm, pure, with the zone's offset handed in. Against Open-Meteo's own
+answer for 1,726 events it is within two minutes everywhere the sun is not
+grazing the horizon, and within five on the 34 days it is — the crossing moves
+by 1/sin(hour angle), which is geometry rather than error, and the test says so
+rather than excluding those days. It agrees with Open-Meteo on every day with
+no sunrise or no sunset, which Open-Meteo marks with a sentinel (sunrise at
+00:00, daylight 0 or 86,400 s) that the parser now reads as absence. Two facts
+about the reference were measured, not assumed: Open-Meteo computes for the
+grid cell it reports (the requested point is up to eleven minutes off at 86°N),
+and it truncates to the minute (mean +0.52 across 1,794 events). **Its local
+times are in one fixed offset for the whole answer**, even across a clock
+change — Sydney's sunrises run on without a jump over 4 October — so sun times
+are turned back into instants with `utc_offset_seconds` and re-printed in the
+household's zone; the Sydney case is the test that can see it, because a
+Washington fixture in September has no clock change to fail on.
+
+**Current conditions older than ninety minutes are not "now"**, applied twice:
+at assembly (`presentCurrent`, where NWS falls back to the hourly period
+covering now, `source: 'modelled'`, and Open-Meteo, whose conditions already are
+a model, falls back to nothing), and again in the wall's `weatherFrom` against
+its own clock, because an offline wall redrawing its IndexedDB copy is the one
+place the server's rule cannot reach. The job runs every fifteen minutes and
+asks each part whether it is due — conditions every fifteen, forecasts and air
+hourly, with three minutes' slack for the scheduler's jitter — and a failed
+part keeps its last copy and stays due. Open-Meteo's one answer carries every
+part, and only the due parts are written, so the days are not re-stamped every
+fifteen minutes. **Moving to fifteen minutes nearly quadrupled one request**:
+a location NWS cannot resolve would have asked `/points` every run instead of
+hourly; it waits for the forecast now, with one exception for a gridpoint
+cached by the previous release, which is asked for its hourly and station URLs
+once, at once. NWS stays in Fahrenheit and mph whatever the setting, as its page
+already said, and its SI observations are converted to match. **Air quality is
+off until switched on (Q5, the proposed default)**, names
+`air-quality-api.open-meteo.com` beside the switch before anything has been
+asked, reads the European index in a `Europe/` zone and the US one elsewhere,
+and forgets its reading when switched off (migration `0052`, one generated
+`ADD COLUMN`, read). The wall's `weatherFrom` carries `summary` now, which it
+had dropped since the day it was written.
+
+**Thirty-three mutations were checked and all are red**, 24 of them on the
+server's first pass. One display mutation stayed green at first — not handing
+`weatherFrom` the wall's clock — because the only `buildModel` test drew a
+reading forty minutes old; it draws one ninety-one minutes old too now. And one
+assertion was vacuous as first written: "switching air quality on brings the
+job forward" read `next_run_at ?? 0` on a database with no `job_state` row, so
+it passed whatever the code did; it seeds the row now. The list view's
+optional rain chance (P3.7) and the e-paper reader of the new fields were not
+built: the first widens the agenda's date column, which is a density decision
+with its own measurement, and the second has no panel style to read them for
+until P5.1.
+
+**3907 tests passing, and 1 skipped, over 276 files**: calendar 153 over 10 ·
+core 314 over 9 · display 628 over 36 · server 2812 over 221, measured on a
+clone whose tags had been fetched and with `MW_BROWSER_EXECUTABLE` naming the
+provisioned Chromium. Against the 3830 over 271 above, +77 tests and +5 files,
+which is this change's own count (four new server files of 62, three tests in
+`admin-saved`, one display file of 12) — agreement, recorded as an observation
+and not a method. No ratchet baseline moved.
+
 ---
 
 ## Open decisions
