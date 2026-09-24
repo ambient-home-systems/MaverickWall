@@ -11,6 +11,7 @@ import { createSetupTokenHolder } from '../src/http/setup.js';
 import { createKeyring } from '../src/secrets/keyring.js';
 import { createFetcher } from '../src/net/fetcher.js';
 import { issueDisplayToken } from '../src/auth/tokens.js';
+import { haReadingHandle } from '../src/api/manifest.js';
 
 /**
  * Saving a free-form layout from the editor.
@@ -211,7 +212,34 @@ describe('saving a layout', () => {
       title: 'This week', showTitle: true, align: 'center',
       background: '#111820', opacity: 80, corners: 'rounded', shadow: true,
     });
-    expect(byType['homeassistant']).toEqual({ readings: ['Front door'] });
+    /*
+     * The one key that is not carried through as written, and deliberately
+     * (P1.3): a Home Assistant widget's `readings` hold entity ids, which rule
+     * 12 keeps off the wall, so every entry leaves as a handle. "Front door"
+     * is a label — how every widget saved before P1.3 picked a reading — and
+     * the harness watches `binary_sensor.front_door` under that name, so it
+     * leaves as that reading's handle with no migration. The letter moved; the
+     * intent, that a widget's config reaches the manifest meaning what it
+     * meant, is unchanged, and the calendar's row above still asserts it whole.
+     */
+    expect(byType['homeassistant']).toEqual({ readings: [haReadingHandle('binary_sensor.front_door')] });
+  });
+
+  it('saves a Home Assistant widget naming a long entity id', async () => {
+    // The picker writes entity ids now (P1.3), and an entity id may be as long
+    // as the watch form accepts; the 80 characters a label needed would refuse
+    // a choice the picker had just offered.
+    const h = await harness();
+    const entity = `sensor.${'a'.repeat(200)}`;
+    const res = await h.saveLayout({
+      mode: 'freeform', aspect: 0.5625,
+      widgets: [
+        { id: 'ha', type: 'homeassistant', x: 0, y: 0, w: 1, h: 1, z: 0, config: { readings: [entity] } },
+      ],
+    });
+    expect(res.status).toBe(200);
+    const stored = h.db.prepare(`SELECT config FROM layout_widgets WHERE id = 'ha'`).get() as { config: string };
+    expect(JSON.parse(stored.config).readings).toEqual([entity]);
   });
 
   it('accepts the week mode and month pills, and round-trips them (RFC 005)', async () => {

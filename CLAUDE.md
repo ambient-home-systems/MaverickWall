@@ -7548,6 +7548,152 @@ files — exactly the three new files' own count (`admin-external-links.test.ts`
 the reading agree, and is recorded as an observation rather than a method:
 the paragraphs above this one have been wrong about that five times running.
 
+**A Shift widget set to two people draws both of them (P1.2).** The
+manifest, the editor's picker and `shiftWidgetView` all kept both people; the
+second was lost in the wall's tier pass. `tierShift` read the tier off the
+whole box as if it held one badge, drew a card at that tier for every person,
+and the belt — which keeps the first item and hides whatever ends past the
+foot — took the second person off the glass, because Classic's rota box is one
+badge tall. Measured before the fix on a paired Classic wall with two rota
+workers: two badges drawn, one visible ("AmyDays" at 1080x1920, a two-rung
+card; "Amy: Days · …" at 1920x1080, a line), and `data-tier-items` saying 2 at
+both. Three changes, as the plan gives them. **The tier is chosen per badge**
+— `stackedItemHeight`, the inner height less the gaps between cards over the
+number of people, which is the inner height exactly for one person. **Where a
+card does not fit per person, every person is a line** (`shiftBadgesToLines`,
+pure, beside `laddersToOneLine`, which it defers to for one person). And **the
+stamp is the count visible after the belt**, not the rota's.
+
+**The plan's second step did not fit as written, and measuring is what said
+so.** It names `shiftLineBadge` for the several-people form, and that line is
+the *headline* at full size: 76px a person on the 1920x1080 Classic box, which
+gives each of two people 41. A headline-sized list is a list of one. The panel
+has never drawn it that way — `epaper/widgets.ts` draws more than one person as
+a compact line each at its **body** rung — so the wall's several-people lines
+(`.fw-shift.is-lines`) are drawn at the event role, the size a name takes in a
+box that holds several, with the month cell's step-2 chrome on the card and
+between cards. The one-person line is untouched. "A full badge" in the plan is
+read as *a card*, so a box with room for a two-rung card per person still draws
+cards; the other reading (lines whenever any rung is cut) changes nothing on
+Classic, where both the whole box and one badge's share resolve below a full
+card, and the requested mutation could not have gone red.
+
+**Four mutations, each on a rebuilt bundle, and which size each reddens is the
+record.** The tier from the whole box again reddens 1080x1920 and leaves
+1920x1080 green, honestly — that box is below a card even for one person, so
+both computations land on the same floor. The lines at the headline's size
+redden both sizes. The lines in the card's own step-4 chrome redden 1920x1080
+only. The stamp taken before the belt reddens only
+`browser-shift-two-people.test.ts`'s short box, the one place the belt hides
+anybody, because on Classic both people now fit and the two stamps agree.
+**`wall-density` and `browser-classic-proportions` did not move for a
+one-person wall**, measured rather than inferred from green: both files were
+run on a clean worktree of `main` and on this branch with every measurement
+they take written out — ten viewport readings, six ratio readings and eight box
+readings, rota chip included — and the two sets are identical as text. No
+baseline moved and none needed to. The calendar's own `shifts[0]` is
+untouched; that is P5.4, in S20.
+
+**3837 tests passing, and 1 skipped, over 272 files**: calendar 153 over 10 ·
+core 314 over 9 · display 620 over 35 · server 2750 over 218, measured on a
+clone whose tags had been fetched and with `MW_BROWSER_EXECUTABLE` naming the
+provisioned Chromium, for the revision mismatch S01 recorded. Against 3830
+over 271 above, that is +7 tests and +1 file: four unit tests in
+`widget-tiers.test.ts` and the new browser file's three. The arithmetic and
+the reading agree a second time running, which is still an observation and
+not a method.
+
+**P1.3 shipped: nothing on the Home Assistant or Store screens claims a wall
+it has not reached.** Adding a reading watches an entity; a *Home Assistant
+widget* is what draws it, and Classic — every wall's seed — has none, so "Add
+to the wall", the "On the wall" heading over the list and "Reading added" were
+three claims no code had checked. The picker says **Add reading** / **Add N
+readings**, the `<noscript>` form **Add reading**, the list **Your readings**,
+and the saved strip is two keys chosen by the branch — `ha-entity-added`
+("No wall shows it yet") or `ha-entity-added-shown` — because a token is a
+claim. The Store's recipe button is **Install**. Every reading and every
+installed module carries a tag, "On: Kitchen, Hall" or "Not on any wall yet",
+and when no wall draws readings at all one card at the top says why and links
+to each wall's layout. No open question (Q1–Q10) touches this item.
+
+**Where a thing is drawn is `http/wall-reach.ts`, and it reads what the
+renderers read rather than the widget types a wall holds.** A browser wall is
+both orientations and every named layout its schedule swaps in; a panel is one
+canvas — its own or the one it follows (`livePanelCanvasOwner`), in the one
+orientation it is hung (`epaperOrientation`), never a named layout, with its
+ink lane laid over (`withInk`), because a panel's `readings` override is the
+list it draws; a revoked wall is nobody's. What is drawn is
+`keepWidgetsWithSomethingToSay`'s answer, so a fallback counts and an omitted
+widget does not — except that the Home Assistant screen assumes the one
+prerequisite it is itself about, since a widget is left out while nothing is
+watched and the card would otherwise tell a household with the widget already
+placed that no wall has one, on the page where they add the first reading.
+
+**A widget picks readings by entity id now, and the wall receives handles.**
+Readings were stored by label because the label was the only name the
+manifest carried, so a rename silently took a reading off every widget that
+had picked it. `haReadingHandle` is `todoListHandle` one widget along: the
+house panel mints one per reading, `displayConfig` rewrites `readings` — and
+the ink lane's, which the wall is sent and never reads — for every type, and
+the wall matches handle to handle (`houseReadingsFor`, with a label fallback
+only for a reading from a server older than the handle). **An entry that
+matches nothing is hashed rather than passed through**, which is rule 12 and
+not tidiness: the commonest such entry is an entity nobody watches any more,
+which is to say an entity id. A stored label that is a current reading's
+resolves to it (`readingHandlesFor` for the wall and the panel alike,
+`readingEntityIds` for the editor's bootstrap), so no migration was written:
+the editor opens a legacy widget with the right boxes ticked, offers
+`{id, name, key}` choices, previews by the handle it was handed, and its next
+save writes ids. The schema's 80-character cap on an entry was a label's and
+refused a long entity id the picker had just offered; it is 255, the watch
+form's own bound.
+
+**Two findings, one fixed by the change and one not.** The panel compared the
+stored label with `asciiTitle` of the panel's, so a widget that picked
+"Température" drew "No readings yet" on e-paper while the wall drew it —
+confirmed by reverting to the old filter and watching the accented case alone
+go red. **Not fixed, and recorded here because it is rule 12:** a firing Home
+Assistant interrupt carries the rule's signal key in the manifest's
+`interrupts`, and that key is the entity id — measured, `["binary_sensor.freezer_door"]`
+— because acknowledgements are stored as `ruleId:signalKey`. It is outside
+P1.3 and changing it moves the dismiss endpoint's contract, so it is in the
+pull request as a finding rather than in the diff. `homeassistant.test.ts`
+now proves no entity id travels with a readings-filtered widget placed in both
+orientations, a legacy label, an ink override, and an unwatched id on a named
+layout; it does not fire a rule, which is exactly why it cannot see the other.
+
+**Eighteen mutations were checked and all eighteen are red**, across
+`browser-ha-readings` (a real paired wall and a real editor),
+`ha-reading-walls`, `homeassistant`, `epaper-house-readings` and
+`layout-save`. Two needed a second look, which is the useful part. A panel
+reading its followed wall's named layouts stayed green until the fixture put
+Hall's evening widget on landscape too — the panel draws landscape, so a
+portrait-only fixture could not tell the mutation from the fix. And the
+editor's "preview does not substitute" mutation first came back red for the
+wrong reason: the edit left an import unused, the display build failed, and the
+browser ran the *previous* mutation's bundle — a red run is evidence only once
+the build under it is the one being tested. Two existing tests changed their
+letter with a sentence saying why: `layout-save` reads a handle where it read
+`'Front door'`, and `epaper-house-widget`'s fixture readings carry the handle
+the panel now always carries. No ratchet baseline moved; Classic has no Home
+Assistant widget. A household with readings sees one manifest and one frame
+ETag change at upgrade, because the house panel gains `key`; no
+`EPAPER_RENDERER_VERSION` bump, since the only pixels that move are the
+accented-label case above.
+
+**3859 tests passing, and 1 skipped, over 275 files**: calendar 153 over 10 ·
+core 314 over 9 · display 626 over 35 · server 2766 over 221, measured with
+`pnpm test` on the tree merged with P1.2, on a clone whose tags had been
+fetched and with `MW_BROWSER_EXECUTABLE` naming the provisioned Chromium (this
+container's `playwright-core` looks for a revision the directory does not
+hold, as the S01 paragraph records). Against P1.2's 3837 over 272 above, the
+difference is +22 and +3, which is what this diff adds — display +6, server
++16 over three new files — and the arithmetic agreeing is, again, an
+observation and not the method. Measured before the merge, on its own, the
+same diff read 3852 over 274 against 3830 over 271.
+**Still unproven where it counts:** no real Home Assistant, no real wall and
+no real phone has shown any of it.
+
 **P2.1's first half shipped: every list screen's only create action is one
 "Add …" in the app bar, and it always opens a page of its own.** Calendars,
 People, Work Schedule, Shift types, Chores and Themes. The inline add forms
@@ -7585,17 +7731,19 @@ branch passed. And a label too long for a phone does not wrap — it is
 `nowrap` — it pushes the heading beside it onto a second line, which the
 first draft of the 390px test did not measure. Both are measured now.
 
-**3846 tests passing, 1 skipped and 5 expected failures, over 274 files**:
-calendar 153 over 10 · core 314 over 9 · display 616 over 35 · server 2763
-over 220 plus the five `it.fails`. Measured with a real Chromium
+**3875 tests passing, 1 skipped and 5 expected failures, over 278 files**:
+calendar 153 over 10 · core 314 over 9 · display 626 over 35 · server 2782
+over 224 plus the five `it.fails`. Measured with a real Chromium
 (`MW_BROWSER_EXECUTABLE`, the same provisioning note as the P0 paragraph
-above) on a clone whose tags had been fetched. Against 3830 over 271 the
-difference is +16 passing, +5 expected failures and +3 files. The three new
-files and the two tests added to `admin-components.test.ts` account for it
-exactly: 11 in the walker, 7 in the add-page file, 1 in the 390px file. The
-one rewritten `browser-calendars` test replaced one rather than adding one.
-As with the paragraph above, that agreement is an observation and not a
-method.
+above) on the tree after `main` was merged into this branch, which had taken
+P1.2 and P1.3 in the meantime. Against P1.3's 3859 over 275 above, the
+difference is +16 passing, +5 expected failures and +3 files. That is exactly
+this change's own count: 11 in the walker, 7 in the add-page file, 1 in the
+390px file and 2 in `admin-components.test.ts`, with the one rewritten
+`browser-calendars` test replacing one rather than adding one. Before the
+merge the same diff read 3846 over 274 against 3830 over 271, the same +16
+and +5. As with the paragraphs above, that agreement is an observation and
+not a method.
 
 ---
 

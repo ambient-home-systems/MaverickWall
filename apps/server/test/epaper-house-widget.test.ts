@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Manifest, ManifestDay } from '../src/api/manifest.js';
+import { haReadingHandle, type Manifest, type ManifestDay } from '../src/api/manifest.js';
 import type { Framebuffer } from '../src/epaper/framebuffer.js';
 import { renderFreeformEpaper, type PlacedEpaperWidget } from '../src/epaper/widgets.js';
 import { buildEpaperModel } from '../src/epaper/viewmodel.js';
@@ -24,13 +24,22 @@ const PANEL = { width: 520, height: 220 } as const;
 const TODAY = '2026-08-22';
 
 interface Reading {
+  key: string;
   label: string;
   value: string;
   icon: string;
   mode: string;
 }
 
+/*
+ * Every reading carries its handle, because the house panel mints one on each
+ * since P1.3 and a widget's `readings` resolve to handles — a panel drawn by
+ * this server never sees a reading without one. The fixture used to leave it
+ * out, which was the whole shape then; the letter moved and the case each
+ * test below asks about did not.
+ */
 const reading = (label: string, value: string, mode: string): Reading => ({
+  key: haReadingHandle(`sensor.${label.toLowerCase().replace(/\W+/g, '_')}`),
   label,
   value,
   icon: 'x',

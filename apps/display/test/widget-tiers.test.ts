@@ -31,6 +31,8 @@ import {
   laddersToOneLine,
   rungsAt,
   rungsByPriority,
+  shiftBadgesToLines,
+  stackedItemHeight,
   widgetTierFor,
 } from '../src/widget-tiers.js';
 
@@ -179,6 +181,56 @@ describe('the ladder, cut to a tier', () => {
     // And a ladder that is one rung *anyway* is a card, not a line: there is
     // nothing to join up.
     expect(laddersToOneLine(SHIFT_TIERS[0]!, 1)).toBe(false);
+  });
+
+  it('asks the tier of one badge, not of the box, when several people share it', () => {
+    /*
+     * The fault a household reported as "a Shift widget set to two people shows
+     * one": the tier was read off the whole box, so two people in a box one
+     * badge tall were each promised a card the box could hold once. Measured on
+     * the shipped Classic box at 1080x1920 — 145px inside, a 16.3px gap between
+     * cards, a 69.1px headline — the whole box is a T1 card and one badge's
+     * share of it is below the floor. The width here is the box's and the
+     * advance is one it clears at every rung, so height alone decides.
+     */
+    const [inner, gap, em, ch] = [145.05, 16.32, 69.12, 34];
+    expect(widgetTierFor(SHIFT_TIERS, 447, inner, ch, em).tier).toBe('T1');
+    const share = stackedItemHeight(inner, 2, gap);
+    expect(share).toBeCloseTo((inner - gap) / 2, 6);
+    expect(widgetTierFor(SHIFT_TIERS, 447, share, ch, em).tier).toBe('T0');
+  });
+
+  it('asks one person exactly what it always asked', () => {
+    // No gaps in a stack of one, so a one-person wall's tier cannot move.
+    expect(stackedItemHeight(145.05, 1, 16.32)).toBe(145.05);
+    expect(stackedItemHeight(145.05, 0, 16.32)).toBe(145.05);
+  });
+
+  it('never hands the tier a negative height', () => {
+    expect(stackedItemHeight(10, 3, 20)).toBe(0);
+    // And a gap nothing could read is no gap, rather than a NaN height.
+    expect(stackedItemHeight(100, 2, Number.NaN)).toBe(50);
+  });
+
+  it('draws every person on a line when a card does not fit per person', () => {
+    /*
+     * The panel's rule for more than one person, which `epaper/widgets.ts` has
+     * always kept. A card that fits per person is still a card — the tier per
+     * badge decides the form exactly as it does for one — and the floor is a
+     * line for everybody, a one-rung ladder included: the several-people line
+     * is a list at the list's size, where a one-rung card is the headline at
+     * full size and does not fit twice in a box that holds it once.
+     */
+    expect(shiftBadgesToLines(SHIFT_TIERS[0]!, 4, 2)).toBe(true);
+    expect(shiftBadgesToLines(SHIFT_TIERS[0]!, 1, 2)).toBe(true);
+    expect(shiftBadgesToLines(SHIFT_TIERS[1]!, 4, 2)).toBe(false);
+    expect(shiftBadgesToLines(SHIFT_TIERS[3]!, 4, 3)).toBe(false);
+    // One person is the ladder's own rule, word for word.
+    for (const tier of SHIFT_TIERS) {
+      for (const full of [1, 2, 4]) {
+        expect(shiftBadgesToLines(tier, full, 1)).toBe(laddersToOneLine(tier, full));
+      }
+    }
   });
 
   it('keeps a house reading by role rather than by position', () => {

@@ -17,7 +17,13 @@
  */
 import { daysBetween } from '@maverick-wall/core';
 
-import { todoListHandle, todoListOf, type Manifest } from '../api/manifest.js';
+import {
+  readingHandlesFor,
+  readingIndexOf,
+  todoListHandle,
+  todoListOf,
+  type Manifest,
+} from '../api/manifest.js';
 
 import { drawText, measureText, rungAtMost, rungStep, shorterRung, tallerRung, type TypeRung } from './font.js';
 import { Framebuffer } from './framebuffer.js';
@@ -954,6 +960,8 @@ function drawWeather(fb: Framebuffer, m: EpaperMetrics, box: Box, manifest: Mani
  * the *words* is untouched, which is what the ladder actually promises.
  */
 interface EpaperReading {
+  /** The handle a widget's `readings` resolves to; absent from an older panel. */
+  readonly key: string | undefined;
   readonly label: string;
   readonly value: string;
   readonly mode: string;
@@ -967,9 +975,10 @@ function houseReadings(panel: unknown): EpaperReading[] {
   const out: EpaperReading[] = [];
   for (const entry of raw) {
     if (entry === null || typeof entry !== 'object') continue;
-    const row = entry as { label?: unknown; value?: unknown; mode?: unknown; glyph?: unknown };
+    const row = entry as { key?: unknown; label?: unknown; value?: unknown; mode?: unknown; glyph?: unknown };
     if (typeof row.label !== 'string' || typeof row.value !== 'string') continue;
     out.push({
+      key: typeof row.key === 'string' ? row.key : undefined,
       label: asciiTitle(row.label),
       value: asciiTitle(row.value),
       mode: typeof row.mode === 'string' ? row.mode : 'label_value',
@@ -989,10 +998,17 @@ function drawHouse(fb: Framebuffer, m: EpaperMetrics, box: Box, manifest: Manife
     noReadings();
     return;
   }
-  // Which readings, by the label the household sees — the manifest carries no
-  // entity id, exactly as the wall's widget reads it.
-  const wanted = list(config, 'readings').filter((r): r is string => typeof r === 'string');
-  if (wanted.length > 0) readings = readings.filter((r) => wanted.includes(r.label));
+  /*
+   * Which readings, by handle (P1.3). The panel draws from the stored config,
+   * so its entries are entity ids — or labels, on a widget saved before the
+   * editor wrote ids — and they resolve exactly as `displayConfig` resolves
+   * them for the wall, against the same panel, so the two cannot pick
+   * differently. This used to compare the stored label with `asciiTitle` of
+   * the panel's, which never matched a label with an accent in it: a panel
+   * showing "Température" drew "No readings yet" for a widget that asked for it.
+   */
+  const wanted = readingHandlesFor(list(config, 'readings'), readingIndexOf(panel)) ?? [];
+  if (wanted.length > 0) readings = readings.filter((r) => r.key !== undefined && wanted.includes(r.key));
   if (readings.length === 0) {
     noReadings();
     return;
