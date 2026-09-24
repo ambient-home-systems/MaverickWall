@@ -16,6 +16,21 @@
 
 ## Unreleased
 
+**Grouping widgets now does what you would expect.** Press **Group** on two
+or more boxes and they become one thing: the group draws a dashed edge around
+its widgets so you can see what belongs together, it is laid out as a row (or
+a column, when the boxes were one above the other) from the start, and it has
+a **grip** — its name chip — that you can drag to move the whole group, with
+every widget in it moving as you drag rather than catching up when you let
+go. Tap any widget in a group and the group's edge lights up to show the
+others it moves with, and **Ungroup** is offered right there, from the widget
+you tapped, and puts every box back exactly where it was before you grouped
+them. Before this a new group was "free": nothing on the wall changed, nothing
+said the boxes were grouped, there was no way to pick the group up from the
+layout at all, and Ungroup appeared only once you had found the group in
+Layers. If you want a group that keeps your own arrangement and merely moves
+together, choose **Free** on the group's settings.
+
 **The forecast's "What it says" list tells the truth about what is drawn.**
 With all four rows ticked, "The overnight low" was shown struck through, as
 if the box were too small for it, while the wall drew it right beside the

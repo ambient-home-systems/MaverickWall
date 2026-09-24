@@ -1692,6 +1692,32 @@ pre.code{background:var(--mw-surface-2);
 .le-widget.is-child{background:color-mix(in srgb,var(--mw-ink) 4%,transparent);
   border-style:dotted}
 .le-widget.is-child:hover{background:color-mix(in srgb,var(--mw-ink) 11%,transparent)}
+/* And the group says so itself: a dashed edge drawn *outside* its box as an
+ * outline, so it shows around the children that cover the box rather than
+ * under them. A household reported grouped widgets with "no indication that
+ * they remain grouped", and the hairline under two children was exactly that.
+ * The edge takes the accent when the group is selected and when one of its
+ * children is, so a tap on one widget shows which others it moves with; the
+ * selection ring is left off the group, whose edge is already saying it. */
+.le-widget.is-group{outline:2px dashed color-mix(in srgb,var(--mw-ink-2) 80%,transparent);outline-offset:2px}
+.le-widget.is-group.is-selected,.le-widget.is-group.is-parent-selected{outline-color:var(--accent)}
+.le-widget.is-group.is-selected{box-shadow:none}
+/* A group's name is on its grip (below), a sibling of the box in the overlay,
+ * so the chip inside the box is not drawn — two chips in one place. */
+.le-widget.is-group > .le-widget-label{display:none}
+/* The grip a group is moved by: its name chip, made grabbable. A group's box
+ * is under its children, so this is the one part of a group a pointer can
+ * always reach — it takes the pointer where the ordinary chip declines it, is
+ * always visible, and stacks over every box, because a grab handle that could
+ * be covered by the neighbour it hangs beside is not one. Positioned by
+ * script in the overlay's own coordinates (its top is the group's edge) and
+ * lifted clear of the box by its own height, or set below when the group is
+ * against the top of the layout — placeLabel's rule, from outside the box. */
+.le-group-grip{bottom:auto;visibility:visible;pointer-events:auto;cursor:move;touch-action:none;
+  z-index:1000000;transform:translateY(calc(-100% - 2px))}
+.le-group-grip.is-below{transform:none}
+.le-group-grip.is-parent-selected{background:color-mix(in srgb,var(--accent) 70%,var(--mw-ink-2))}
+.le-group-grip.is-selected{background:var(--accent);color:var(--accentInk)}
 /* The marquee: a rectangle on empty layout that selects what it encloses.
  * Drawn in the selection's own accent so the two read as one gesture, and
  * pointer-events:none so the pointer under it keeps reaching the overlay. */

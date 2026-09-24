@@ -2193,9 +2193,20 @@ describe('11 · groups', () => {
           Math.max(clock.x + clock.w, shift.x + shift.w) - Math.min(clock.x, shift.x),
           Math.max(clock.y + clock.h, shift.y + shift.h) - Math.min(clock.y, shift.y),
         ]);
-        // Its children are still drawn exactly where they were.
-        expect((await boxById(page, clock.id))).toMatchObject({ x: clock.x, y: clock.y, w: clock.w, h: clock.h });
-        expect((await boxById(page, shift.id))).toMatchObject({ x: shift.x, y: shift.y, w: shift.w, h: shift.h });
+        // Its children are drawn as a row of two equal cells of the union —
+        // Group visibly makes one thing of them, where `free` left every box
+        // where it was and read as a control that did nothing. The clock keeps
+        // the left cell because it sorted first.
+        const inRow = { clock: await boxById(page, clock.id), shift: await boxById(page, shift.id) };
+        expect(inRow.clock.x).toBeCloseTo(group.x, 1);
+        expect(inRow.clock.w).toBeCloseTo(group.w / 2, 1);
+        expect(inRow.shift.x).toBeCloseTo(group.x + group.w / 2, 1);
+        expect(inRow.shift.w).toBeCloseTo(group.w / 2, 1);
+        for (const child of [inRow.clock, inRow.shift]) {
+          expect(child.y).toBeCloseTo(group.y, 1);
+          expect(child.h).toBeCloseTo(group.h, 1);
+        }
+        expect([inRow.clock.w, inRow.shift.w], 'a row of equal cells cannot keep two unequal widths').not.toEqual([clock.w, shift.w]);
         expect(await saveBar(page)).toEqual({ flagged: true, saveEnabled: true });
 
         // The rows the save posts: the group first, its children after with the link.
@@ -2208,7 +2219,8 @@ describe('11 · groups', () => {
         const parents = rows.filter((row) => row.parentId === undefined);
         const children = rows.filter((row) => row.parentId !== undefined);
         expect(rows.indexOf(parents[parents.length - 1]!)).toBeLessThan(rows.indexOf(children[0]!));
-        expect(rows[0]).toMatchObject({ id: group.id, z: 0, config: { layout: 'free' } });
+        // A row, from the shape of what was grouped: the two sat side by side.
+        expect(rows[0]).toMatchObject({ id: group.id, z: 0, config: { layout: 'row' } });
         expect('parentId' in (rows[0] ?? {})).toBe(false);
         const union = { x: group.x / 100, y: group.y / 100, w: group.w / 100, h: group.h / 100 };
         const to3 = (n: number): number => Math.round(n * 1000) / 1000;
@@ -2288,6 +2300,15 @@ describe('11 · groups', () => {
         const group = (await boxes(page)).find((one) => one.label.startsWith('Group'));
         if (group === undefined) throw new Error('no group box after Group');
         expect(group.x + group.w, 'the group still reaches the wall’s edge, so the clamps cannot be told apart').toBeLessThan(90);
+        // Group made it a row, where a child's drag reorders; set it free, so a
+        // drag moves the child and the clamp is what stops it.
+        await page.locator(`.le-group-grip[data-for="${group.id}"]`).click();
+        await page.click('.insp-tab:has-text("Content")');
+        await page.locator('.le-cfg-field[data-cfg-key="layout"] .seg button', { hasText: 'Free' }).click();
+        await page.waitForTimeout(300);
+        expect(await boxById(page, clock.id), 'free put the clock somewhere other than its own stored box').toMatchObject({
+          x: clock.x, y: clock.y, w: clock.w, h: clock.h,
+        });
 
         // Drag the clock far past the wall's edge.
         await dragById(page, clock.id, Math.round(canvas.width * 2), 0);
@@ -2392,6 +2413,171 @@ describe('11 · groups', () => {
         const afterOrder = await boxById(page, clock.id);
         expect(afterOrder.x).toBeGreaterThan(beforeOrder.x);
         expect((await boxById(page, month.id)).x).toBe(beforeOrder.x);
+      } finally {
+        await context.close();
+      }
+    },
+    SLOW,
+  );
+
+  /**
+   * A group moves as one thing, from the layout, and says it is one.
+   *
+   * The household's report, in its own four sentences: grouped widgets did
+   * not move together, there was no way to ungroup them, nothing said they
+   * were still grouped, and the only effect was that each box would no longer
+   * leave the union. Each is a measurement here rather than a class. The edge
+   * is the group box's *computed* outline; the grip is what
+   * `elementFromPoint` answers at its own centre, because a grab handle a
+   * child covers is not one; the children's rectangles are read **during**
+   * the drag, before the pointer is released, because the fault was that a
+   * dragged group's children caught up only on the redraw a release does —
+   * a test that read them after `mouse.up` passes over it; and Ungroup is
+   * pressed with a *child* selected, since a child is what a tap on the
+   * layout reaches.
+   */
+  it(
+    'moves a group and its children together by its grip, draws its edge, and offers Ungroup from a child',
+    async () => {
+      const wall = await fresh();
+      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      try {
+        const page = await context.newPage();
+        await openEditor(wall, page);
+        const clock = await boxNamed(page, 'Clock');
+        const shift = await boxNamed(page, 'Shift');
+        const canvas = await page.locator('.le-canvas').boundingBox();
+        if (canvas === null) throw new Error('no canvas');
+        // A plain widget has no edge of its own beyond its hairline border.
+        const outlineOf = (selector: string): Promise<{ style: string; width: number }> =>
+          page.evaluate((s) => {
+            const el = document.querySelector<HTMLElement>(s);
+            if (el === null) throw new Error(`no ${s}`);
+            const computed = getComputedStyle(el);
+            return { style: computed.outlineStyle, width: parseFloat(computed.outlineWidth) };
+          }, selector);
+        expect((await outlineOf(`.le-overlay .le-widget[data-id="${clock.id}"]`)).style).toBe('none');
+
+        // The badge in from the right, so the group has room to move to the right.
+        await dragById(page, shift.id, -Math.round(canvas.width * 0.25), 0);
+        await page.waitForTimeout(150);
+        await chooseTwo(page, clock.id, shift.id);
+        await page.click('.le-group-btn');
+        await page.waitForTimeout(200);
+        const group = (await boxes(page)).find((one) => one.label.startsWith('Group'));
+        if (group === undefined) throw new Error('no group box after Group');
+        const groupSelector = `.le-overlay .le-widget[data-id="${group.id}"]`;
+        const childSelector = (id: string): string => `.le-overlay .le-widget[data-id="${id}"]`;
+
+        // 1 — It says it is a group: a dashed edge, computed, on the box.
+        const edge = await outlineOf(groupSelector);
+        expect(edge.style, 'the group box draws no edge of its own').toBe('dashed');
+        expect(edge.width).toBeGreaterThan(0);
+
+        // 2 — The grip is reachable: at its centre the pointer meets the grip
+        // and not a widget under or beside it, and pressing it selects the group.
+        const grip = page.locator(`.le-group-grip[data-for="${group.id}"]`);
+        expect(await grip.textContent()).toBe('Group of 2: clock, shift');
+        // Where the grip's centre is *now*: the canvas is sized to the room the
+        // inspector leaves it, so a selection can move every box on the page.
+        const gripCentre = async (): Promise<{ x: number; y: number }> => {
+          const rect = await grip.boundingBox();
+          if (rect === null) throw new Error('the group has no grip');
+          return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+        };
+        const widgetUnder = (point: { x: number; y: number }): Promise<string | undefined> =>
+          page.evaluate(
+            ([x, y]) =>
+              (
+                document
+                  .elementsFromPoint(x as number, y as number)
+                  .find((el) => el.classList.contains('le-widget') && !el.classList.contains('is-group') && !el.classList.contains('is-child')) as
+                  | HTMLElement
+                  | undefined
+              )?.dataset['id'],
+            [point.x, point.y],
+          );
+        // The grip hangs over a neighbour (Classic's strip is against the top
+        // of the layout, so the chip goes below it). Bring that neighbour to
+        // the front first — a drag raises a box on its first move — because a
+        // grip that is only reachable while everything under it happens to be
+        // at z 0 is the fault a fresh Classic wall cannot show: without its own
+        // stacking the grip loses to any raised box.
+        const neighbour = await widgetUnder(await gripCentre());
+        if (neighbour === undefined) throw new Error('nothing under the grip to raise; the fixture cannot show a covered grip');
+        await dragById(page, neighbour, 0, 3);
+        await page.waitForTimeout(150);
+        expect(Number((await boxById(page, neighbour)).z), 'the neighbour was not raised').toBeGreaterThan(Number(group.z));
+        const centre = await gripCentre();
+        expect(await widgetUnder(centre), 'the raised neighbour is no longer under the grip').toBe(neighbour);
+        const under = await page.evaluate(
+          ([x, y]) => document.elementFromPoint(x as number, y as number)?.className ?? '',
+          [centre.x, centre.y],
+        );
+        expect(under, 'something covers the grip at its own centre').toContain('le-group-grip');
+        await page.locator(childSelector(clock.id)).click();
+        await page.waitForTimeout(100);
+        expect(await page.getAttribute(groupSelector, 'aria-pressed')).toBe('false');
+        // A child selected: the group's edge takes the accent, so the household
+        // can see what else the tapped widget is grouped with.
+        expect(await page.evaluate((s) => document.querySelector(s)?.classList.contains('is-parent-selected'), groupSelector)).toBe(true);
+        await grip.click();
+        await page.waitForTimeout(100);
+        expect(await page.getAttribute(groupSelector, 'aria-pressed'), 'pressing the grip did not select the group').toBe('true');
+
+        // 3 — Dragging the grip moves the children with the group, during the drag.
+        const rects = async (): Promise<Record<string, { x: number; y: number }>> => {
+          const out: Record<string, { x: number; y: number }> = {};
+          for (const [key, selector] of [['group', groupSelector], ['clock', childSelector(clock.id)], ['shift', childSelector(shift.id)]] as const) {
+            const rect = await page.locator(selector).boundingBox();
+            if (rect === null) throw new Error(`no rectangle for ${key}`);
+            out[key] = { x: rect.x, y: rect.y };
+          }
+          return out;
+        };
+        const before = await rects();
+        const travel = { x: Math.round(canvas.width * 0.1), y: Math.round(canvas.height * 0.2) };
+        const grab = await gripCentre();
+        await page.mouse.move(grab.x, grab.y);
+        await page.mouse.down();
+        await page.mouse.move(grab.x + travel.x, grab.y + travel.y, { steps: 6 });
+        // Before release: the box has moved, and every child by the same amount.
+        const during = await rects();
+        const moved = { x: during['group']!.x - before['group']!.x, y: during['group']!.y - before['group']!.y };
+        expect(moved.y, 'the group did not move with the pointer').toBeGreaterThan(travel.y / 2);
+        expect(moved.x).toBeGreaterThan(travel.x / 2);
+        for (const key of ['clock', 'shift'] as const) {
+          expect(Math.abs(during[key]!.x - before[key]!.x - moved.x), `${key} did not follow the group across, mid-drag`).toBeLessThanOrEqual(1);
+          expect(Math.abs(during[key]!.y - before[key]!.y - moved.y), `${key} did not follow the group down, mid-drag`).toBeLessThanOrEqual(1);
+        }
+        await page.mouse.up();
+        await page.waitForTimeout(200);
+        const after = await rects();
+        for (const key of ['clock', 'shift'] as const) {
+          expect(Math.abs(after[key]!.x - after['group']!.x - (before[key]!.x - before['group']!.x))).toBeLessThanOrEqual(1);
+          expect(Math.abs(after[key]!.y - after['group']!.y - (before[key]!.y - before['group']!.y))).toBeLessThanOrEqual(1);
+        }
+        // And the children's own boxes say the same as the group's: the
+        // overlay is `positionBox`'s writing, not the browser's arithmetic.
+        const placed = await boxById(page, group.id);
+        expect((await boxById(page, clock.id)).x).toBeCloseTo(placed.x, 1);
+        expect((await boxById(page, shift.id)).y).toBeCloseTo(placed.y, 1);
+
+        // 4 — Ungroup is offered with a child selected, and acts on its group.
+        await page.locator(childSelector(clock.id)).click();
+        await page.waitForTimeout(100);
+        expect(await page.locator('.le-ungroup-btn').isVisible(), 'a selected child offers no Ungroup').toBe(true);
+        expect(await page.locator('.le-group-btn').isHidden()).toBe(true);
+        await page.click('.le-ungroup-btn');
+        await page.waitForTimeout(200);
+        expect((await boxes(page)).some((one) => one.id === group.id)).toBe(false);
+        expect(await page.locator('.le-group-grip').count()).toBe(0);
+        expect(await page.getAttribute(childSelector(clock.id), 'data-parent')).toBeNull();
+        expect((await outlineOf(childSelector(clock.id))).style).toBe('none');
+        const chosen = await page.evaluate(() =>
+          [...document.querySelectorAll<HTMLElement>('.le-overlay .le-widget[aria-pressed="true"]')].map((el) => el.dataset['id']),
+        );
+        expect(chosen.sort()).toEqual([clock.id, shift.id].sort());
       } finally {
         await context.close();
       }

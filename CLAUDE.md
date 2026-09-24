@@ -7299,6 +7299,42 @@ where it counts:** nobody has grouped anything on a real phone or in a real
 supervisor's sidebar, and no e-paper panel has been photographed drawing a
 group a household made.
 
+**And then a household used Group and reported that it did nothing, which
+was four faults reading as one, and every one of them was in the paragraph
+above.** "It doesn't make them move together. There is no way to ungroup them.
+No indication that they remain grouped. It just limits how much they can move
+around individually." Read against the code: a new group was `free`, chosen
+so that "nothing on the glass moves" — which is precisely what a household
+sees as nothing happening; the group's own box sat *under* its children, so
+Layers was the only way to select one and there was no way to drag one at
+all; `.is-group` had no rule in the stylesheet, so two dotted children over a
+hairline was all that said "group"; Ungroup answered only to the group's own
+box, which a tap on the layout could never reach; and a group nudged or
+dragged repositioned its own overlay box alone, its children catching up on
+the redraw a release does — so a group *could* be moved, from Layers, and
+moving it left its widgets behind until the pointer came up. Each is one
+mechanism now. A group's edge is a dashed **outline**, drawn outside its box
+so it shows around the children rather than under them, and it takes the
+accent when a child is selected. Its name chip is a **grip**, a sibling of the
+box in the overlay rather than a child of it (the box is a stacking context
+under its children, and a grab handle that can be covered is not one), which
+takes the pointer and presses the group's box. `positionBox` on a group
+repositions its children and its grip, on every pointer move. `ungroupTarget`
+names the group a selection means — the one group, or the one parent every
+selected box is a child of. And `groupWidgets` starts a group as a `row` or a
+`column` from the shape of what it grouped (`defaultGroupLayout`), so Group
+visibly makes one thing; `free` stays on the group's settings for the
+household who wants their arrangement kept. Five mutations were checked
+against `browser-editor.test.ts` §11 and all five are red — and the grip's
+own z-index stayed green until the fixture raised the box beneath it, because
+on a fresh Classic wall everything under the chip happened to be at z 0. The
+children's rectangles are read **during** the drag, before `mouse.up`, since
+a reading taken after the release passes over the very fault being fixed.
+Measured on this tree in the full run, with a browser: **3817 tests over
+268 files, all green** — display 616 over 35 and server 2734 over 214, the
+other two unchanged. **Still unproven where it counts:** nobody has dragged a
+group on a real phone or in a real supervisor's sidebar.
+
 **A wall carries a household's own CSS now — one block per wall and one per
 widget, on an Advanced page — and the promise that makes is the one worth
 writing down (RFC 014 §7).** The class names in `display.css` are not an API.

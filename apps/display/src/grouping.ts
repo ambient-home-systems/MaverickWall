@@ -11,12 +11,19 @@
  * handler is a rule nothing can check. What the editor adds is one `record()`
  * before either, so each is one undo step however many boxes it moves.
  *
- * Nothing on the glass moves when a group is made. It is written `free`, so
- * its children draw at their stored fractions — the exact rectangles they
- * had — and the wall is identical before and after; only when the household
- * picks a row, a column or a grid does the group start placing them from
- * order. An ungroup restores those stored fractions whatever the layout was,
- * which is what the fractions are kept for.
+ * A group made by Group is *ordered* from the start — a row when what was
+ * selected sat side by side, a column when it sat one above the other
+ * (`defaultGroupLayout`) — so making one visibly does something: the boxes
+ * take equal cells of their union and move as one from then on. It used to
+ * be written `free`, which drew every child at the exact rectangle it had,
+ * and a household reported that as Group doing nothing at all: nothing on
+ * the glass changed, nothing said the boxes were grouped, and the only
+ * effect anybody could find was that each box would no longer leave the
+ * union. `free` is still on the group's own settings for the household who
+ * wants their arrangement kept and merely moved together. Either way the
+ * children's own fractions are what they were given at grouping time, and
+ * an ungroup restores them whatever the layout became — which is what the
+ * fractions are kept for.
  */
 
 import { childCells, groupChildren, parentIdOf, topLevelWidgets } from './group-cells.js';
@@ -66,6 +73,47 @@ export function canUngroup(widgets: readonly Grouped[], ids: readonly string[]):
 }
 
 /**
+ * Which group Ungroup would take apart for this selection: the one selected
+ * group, or the group every selected box is a child of. The second half is
+ * the reason this exists beside `canUngroup`. A group's own box sits under
+ * its children, so what a household has under the pointer after pressing
+ * Group is a child, and an Ungroup that only answered to the group's own box
+ * was a control they could not find — "there is no way to ungroup them".
+ * Nothing for a selection that mixes groups, children of different groups,
+ * or boxes on the layout.
+ */
+export function ungroupTarget(widgets: readonly Grouped[], ids: readonly string[]): string | undefined {
+  if (ids.length === 0) return undefined;
+  if (canUngroup(widgets, ids)) return ids[0];
+  const byId = new Map(widgets.map((w) => [w.id, w]));
+  const parents = new Set<string | undefined>();
+  for (const id of ids) {
+    const widget = byId.get(id);
+    parents.add(widget === undefined ? undefined : parentIdOf(widget));
+  }
+  if (parents.size !== 1) return undefined;
+  const [parentId] = parents;
+  return parentId !== undefined && canUngroup(widgets, [parentId]) ? parentId : undefined;
+}
+
+/**
+ * The layout a new group starts in: `row` when the selection's centres are
+ * spread more across than down, `column` otherwise. Two boxes side by side
+ * become a row and two stacked become a column, which is the arrangement
+ * the household already had, tidied — where a fixed `row` would stack two
+ * vertically arranged boxes into a horizontal strip of two and read as the
+ * group breaking the layout it was asked to hold together.
+ */
+export function defaultGroupLayout(members: readonly Box[]): 'row' | 'column' {
+  if (members.length < 2) return 'row';
+  const xs = members.map((m) => m.x + m.w / 2);
+  const ys = members.map((m) => m.y + m.h / 2);
+  const across = Math.max(...xs) - Math.min(...xs);
+  const down = Math.max(...ys) - Math.min(...ys);
+  return across >= down ? 'row' : 'column';
+}
+
+/**
  * `z` rewritten as consecutive integers, per scope: the layout's own boxes
  * 0..n in their order, and each group's children 0..m in theirs. The two
  * scales are never sorted against each other, which is the rule the server
@@ -85,9 +133,10 @@ export function renumberZ<T extends Grouped>(widgets: readonly T[]): T[] {
 }
 
 /**
- * The selected boxes become the children of one new group, `free`, at the
- * union of their rectangles. Each child's box is rewritten as fractions of
- * that union to three places — the form it is saved in — and its `z` as its
+ * The selected boxes become the children of one new group at the union of
+ * their rectangles, laid out as a row or a column by `defaultGroupLayout`.
+ * Each child's box is rewritten as fractions of that union to three places —
+ * the form it is saved in, and what an ungroup restores — and its `z` as its
  * place among its siblings; the group takes the highest `z` of what it
  * absorbed, so it stacks where the top of the selection did.
  *
@@ -110,7 +159,7 @@ export function groupWidgets<T extends Grouped>(
     w: union.w,
     h: union.h,
     z: Math.max(...members.map((m) => m.z)),
-    config: { layout: 'free' },
+    config: { layout: defaultGroupLayout(members) },
   } as unknown as T;
   const children = members.map((member, index) => ({
     ...member,
