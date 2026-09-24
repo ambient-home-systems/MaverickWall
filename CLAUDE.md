@@ -7548,6 +7548,64 @@ files — exactly the three new files' own count (`admin-external-links.test.ts`
 the reading agree, and is recorded as an observation rather than a method:
 the paragraphs above this one have been wrong about that five times running.
 
+**A household with no coordinates and no Home Assistant can now set its
+weather location by typing a town, city or postcode (P2.3).** The Weather
+screen's "Look up" is a third submit inside the one form (`formaction`, the
+same mechanism as "Use my Home Assistant home location"), and it asks
+Open-Meteo's key-less geocoding service — a separate host from either
+forecast provider, public https only, through the SSRF-guarded fetcher — for
+up to five matches, each parsed with Zod **one result at a time** so one odd
+entry does not cost the other four. The page re-renders with the whole form
+echoed and the matches as radio choices ("London, England, United Kingdom");
+"Use this place" writes the chosen pair and saves the rest of the form,
+reading the same narrower `haLocationBody`-derived shape `use-ha-location`
+does, so a stray typed coordinate cannot fail it — there is no server-side
+session holding the five results between the lookup and this submit, so the
+coordinate pair a household picks *is* the value the radio carries. Three
+sentences, none bare: no place by that name, the lookup service not
+answering, and nothing typed.
+
+**The Enter-key trap this screen has already shipped once is closed at the
+source rather than avoided.** `defaultSubmit()` carries no `formaction`, so
+typing a town and pressing Enter — or pressing the visible Save with nothing
+but a town typed — both post to Save's own handler. Reading "no coordinates"
+there as "clear the location" would have been this screen's data-loss bug in
+a new shape, so Save itself treats a typed place with no coordinates as a
+lookup and only saves normally once there are coordinates or the form is
+genuinely blank.
+
+"Use this device's location" is a `hidden` button revealed only by
+`geolocate-button.js` when `window.isSecureContext && 'geolocation' in
+navigator` — which fails, by design, on most plain-http LAN installs and
+inside the Home Assistant sidebar iframe, and stays hidden rather than
+offering a control that then fails silently. **Its own fault was only ever
+going to be found by measuring**: `button,.btn` sets its own `display`, which
+beats the user agent's `[hidden]` the identical way `.row-fields[hidden]` and
+`.saverow [hidden]` already exist to fix — so the button was visible from the
+first render, on every install, and a browser test proved it before the fix
+and after. Proven in a real browser by overriding `isSecureContext` directly,
+since this harness's own loopback origin is a secure context on Chromium's
+own account (measured: `http://127.0.0.1` reports `isSecureContext: true`)
+and cannot otherwise demonstrate the failure this control exists to hide
+behind. Home Assistant not connected gets one line pointing at the
+connection screen instead of a button with nothing to press. The latitude and
+longitude fields stay, for fine-tuning — a found place's centre can sit over
+the county line from the actual house, and NWS alert zones are worked out
+from the exact point.
+
+The parser is checked against a real Open-Meteo geocoding response, committed
+as a fixture the way every other provider in this codebase is. Five mutations
+were checked — the Enter-key branch, the per-result parsing collapsed to a
+document-level parse, the `place_choice` regex loosened, the device-location
+button's hidden fix removed, and the Home Assistant not-connected line
+deleted — and all five are red. **3849 tests passing, and 1 skipped, over 272
+files**: calendar 153 over 10 · core 314 over 9 · display 616 over 35 ·
+server 2766 over 218, measured on a clone whose tags had been fetched. Against
+the 3830 over 271 recorded just above, the difference is +19 tests and +1
+file — `weather-geocoding.test.ts`'s own 18 plus one new browser test in
+`browser-admin.test.ts` — the fourth time running the arithmetic and the
+reading have agreed, and still not a method.
+
 ---
 
 ## Open decisions

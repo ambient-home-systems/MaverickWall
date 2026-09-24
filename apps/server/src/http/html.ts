@@ -797,6 +797,12 @@ input[type=file]{width:100%;padding:var(--mw-s-2);border-radius:var(--mw-r-1);
  * user agent's [hidden]{display:none}, so a hidden row-fields would sit
  * there in plain sight rather than actually disappear. */
 .row-fields[hidden]{display:none}
+/* Same reason, one control along: button,.btn below sets its own display,
+ * which beats the user agent's [hidden] the identical way — so the Weather
+ * screen's "Use this device's location" button (P2.3), server-rendered
+ * hidden until the geolocation script decides otherwise, would sit there in
+ * plain sight on every install until that script ran. */
+[data-geolocate][hidden]{display:none}
 
 /* ---- Buttons ---------------------------------------------------------------
  * The default is a filled button: 40px container, 4px corner, 20px of side
@@ -3213,6 +3219,16 @@ const WANTS_DIRTY_SCRIPT = /<form\b[^>]*\bdata-dirty(?=[\s=>])/;
 const WANTS_CONDITIONAL_FIELDS_SCRIPT = /<select\b[^>]*\bdata-cond(?=[\s=>])/;
 
 /**
+ * Does this page hold a `<button data-geolocate>` — "Use this device's
+ * location" (P2.3) — the geolocation script should reveal?
+ *
+ * Same shape as `WANTS_DIRTY_SCRIPT` and the same reason: `geolocate-button.js`
+ * ships only to the one screen that has the button, rather than to every page
+ * in the admin.
+ */
+const WANTS_GEOLOCATE_SCRIPT = /<button\b[^>]*\bdata-geolocate(?=[\s>])/;
+
+/**
  * The strip itself: one sentence and a way to be rid of it.
  *
  * The sentence is a literal from `SAVED_MESSAGES`, never anything the request
@@ -3449,6 +3465,9 @@ export function page(options: PageOptions): string {
       : '') +
     (WANTS_CONDITIONAL_FIELDS_SCRIPT.test(options.body)
       ? `<script type="module" src="assets/conditional-fields.js"></script>`
+      : '') +
+    (WANTS_GEOLOCATE_SCRIPT.test(options.body)
+      ? `<script type="module" src="assets/geolocate-button.js"></script>`
       : '') +
     `</main></body></html>`
   );

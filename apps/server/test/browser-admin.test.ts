@@ -315,6 +315,41 @@ describe('the Weather screen', () => {
     },
     SLOW,
   );
+
+  /**
+   * "Use this device's location" stays hidden on a plain-http install (P2.3).
+   *
+   * The harness's own loopback server cannot demonstrate the failure this
+   * button exists to hide behind: Chromium treats `http://127.0.0.1` as a
+   * secure context by the same carve-out real hardware gets for `localhost`,
+   * so navigating there proves nothing about a household's `http://192.168.x.x`
+   * box. `isSecureContext` is overridden the way `browser-admin.test.ts`
+   * already simulates a state a real page cannot produce here (form-state
+   * restoration, above) — the mechanism under test is "does the script ask
+   * before revealing the button", and that is what the override answers.
+   */
+  it(
+    'stays hidden without a secure context, and reveals itself with one',
+    async () => {
+      const home = await fresh();
+      const context = await (await browser()).newContext();
+      const insecure = await context.newPage();
+      await insecure.addInitScript(() => {
+        Object.defineProperty(window, 'isSecureContext', { value: false, configurable: true });
+      });
+      await home.signIn(insecure);
+      await insecure.goto(`${home.base}/admin/alerts`, { waitUntil: 'load' });
+      expect(await insecure.locator('[data-geolocate]').isVisible()).toBe(false);
+
+      // The same installation and the same signed-in context, with nothing
+      // overridden this time: this harness's loopback origin is a secure
+      // context on its own account, and the button appears.
+      const secure = await context.newPage();
+      await secure.goto(`${home.base}/admin/alerts`, { waitUntil: 'load' });
+      expect(await secure.locator('[data-geolocate]').isVisible()).toBe(true);
+    },
+    SLOW,
+  );
 });
 
 // ===========================================================================
