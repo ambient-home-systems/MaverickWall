@@ -1,0 +1,237 @@
+{
+    "@context": [
+        "https://geojson.org/geojson-ld/geojson-context.jsonld",
+        {
+            "@version": "1.1",
+            "wx": "https://api.weather.gov/ontology#",
+            "s": "https://schema.org/",
+            "geo": "http://www.opengis.net/ont/geosparql#",
+            "unit": "http://codes.wmo.int/common/unit/",
+            "@vocab": "https://api.weather.gov/ontology#",
+            "geometry": {
+                "@id": "s:GeoCoordinates",
+                "@type": "geo:wktLiteral"
+            },
+            "city": "s:addressLocality",
+            "state": "s:addressRegion",
+            "distance": {
+                "@id": "s:Distance",
+                "@type": "s:QuantitativeValue"
+            },
+            "bearing": {
+                "@type": "s:QuantitativeValue"
+            },
+            "value": {
+                "@id": "s:value"
+            },
+            "unitCode": {
+                "@id": "s:unitCode",
+                "@type": "@id"
+            },
+            "forecastOffice": {
+                "@type": "@id"
+            },
+            "forecastGridData": {
+                "@type": "@id"
+            },
+            "publicZone": {
+                "@type": "@id"
+            },
+            "county": {
+                "@type": "@id"
+            },
+            "observationStations": {
+                "@container": "@list",
+                "@type": "@id"
+            }
+        }
+    ],
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "id": "https://api.weather.gov/stations/KDCA",
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    -77.03417,
+                    38.84833
+                ]
+            },
+            "properties": {
+                "@id": "https://api.weather.gov/stations/KDCA",
+                "@type": "wx:ObservationStation",
+                "elevation": {
+                    "unitCode": "wmoUnit:m",
+                    "value": 3.9624
+                },
+                "stationIdentifier": "KDCA",
+                "name": "Washington/Reagan National Airport, DC",
+                "timeZone": "America/New_York",
+                "provider": "ASOS-HFM",
+                "subProvider": "",
+                "distance": {
+                    "unitCode": "wmoUnit:m",
+                    "value": 4523.9414318537
+                },
+                "bearing": {
+                    "unitCode": "wmoUnit:degree_(angle)",
+                    "value": 190
+                },
+                "forecast": "https://api.weather.gov/zones/forecast/VAZ054",
+                "county": "https://api.weather.gov/zones/county/VAC013",
+                "fireWeatherZone": "https://api.weather.gov/zones/fire/VAZ054"
+            }
+        },
+        {
+            "id": "https://api.weather.gov/stations/KCGS",
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    -76.9223,
+                    38.9806
+                ]
+            },
+            "properties": {
+                "@id": "https://api.weather.gov/stations/KCGS",
+                "@type": "wx:ObservationStation",
+                "elevation": {
+                    "unitCode": "wmoUnit:m",
+                    "value": 14.9352
+                },
+                "stationIdentifier": "KCGS",
+                "name": "College Park Airport",
+                "timeZone": "America/New_York",
+                "provider": "OTHER-MTR",
+                "subProvider": "",
+                "distance": {
+                    "unitCode": "wmoUnit:m",
+                    "value": 13556.437457705
+                },
+                "bearing": {
+                    "unitCode": "wmoUnit:degree_(angle)",
+                    "value": 40
+                },
+                "forecast": "https://api.weather.gov/zones/forecast/MDZ013",
+                "county": "https://api.weather.gov/zones/county/MDC033",
+                "fireWeatherZone": "https://api.weather.gov/zones/fire/MDZ013"
+            }
+        },
+        {
+            "id": "https://api.weather.gov/stations/KADW",
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    -76.85,
+                    38.81667
+                ]
+            },
+            "properties": {
+                "@id": "https://api.weather.gov/stations/KADW",
+                "@type": "wx:ObservationStation",
+                "elevation": {
+                    "unitCode": "wmoUnit:m",
+                    "value": 85.9536
+                },
+                "stationIdentifier": "KADW",
+                "name": "Camp Springs / Andrews Air Force Base",
+                "timeZone": "America/New_York",
+                "provider": "NonFedAWOS",
+                "subProvider": "TG",
+                "distance": {
+                    "unitCode": "wmoUnit:m",
+                    "value": 17104.966337266
+                },
+                "bearing": {
+                    "unitCode": "wmoUnit:degree_(angle)",
+                    "value": 117
+                },
+                "forecast": "https://api.weather.gov/zones/forecast/MDZ013",
+                "county": "https://api.weather.gov/zones/county/MDC033",
+                "fireWeatherZone": "https://api.weather.gov/zones/fire/MDZ013"
+            }
+        },
+        {
+            "id": "https://api.weather.gov/stations/KDAA",
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    -77.18333,
+                    38.71667
+                ]
+            },
+            "properties": {
+                "@id": "https://api.weather.gov/stations/KDAA",
+                "@type": "wx:ObservationStation",
+                "elevation": {
+                    "unitCode": "wmoUnit:m",
+                    "value": 21.0312
+                },
+                "stationIdentifier": "KDAA",
+                "name": "Fort Belvoir",
+                "timeZone": "America/New_York",
+                "provider": "NonFedAWOS",
+                "subProvider": "TG",
+                "distance": {
+                    "unitCode": "wmoUnit:m",
+                    "value": 23520.55583809
+                },
+                "bearing": {
+                    "unitCode": "wmoUnit:degree_(angle)",
+                    "value": 215
+                },
+                "forecast": "https://api.weather.gov/zones/forecast/VAZ053",
+                "county": "https://api.weather.gov/zones/county/VAC059",
+                "fireWeatherZone": "https://api.weather.gov/zones/fire/VAZ053"
+            }
+        },
+        {
+            "id": "https://api.weather.gov/stations/KGAI",
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    -77.16551,
+                    39.16957
+                ]
+            },
+            "properties": {
+                "@id": "https://api.weather.gov/stations/KGAI",
+                "@type": "wx:ObservationStation",
+                "elevation": {
+                    "unitCode": "wmoUnit:m",
+                    "value": 150.876
+                },
+                "stationIdentifier": "KGAI",
+                "name": "Gaithersburg - Montgomery County Airport",
+                "timeZone": "America/New_York",
+                "provider": "ASOS-HFM",
+                "subProvider": "",
+                "distance": {
+                    "unitCode": "wmoUnit:m",
+                    "value": 33550.08247988
+                },
+                "bearing": {
+                    "unitCode": "wmoUnit:degree_(angle)",
+                    "value": 338
+                },
+                "forecast": "https://api.weather.gov/zones/forecast/MDZ504",
+                "county": "https://api.weather.gov/zones/county/MDC031",
+                "fireWeatherZone": "https://api.weather.gov/zones/fire/MDZ504"
+            }
+        }
+    ],
+    "observationStations": [
+        "https://api.weather.gov/stations/KDCA",
+        "https://api.weather.gov/stations/KCGS",
+        "https://api.weather.gov/stations/KADW",
+        "https://api.weather.gov/stations/KDAA",
+        "https://api.weather.gov/stations/KGAI"
+    ],
+    "pagination": {
+        "next": "https://api.weather.gov/stations?id%5B0%5D=K0W3&id%5B1%5D=K2G4&id%5B2%5D=K2G9&id%5B3%5D=K2W6&id%5B4%5D=K7W4&id%5B5%5D=K8W2&id%5B6%5D=KADW&id%5B7%5D=KAPG&id%5B8%5D=KBWI&id%5B9%5D=KCBE&id%5B10%5D=KCGS&id%5B11%5D=KCHO&id%5B12%5D=KCJR&id%5B13%5D=KDAA&id%5B14%5D=KDCA&id%5B15%5D=KDMH&id%5B16%5D=KDMW&id%5B17%5D=KEKN&id%5B18%5D=KESN&id%5B19%5D=KFDK&id%5B20%5D=KFRR&id%5B21%5D=KFVX&id%5B22%5D=KGAI&id%5B23%5D=KGVE&id%5B24%5D=KHEF&id%5B25%5D=KHGR&id%5B26%5D=KHSP&id%5B27%5D=KHWY&id%5B28%5D=KIAD&id%5B29%5D=KILG&id%5B30%5D=KJYO&id%5B31%5D=KLKU&id%5B32%5D=KLNS&id%5B33%5D=KLYH&id%5B34%5D=KMFV&id%5B35%5D=KMGW&id%5B36%5D=KMRB&id%5B37%5D=KMTN&id%5B38%5D=KNAK&id%5B39%5D=KNHK&id%5B40%5D=KNUI&id%5B41%5D=KNYG&id%5B42%5D=KOFP&id%5B43%5D=KOKV&id%5B44%5D=KOMH&id%5B45%5D=KRIC&id%5B46%5D=KRMN&id%5B47%5D=KROA&id%5B48%5D=KRSP&id%5B49%5D=KSHD&id%5B50%5D=KTHV&id%5B51%5D=KVBW&id%5B52%5D=KW13&id%5B53%5D=KW29&cursor=eyJzIjo1MDB9"
+    }
+}

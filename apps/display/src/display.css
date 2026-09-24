@@ -2718,6 +2718,36 @@ body {
   flex-direction: column;
   gap: var(--s3);
 }
+/*
+ * Several people, each on one line — the form a rota takes when a card does
+ * not fit per person (`shiftBadgesToLines`).
+ *
+ * **A list, drawn at the list's size, and that is the panel's rule rather than
+ * a smaller headline.** The one-person line above is the headline at full size
+ * because one person owns the whole box; several people share it, and
+ * `epaper/widgets.ts` has always drawn more than one as a compact line each at
+ * its *body* rung, never its headline. The wall's twin is the event role — the
+ * size a name is drawn in a box that holds several, which is the month cell's —
+ * with the same fallback the month cell's names take on a wall nobody has
+ * measured. Measured on the shipped Classic box, the headline line is 76px a
+ * person at 1920x1080 where the box has 41 each, so a headline-sized list is a
+ * list of one: the fault being fixed, one form along.
+ *
+ * The chrome comes down with it, to a month cell's permission — step 2, total,
+ * per axis, on the card and between cards — because a row in a list is the
+ * thing that spends it: at 1920x1080 the card's own step-4 padding is 23px of
+ * the 41 one person gets. Only the block axis: the side inset is the card's,
+ * and it is what keeps the colour rule off the words.
+ */
+.fw-shift.is-several.is-lines { gap: var(--s2); }
+.fw-shift.is-lines .shift-badge.is-line {
+  padding-top: calc(var(--s2) / 2);
+  padding-bottom: calc(var(--s2) / 2);
+}
+.fw-shift.is-lines .shift-badge.is-line .what {
+  font-size: var(--t-micro);
+  font-size: var(--t-wall-event, max(var(--t-micro), var(--t-floor)));
+}
 
 /*
  * The reused sections (weather, house, shift, notes…) are drawn **in** the box.

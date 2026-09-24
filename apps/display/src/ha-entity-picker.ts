@@ -202,8 +202,11 @@ function boot(): void {
     // entity's own name.
     labelField.style.display = selected.size === 1 ? '' : 'none';
     addButton.disabled = selected.size === 0;
+    // "Add reading", never "to the wall": this watches the entity, and a Home
+    // Assistant widget on a wall's layout is what draws it (P1.3). The rows
+    // the page reloads into say which walls that is.
     addButton.textContent =
-      selected.size === 0 ? 'Add to the wall' : `Add ${selected.size} to the wall`;
+      selected.size <= 1 ? 'Add reading' : `Add ${selected.size} readings`;
   }
 
   // ---- add --------------------------------------------------------------
