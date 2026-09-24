@@ -1716,7 +1716,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       'A Home Assistant to-do list, read every minute, drawn by the To-do widget on ' +
         'any wall or panel you put one on. To tick items off from a wall, turn on ' +
         '“Allow ticking to-do items off” on that wall’s own page — it is off ' +
-        'everywhere until you do, and an eInk panel cannot offer it at all.',
+        'everywhere until you do, and an e-paper panel cannot offer it at all.',
       (rows === '' ? emptyState('No to-do lists are shown yet.') : rows) + addForm,
     );
   }

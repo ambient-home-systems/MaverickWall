@@ -462,7 +462,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
               (prefill.install.source === undefined
                 ? ''
                 : ` <a class="link" href="${escapeHtml(prefill.install.source)}" ` +
-                  `rel="noreferrer noopener">Where to get it</a>`),
+                  `target="_blank" rel="noopener noreferrer">Where to get it</a>`),
           );
     return page({
       self: selfHref(c),
@@ -639,8 +639,8 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
           : `<a class="btn" href="admin/modules/advanced?install=${encodeURIComponent(entry.id)}#add">Install</a>` +
             (entry.install.source === undefined
               ? ''
-              : `<a class="link push" ` +
-                `href="${escapeHtml(entry.install.source)}" rel="noreferrer noopener">Source</a>`)) +
+              : `<a class="link push" href="${escapeHtml(entry.install.source)}" ` +
+                `target="_blank" rel="noopener noreferrer">Source</a>`)) +
         `</div>`,
     );
   }

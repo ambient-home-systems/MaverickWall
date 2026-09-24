@@ -1355,7 +1355,7 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
      * editor, which then sat under the fixed save bar.
      */
     const previewImage =
-      `<img id="ep-preview" class="ep-paper" alt="eInk preview of ${escapeHtml(screen.name)}" ` +
+      `<img id="ep-preview" class="ep-paper" alt="e-paper preview of ${escapeHtml(screen.name)}" ` +
       `src="admin/epaper/${encodeURIComponent(id)}/preview.png">` +
       `<script>(function(){var i=document.getElementById('ep-preview');if(!i)return;` +
       `setInterval(function(){i.src='admin/epaper/${encodeURIComponent(id)}/preview.png?t='+Date.now();},4000);})();</script>`;

@@ -1437,6 +1437,31 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const statusRow = (name: string, meta: string, trail: string): string =>
       listRow('', { title: name, ...(meta === '' ? {} : { detail: meta }) }, trail);
 
+    /*
+     * P1.4: these two used to point at `admin/walls/default`, the shared
+     * household row RFC 015 phase 2 retired — every wall names its own
+     * theme and layout now, so that path is only a redirect to System. With
+     * exactly one wall there is an unambiguous "the wall" to jump straight
+     * to; with zero or several, the walls list is the honest destination.
+     * Relative, like every link on this page, so the single <base> carries
+     * it through ingress — an e-paper panel's layout lives on its own design
+     * page rather than under a Layout tab, the same split `layoutUrl` makes
+     * for the redirects in the Walls section.
+     */
+    const singleWall = screens.length === 1 ? screens[0] : undefined;
+    const wallHref =
+      singleWall === undefined
+        ? 'admin/walls'
+        : singleWall.kind === 'epaper'
+          ? `admin/epaper/${encodeURIComponent(singleWall.id)}`
+          : `admin/walls/${encodeURIComponent(singleWall.id)}`;
+    const layoutHref =
+      singleWall === undefined
+        ? 'admin/walls'
+        : singleWall.kind === 'epaper'
+          ? `admin/epaper/${encodeURIComponent(singleWall.id)}/design`
+          : `admin/walls/${encodeURIComponent(singleWall.id)}#layout`;
+
     const uptime = Math.max(0, Math.round((at - deps.startedAt) / 1000));
     const uptimeText =
       uptime < 3600
@@ -1464,8 +1489,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `<div class="sub">${plural(sources.length, 'calendar')} · ${plural(plans.length, 'rotation')} · ${plural(screens.length, 'wall')} · ${escapeHtml(zone)}</div>` +
           todayList +
           `<div class="row card-foot">` +
-          `<a class="btn btn-ghost btn-sm" href="admin/walls/default">Edit what shows</a>` +
-          `<a class="btn btn-ghost btn-sm" href="admin/walls/default#layout">Arrange layout</a></div>` +
+          `<a class="btn btn-ghost btn-sm" href="${wallHref}">Edit what shows</a>` +
+          `<a class="btn btn-ghost btn-sm" href="${layoutHref}">Arrange layout</a></div>` +
           `</div>` +
           `<div class="card status-card">` +
           // Linked, because the summary can name something to go and do and a

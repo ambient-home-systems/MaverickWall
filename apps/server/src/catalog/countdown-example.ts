@@ -7,11 +7,13 @@ import type { CatalogEntry } from '../http/catalog.js';
  */
 export const entry: CatalogEntry = {
   id: 'countdown-example',
-  name: 'Countdown',
+  name: 'Countdown (example module)',
   author: 'Maverick Wall',
   description:
-    'A big number counting down the days to a date you choose — the runnable ' +
-    'reference module. A good first module to try, and to copy.',
+    'A developer example, not an everyday widget: it runs as its own small ' +
+    'program (node server.mjs) you start yourself, so Install asks for that ' +
+    'program’s address. For a countdown on your wall, use the built-in ' +
+    'Countdown widget instead — this is the reference a module author copies.',
   // The glyph vocabulary is twenty-nine drawings and has no hourglass: a store
   // entry does not get to add a drawing to it. The gauge is the nearest thing
   // in it that reads as a dial counting down. Decision D3 (2026-09-24) opened

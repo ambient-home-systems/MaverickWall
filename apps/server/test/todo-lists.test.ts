@@ -573,7 +573,7 @@ describe('the To-do lists screen', () => {
      * is the sentence that tells them which switch they are looking for.
      */
     expect(html).toContain('Allow ticking to-do items off');
-    expect(html).toContain('eInk panel cannot offer it at all');
+    expect(html).toContain('e-paper panel cannot offer it at all');
     expect(html).toContain('No to-do lists are shown yet.');
     // A list is not a reading: the readings datalist does not offer it.
     const readings = /<datalist id="ha-entities">([\s\S]*?)<\/datalist>/.exec(html)?.[1] ?? '';

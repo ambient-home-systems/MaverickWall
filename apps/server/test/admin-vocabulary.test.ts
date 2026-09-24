@@ -189,6 +189,28 @@ async function crawl(): Promise<readonly Rendered[]> {
   const shownOnce = [madeWall, madePanel].map((made) => made.headers.get('location') ?? '');
   expect(shownOnce.every((path) => path.startsWith('/admin/'))).toBe(true);
   /*
+   * A second, disposable panel, removed immediately — the only way the
+   * confirmation strip's "e-paper wall removed." (P1.5's first occurrence of
+   * "eInk") is ever shown, and the crawl otherwise never removes anything.
+   * `Hallway tag` above is untouched, so the panel the save-bar assertion
+   * below reads from still has its own layout rather than nothing to crawl.
+   */
+  const madeSpare = await home.post('/admin/epaper', {
+    name: 'Spare panel',
+    preset: 'seeed-7in5',
+    rotation: '0',
+  });
+  const spareId = /\/admin\/epaper\/([^/]+)\/url/.exec(madeSpare.headers.get('location') ?? '')?.[1];
+  expect(spareId, 'the spare panel must exist to be removed').not.toBeUndefined();
+  const removed = await home.post(`/admin/epaper/${spareId ?? ''}/revoke`, {});
+  expect(removed.status, 'the spare panel must actually be removed for its confirmation to be crawled').toBe(
+    302,
+  );
+  const removedPath = removed.headers.get('location') ?? '';
+  expect(removedPath, 'the removal must land on a page carrying the confirmation').toContain(
+    'saved=epaper-screen-removed',
+  );
+  /*
    * A CalDAV account, written straight into the database rather than added
    * through its own form (RFC 013 §6.2.1).
    *
@@ -271,6 +293,7 @@ async function crawl(): Promise<readonly Rendered[]> {
     `/admin/screens/approve?code=${encodeURIComponent(userCode)}`,
     ...shownOnce,
     ...shownOnce,
+    removedPath,
   ];
   const out: Rendered[] = [];
 
@@ -493,6 +516,33 @@ describe('the admin, read out loud', () => {
       expect(
         offenders,
         `a theme that no longer exists is named on a page:\n  ${offenders.join('\n  ')}`,
+      ).toEqual([]);
+      expect(stale, `allow-list entries that match nothing any more: ${stale.join(', ')}`).toEqual(
+        [],
+      );
+    },
+    SLOW,
+  );
+
+  it(
+    'says “e-paper”, never “eInk”',
+    async () => {
+      /*
+       * P1.5: the owner saw "Add an eInk panel" while the rest of the build
+       * already said "e-paper" — a saved-message string, an image's alt text
+       * and a Home Assistant sentence still had the old spelling. Case
+       * sensitive, because "eInk" is a specific misspelling rather than a
+       * word: the product's own noun is always "e-paper".
+       *
+       * Zero allow-list, deliberately: the ESPHome recipe's own
+       * `name: eInk source` line is a device-config identifier rather than
+       * copy, and `textOf` already excludes `<pre class="code">` blocks
+       * structurally, so it never reaches this sweep in the first place.
+       */
+      const { offenders, stale } = sweep(await pages(), /\beInk\b/g, []);
+      expect(
+        offenders,
+        `"eInk" survives where a household reads it:\n  ${offenders.join('\n  ')}`,
       ).toEqual([]);
       expect(stale, `allow-list entries that match nothing any more: ${stale.join(', ')}`).toEqual(
         [],

@@ -7484,6 +7484,70 @@ red over 50 files, every one of them "No Chromium to drive". `playwright-core`
 a machine carries, the same shape as the headless-shell paragraph above, and
 not a fault in any test.
 
+**Three of Phase 1's small bugs shipped: P1.1, P1.4, P1.5.** All three were
+found by opening the admin, not by reading the code.
+
+**P1.1 — the Store's Source link, opened from inside the Home Assistant
+sidebar, navigated the iframe itself to GitHub and got "github.com refused to
+connect".** Both of the admin's two absolute outbound links — the Store
+card's Source link and the Advanced page's prefilled Where-to-get-it link —
+now carry `target="_blank" rel="noopener noreferrer"`, and
+`admin-external-links.test.ts` crawls every admin page and fails the build on
+any absolute `http(s)` anchor missing either. The Countdown Store entry is
+renamed "Countdown (example module)" (D5) and its description says plainly
+that it is a developer example run by hand (`node server.mjs`), naming the
+built-in Countdown widget for the everyday case; its glyph stays `pressure`
+until S11 ships the bundled hourglass, as the plan states. Reverting the
+`target`/`rel` attributes reddens the new crawl; reverting the catalog entry's
+name reddens `external-modules.test.ts` and `catalog.test.ts`, both of which
+pinned the old name and are updated with it.
+
+**P1.4 — the Overview's "Edit what shows" and "Arrange layout" pointed at
+`admin/walls/default`, which RFC 015 phase 2 retired to a redirect to
+System.** Both now read the household's own screens: with none or several,
+the walls list; with exactly one, straight to it — a browser wall's own page
+and its Layout tab, an e-paper panel's settings page and its design page, the
+same kind-aware split `layoutUrl` already makes for the Walls section's own
+redirects. `admin-overview-links.test.ts` covers all four shapes (none, two,
+one browser wall, one panel) and crawls every link the Overview renders,
+asserting none resolves to a 3xx. Reverting the two hrefs reddens all six of
+its tests.
+
+**P1.5 — "eInk" and "e-paper" were both in the build, and a household saw the
+former on the one screen this document has always called the latter.** The
+three occurrences the plan named are fixed: the confirmation strip
+("e-paper wall removed."), the panel-preview `alt` text, and a sentence on the
+To-do lists screen. `admin-vocabulary.test.ts` gained a zero-allow-list sweep
+for `eInk`, case-sensitive so the ESPHome recipe's own `name: eInk source`
+line — a device-config identifier, deliberately left alone — stays excluded
+by `textOf`'s existing `<pre class="code">` rule rather than by an entry. Two
+of the three occurrences needed the crawl's fixture *widened* to actually
+reach them: a second, disposable e-paper panel is created and removed so the
+confirmation strip is shown at all (the crawl removes nothing else), and its
+first panel is left untouched so the existing "a wall on a wall's page, a
+layout on a panel's" save-bar assertion still finds a design page that saves
+a layout. The third — the To-do lists sentence — turned out to be already
+pinned verbatim in `todo-lists.test.ts`, found by running it rather than by
+reading the vocabulary crawl's own stated blind spot ("the Home Assistant
+page renders more once a connection exists, there is no fake HA here"): that
+file has one, and it caught the stale word the moment the source changed.
+Each of the three fixes was checked by reverting it alone and watching the
+right test go red — the confirmation string against the widened crawl, the
+sentence against `todo-lists.test.ts`, and the `<img alt>` against the same
+crawl once the second panel existed to draw it.
+
+**3830 tests passing, and 1 skipped, over 271 files**: calendar 153 over 10 ·
+core 314 over 9 · display 616 over 35 · server 2747 over 217, measured on a
+clone whose tags had been fetched (`changelog-shape.test.ts` needs them; a
+shallow clone read one red until `git fetch --tags --unshallow`, which is
+that file's own stated remedy rather than a fault in the checkout). Against
+the 3822 over 269 recorded just above, the difference is +8 tests and +2
+files — exactly the three new files' own count (`admin-external-links.test.ts`
+1, `admin-overview-links.test.ts` 6, plus one new test added to
+`admin-vocabulary.test.ts`), which is the rare case where the arithmetic and
+the reading agree, and is recorded as an observation rather than a method:
+the paragraphs above this one have been wrong about that five times running.
+
 ---
 
 ## Open decisions

@@ -21,7 +21,7 @@ describe('module catalogue', () => {
   });
 
   it('looks an entry up by id, and misses cleanly', () => {
-    expect(catalogEntry('countdown-example')?.name).toBe('Countdown');
+    expect(catalogEntry('countdown-example')?.name).toBe('Countdown (example module)');
     expect(catalogEntry('does-not-exist')).toBeUndefined();
     expect(catalogEntry('')).toBeUndefined();
   });
