@@ -59,56 +59,43 @@ new served route, or touch the Home Assistant boundary.
 
 ## Order and dependencies
 
-```
-S01 rules ─┬─ S02 quick fixes
-           ├─ S03 shift badge
-           ├─ S04 HA add-to-wall
-           ├─ S05 Add buttons (household) ── S06 Add buttons (HA + walls)
-           ├─ S07 weather location
-           ├─ [owner] NWS fixtures ── S08 weather data ── S09 e-paper ETag
-           └─ S10 variants ─┬─ S11 emoji ─┬─ S12 motion ─┬─ S13 shadows + tokens
-                            │             │              │
-                            └─────────────┴──────────────┴─ S14, S15 weather styles (S15 also needs S08, S09)
-                                                            S16, S17 countdown styles
-                                                            S18 HA data ── S19 HA tiles
-                                                            S20 calendar shifts ── S21 calendar looks
-S22 wallpaper plumbing ── S23 wallpaper set (both after S13)
-```
-
 - **S01 goes first,** because every later session reads the rules it rewrites.
+- **A session can start once everything in its "Needs" column has merged.**
+  Sessions whose needs are met can run in parallel, each opening its own pull
+  request. S05 and S06, S14 and S15, S16 and S17, and S20 and S21 edit the same
+  files, which is why each second one needs the first.
 - **S09 must ship in the same release as S08.** Current conditions change every
   15 minutes, and until S09 lands that change moves every e-paper panel's frame
   ETag, so battery panels would redraw on every wake.
-- **Sessions on the same row of the tree can run in parallel;** each opens its
-  own pull request. Sessions that edit the same files (S05 and S06; S14 and S15;
-  S16 and S17; S20 and S21) should run one after the other.
+- **The owner task** (capturing NWS responses from a home network) has no
+  prerequisites and can be done at any time before S08.
 
-| Session | Plan items | Model | Effort | Extra review |
-|---|---|---|---|---|
-| S01 | P0.1, P0.2 | Opus 5.5 | high | — |
-| S02 | P1.1, P1.4, P1.5 | Sonnet 5 | medium | — |
-| S03 | P1.2 | Opus 5.5 | xhigh | — |
-| S04 | P1.3 | Opus 5.5 | xhigh | security review |
-| S05 | P2.1 (household, themes, Store) | Opus 5.5 | high | — |
-| S06 | P2.1 (Home Assistant), P2.2 | Opus 5.5 | high | — |
-| S07 | P2.3 | Sonnet 5 | high | security review |
-| owner | P3.6 (NWS capture) | — | — | — |
-| S08 | P3.1–P3.4, P3.6–P3.8 | Opus 5.5 | xhigh | security review |
-| S09 | P3.5 | Opus 5.5 | xhigh | — |
-| S10 | P4.1 | Opus 5.5 | xhigh | — |
-| S11 | P4.2 | Sonnet 5 | high | security review |
-| S12 | P4.3 | Opus 5.5 | xhigh | — |
-| S13 | P4.4, P4.5 | Opus 5.5 | high | — |
-| S14 | P5.1 (`range`, `colour`) | Opus 5.5 | high | — |
-| S15 | P5.1 (`today`, `playful`) | Opus 5.5 | xhigh | — |
-| S16 | P5.2 (`number` extras, `page`, `ticket`, celebration, emoji picker) | Opus 5.5 | high | — |
-| S17 | P5.2 (`occasion`, `progress`, `month`) | Opus 5.5 | high | — |
-| S18 | P5.3 (data) | Opus 5.5 | xhigh | security review |
-| S19 | P5.3 (tiles) | Opus 5.5 | xhigh | — |
-| S20 | P5.4 parts 1–3 | **Fable 5.1** | xhigh | — |
-| S21 | P5.4 parts 4–6 | Opus 5.5 | high | — |
-| S22 | P6.1, P6.4 | Opus 5.5 | high | security review |
-| S23 | P6.2, P6.3 | **Fable 5.1** | xhigh | — |
+| Session | Plan items | Model | Effort | Needs | Extra review |
+|---|---|---|---|---|---|
+| S01 | P0.1, P0.2 | Opus 5.5 | high | — | — |
+| S02 | P1.1, P1.4, P1.5 | Sonnet 5 | medium | S01 | — |
+| S03 | P1.2 | Opus 5.5 | xhigh | S01 | — |
+| S04 | P1.3 | Opus 5.5 | xhigh | S01 | security review |
+| S05 | P2.1 (household, themes, Store) | Opus 5.5 | high | S01 | — |
+| S06 | P2.1 (Home Assistant), P2.2 | Opus 5.5 | high | S05 | — |
+| S07 | P2.3 | Sonnet 5 | high | S01 | security review |
+| owner | P3.6 (NWS capture) | — | — | — | — |
+| S08 | P3.1–P3.4, P3.6–P3.8 | Opus 5.5 | xhigh | S01, owner | security review |
+| S09 | P3.5 | Opus 5.5 | xhigh | S08 | — |
+| S10 | P4.1 | Opus 5.5 | xhigh | S01 | — |
+| S11 | P4.2 | Sonnet 5 | high | S02 | security review |
+| S12 | P4.3 | Opus 5.5 | xhigh | S01 | — |
+| S13 | P4.4, P4.5 | Opus 5.5 | high | S01 | — |
+| S14 | P5.1 (`range`, `colour`) | Opus 5.5 | high | S10, S13 | — |
+| S15 | P5.1 (`today`, `playful`) | Opus 5.5 | xhigh | S09, S11, S12, S14 | — |
+| S16 | P5.2 (`number` extras, `page`, `ticket`, celebration, emoji picker) | Opus 5.5 | high | S10, S11, S12, S13 | — |
+| S17 | P5.2 (`occasion`, `progress`, `month`) | Opus 5.5 | high | S16 | — |
+| S18 | P5.3 (data) | Opus 5.5 | xhigh | S01 | security review |
+| S19 | P5.3 (tiles) | Opus 5.5 | xhigh | S10, S13, S18 | — |
+| S20 | P5.4 parts 1–3 | **Fable 5.1** | xhigh | S10, S13 | — |
+| S21 | P5.4 parts 4–6 | Opus 5.5 | high | S20 | — |
+| S22 | P6.1, P6.4 | Opus 5.5 | high | S13 | security review |
+| S23 | P6.2, P6.3 | **Fable 5.1** | xhigh | S22 | — |
 
 ---
 
@@ -357,7 +344,7 @@ Read CLAUDE.md first, then the items named above in docs/plan-2026-09-household-
 
 ## S11 · Bundled emoji artwork
 
-**Sonnet 5 · high · security review.** Plan item P4.2.
+**Sonnet 5 · high · security review.** Plan item P4.2. Needs S02.
 
 ```text
 Build P4.2 so emoji look the same on every wall. The image ships no emoji font, so today each tablet draws its own maker's emoji, or an empty box.
@@ -548,7 +535,7 @@ Read CLAUDE.md first, then the items named above in docs/plan-2026-09-household-
 
 ## S19 · Home Assistant tile cards
 
-**Opus 5.5 · xhigh.** Plan item P5.3, the display half. Needs S18.
+**Opus 5.5 · xhigh.** Plan item P5.3, the display half. Needs S10, S13 and S18.
 
 ```text
 Build the `tile` variant for the Home Assistant widget from P5.3 (decision D4).
