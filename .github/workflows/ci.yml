@@ -7,8 +7,61 @@ on:
   pull_request:
 
 jobs:
-  test:
+  # `pnpm test` used to run here as one job, and one job is what made CI take
+  # ten minutes: the server suite was 8m48s of a 9m24s step, and 77% of that
+  # was the 53 files that drive a real browser. A standard runner has four
+  # cores, and each browser file's own Chromium competes with the workers for
+  # them, so more workers on one machine buys little. More machines do.
+  #
+  # So the work `pnpm test` does is split across jobs rather than changed:
+  # every job builds exactly as `pnpm test` does (`pnpm -r build`, because
+  # `vitest` only transpiles and never resolves a dependency's declarations —
+  # packages/calendar passed 153 tests for days over imports that `tsc`
+  # rejects outright), then runs its own part of the suite. Nothing is
+  # skipped, and `pnpm test` is still the whole thing on a laptop.
+
+  # The three packages that are not the server: about forty seconds together.
+  packages:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r build
+      # The expansion budget is an algorithmic guard, not a benchmark of the
+      # runner. A shared CI box is roughly twice as slow as a laptop, and the
+      # thing this catches — a change that makes recurrence quadratic — is an
+      # order of magnitude, not a factor of two.
+      - run: pnpm -r --filter '!@maverick-wall/server' test
+        env:
+          CALENDAR_BENCH_BUDGET_MS: 5000
+
+  # The server suite, in three shards on three runners.
+  #
+  # Three rather than four, and the number was measured rather than picked.
+  # `vitest --shard` sorts files by the SHA-1 of their path and cuts the list
+  # into equal *counts*, not equal durations, so where the heavy browser files
+  # land is decided by their names. Simulated from a real run's per-file
+  # timings — a model that reproduced that unsharded run at 517s against 528s
+  # measured — three shards come out at 176, 172 and 169s of test time and
+  # four at 151, 100, 194 and 94: the fourth shard would have made CI slower.
+  # Adding files moves that balance, so re-measure before changing the count.
+  #
+  # Each shard's runner carries the same load the single job did (vitest's
+  # default workers on the same four cores), so the timing-sensitive browser
+  # tests see the conditions they were written against and not new ones.
+  server:
+    runs-on: ubuntu-latest
+    strategy:
+      # Every shard reports: one red shard must not hide another one's failure
+      # behind a cancellation.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -20,7 +73,9 @@ jobs:
           # The test fails loudly rather than skipping when it cannot read
           # them, so dropping this line turns the suite red with a message
           # naming this setting, not green with a check that quietly stopped
-          # looking. That is the point of paying for the fetch.
+          # looking. That is the point of paying for the fetch. Every shard
+          # pays it, because which shard a file lands in is a hash of its path
+          # and not something to depend on — and it is two seconds.
           fetch-depth: 0
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v5
@@ -31,26 +86,39 @@ jobs:
 
       # RFC 009 Phase 0's five tests drive a real browser. `playwright-core`
       # ships no binaries and nothing here downloads one — a `playwright
-      # install` is a hundred-odd megabytes and a minute of wall clock on a job
-      # that finishes in under two. The runner image already carries Chrome; if
-      # a future image stops doing so, this line says which browsers it looked
-      # for, and the harness's own message says what to set.
+      # install` is a hundred-odd megabytes and a minute of wall clock. The
+      # runner image already carries Chrome; if a future image stops doing so,
+      # this line says which browsers it looked for, and the harness's own
+      # message says what to set.
       - name: Find the browser those tests drive
         run: |
           found="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
           echo "browser: ${found:-none found (google-chrome, chromium, chromium-browser)}"
           if [ -n "$found" ]; then echo "MW_BROWSER_EXECUTABLE=$found" >> "$GITHUB_ENV"; fi
 
-      # Builds first, then tests. `vitest` only transpiles — it never resolves
-      # a dependency's declarations, and packages/calendar passed 153 tests for
-      # days over imports that `tsc` rejects outright.
-      # The expansion budget is an algorithmic guard, not a benchmark of the
-      # runner. A shared CI box is roughly twice as slow as a laptop, and the
-      # thing this catches — a change that makes recurrence quadratic — is an
-      # order of magnitude, not a factor of two.
-      - run: pnpm test
-        env:
-          CALENDAR_BENCH_BUDGET_MS: 5000
+      # The whole build, not the server's alone: the browser tests serve the
+      # display bundle from apps/display/dist, and the server's own build is
+      # what typechecks its test files.
+      - run: pnpm -r build
+      - name: Server tests, shard ${{ matrix.shard }} of 3
+        run: pnpm --filter @maverick-wall/server exec vitest run --shard=${{ matrix.shard }}/3
+
+  # The one check that means "the suite passed", under the name the single job
+  # had, so anything that asks for `test` — a branch protection rule, a person
+  # reading a pull request — still finds one answer rather than four. It fails
+  # unless every part succeeded; `always()` is what makes it report a failure
+  # rather than be skipped when a part fails, since a skipped check can read
+  # as a passing one.
+  test:
+    runs-on: ubuntu-latest
+    needs: [packages, server]
+    if: always()
+    steps:
+      - name: Every part of the suite passed
+        run: |
+          echo "packages: ${{ needs.packages.result }}"
+          echo "server:   ${{ needs.server.result }}"
+          [ "${{ needs.packages.result }}" = "success" ] && [ "${{ needs.server.result }}" = "success" ]
 
   # The Android kiosk APK. Nothing else in CI touches apps/android — it is
   # excluded from the pnpm workspace and built with Gradle, not pnpm, so `test`

@@ -320,6 +320,20 @@ pnpm -r build
 dependency's declarations. `packages/calendar` passed 153 tests for days over
 `ical.js` imports that `tsc` rejects outright. Do not remove the build step.
 
+**CI runs the same work split across runners, not a smaller version of it.**
+One `pnpm test` job took ten minutes, and 8m48s of it was the server suite —
+77% of that the 53 files that drive a real browser, on a four-core runner where
+each file's own Chromium competes with the workers. So `ci.yml` has a
+`packages` job (build, then calendar, core and display) and a `server` job in
+three `vitest --shard` runners, each building first exactly as `pnpm test`
+does, and a `test` job that passes only when every part did, under the name the
+one job had. **Three was measured, not picked:** vitest shards by equal file
+*counts* in SHA-1 order of the path, so where the heavy browser files land is
+decided by their names, and a model built from one run's per-file timings (it
+reproduced that run at 517s against 528 measured) put three shards at 176, 172
+and 169s of test time and four at 151, 100, 194 and 94 — slower than three.
+Adding files moves that balance, so re-measure before changing the count.
+
 ### Running it
 
 ```bash
