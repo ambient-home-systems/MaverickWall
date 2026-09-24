@@ -325,14 +325,20 @@ One `pnpm test` job took ten minutes, and 8m48s of it was the server suite —
 77% of that the 53 files that drive a real browser, on a four-core runner where
 each file's own Chromium competes with the workers. So `ci.yml` has a
 `packages` job (build, then calendar, core and display) and a `server` job in
-three `vitest --shard` runners, each building first exactly as `pnpm test`
+four `vitest --shard` runners, each building first exactly as `pnpm test`
 does, and a `test` job that passes only when every part did, under the name the
-one job had. **Three was measured, not picked:** vitest shards by equal file
-*counts* in SHA-1 order of the path, so where the heavy browser files land is
-decided by their names, and a model built from one run's per-file timings (it
-reproduced that run at 517s against 528 measured) put three shards at 176, 172
-and 169s of test time and four at 151, 100, 194 and 94 — slower than three.
-Adding files moves that balance, so re-measure before changing the count.
+one job had. **The count is measured, not picked, and the answer changed
+once:** vitest shards by equal file *counts* in SHA-1 order of the path, so
+where the heavy browser files land is decided by their names. A model built
+from one run's per-file timings (it reproduces which shard every file ran in,
+and lands a steady ~42s under each measured step) first put three shards at
+176, 172 and 169s and four at 151, 100, 194 and 94, which is slower than three.
+After #294 stopped the browser tests sleeping through fixed waits, the same
+model on that run's timings puts three at 170, 122 and 186s and four at 147,
+85, 143 and 109s. So it is four, and the run that switched is what measured it.
+The step reads the total from `strategy.job-total`, so the matrix is the one
+place the count is written. Adding files moves the balance, so re-measure
+before changing it.
 
 ### Running it
 
