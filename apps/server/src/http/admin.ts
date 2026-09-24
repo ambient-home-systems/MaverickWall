@@ -93,6 +93,7 @@ import {
   parseBackground,
   todoListHandle,
   widgetIsSetUp,
+  withReadingEntityIds,
   WIDGET_TYPES,
   type PlacedWidgetRow,
 } from '../api/manifest.js';
@@ -575,7 +576,7 @@ import {
   THEMES,
 } from './theme-cards.js';
 import { readEnabledExternalModules, readExternalModules } from '../api/external-modules.js';
-import { readHaSettings } from '../modules/homeassistant/store.js';
+import { readHaSettings, watchedReadingChoices } from '../modules/homeassistant/store.js';
 import { resolveConnection } from '../modules/homeassistant/client.js';
 import { fetchCalendarEntities } from '../modules/homeassistant/index.js';
 import { isUnitedStatesZone } from '../timezone.js';
@@ -5489,32 +5490,6 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   }
 
   /**
-   * The Home Assistant reading labels currently resolving, for the widget
-   * config picker — the exact labels a widget filters on. Read from the same
-   * manifest the wall gets (the house panel is household-wide), so the picker
-   * can never offer a label the wall would not recognise. Empty when there is
-   * no manifest builder or no Home Assistant connection.
-   */
-  function haReadingLabels(): string[] {
-    if (deps.previewManifest === undefined) return [];
-    try {
-      const manifest = deps.previewManifest(null) as {
-        panels?: { home?: { readings?: unknown } };
-      };
-      const raw = manifest?.panels?.home?.readings;
-      if (!Array.isArray(raw)) return [];
-      const labels: string[] = [];
-      for (const entry of raw) {
-        const label = (entry as { label?: unknown })?.label;
-        if (typeof label === 'string' && label !== '') labels.push(label);
-      }
-      return labels;
-    } catch {
-      return [];
-    }
-  }
-
-  /**
    * One display: the shared Default (`ownerId` null) or a paired screen.
    *
    * Everything about that wall in one place — its status and pairing, the
@@ -5571,6 +5546,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       ),
       widgets: widgetsOf(orientation, null),
     });
+    /*
+     * The watched readings, for the Home Assistant widget's picker (P1.3) —
+     * and what a widget saved when it picked readings by label is read
+     * against, so it opens with the right boxes ticked and its next save
+     * writes entity ids.
+     */
+    const readingChoices = watchedReadingChoices(deps.db);
     const widgetsOf = (orientation: 'portrait' | 'landscape', slot: string | null): readonly unknown[] =>
       readLayoutWidgets(deps.db, ownerKey, orientation, slot).map((widget) => ({
         id: widget.id,
@@ -5580,7 +5562,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         w: widget.w,
         h: widget.h,
         z: widget.z,
-        config: widget.config,
+        config: withReadingEntityIds(widget.config, readingChoices),
         // The group a child sits inside (RFC 014 §5.1), spread so a canvas
         // with no group serialises as it always did. Without it the editor
         // showed a grouped wall's children as boxes on the layout and its
@@ -5631,11 +5613,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       schedule: readLayoutSchedule(deps.db, ownerKey),
       maxSlots: MAX_LAYOUT_SLOTS,
       // Everything the config panel needs to offer a choice: the calendars that
-      // exist (id + name), and the Home Assistant reading labels currently
-      // resolving. Read here rather than fetched again so the editor can build
-      // its pickers without a second round trip.
+      // exist (id + name), and the watched Home Assistant readings (id, the
+      // name the wall draws, and the handle the panel keys it by). Read here
+      // rather than fetched again so the editor can build its pickers without
+      // a second round trip.
       calendars: readAdminSources(deps.db).map((s) => ({ id: s.id, name: s.name })),
-      readings: haReadingLabels(),
+      readings: readingChoices,
       // The registered modules, for the External widget's module picker.
       modules: readEnabledExternalModules(deps.db).map((m) => ({ id: m.id, name: m.name })),
       // The household, for the Shift widget's "whose rota" picker.

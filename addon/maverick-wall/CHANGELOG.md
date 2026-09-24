@@ -16,6 +16,22 @@
 
 ## Unreleased
 
+**Home Assistant readings say which walls they are on.** Adding a reading
+chooses what a **Home Assistant widget** can show; it never put anything on a
+wall by itself, and Classic, which every wall starts on, has no such widget.
+The button said "Add to the wall" anyway. It now says **Add reading**, the
+list is called **Your readings**, and every reading says where it is: "On:
+Kitchen, Hall", or "Not on any wall yet". When no wall has the widget, a card
+at the top says so and links to each wall's layout. The Store's recipe button
+is **Install** for the same reason, and each installed module says which walls
+show it.
+
+**Renaming a reading no longer takes it off your walls.** A Home Assistant
+widget set to show particular readings remembered them by name, so renaming
+one quietly dropped it from every widget that had picked it. Widgets now
+remember the reading itself. Widgets you set up before this keep working as
+they are, and switch over the next time you save the wall's layout.
+
 ## 0.67.0
 
 **Grouping widgets now does what you would expect.** Press **Group** on two

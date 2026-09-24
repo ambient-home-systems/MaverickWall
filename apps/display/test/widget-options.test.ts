@@ -4,11 +4,13 @@ import { describe, expect, it } from 'vitest';
 
 import {
   clockWidgetView,
+  houseReadingsFor,
   panelRowLimit,
+  previewReadingKeys,
   shiftWidgetView,
   weatherWidgetView,
 } from '../src/widget-options.js';
-import type { TodayShiftModel, WeatherDayModel } from '../src/viewmodel.js';
+import type { HouseReadingModel, TodayShiftModel, WeatherDayModel } from '../src/viewmodel.js';
 
 /**
  * What each widget shows.
@@ -219,6 +221,51 @@ describe('the module panel row limit', () => {
  * `--clock-chars` from the string it is about to draw; a constant in its place
  * is the bug coming back.
  */
+/**
+ * Which readings a Home Assistant widget draws (P1.3).
+ *
+ * A widget used to pick its readings by label, so a rename took one off every
+ * widget that had picked it. The server now stores entity ids and sends the
+ * wall handles in their place; the wall matches a handle against the handle
+ * each reading carries, and never against the label a rename changes.
+ */
+describe('the house widget readings', () => {
+  const house: HouseReadingModel[] = [
+    { key: 'aaaaaaaaaaaaaaaa', label: 'Kitchen', value: '19.4 °C', glyph: undefined, mode: 'label_value', stale: false },
+    { key: 'bbbbbbbbbbbbbbbb', label: 'Hall', value: '18.1 °C', glyph: undefined, mode: 'label_value', stale: false },
+  ];
+
+  it('draws every reading when the widget names none', () => {
+    expect(houseReadingsFor(house, undefined)).toEqual(house);
+    expect(houseReadingsFor(house, { readings: [] })).toEqual(house);
+  });
+
+  it('draws the reading a handle names', () => {
+    expect(houseReadingsFor(house, { readings: ['bbbbbbbbbbbbbbbb'] }).map((r) => r.label)).toEqual(['Hall']);
+  });
+
+  it('does not match a handle-carrying reading by its label', () => {
+    // The server rewrites every entry to a handle, so a label reaching the wall
+    // beside readings that carry handles is one it had nothing to resolve to.
+    expect(houseReadingsFor(house, { readings: ['Hall'] })).toEqual([]);
+  });
+
+  it('matches by label a reading from a server older than the handle', () => {
+    const old = house.map(({ key: _key, ...rest }) => rest);
+    expect(houseReadingsFor(old, { readings: ['Kitchen'] }).map((r) => r.label)).toEqual(['Kitchen']);
+  });
+
+  it('hands the editor preview the handle for each entity id the picker knows', () => {
+    const choices = [
+      { id: 'sensor.kitchen', key: 'aaaaaaaaaaaaaaaa' },
+      { id: 'sensor.hall', key: 'bbbbbbbbbbbbbbbb' },
+    ];
+    expect(previewReadingKeys(['sensor.hall', 'sensor.gone'], choices)).toEqual(['bbbbbbbbbbbbbbbb', 'sensor.gone']);
+    expect(previewReadingKeys(undefined, choices)).toBeUndefined();
+    expect(previewReadingKeys([], choices)).toEqual([]);
+  });
+});
+
 describe('the clock rule in display.css', () => {
   const css = readFileSync(new URL('../src/display.css', import.meta.url), 'utf8');
   const rule = css.slice(css.indexOf('.fw-clock .clock {'));

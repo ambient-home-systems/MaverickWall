@@ -226,8 +226,18 @@ const widgetConfigFields = z
      */
     showLow: z.boolean().optional(),
     showIcon: z.boolean().optional(),
-    // Home Assistant
-    readings: z.array(z.string().max(80)).max(50).optional(),
+    /*
+     * Home Assistant — which watched readings this widget shows, **by entity
+     * id** (P1.3); absent or empty is all of them. It held labels until then,
+     * so a rename took a reading off every widget that had picked it, and a
+     * widget saved before is still read correctly: `readingHandlesFor` treats
+     * an entry that is a current reading's label as that reading. The entity
+     * id never reaches a wall — `displayConfig` sends the handle in its place.
+     * 255 rather than the 80 a label needed, because that is what an entity id
+     * may be (`watchBody` accepts it) and a picker offering an id the save
+     * then refused would be a choice that cannot be made.
+     */
+    readings: z.array(z.string().max(255)).max(50).optional(),
     // Countdown — a target date (YYYY-MM-DD); the label rides in `title`.
     target: z
       .string()

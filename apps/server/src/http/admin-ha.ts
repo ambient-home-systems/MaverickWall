@@ -19,9 +19,19 @@ import {
   readHaSettings,
   readWatched,
   unwatchEntity,
+  watchedReadingChoices,
   watchEntity,
   writeHaSettings,
 } from '../modules/homeassistant/store.js';
+import { householdSetUp } from '../modules/index.js';
+import { HOME_BLOCK as HOME_MODULE } from '../modules/homeassistant/index.js';
+import {
+  anyWallShowsReadings,
+  shownOnTag,
+  wallsAndWhatTheyDraw,
+  wallsShowingReading,
+  type WallDrawing,
+} from './wall-reach.js';
 import { deleteRule, readMatch, readRuleRows, setRuleEnabled, writeRule } from '../api/rules.js';
 import {
   MAX_WATCHED_LISTS,
@@ -781,7 +791,19 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
         ? mode
         : 'label_value') as DisplayMode,
     });
-    return savedRedirect(c, '/admin/home-assistant/readings', 'ha-entity-added');
+    /*
+     * A token is a claim, so the branch decides it (P1.3). Watching an entity
+     * puts it on a wall only when a wall already draws a Home Assistant widget
+     * that shows every reading, and "Reading added" over a page whose row then
+     * says "Not on any wall yet" would be the fault this item fixes, one strip
+     * up. Asked after the write, of the same rows the row itself reads.
+     */
+    const shown = wallsShowingReading(readingWalls(), entityId, watchedReadingChoices(deps.db));
+    return savedRedirect(
+      c,
+      '/admin/home-assistant/readings',
+      shown.length > 0 ? 'ha-entity-added-shown' : 'ha-entity-added',
+    );
   });
 
   /**
@@ -1440,6 +1462,53 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
   }
 
   /**
+   * Every wall, with what it draws — asked as "would this wall draw readings"
+   * rather than "does it right now" (P1.3).
+   *
+   * A Home Assistant widget is left off a wall while nothing is watched
+   * (`widgetIsSetUp`), so asked with the household's set-up as it stands, a
+   * household adding their first reading would be told no wall draws readings
+   * by the very widget that is about to draw it. Only that one prerequisite is
+   * assumed; everything else — a fallback standing in for a Weather box, a
+   * group with nothing else in it — is decided exactly as the wall decides it.
+   */
+  function readingWalls(): WallDrawing[] {
+    const setUp = householdSetUp(deps.db);
+    return wallsAndWhatTheyDraw(deps.db, {
+      ...setUp,
+      modules: setUp.modules.includes(HOME_MODULE) ? setUp.modules : [...setUp.modules, HOME_MODULE],
+    });
+  }
+
+  /**
+   * The card that says why a reading is on no wall, when none draws any.
+   *
+   * Adding a reading watches an entity; a **Home Assistant widget** is what
+   * draws it, and Classic, which every wall starts on, has none. So "the wall
+   * draws readings" is a fact about each wall's layout, and when no wall has
+   * the widget this says so once, at the top, with a way to each wall's layout
+   * — rather than every row below saying "Not on any wall yet" with nothing
+   * explaining why.
+   */
+  function noWallDrawsReadings(walls: readonly WallDrawing[]): string {
+    const where =
+      walls.length === 0
+        ? `<p><a class="link" href="admin/walls">Pair a wall</a> first, then add the ` +
+          `widget to its layout.</p>`
+        : `<p>Add one from a wall's layout: ` +
+          walls.map((wall) => tag(wall.name, 'neutral', wall.layoutHref)).join(' ') +
+          `</p>`;
+    return card(
+      `<h2>No wall shows readings yet</h2>` +
+        `<p>A reading is drawn by a Home Assistant widget, and none of your walls has one — ` +
+        `Classic, which every wall starts on, does not. Adding a reading here chooses what ` +
+        `that widget can show; it does not put anything on a wall by itself.</p>` +
+        where,
+      { tone: 'warn' },
+    );
+  }
+
+  /**
    * The picker.
    *
    * A first-party script turns the entity list — hundreds of them — into a
@@ -1451,6 +1520,8 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
    */
   function readings(live: LiveState): string {
     const watched = readWatched(deps.db).filter((row) => row.watched === 1);
+    const walls = readingWalls();
+    const choices = watchedReadingChoices(deps.db);
 
     /*
      * The destructive Remove is a hand-built form rather than `destructive()`,
@@ -1478,6 +1549,9 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
           `${row.unitOfMeasurement === null ? '' : ' ' + escapeHtml(row.unitOfMeasurement)}` +
           `${row.fetchedAt === 0 ? ' · not read yet' : ' · read ' + escapeHtml(ago(row.fetchedAt, now()))}</p>` +
           `<p class="host">${escapeHtml(row.entityId)}</p>` +
+          // Which walls actually draw it (P1.3), and a warning tone when none
+          // does: adding a reading watches it, and a widget is what shows it.
+          shownOnTag(wallsShowingReading(walls, row.entityId, choices)) +
           `</div>` +
           `<details class="ovf" data-overflow>` +
           `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
@@ -1512,10 +1586,15 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       .join('');
 
     return (
+      (anyWallShowsReadings(walls) ? '' : noWallDrawsReadings(walls)) +
       section(
-        'On the wall',
-        'A few readings beside the calendar. This is deliberately not a ' +
-          'dashboard — Home Assistant already has one, and it is better at it.',
+        // "On the wall" was untrue of every reading on a wall with no Home
+        // Assistant widget, which is every wall Classic seeds (P1.3). Each row
+        // now says where it is instead.
+        'Your readings',
+        'A few readings beside the calendar, drawn by a Home Assistant widget ' +
+          'wherever you put one. This is deliberately not a dashboard — Home ' +
+          'Assistant already has one, and it is better at it.',
         // Calendars used to be offered here too, and a calendar added as a
         // reading drew "Bins · On" — its state, which means "an event is on
         // right now". They are not in this picker any more, so this says
@@ -1525,7 +1604,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
         // second, narrower aside rather than the section's main reason.
         `<p class="hint">Calendar entities are not readings — they are added as ` +
         `calendars, below, and behave like any other feed.</p>` +
-        (rows === '' ? emptyState('Nothing on the wall yet.') : rows),
+        (rows === '' ? emptyState('No readings yet.') : rows),
       ) +
       section(
         'Add readings',
@@ -1557,7 +1636,9 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
               `<option value="${escapeHtml(option.key)}">${escapeHtml(option.label)}</option>`,
           ).join(''),
         }) +
-        `<button type="submit">Add to the wall</button></form></noscript>`,
+        // "Add reading", not "Add to the wall": it watches the entity, and a
+        // Home Assistant widget is what puts it on a wall (P1.3).
+        `<button type="submit">Add reading</button></form></noscript>`,
       )
     );
   }

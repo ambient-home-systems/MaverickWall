@@ -90,6 +90,7 @@ import {
   type OmissionFacts,
 } from './omission.js';
 import { inspectorView } from './inspector.js';
+import { previewReadingKeys } from './widget-options.js';
 import { TIER_NAMES, type TierName } from './tiers.js';
 import { PALETTE, SWATCH, describeWidget, describeWidgetIn, labelFor } from './widget-labels.js';
 import {
@@ -143,8 +144,13 @@ interface LayoutState {
   maxSlots: number;
   /** The calendars that exist, for the Calendar widget's "which calendars". */
   calendars: readonly { readonly id: string; readonly name: string }[];
-  /** The Home Assistant reading labels resolving now, for the HA widget picker. */
-  readings: readonly string[];
+  /**
+   * The watched Home Assistant readings, for the HA widget's picker (P1.3).
+   * `id` is the entity id a widget stores; `name` is the label the wall draws;
+   * `key` is the handle the house panel carries, so the preview can find the
+   * reading a box names — the `todoLists` arrangement below, one widget along.
+   */
+  readings: readonly { readonly id: string; readonly name: string; readonly key: string }[];
   /** The registered modules, for the External widget's "which module". */
   modules: readonly { readonly id: string; readonly name: string }[];
   /** The household, for the Shift and Chores widgets' "whose" pickers. */
@@ -456,7 +462,15 @@ function boot(): void {
       slots,
       maxSlots: typeof parsed.maxSlots === 'number' && parsed.maxSlots > 0 ? parsed.maxSlots : 4,
       calendars: Array.isArray(parsed.calendars) ? (parsed.calendars as LayoutState['calendars']) : [],
-      readings: Array.isArray(parsed.readings) ? (parsed.readings as string[]) : [],
+      readings: Array.isArray(parsed.readings)
+        ? (parsed.readings as unknown[]).filter(
+            (one): one is LayoutState['readings'][number] =>
+              typeof one === 'object' && one !== null &&
+              typeof (one as { id?: unknown }).id === 'string' &&
+              typeof (one as { name?: unknown }).name === 'string' &&
+              typeof (one as { key?: unknown }).key === 'string',
+          )
+        : [],
       modules: Array.isArray(parsed.modules) ? (parsed.modules as LayoutState['modules']) : [],
       people: Array.isArray(parsed.people) ? (parsed.people as LayoutState['people']) : [],
       todoLists: Array.isArray(parsed.todoLists)
@@ -2009,7 +2023,11 @@ function boot(): void {
     drawnWidgets().map((w) => {
       const list = w.type === 'todo' ? todoListOf(w.config) : undefined;
       const known = list === undefined ? undefined : state.todoLists.find((one) => one.id === list);
-      const placed = known === undefined ? { ...w } : { ...w, config: { ...w.config, list: known.key } };
+      const listed = known === undefined ? { ...w } : { ...w, config: { ...w.config, list: known.key } };
+      // And a Home Assistant box's readings, the same way (P1.3): stored as
+      // entity ids, drawn by the handles the house panel carries.
+      const picked = w.type === 'homeassistant' ? previewReadingKeys(w.config?.['readings'], state.readings) : undefined;
+      const placed = picked === undefined ? listed : { ...listed, config: { ...listed.config, readings: picked } };
       /*
        * The style lane, resolved for the preview (RFC 014 §4.1). The wall
        * reads what the server resolved; an unsaved lane has no server behind
@@ -5031,7 +5049,7 @@ function boot(): void {
     const which = cfgField('Readings to show', 'readings');
     which.appendChild(
       checkList(
-        state.readings.map((r) => ({ value: r, label: r })),
+        state.readings.map((r) => ({ value: r.id, label: r.name })),
         Array.isArray(cfg['readings']) ? (cfg['readings'] as string[]) : [],
         (values) => setConfig(widget, 'readings', values),
         'No Home Assistant readings yet — connect it and choose entities first.',

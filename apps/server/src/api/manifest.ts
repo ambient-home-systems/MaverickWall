@@ -138,11 +138,187 @@ export function todoListHandle(entityId: string): string {
 }
 
 /**
+ * What a Home Assistant reading is called on the wall (P1.3).
+ *
+ * `todoListHandle` one widget along, and for the same two reasons. A Home
+ * Assistant widget that shows some readings rather than all stores which ones,
+ * and it used to store them by **label** — the only name the manifest carried —
+ * so renaming a reading on the Home Assistant screen silently took it off every
+ * widget that had picked it. The widget stores the entity id now, which a
+ * rename cannot touch, and rule 12 says the wall never receives one: so the
+ * house panel keys each reading by this handle and `displayConfig` turns every
+ * stored entry into it on the way out. A distinct prefix from the to-do lists',
+ * so the two hash spaces cannot collide however an entity is named.
+ */
+export function haReadingHandle(entityId: string): string {
+  return createHash('sha256').update(`ha-reading|${entityId}`, 'utf8').digest('hex').slice(0, 16);
+}
+
+/** One reading as the house panel carries it: the label a household sees, and its handle. */
+export interface ReadingIndexEntry {
+  readonly label: string;
+  readonly key: string;
+}
+
+/**
+ * The house panel's readings as label and handle, read defensively.
+ *
+ * The panel is `unknown` wherever it is read — assembly receives it already
+ * collected, and the e-paper renderer reads it back out of the manifest — so a
+ * row missing either half is skipped rather than trusted.
+ */
+export function readingIndexOf(panel: unknown): ReadingIndexEntry[] {
+  if (typeof panel !== 'object' || panel === null) return [];
+  const raw = (panel as { readings?: unknown }).readings;
+  if (!Array.isArray(raw)) return [];
+  const out: ReadingIndexEntry[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const { label, key } = entry as { label?: unknown; key?: unknown };
+    if (typeof label === 'string' && typeof key === 'string') out.push({ label, key });
+  }
+  return out;
+}
+
+/**
+ * A widget's stored `readings` as the handles the wall filters on.
+ *
+ * Each entry is an entity id, which is what the editor writes — or, on a
+ * widget saved before it did, a **label**, which is what it used to write. No
+ * migration rewrites those: an entry that is the id of a current reading is
+ * that reading; one that is not, but is a current reading's label, is every
+ * reading carrying that label (a label selected all of them, so that is what
+ * it keeps doing); and anything else becomes a handle all the same.
+ *
+ * **That last case is rule 12, not tidiness.** An entry that matches nothing
+ * now is most often an entity the household stopped watching — which is to say
+ * an entity id — and passing it through would put it on the wall. Hashed, it
+ * matches no reading, which is exactly what the wall should draw for it, and if
+ * the entity is watched again it resolves to the same handle and comes back.
+ * So no string a widget stores under this key ever reaches a wall as written.
+ *
+ * `undefined` for a value that is not a list, so a config that never named any
+ * readings is left untouched and keeps its bytes. An empty list stays empty:
+ * that is "all of them", and must not become a filter that matches nothing.
+ */
+export function readingHandlesFor(
+  entries: unknown,
+  index: readonly ReadingIndexEntry[],
+): string[] | undefined {
+  if (!Array.isArray(entries)) return undefined;
+  const out: string[] = [];
+  const add = (key: string): void => {
+    if (!out.includes(key)) out.push(key);
+  };
+  for (const entry of entries) {
+    if (typeof entry !== 'string') continue;
+    const own = haReadingHandle(entry);
+    if (index.some((reading) => reading.key === own)) {
+      add(own);
+      continue;
+    }
+    const labelled = index.filter((reading) => reading.label === entry);
+    if (labelled.length > 0) {
+      for (const reading of labelled) add(reading.key);
+      continue;
+    }
+    add(own);
+  }
+  return out;
+}
+
+/**
+ * A widget's stored `readings` as entity ids, for the editor (P1.3).
+ *
+ * The editor's picker offers the watched readings by entity id and writes the
+ * ids it is given, so a widget saved when it wrote labels has to open with its
+ * boxes ticked: an entry that is a current reading's id stays; one that is a
+ * current reading's label becomes the id of every reading carrying it — the
+ * same reading `readingHandlesFor` gives the wall; anything else is kept as it
+ * is, because the editor must not quietly delete what it cannot place, and the
+ * wall already draws nothing for it. The next save writes ids, which is the
+ * whole migration, and it needs no migration file.
+ */
+export function readingEntityIds(
+  entries: unknown,
+  choices: readonly { readonly id: string; readonly name: string }[],
+): string[] | undefined {
+  if (!Array.isArray(entries)) return undefined;
+  const out: string[] = [];
+  const add = (id: string): void => {
+    if (!out.includes(id)) out.push(id);
+  };
+  for (const entry of entries) {
+    if (typeof entry !== 'string') continue;
+    if (choices.some((choice) => choice.id === entry)) {
+      add(entry);
+      continue;
+    }
+    const named = choices.filter((choice) => choice.name === entry);
+    if (named.length > 0) for (const choice of named) add(choice.id);
+    else add(entry);
+  }
+  return out;
+}
+
+/**
+ * A stored config with its `readings` — and its ink lane's — read as entity
+ * ids, for the editor's bootstrap. A config naming neither is returned as it
+ * came, so a canvas with no Home Assistant widget is handed over unchanged.
+ */
+export function withReadingEntityIds(
+  config: unknown,
+  choices: readonly { readonly id: string; readonly name: string }[],
+): unknown {
+  if (typeof config !== 'object' || config === null) return config;
+  let out = config as Record<string, unknown>;
+  const own = readingEntityIds(out['readings'], choices);
+  if (own !== undefined) out = { ...out, readings: own };
+  const ink = out['ink'];
+  if (typeof ink === 'object' && ink !== null && !Array.isArray(ink)) {
+    const lane = readingEntityIds((ink as Record<string, unknown>)['readings'], choices);
+    if (lane !== undefined) out = { ...out, ink: { ...(ink as Record<string, unknown>), readings: lane } };
+  }
+  return out;
+}
+
+/**
+ * `readings` rewritten wherever a config carries it: the widget's own, and the
+ * ink lane's (`INK_LANE` offers `readings` on a Home Assistant widget, so a
+ * panel's override is an entity id too, and the wall receives `ink` untouched
+ * — nothing there reads it, which is not the same as it not being sent).
+ */
+function withReadingHandles(
+  config: Record<string, unknown>,
+  index: readonly ReadingIndexEntry[],
+): Record<string, unknown> {
+  let out = config;
+  const own = readingHandlesFor(out['readings'], index);
+  if (own !== undefined) out = { ...out, readings: own };
+  const ink = out['ink'];
+  if (typeof ink === 'object' && ink !== null && !Array.isArray(ink)) {
+    const lane = readingHandlesFor((ink as Record<string, unknown>)['readings'], index);
+    if (lane !== undefined) out = { ...out, ink: { ...(ink as Record<string, unknown>), readings: lane } };
+  }
+  return out;
+}
+
+/**
  * A widget's config as the wall receives it.
  *
- * Carried through untouched for every type but one: a `todo` widget's `list`
- * is an entity id and leaves as its handle. Nothing else is rewritten, so a
- * config saved before the key existed is byte-identical on the way out.
+ * Carried through untouched but for two keys that hold entity ids: a `todo`
+ * widget's `list` leaves as its handle, and a `readings` list — a Home
+ * Assistant widget's, and its ink lane's — leaves as reading handles
+ * (`readingHandlesFor`, P1.3). The second is rewritten whatever the type, since
+ * the guarantee worth having is that no entry under that key reaches a wall as
+ * written, not that one type is careful. Nothing else is rewritten, so a config
+ * that names neither is byte-identical on the way out.
+ *
+ * `index` is the house panel's readings, which is what lets an entry saved as a
+ * label before this existed still find its reading. Defaulted to none, and the
+ * default is safe: an entity id resolves to its handle without it, and a label
+ * with nothing to match becomes a handle that matches nothing, never a string
+ * on the wall.
  *
  * **Except that `whenEmpty` never leaves** (RFC 014 §5.3). It is resolved
  * before this — a box that needed its fallback is already wearing it — so the
@@ -151,13 +327,18 @@ export function todoListHandle(entityId: string): string {
  * rule 12 broken one level down where `list`'s rewrite cannot see. A config
  * that never named one is untouched, so no stored ETag moves.
  */
-export function displayConfig(type: string, config: unknown): unknown {
+export function displayConfig(
+  type: string,
+  config: unknown,
+  index: readonly ReadingIndexEntry[] = [],
+): unknown {
   if (typeof config !== 'object' || config === null) return config;
   let out = config as Record<string, unknown>;
   if ('whenEmpty' in out) {
     const { whenEmpty: _resolved, ...rest } = out;
     out = rest;
   }
+  out = withReadingHandles(out, index);
   if (type !== 'todo') return out;
   const list = out['list'];
   if (typeof list !== 'string' || list === '') return out;
@@ -476,6 +657,7 @@ function placeCanvas(
   widgets: readonly PlacedWidgetRow[],
   setUp: HouseholdSetUp,
   styling: StyleContext,
+  readings: readonly ReadingIndexEntry[],
 ): Manifest['layout']['portrait']['widgets'] {
   const drawable = widgets.filter((widget) =>
     (WIDGET_TYPES as readonly string[]).includes(widget.type),
@@ -498,8 +680,9 @@ function placeCanvas(
       w: unit(widget.w, 0.25) || 0.25,
       h: unit(widget.h, 0.15) || 0.15,
       z: Number.isFinite(widget.z) ? Math.trunc(widget.z) : 0,
-      // Untouched, except that a to-do widget's entity id leaves as a handle.
-      config: displayConfig(widget.type, widget.config),
+      // Untouched, except that the entity ids a to-do widget's list and a
+      // Home Assistant widget's readings name leave as handles.
+      config: displayConfig(widget.type, widget.config, readings),
       // The style lane, resolved (RFC 014 §4.1) — absent for a widget that
       // carries none, which is every widget until a household opens the tab.
       ...widgetStyleFields(widget.config, styling),
@@ -609,14 +792,20 @@ export function buildLayout(
    */
   slotRows: readonly LayoutSlotRows[] = [],
   schedule: readonly ScheduleRow[] = [],
+  /*
+   * The house panel's readings, label and handle (P1.3), so a Home Assistant
+   * widget saved when it picked readings by label still finds them. Defaulted
+   * to none because none is safe — see `displayConfig`.
+   */
+  readingIndex: readonly ReadingIndexEntry[] = [],
 ): Manifest['layout'] {
   const setUp: HouseholdSetUp = {
     modules: readyModules,
     shift: household.shiftEnabled === 1,
     todoLists: watchedTodoLists,
   };
-  const portrait = placeCanvas(portraitWidgets, setUp, styling);
-  const landscape = placeCanvas(landscapeWidgets, setUp, styling);
+  const portrait = placeCanvas(portraitWidgets, setUp, styling, readingIndex);
+  const landscape = placeCanvas(landscapeWidgets, setUp, styling, readingIndex);
   /*
    * Every slot goes through the same `placeCanvas` as the default — the same
    * omission, the same fallback, the same style resolution — so a schedule
@@ -628,8 +817,8 @@ export function buildLayout(
   const slots: ManifestLayoutSlot[] = [];
   for (const row of slotRows) {
     if (!isSlotName(row.slot)) continue;
-    const p = placeCanvas(row.portrait, setUp, styling);
-    const l = placeCanvas(row.landscape, setUp, styling);
+    const p = placeCanvas(row.portrait, setUp, styling, readingIndex);
+    const l = placeCanvas(row.landscape, setUp, styling, readingIndex);
     if (p.length === 0 && l.length === 0) continue;
     slots.push({ slot: row.slot, portrait: { widgets: p }, landscape: { widgets: l } });
   }
@@ -1764,6 +1953,10 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       styling,
       input.layoutSlots ?? [],
       input.layoutSchedule ?? [],
+      // The house panel is already in hand — `panels` below carries it — so
+      // the label a legacy widget stored is resolved against the same readings
+      // the wall is about to draw, from the same instant.
+      readingIndexOf(input.panels?.['home']),
     ),
     days,
     people: people.map((person) => ({
