@@ -4,57 +4,54 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
- * No emoji in anything a screen renders — the scan, because the rule is not
- * self-enforcing.
+ * No emoji in anything an e-paper panel renders — the scan, because the rule
+ * is not self-enforcing.
  *
- * The image ships no emoji font, so an emoji is a **third-party asset resolved
- * on the device**: rule three broken in the one way nothing in this repository
- * can see, since no code here fetches it. A tablet draws its vendor's
- * full-colour cartoon into five hand-tuned monochromatic themes, the tablet
- * beside it draws a different vendor's, and an e-paper panel draws nothing at
- * all because `asciiTitle` deletes every code point above 0x7E. That is how the
- * forecast strip on a panel came to have a hole where the weather goes and no
- * test anywhere noticed: the widget drew inside its box, did not throw and
- * produced ink.
+ * This used to scan the whole display bundle, the admin and every module:
+ * before D6 (2026-09-24), an emoji anywhere a screen rendered broke rule
+ * three, because the image ships no emoji font and an emoji set as text is a
+ * third-party asset resolved on the device. D6 narrows that to the panel. A
+ * browser wall now draws emoji from the curated, bundled Twemoji set under
+ * `apps/server/assets/emoji/` (`apps/display/src/emoji.ts`, plan item P4.2) —
+ * same-origin, the same picture on every screen, never a code point handed to
+ * a device's own font. That is a rendering property, proved by
+ * `browser-emoji.test.ts`, not a source-text ban: this file is no longer the
+ * right place to enforce it.
+ *
+ * An e-paper panel is the one place the original bug still applies exactly as
+ * written: its font covers ASCII only, `asciiTitle` deletes every code point
+ * above 0x7E, and there is no bundled artwork for a 1-bit screen to draw
+ * instead — D3 explicitly *defers* drawn black-and-white occasion motifs for
+ * e-paper rather than shipping them now. So a forecast icon set as an emoji
+ * character still vanishes on a panel today, which is what this scan keeps
+ * catching.
  *
  * **Comments are scanned too, deliberately.** A comment is where the next one
  * gets pasted from — the `⌂` in a `display_mode` label was a fixture nobody had
  * looked at in a year — and a rule with an exemption for "it is only a comment"
  * is a rule that is one copy-and-paste from being broken in earnest.
- *
- * The trees are the ones a screen reads from: the whole display bundle, the
- * server-rendered admin (its pages are a screen too, and its store cards carry
- * marks that reach a panel), the e-paper rasteriser, and every module — which
- * is where all four of the mappings this replaced lived.
  */
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..', '..');
 
 const TREES = [
-  'apps/display/src',
-  'apps/display/test',
-  'apps/server/src/http',
+  // The e-paper renderer itself.
   'apps/server/src/epaper',
-  'apps/server/src/modules',
-  'apps/server/src/catalog',
-  'apps/server/src/glyphs.ts',
-  // The test trees too, because a *fixture* with an emoji in it is how this
-  // fault survived: `browser-harness`, `browser-empty-bands` and
-  // `epaper-weather-widget` all seeded a forecast whose icon was a character,
-  // so every test that measured a forecast strip was measuring one with no
-  // icon in it at all. The test that cannot see the bug is the bug.
-  'apps/server/test',
 ];
 
 /**
- * The one exemption, named rather than pattern-matched.
- *
- * `keyring.test.ts` encrypts and decrypts arbitrary Unicode on purpose — that
- * is a test about *bytes*, and stripping the emoji out of it would weaken it to
- * make a different rule pass. An exemption list of one, in the open, is honest;
- * a clever regular expression that happens to spare it is not.
+ * Its own tests, matched by the `epaper-` prefix this project's file names
+ * already use for every one of them — the fixture-blindness fault ("browser-
+ * harness, browser-empty-bands and epaper-weather-widget all seeded a
+ * forecast whose icon was a character") is exactly as live for the panel's
+ * own tests as it ever was, so they are still in scope.
  */
-const EXEMPT = ['apps/server/test/keyring.test.ts'];
+function epaperTestFiles(): string[] {
+  const dir = join(ROOT, 'apps/server/test');
+  return readdirSync(dir)
+    .filter((name) => name.startsWith('epaper-') && name.endsWith('.test.ts'))
+    .map((name) => join('apps/server/test', name));
+}
 
 /**
  * The ranges, roughly.
@@ -82,33 +79,41 @@ function filesUnder(path: string): string[] {
   return out;
 }
 
-describe('no emoji reaches a screen', () => {
-  it('scans the display, the admin, the rasteriser and every module', () => {
+describe('no emoji reaches an e-paper panel', () => {
+  it('scans the panel rasteriser and its own tests', () => {
     const hits: string[] = [];
-    for (const tree of TREES) {
-      for (const file of filesUnder(tree)) {
-        if (EXEMPT.some((name) => relative(ROOT, file) === name)) continue;
-        const text = readFileSync(file, 'utf8');
-        text.split('\n').forEach((line, index) => {
-          const found = line.match(new RegExp(EMOJI, 'gu'));
-          if (found !== null) {
-            hits.push(`${relative(ROOT, file)}:${index + 1}  ${found.join(' ')}  ${line.trim().slice(0, 70)}`);
-          }
-        });
-      }
+    const files = [...TREES.flatMap(filesUnder), ...epaperTestFiles().map((p) => join(ROOT, p))];
+    for (const file of files) {
+      const text = readFileSync(file, 'utf8');
+      text.split('\n').forEach((line, index) => {
+        const found = line.match(new RegExp(EMOJI, 'gu'));
+        if (found !== null) {
+          hits.push(`${relative(ROOT, file)}:${index + 1}  ${found.join(' ')}  ${line.trim().slice(0, 70)}`);
+        }
+      });
     }
-    expect(hits, `emoji in code a screen renders:\n${hits.join('\n')}`).toEqual([]);
+    expect(hits, `emoji in code an e-paper panel renders:\n${hits.join('\n')}`).toEqual([]);
   });
 
   it('is looking at something — the scan itself can go blind', () => {
     // A file list that silently resolves to nothing passes for ever, which is
     // this project's own complaint about an assertion no edit can turn red.
-    const files = TREES.flatMap(filesUnder);
-    expect(files.length).toBeGreaterThan(40);
-    // The exemption has to point at something, or it is a comment.
-    expect(files.map((f) => relative(ROOT, f))).toContain(EXEMPT[0]);
+    const files = [...TREES.flatMap(filesUnder), ...epaperTestFiles().map((p) => join(ROOT, p))];
+    expect(files.length).toBeGreaterThan(15);
+    expect(epaperTestFiles().length).toBeGreaterThan(5);
     expect(files.some((f) => f.endsWith('render.ts'))).toBe(true);
     expect(EMOJI.test('a thermometer: \u{1F321}')).toBe(true);
     expect(EMOJI.test('a plain sentence — with an em dash, 19.4 °C and "quotes"')).toBe(false);
+  });
+
+  it('asciiTitle is still the panel\'s own guard against a device font', () => {
+    // Not this scan's job any more to prove it draws nothing — the panel
+    // never receives an emoji key at all (no widget honours one), so the
+    // belt is asciiTitle deleting anything outside 0x00-0x7E should a stray
+    // code point ever reach a title string. Read the function rather than a
+    // magic number: this is the one place that number is allowed to live.
+    const source = readFileSync(join(ROOT, 'apps/server/src/epaper/render.ts'), 'utf8');
+    expect(source).toContain('function asciiTitle');
+    expect(source).toMatch(/0x7E/);
   });
 });

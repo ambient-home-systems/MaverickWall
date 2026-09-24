@@ -376,6 +376,20 @@ describe('the module store', () => {
     expect(html).toContain('by Maverick Wall');
   });
 
+  it('draws the Countdown entry\'s mark as the bundled hourglass, not the gauge glyph (P4.2)', async () => {
+    const h = await harness();
+    const html = await (await h.call('/admin/modules')).text();
+    const cardStart = html.indexOf('Countdown (example module)');
+    expect(cardStart).toBeGreaterThan(-1);
+    // The mark sits before the name in the card's own markup — read
+    // backwards from the name to the start of its card head.
+    const headStart = html.lastIndexOf('<div class="card-head">', cardStart);
+    expect(headStart).toBeGreaterThan(-1);
+    const head = html.slice(headStart, cardStart);
+    expect(head).toContain('<img class="gl" src="/assets/emoji/hourglass.svg" alt="Hourglass, not done">');
+    expect(head).not.toContain('<svg class="gl"');
+  });
+
   it('a service entry hands off to the Advanced add-by-URL form, pre-filled', async () => {
     const h = await harness();
     const html = await (await h.call('/admin/modules/advanced?install=countdown-example')).text();

@@ -107,6 +107,23 @@ export function defaultFontsDir(): string {
   return new URL('../../assets/fonts', import.meta.url).pathname;
 }
 
+/**
+ * Where the bundled emoji artwork is (D6, plan item P4.2).
+ *
+ * `EMOJI_DIR` first, for the image, for the identical reason `FONTS_DIR`
+ * exists: `pnpm deploy` flattens the server package, so the repo-relative
+ * fallback below resolves nowhere in a flattened tree. The fallback is
+ * `apps/server/assets/emoji`, for a checkout run in development. Rule three:
+ * nothing here is fetched at runtime — the curated Twemoji subset ships in the
+ * image and is served same-origin from this directory.
+ */
+export function defaultEmojiDir(): string {
+  const configured = globalThis.process?.env?.['EMOJI_DIR'];
+  if (configured !== undefined && configured !== '') return configured;
+  // apps/server/dist/http/static.js → apps/server/assets/emoji
+  return new URL('../../assets/emoji', import.meta.url).pathname;
+}
+
 export function createStaticFiles(directory: string): StaticFiles {
   // Keyed on name, invalidated by mtime and size rather than time: the point
   // of Cache-Control: no-cache is that a rebuild must be visible on the very

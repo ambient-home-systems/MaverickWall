@@ -101,6 +101,16 @@ describe('module catalogue', () => {
   });
 });
 
+describe('the Countdown entry\'s mark (P1.1, P4.2)', () => {
+  it('names the bundled hourglass and keeps a glyph key on file', () => {
+    const entry = catalogEntry('countdown-example');
+    expect(entry?.emoji).toBe('hourglass');
+    // Still a valid glyph key, even though the card no longer draws it —
+    // the field is required of every entry regardless of `emoji`.
+    expect(entry?.glyph).toBe('pressure');
+  });
+});
+
 describe('store card previews', () => {
   it('derives a recipe preview from its own panel: labels kept, live value placeheld', () => {
     // The shipped stat recipe: value is a {selector}, title and caption are

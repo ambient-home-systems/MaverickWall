@@ -1,6 +1,7 @@
 import type { Context, Hono } from 'hono';
 import { randomBytes } from 'node:crypto';
 import { glyphSvg } from '../glyphs.js';
+import { emojiImg } from '../emoji.js';
 import { FETCH_LIMITS } from '@maverick-wall/core';
 import { confirmDestroyPage, errorBlock, escapeHtml, icon, page, textField, textareaField } from './html.js';
 import { card, destructive, section, tag } from './components.js';
@@ -623,7 +624,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
       // author / description), the kind tag pinned top-right. card-head is
       // align-items:flex-start, so the tag needs no alignment hook of its own.
       `<div class="card-head">` +
-        `<div class="cglyph">${glyphSvg(entry.glyph, 'gl')}</div>` +
+        `<div class="cglyph">${entry.emoji === undefined ? glyphSvg(entry.glyph, 'gl') : emojiImg(entry.emoji, 'gl')}</div>` +
         preview +
         `<div class="card-head-main">` +
         `<div class="rname">${escapeHtml(entry.name)}</div>` +
