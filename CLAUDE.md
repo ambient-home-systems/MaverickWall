@@ -8479,9 +8479,25 @@ animation. **Two files nobody touched got slower**:
 `browser-editor` +19% and `browser-wall` +41%. The files that slept for thirty
 seconds at a stretch were leaving their cores idle for their neighbours, and
 now every neighbour is busy. So the summed figure flatters the change and the
-wall-clock one is the honest number. CI's three-shard split (Commands, above)
-was computed from timings taken before this change, so the balance it predicts
-has moved. The next measured CI run is what says whether three is still right.
+wall-clock one is the honest number.
+
+**On CI it bought nothing end to end, and that is the finding worth keeping.**
+The PR's own run took 4m39s. `main`'s run on the commit before it took 4m42s.
+Its three server shards finished at 214, 163 and 228s, against `main`'s 226,
+153 and 203s. On the runner, the files changed here each fell by 10–53s:
+scheduled canvas went from 67s to 14s, the accessibility test from 46s to 18s,
+and six loader files by 17–23s each. Meanwhile `browser-wall`,
+`browser-admin` and `epaper-ink` each rose by about 20–26s. None of them was
+changed. A shard runs about three files at once on four cores, each with its own
+Chromium. A test asleep on a timer was giving its core to its neighbours, so
+waking it takes that core back. The slowest shard is set by CPU, not by
+waiting: `wall-density` did not move at all on the runner (83s both times)
+while losing 27% locally. What this change does buy is a file run on its own
+(scheduled canvas in 10s rather than 66s), and three tests that can now fail
+where they could not. The lever for CI's wall clock is CPU per shard: more
+shards, or less work per file. CI's three-shard split (Commands, above) was
+computed from timings taken before this change, so it should be re-measured
+before anybody reaches for that lever.
 **4143 tests passing, 1 skipped and 1 expected failure, over 296 files**, the
 same counts as `main`: no test was added or removed, and every change is inside
 tests that already existed.
