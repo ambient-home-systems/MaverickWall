@@ -34,6 +34,12 @@ export interface WallSizePreset {
   readonly heightMm: number;
   /** Where somebody stands to *read* one of these, not to glance at it. */
   readonly readAtMm: number;
+  /**
+   * An e-ink panel driven by a browser. Such a wall draws no shadow whatever
+   * its theme says (decision D8, plan item P4.4), because a shadow is grey
+   * and grey on e-ink is dither that bands; `isEinkWall` is the reading.
+   */
+  readonly eink?: true;
 }
 
 /**
@@ -41,9 +47,9 @@ export interface WallSizePreset {
  * picture, which is what the arithmetic needs. A bezel is not legible.
  */
 export const WALL_SIZE_PRESETS: readonly WallSizePreset[] = [
-  { key: 'eink-7.5', label: '7.5 inch e-ink panel', widthMm: 163, heightMm: 98, readAtMm: 600 },
-  { key: 'eink-10.3', label: '10.3 inch e-ink panel', widthMm: 209, heightMm: 157, readAtMm: 700 },
-  { key: 'eink-13.3', label: '13.3 inch e-ink panel', widthMm: 270, heightMm: 202, readAtMm: 800 },
+  { key: 'eink-7.5', label: '7.5 inch e-ink panel', widthMm: 163, heightMm: 98, readAtMm: 600, eink: true },
+  { key: 'eink-10.3', label: '10.3 inch e-ink panel', widthMm: 209, heightMm: 157, readAtMm: 700, eink: true },
+  { key: 'eink-13.3', label: '13.3 inch e-ink panel', widthMm: 270, heightMm: 202, readAtMm: 800, eink: true },
   { key: 'tablet-10', label: '10 inch tablet', widthMm: 217, heightMm: 136, readAtMm: 800 },
   { key: 'monitor-24', label: '24 inch monitor', widthMm: 531, heightMm: 299, readAtMm: 1000 },
   { key: 'tv-32', label: '32 inch television', widthMm: 708, heightMm: 398, readAtMm: 1200 },
@@ -116,6 +122,23 @@ export function matchWallSize(
       Math.max(preset.widthMm, preset.heightMm) === long &&
       Math.min(preset.widthMm, preset.heightMm) === short,
   );
+}
+
+/**
+ * Whether a wall is sized as one of the e-ink presets above.
+ *
+ * Asked of the stored pair as a set, through `matchWallSize`, so a panel hung
+ * either way up is still the panel it is; and only of a wall whose measurement
+ * is whole (`physicalWall`), because a size with no distance is the same state
+ * as none everywhere else in this file and must not be half of one here.
+ */
+export function isEinkWall(
+  widthMm: number | null | undefined,
+  heightMm: number | null | undefined,
+  distanceMm: number | null | undefined,
+): boolean {
+  if (physicalWall(widthMm, heightMm, distanceMm) === undefined) return false;
+  return matchWallSize(widthMm ?? null, heightMm ?? null)?.eink === true;
 }
 
 /**

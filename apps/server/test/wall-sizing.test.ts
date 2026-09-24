@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isEinkWall,
   matchWallSize,
   mountedSize,
   physicalWall,
@@ -324,5 +325,43 @@ describe('a wall somebody has measured', () => {
     expect(renderScreenFrame(measured, PANEL).etag).not.toBe(
       renderScreenFrame(untouched, PANEL).etag,
     );
+  });
+});
+
+/**
+ * A wall sized as an e-ink panel draws no shadow whatever its theme says
+ * (decision D8, plan item P4.4). The server says so as a fact — `eink: true`
+ * — and the display sets `--shadow-card` to none; this is the server's half.
+ */
+describe('a wall sized as an e-ink panel', () => {
+  it('is exactly the three e-ink presets, either way up, and only when measured whole', () => {
+    const eink = WALL_SIZE_PRESETS.filter((preset) => preset.eink === true).map((preset) => preset.key);
+    expect(eink).toEqual(['eink-7.5', 'eink-10.3', 'eink-13.3']);
+    for (const preset of WALL_SIZE_PRESETS) {
+      const expected = preset.eink === true;
+      expect(isEinkWall(preset.widthMm, preset.heightMm, preset.readAtMm), preset.key).toBe(expected);
+      expect(isEinkWall(preset.heightMm, preset.widthMm, preset.readAtMm), `${preset.key} turned`).toBe(expected);
+    }
+    // A size with no distance is no measurement, here as everywhere else.
+    expect(isEinkWall(163, 98, null)).toBe(false);
+    expect(isEinkWall(null, null, null)).toBe(false);
+    // A near miss typed by hand is "Enter my own", not a panel.
+    expect(isEinkWall(164, 98, 600)).toBe(false);
+  });
+
+  it('carries eink: true, and every other wall carries nothing at all', () => {
+    const panel = buildManifest({
+      ...BASE,
+      screen: { ...UNMEASURED, panelWidthMm: 98, panelHeightMm: 163, readDistanceMm: 600 },
+    });
+    expect(panel.screen.eink).toBe(true);
+    // A television carries no `eink: false` — absent, so its document is the
+    // one it sent before this field existed and no stored ETag churns.
+    const television = buildManifest({
+      ...BASE,
+      screen: { ...UNMEASURED, panelWidthMm: 398, panelHeightMm: 708, readDistanceMm: 1200 },
+    });
+    expect('eink' in television.screen).toBe(false);
+    expect('eink' in buildManifest({ ...BASE, screen: UNMEASURED }).screen).toBe(false);
   });
 });

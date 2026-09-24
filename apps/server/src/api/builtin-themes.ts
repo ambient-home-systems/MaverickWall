@@ -111,3 +111,22 @@ export function builtinThemeTokens(ref: string): ColourTokenSet {
   if (ref in BUILTIN_THEME_TOKENS) return BUILTIN_THEME_TOKENS[ref as BuiltinThemeName];
   return BUILTIN_THEME_TOKENS.panels;
 }
+
+/**
+ * Each built-in's card shadow (decision D8, plan item P4.4), transcribed from
+ * the same five blocks in `theme.ts` and held to them by the same parity test.
+ *
+ * A token rather than a colour, so it sits beside the palettes rather than in
+ * them: `ColourTokenSet` is exactly the eleven a lane may set, and a shadow is
+ * not one of them. Soft on Panels and Household, paper-like on Almanac — a
+ * hard offset with no blur — and none on Blueprint and Swiss. The bundle owns
+ * the value a wall draws; this is here so the server can say what a theme
+ * does to a widget that asks for a drop shadow without guessing.
+ */
+export const BUILTIN_THEME_SHADOWS: Readonly<Record<BuiltinThemeName, string>> = {
+  household: '0 0.1rem 0.5rem rgba(38, 34, 28, 0.14)',
+  blueprint: 'none',
+  panels: '0 0.15rem 0.6rem rgba(0, 0, 0, 0.45)',
+  almanac: '0.08rem 0.12rem 0 rgba(36, 31, 25, 0.14)',
+  swiss: 'none',
+};

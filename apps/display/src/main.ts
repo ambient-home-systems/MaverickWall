@@ -308,6 +308,7 @@ function start(): void {
       day && manifest.theme.daytime !== undefined ? manifest.theme.daytime : manifest.theme.active,
       day ? manifest.theme.daytimeTokens : manifest.theme.activeTokens,
       day ? manifest.theme.daytimeShape : manifest.theme.activeShape,
+      manifest.screen?.eink === true,
     );
     /*
      * One rendering path: every wall is free-form. `pickCanvas` returns the

@@ -66,7 +66,7 @@ Violating any of these is a failed task.
 - A widget reads its own box and chooses a form; it never draws everything and hides what spilled. The calendar's tiers are `tiers.ts` and the thresholds are in characters and ems of the event role, so one table is right on every panel — a new one belongs there rather than as a pixel threshold in a renderer. Hard rule 2 permits a container query for exactly this, and for nothing else yet.
 - **Emoji on a browser wall are bundled artwork, never a device font; anything an e-paper panel draws carries none at all.** *(Rewritten 2026-09-24 for decision D6; the plan is `docs/plan-2026-09-household-review.md`.)* The rule this replaces was "no emoji in anything a screen renders", and its reason is unchanged: the image ships no emoji font, so an emoji set as *text* is a third-party asset resolved on the device — it differs on every panel, some kiosks draw an empty box, and `asciiTitle` deletes it outright on e-ink. **That rule was written down and broken at the same time** — every forecast and every device class chose one until the first-party vocabulary replaced them. What changed is the remedy, not the reason. The owner wants emoji in a weather or countdown style, so the wall ships its own: a curated Twemoji set under `apps/server/assets/emoji/`, served from `/assets/emoji/<name>.svg` and drawn as an `<img>` from a *key* the manifest carries, never a code point (plan item P4.2), so every screen draws the same picture. A code point handed to the device's font in a designed style is still the bug this rule was written for. The one exception is stated so nobody "fixes" it: text a household typed itself, such as a countdown's title, renders in the device's own font (Q9), because it is their string and the wall does not rewrite it. E-paper keeps the drawn glyphs. **Until S11 lands this is stricter than it reads**: `no-emoji.test.ts` still refuses an emoji anywhere a screen reads from, which is correct while there is no artwork to draw. Once S11 lands it is narrowed to the e-paper renderer and its tests, with `asciiTitle` as the panel's guard, and gains the assertion that a designed wall style draws emoji as a bundled `<img>` and never as text. It scans comments too, because a comment is where the next one gets pasted from.
 - **No stat tiles — but a designed widget style may make one reading its lede.** *(Amended 2026-09-24 for decision D1.)* A big number with a caption, or a 3-up row of them, is a dashboard idiom, and this is a calendar: the wall's job is the thing the household does not already know, and a row of tiles says the things they do. That is still out, on any widget. What D1 permits is narrower: a designed style — the weather "Today" card, a countdown's number — may carry **one** large reading, capped against the event role the way the clock is (1.8x, `WALL_TYPE_CAPS`), so the biggest number on the wall can never outsize an event name by more than the clock already may. The cap is the rule rather than the size; a large reading with no cap is a stat tile with a style name. Enforced once S15 and S16 land by each style's own ratio assertion at three sizes, the way `orientation.test.ts` holds the clock to 1.8x.
-- **Shadows on a browser wall come from one theme token, and a theme or an e-ink preset can switch them off.** *(Rewritten 2026-09-24 for decision D8.)* The rule this replaces was "no shadow on the display, at any size, in any theme", because a shadow bands on e-ink and burns in on OLED. Both are still true, and they are now the reason the shadow is a *token* rather than the reason for a ban: `--shadow-card` is set per theme (soft on Panels and Household, paper-like on Almanac, none on Blueprint and Swiss), derived for a custom theme, and set to none by the e-ink presets of the wall-size picker (plan item P4.4). A literal `box-shadow` in a widget rule is therefore still wrong — it is the one shadow a household with an OLED or e-ink screen could not turn off. An e-paper panel draws none: `shadow` stays in `PANEL_IGNORES`, which `epaper-ink.test.ts` already proves by rendering. Separation is still space, then a 1px rule, then a ground step, in that order; a shadow is a look a theme lays on top of that and never the only thing separating two boxes. Enforced once S13 lands by `builtin-themes-parity.test.ts`, which holds the token's per-theme values in the bundle and on the server to each other.
+- **Shadows on a browser wall come from one theme token, and a theme or an e-ink preset can switch them off.** *(Rewritten 2026-09-24 for decision D8.)* The rule this replaces was "no shadow on the display, at any size, in any theme", because a shadow bands on e-ink and burns in on OLED. Both are still true, and they are now the reason the shadow is a *token* rather than the reason for a ban: `--shadow-card` is set per theme (soft on Panels and Household, paper-like on Almanac, none on Blueprint and Swiss), derived for a custom theme, and set to none by the e-ink presets of the wall-size picker (plan item P4.4). A literal `box-shadow` in a widget rule is therefore still wrong — it is the one shadow a household with an OLED or e-ink screen could not turn off. An e-paper panel draws none: `shadow` stays in `PANEL_IGNORES`, which `epaper-ink.test.ts` already proves by rendering. Separation is still space, then a 1px rule, then a ground step, in that order; a shadow is a look a theme lays on top of that and never the only thing separating two boxes. Enforced by `builtin-themes-parity.test.ts`, which holds the token's per-theme values in the bundle and on the server to each other, and by `browser-widget-shadow.test.ts`, which reads the computed `box-shadow` on a real wall: every box `none` on every built-in until a widget asks, and the theme's shadow — or none, on an e-ink-sized wall — once it does.
 - **Motion on a browser wall is phase-locked to the wall clock, gated by reduced motion and the wall's own switch, and moves only `transform` and `opacity`. An e-paper panel is always still.** *(Rewritten 2026-09-24 for decision D7.)* The rule this replaces was "no transition or animation on any surface a screen sees", because the wall has no pointer and redraws every 15 s: a transition there confirms nothing and reads as a flicker in a room, and `draw()` empties and rebuilds the whole wall on every tick, so a naive CSS animation restarts four times a minute. The owner decided weather and countdown styles may move, and that confetti may fall on a countdown's day. The reasons survive as the conditions (plan item P4.3): a looping effect takes a negative `animation-delay` from the corrected wall clock, so a rebuilt element resumes where the old one was; a one-shot fires once per event from a per-widget memory in `main.ts`, not once per tick; every `@keyframes`, `animation` and `transition` sits inside `prefers-reduced-motion: no-preference` and under `.canvas[data-motion="on"]`, the wall's Motion switch (`screens.motion`, null meaning on, Q6, and off by default on the e-ink presets); and only `transform` and `opacity` are animated, because anything else is layout or paint on every frame of an old tablet. The panel draws each style's still frame. **The ban was a convention for as long as it existed, and a convention is what a future contributor breaks** — reasonably, from a browser habit, in a file nobody re-reads — which is why its replacement is a build failure too. **Until S12 lands the ban is still what is enforced**: `apps/display/test/motion.test.ts` holds `display.css` (source *and* the copy `dist/` serves), the wall's HTML, its offline shell and every module in `main.ts`'s import graph to carrying neither word at all, and `apps/server/test/motion-scope.test.ts` holds the panel path to reaching no stylesheet. Once S12 lands `motion.test.ts` and the display half of `motion-scope.test.ts` enforce the scope instead — no animation outside the scoped block, keyframes that touch only `transform` and `opacity` — the panel path still reaches no stylesheet at all, and a browser test holds an animation's computed time continuous across a redraw. The admin's rule is unchanged and `motion-scope.test.ts` keeps holding it: three durations and three easings, every declaration inside `prefers-reduced-motion: no-preference`, because the admin is a settings screen somebody is touching, where the same 180ms is the only thing telling them the tap landed.
 - No proportional figures on the display. font-variant-numeric: tabular-nums is not a preference here: a figure that changes width changes a row's geometry, and a geometry change forecloses e-ink partial refresh.
 - The date numeral is never larger than the event name beside it by more than 1.2x. The wall's job is the thing the household does not already know.
@@ -7547,6 +7547,78 @@ files — exactly the three new files' own count (`admin-external-links.test.ts`
 `admin-vocabulary.test.ts`), which is the rare case where the arithmetic and
 the reading agree, and is recorded as an observation rather than a method:
 the paragraphs above this one have been wrong about that five times running.
+
+
+**Shadows are a theme token and the designed styles have a palette (plan items
+P4.4 and P4.5, decision D8) — and no wall's pixels moved except a widget that
+had stored `shadow: true`, which draws one again.** `--shadow-card` is declared
+in every built-in block of `theme.ts` — soft on Panels and Household, a hard
+paper-like offset with no blur on Almanac, `none` on Blueprint and Swiss — and
+transcribed to `BUILTIN_THEME_SHADOWS` in `api/builtin-themes.ts`, under the
+parity test that already held the colours. `applyWidgetFormat` reads the stored
+key again and casts `var(--shadow-card, none)`, never a length, so the one place
+a household switches every shadow off is the theme; the Style tab's Drop shadow
+switch is back and says which themes draw none. A wall measured as one of the
+three e-ink sizes carries `screen.eink: true` (spread, never `false`, so every
+other wall's document is byte-identical) and the display sets the token to
+`none` over whatever the theme says; a television re-measurement gives it back
+on the next tick. A custom theme stores the one literal `'--shadow-card':
+'none'` or nothing, and nothing derives the soft shadow — dark on a dark ground,
+faint in the theme's ink on a light one — which is also what Panels and
+Household declare, so a theme built before this reads as Soft. The builder's
+Shadows control is None / Soft and refuses any other body.
+
+**The palette is thirty-one tokens and one derivation.** Six condition colours
+(`--wx-*`), four temperature stops (`--temp-cold` to `--temp-hot`), three Home
+Assistant states (`--state-*`), and six sky gradients, each a top, a bottom and
+an ink. `paletteTokens` is written into `theme.ts` and `themes.ts` and held
+character-identical by `themes.test.ts` beside `scaffoldInk`; `customTokens` and
+`withTints` both call it, and the five built-ins go through it too, from their
+own colours, so a custom theme copied from Panels draws Panels' rain. Readable
+tokens start at a canonical hue and are mixed toward the theme's ink until they
+clear 4.5:1 on **both** `--bg` and `--panel` — the scaffold's loop turned round
+to keep a colour a colour; a sky is tinted toward the ground and each stop pushed
+away from its ink until the ink clears 4.5:1 on it. On the two dark built-ins the
+canonical hues pass through untouched; on the three light ones they darken (the
+sun is `#886927` on Household). The built-ins declare only the shadow outright,
+unlike `--ink-scaffold`, because a derivation that already clears the bar on
+every theme is better held to one function than to five hand-copied tables.
+`STYLE_DERIVED` gained the twenty-five that a lane can move, so a widget lane on
+a cream ground carries rain measured against cream; it deliberately does not
+gain `--shadow-card`, because a lane setting a ground must not grow the soft
+shadow Blueprint said no to. **Nothing in `display.css` reads any of these
+yet** — Phase 5's styles will — so what is tested is the promise: every readable
+token on every built-in and over a 216-ground sweep of custom themes, every sky
+ink on both stops, and a pair nothing could make legible terminating with a
+colour. `browser-widget-shadow.test.ts` reads the computed `box-shadow` on a real
+Classic wall: every box `none` on all five themes until a widget asks; then the
+theme's shadow on that box alone, scaled with the root size at two viewports;
+none on a custom theme set to None and on an e-ink-sized wall; and the Style
+tab's switch writing the key the wall reads. Eighteen mutations were checked
+across ten source files and all eighteen are red.
+
+**Two things moved that are not pixels, and both are recorded rather than
+avoided.** Every wall on a *custom* theme sends thirty-two more tokens, so its
+manifest ETag changes once at upgrade — the derivation has to travel with a
+theme the bundle has never heard of, which is the whole of how a custom theme
+works. And a widget lane that sets `--bg`, `--panel`, `--ink` or `--muted` now
+carries the palette tokens it feeds. Built-in walls with no lane, and every wall
+that is not an e-ink size, send the document they sent before. **Still unproven
+where it counts:** nobody has looked at a shadow on a real OLED tablet or a
+browser-driven e-ink panel, and the palette's colours have been measured and not
+yet seen in a style a household can pick.
+
+**3875 tests passing, and 1 skipped, over 273 files**: calendar 153 over 10 ·
+core 314 over 9 · display 639 over 36 · server 2769 over 218, measured with a
+real Chromium on a clone whose tags had been fetched, and green on the first
+full run *after* it went red twice: `admin-vocabulary` caught the builder's
+first sentence calling a wall a "screen", and `theme-generate` held every
+resolved token to a hex, which a shadow is not. Both are fixed rather than
+allow-listed — the sentence reworded, the test given a sentence saying why its
+letter moved. Against 3830 over 271 the difference is +45 tests and +2 files,
+and this time the arithmetic agrees with the reading: display +23 in one new
+file, server +22 in one new file and four touched. That is recorded as an
+observation, for the reason every paragraph above says it should be.
 
 ---
 

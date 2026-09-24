@@ -165,7 +165,13 @@ function init(root: HTMLElement): void {
         html.style.setProperty('--frame-w', g.frame.width);
         html.style.setProperty('--frame-h', g.frame.height);
         html.style.setProperty('--root-size', g.rootFontSize);
-        applyTheme(html, manifest.theme.active, manifest.theme.activeTokens, manifest.theme.activeShape);
+        applyTheme(
+          html,
+          manifest.theme.active,
+          manifest.theme.activeTokens,
+          manifest.theme.activeShape,
+          manifest.screen?.eink === true,
+        );
 
         const at = Date.now();
         const model = buildModel({ manifest, now: at, lastConfirmedAt: at, offline: false });

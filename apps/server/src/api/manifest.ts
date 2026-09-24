@@ -18,7 +18,7 @@ import {
 } from '@maverick-wall/core';
 
 import { canvasGutterStep } from '../gutter.js';
-import { physicalWall } from '../wall-sizes.js';
+import { isEinkWall, physicalWall } from '../wall-sizes.js';
 import { builtinThemeTokens } from './builtin-themes.js';
 import { resolveStyleTokens, storedStyleLayer, styleLayerOf, type WidgetStyle } from './widget-style.js';
 
@@ -948,6 +948,18 @@ export interface Manifest {
     readonly panelHeightMm?: number;
     readonly readDistanceMm?: number;
     /**
+     * Whether this wall is sized as one of the wall-size picker's e-ink panels
+     * (`isEinkWall`), which the display reads to set `--shadow-card` to none
+     * whatever the theme says (decision D8, plan item P4.4): a shadow is grey,
+     * and grey on e-ink is dither that bands.
+     *
+     * **Optional, and absent when it is not**, on the `panelWidthMm` argument:
+     * `true` or nothing, so every wall that is not an e-ink panel — every wall
+     * in the world but a handful — sends the document it sent before this
+     * existed, byte for byte, and no stored ETag churns.
+     */
+    readonly eink?: true;
+    /**
      * How much room this wall leaves between the widgets on it, as a step on
      * the spacing scale — `0` (touching) to `4` (what every wall drew before
      * this field existed). RFC 014 §4.4.
@@ -1727,6 +1739,14 @@ export function buildManifest(input: BuildManifestInput): Manifest {
         input.screen?.panelHeightMm,
         input.screen?.readDistanceMm,
       ) ?? {}),
+      // Spread on the same argument: `true` or nothing (P4.4).
+      ...(isEinkWall(
+        input.screen?.panelWidthMm,
+        input.screen?.panelHeightMm,
+        input.screen?.readDistanceMm,
+      )
+        ? { eink: true as const }
+        : {}),
       /*
        * Spread and refused on the same argument as the three above it, one
        * setting along: absent has to be *identical* to the document this was
