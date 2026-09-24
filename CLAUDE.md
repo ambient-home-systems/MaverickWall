@@ -325,14 +325,30 @@ One `pnpm test` job took ten minutes, and 8m48s of it was the server suite —
 77% of that the 53 files that drive a real browser, on a four-core runner where
 each file's own Chromium competes with the workers. So `ci.yml` has a
 `packages` job (build, then calendar, core and display) and a `server` job in
-three `vitest --shard` runners, each building first exactly as `pnpm test`
+four `vitest --shard` runners, each building first exactly as `pnpm test`
 does, and a `test` job that passes only when every part did, under the name the
-one job had. **Three was measured, not picked:** vitest shards by equal file
-*counts* in SHA-1 order of the path, so where the heavy browser files land is
-decided by their names, and a model built from one run's per-file timings (it
-reproduced that run at 517s against 528 measured) put three shards at 176, 172
-and 169s of test time and four at 151, 100, 194 and 94 — slower than three.
-Adding files moves that balance, so re-measure before changing the count.
+one job had. **The count is measured, not picked, and the answer changed
+once:** vitest shards by equal file *counts* in SHA-1 order of the path, so
+where the heavy browser files land is decided by their names. A model built
+from one run's per-file timings (it reproduces which shard every file ran in,
+and lands a steady ~42s under each measured step) first put three shards at
+176, 172 and 169s and four at 151, 100, 194 and 94, which is slower than three.
+After #294 stopped the browser tests sleeping through fixed waits, the same
+model on that run's timings puts three at 170, 122 and 186s and four at 147,
+85, 143 and 109s, so it is four. **Measured, the gain is small and inside
+the noise, and that is worth knowing before reading one run as a verdict.**
+Two runs on four took 192, 109, 148 and 113s (4m05s end to end) and 183, 112,
+155 and 82s (3m51s). The same tests on three shards took 228, 219 and 182s at
+their slowest across three runs (4m39s, 4m29s and 3m53s). So four's slowest
+shard averages about 188s against three's 210s, and end to end about 3m58s
+against 4m20s: about 22s better, while three alone varies by 46s from one run
+to the next. The model's 39s
+is an upper bound rather than a promise, because per-file times move with what
+runs beside them. Shard 1 is the laggard at four, holding about 147s of work
+against the others' 85–143s. The step reads the total from
+`strategy.job-total`, so the matrix is the one place the count is written.
+Adding files moves the balance, so re-measure before changing it, and compare
+averages of several runs rather than one against one.
 
 ### Running it
 
