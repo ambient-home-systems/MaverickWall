@@ -64,13 +64,13 @@ Violating any of these is a failed task.
 - No absolute px in the display's type or layout. Every size on the wall derives from --px-arcmin, which derives from the screen's panel size and read distance. A hardcoded px legibility floor is the bug that made the month grid name zero events on a small panel: it is correct on one screen and wrong on all the others.
 - No scale-to-fit as a substitute for a density tier. A section that does not fit gives up content, not points. transform: scale() on a laid-out section is banned in new code — and there is none left in old code either: `fitToBox` is deleted, and `reflow-stability.test.ts` scans the stylesheet and the renderer for one. A uniform transform is photographic enlargement; it changes how big a widget looks and can never change what it says.
 - A widget reads its own box and chooses a form; it never draws everything and hides what spilled. The calendar's tiers are `tiers.ts` and the thresholds are in characters and ems of the event role, so one table is right on every panel — a new one belongs there rather than as a pixel threshold in a renderer. Hard rule 2 permits a container query for exactly this, and for nothing else yet.
-- No emoji in anything a screen renders. Not as an icon, not as a weather glyph, not as a device-class mark. The image ships no emoji font, so an emoji is a third-party asset resolved on the device: it differs on every panel and is deleted outright on e-ink. **This rule was written down and broken at the same time** — every forecast and every device class chose one until the first-party vocabulary replaced them, and `no-emoji.test.ts` is what stops the fourth mapping. It scans comments too, because a comment is where the next one gets pasted from.
-- No stat tiles. A big number with a caption, or a 3-up row of them, is a dashboard idiom. This is a calendar.
-- No shadow on the display, at any size, in any theme. It bands on e-ink and burns in on OLED. Separation is space, then a 1px rule, then a ground step, in that order.
-- No transition or animation on any surface a screen sees. The wall has no pointer and redraws every 15 s; the panel physically cannot animate. **This was a convention for as long as it existed, and a convention is what a future contributor breaks** — reasonably, from a browser habit, in a file nobody re-reads. It is a build failure now: `apps/display/test/motion.test.ts` holds `display.css` (source *and* the copy `dist/` serves), the wall's HTML, its offline shell and **every module in `main.ts`'s own import graph** to carrying neither word at all, and `apps/server/test/motion-scope.test.ts` holds the other two edges — the panel path reaches no stylesheet, and the admin *keeps* its three durations and three easings with every one of those declarations inside `prefers-reduced-motion: no-preference`. The two rules are opposite for a reason worth stating once: a wall has no pointer and redraws on a fifteen-second tick, so a transition there is a flicker in a room; the admin is a settings screen somebody is touching, where the same 180ms is the only thing telling them the tap landed.
+- **Emoji on a browser wall are bundled artwork, never a device font; anything an e-paper panel draws carries none at all.** *(Rewritten 2026-09-24 for decision D6; the plan is `docs/plan-2026-09-household-review.md`.)* The rule this replaces was "no emoji in anything a screen renders", and its reason is unchanged: the image ships no emoji font, so an emoji set as *text* is a third-party asset resolved on the device — it differs on every panel, some kiosks draw an empty box, and `asciiTitle` deletes it outright on e-ink. **That rule was written down and broken at the same time** — every forecast and every device class chose one until the first-party vocabulary replaced them. What changed is the remedy, not the reason. The owner wants emoji in a weather or countdown style, so the wall ships its own: a curated Twemoji set under `apps/server/assets/emoji/`, served from `/assets/emoji/<name>.svg` and drawn as an `<img>` from a *key* the manifest carries, never a code point (plan item P4.2), so every screen draws the same picture. A code point handed to the device's font in a designed style is still the bug this rule was written for. The one exception is stated so nobody "fixes" it: text a household typed itself, such as a countdown's title, renders in the device's own font (Q9), because it is their string and the wall does not rewrite it. E-paper keeps the drawn glyphs. **Until S11 lands this is stricter than it reads**: `no-emoji.test.ts` still refuses an emoji anywhere a screen reads from, which is correct while there is no artwork to draw. Once S11 lands it is narrowed to the e-paper renderer and its tests, with `asciiTitle` as the panel's guard, and gains the assertion that a designed wall style draws emoji as a bundled `<img>` and never as text. It scans comments too, because a comment is where the next one gets pasted from.
+- **No stat tiles — but a designed widget style may make one reading its lede.** *(Amended 2026-09-24 for decision D1.)* A big number with a caption, or a 3-up row of them, is a dashboard idiom, and this is a calendar: the wall's job is the thing the household does not already know, and a row of tiles says the things they do. That is still out, on any widget. What D1 permits is narrower: a designed style — the weather "Today" card, a countdown's number — may carry **one** large reading, capped against the event role the way the clock is (1.8x, `WALL_TYPE_CAPS`), so the biggest number on the wall can never outsize an event name by more than the clock already may. The cap is the rule rather than the size; a large reading with no cap is a stat tile with a style name. Enforced once S15 and S16 land by each style's own ratio assertion at three sizes, the way `orientation.test.ts` holds the clock to 1.8x.
+- **Shadows on a browser wall come from one theme token, and a theme or an e-ink preset can switch them off.** *(Rewritten 2026-09-24 for decision D8.)* The rule this replaces was "no shadow on the display, at any size, in any theme", because a shadow bands on e-ink and burns in on OLED. Both are still true, and they are now the reason the shadow is a *token* rather than the reason for a ban: `--shadow-card` is set per theme (soft on Panels and Household, paper-like on Almanac, none on Blueprint and Swiss), derived for a custom theme, and set to none by the e-ink presets of the wall-size picker (plan item P4.4). A literal `box-shadow` in a widget rule is therefore still wrong — it is the one shadow a household with an OLED or e-ink screen could not turn off. An e-paper panel draws none: `shadow` stays in `PANEL_IGNORES`, which `epaper-ink.test.ts` already proves by rendering. Separation is still space, then a 1px rule, then a ground step, in that order; a shadow is a look a theme lays on top of that and never the only thing separating two boxes. Enforced once S13 lands by `builtin-themes-parity.test.ts`, which holds the token's per-theme values in the bundle and on the server to each other.
+- **Motion on a browser wall is phase-locked to the wall clock, gated by reduced motion and the wall's own switch, and moves only `transform` and `opacity`. An e-paper panel is always still.** *(Rewritten 2026-09-24 for decision D7.)* The rule this replaces was "no transition or animation on any surface a screen sees", because the wall has no pointer and redraws every 15 s: a transition there confirms nothing and reads as a flicker in a room, and `draw()` empties and rebuilds the whole wall on every tick, so a naive CSS animation restarts four times a minute. The owner decided weather and countdown styles may move, and that confetti may fall on a countdown's day. The reasons survive as the conditions (plan item P4.3): a looping effect takes a negative `animation-delay` from the corrected wall clock, so a rebuilt element resumes where the old one was; a one-shot fires once per event from a per-widget memory in `main.ts`, not once per tick; every `@keyframes`, `animation` and `transition` sits inside `prefers-reduced-motion: no-preference` and under `.canvas[data-motion="on"]`, the wall's Motion switch (`screens.motion`, null meaning on, Q6, and off by default on the e-ink presets); and only `transform` and `opacity` are animated, because anything else is layout or paint on every frame of an old tablet. The panel draws each style's still frame. **The ban was a convention for as long as it existed, and a convention is what a future contributor breaks** — reasonably, from a browser habit, in a file nobody re-reads — which is why its replacement is a build failure too. **Until S12 lands the ban is still what is enforced**: `apps/display/test/motion.test.ts` holds `display.css` (source *and* the copy `dist/` serves), the wall's HTML, its offline shell and every module in `main.ts`'s import graph to carrying neither word at all, and `apps/server/test/motion-scope.test.ts` holds the panel path to reaching no stylesheet. Once S12 lands `motion.test.ts` and the display half of `motion-scope.test.ts` enforce the scope instead — no animation outside the scoped block, keyframes that touch only `transform` and `opacity` — the panel path still reaches no stylesheet at all, and a browser test holds an animation's computed time continuous across a redraw. The admin's rule is unchanged and `motion-scope.test.ts` keeps holding it: three durations and three easings, every declaration inside `prefers-reduced-motion: no-preference`, because the admin is a settings screen somebody is touching, where the same 180ms is the only thing telling them the tap landed.
 - No proportional figures on the display. font-variant-numeric: tabular-nums is not a preference here: a figure that changes width changes a row's geometry, and a geometry change forecloses e-ink partial refresh.
 - The date numeral is never larger than the event name beside it by more than 1.2x. The wall's job is the thing the household does not already know.
-- A month cell is not a card. No fill, no border, no radius, no shadow. Structure comes from the week rule and the column gutter.
+- A month cell is not a card. No fill, no border, no radius, no shadow. Structure comes from the week rule and the column gutter. D8's shadow token is a widget's and a theme's and does not reach a cell, and full grid lines or weekend shading wait on Q1 rather than on this sentence being reread.
 - An overflow count never costs a name. If a cell can draw one row, that row is an event, not "+3".
 - Nothing that annotates an event costs it a row. A progress bar, a current-time rule, a badge: out of flow, or it comes off the scale the whole section is drawn at and takes a word off the wall somewhere else. This has been shipped twice — a 2px hairline in flow cost the agenda its 22px floor, and so did an 8px bar.
 - A multi-day event is drawn once, spanning its days. Never repeated per cell.
@@ -421,6 +421,44 @@ do not invent a ninth component without raising it first.
 > claim about how the wall draws**, which rots more quietly, because nothing
 > about a paragraph tells you the renderer under it was deleted. `git log`,
 > `pnpm test` and the file tree are authoritative; this is a narrative.
+
+**On 2026-09-24 the owner took nine decisions, and four of them reverse design
+rules this document had stated for as long as it has existed.** The table, the
+reasoning and the plan that builds them are `docs/plan-2026-09-household-review.md`;
+this paragraph is here so that the older paragraphs below, which describe the
+bans as current, are read against them. The design rules at the top of this file
+were rewritten before any code depended on the change.
+
+- **D1** — a big-number weather style is allowed: a designed widget style may
+  make one reading its lede, capped against the event role the way the clock is.
+  A row of stat tiles is still out.
+- **D2** — gradients are allowed on screen. Twelve templates already shipped
+  canvas gradients, so the old sentence was false before it was reversed. Blur
+  stays out (Q4).
+- **D3** — the closed icon set is opened for occasion motifs. On a browser wall
+  those are bundled emoji artwork; drawn one-bit motifs for e-paper are deferred.
+  The twenty-nine drawn keys are still the whole of what a panel can draw.
+- **D4** — a Home Assistant tile-card look is adopted. Hard rule 12 is
+  unchanged: a tile shows state and controls nothing.
+- **D5** — the Store's Countdown entry is kept and renamed.
+- **D6** — emoji are permitted on browser walls, as bundled artwork drawn as an
+  `<img>` rather than a code point for the device's font. E-paper keeps the drawn
+  glyphs.
+- **D7** — motion is permitted on browser walls for weather and countdown
+  styles, confetti included: phase-locked to the wall clock, inside reduced
+  motion and a per-wall Motion switch, `transform` and `opacity` only. E-paper
+  stays still, and the admin's own motion rule is unchanged.
+- **D8** — shadows are permitted on browser walls as one theme token that a
+  theme or an e-ink preset can switch off.
+- **D9** — weather gets current conditions and whatever richer data it needs,
+  from whatever source is necessary.
+
+**Nothing a household sees changed on that date, and the tests still enforce
+the old bans until the sessions that build the permissions land** — S11 narrows
+`no-emoji.test.ts`, S12 rewrites `motion.test.ts` and `motion-scope.test.ts`,
+S13 brings the shadow token under `builtin-themes-parity.test.ts`. A rule that
+permits more than its test does is the right way round for a few releases; the
+other way round is a rule nothing enforces.
 
 **0.61.0 is the current release.** `main`, the tag and the published image
 agree with each other, and `advertise` is what keeps them that way — it writes
@@ -4961,6 +4999,17 @@ own `BASELINE` numbers — measured before merging with it, the ratchet held at
 every one of its five sizes with this phase's colour and size changes applied,
 so nothing needed raising.
 
+> **The paragraph that follows is partly history as of 2026-09-24.** Its
+> shadow half is reversed by decision D8: the shadow comes back as a theme
+> token that a theme or an e-ink preset can switch off (plan item P4.4), and
+> the `shadow` a widget already stores is honoured again when it lands. Its
+> last sentence — no `transition` or `animation` anywhere — is still true of
+> the stylesheet and is no longer the rule: D7 permits motion on a browser
+> wall under the conditions the design rules state. And D1 lets a designed
+> style carry one capped large reading, which is not the oversized module
+> panel removed below — that treatment stays gone. The design rules at the top
+> of this file are current; this paragraph records why the ban was taken.
+
 **Two things were removed outright, both for the same reason: a widget the
 household placed does not get to outsize the wall around it.** The generic
 module panel's `stat` and `tiles` kinds (`.gp-stat`/`.gp-tile` in
@@ -5770,6 +5819,16 @@ navigation now, not merely for the canvas.
 this way, and no e-ink panel has been partially refreshed against the stability
 this phase establishes. The measurements are a real browser at five sizes with
 three real feeds, which is the right way to check this and is not the same thing.
+
+> **The emoji paragraphs that follow are history in one respect as of
+> 2026-09-24**, and it is the rule they quote rather than the fault they
+> fixed. Decision D6 permits emoji on a browser wall as bundled artwork drawn
+> as an `<img>` (plan item P4.2), and D3 opens the icon set for occasion
+> motifs, which arrive on a browser wall as that same artwork. Neither
+> reinstates what is described below: an emoji set as text and resolved by
+> the device's font is still the bug, and an e-paper panel still draws only
+> the drawn glyphs. "The set is deliberately closed" remains true of the
+> twenty-nine keys a panel can draw.
 
 **And then the emoji went, which is a rule this document had already written
 down and the product had been breaking on every screen since it shipped.** The
@@ -7518,6 +7577,21 @@ hands a *custom* theme `shape: 'board'` because it is the one value no
 `:root[data-theme="…"]` rule matches, so a custom theme inherits the default
 shape rather than Panels' cards. A neutral sentinel wearing a retired name.
 Renaming it needs a real `neutral` key in the display bundle.
+
+**The decisions of 2026-09-24 widen what a theme and a style may carry, and
+reopen none of the retired names.** The design file drew five directions that
+were flat, still and emoji-free, and that is still the look every wall starts
+from and every e-paper panel keeps. What changed (D1–D9, recorded in "Current
+state" and in `docs/plan-2026-09-household-review.md`) is what a household may
+opt into on a browser wall: a shadow is now a theme token (`--shadow-card`: soft
+on Panels and Household, paper-like on Almanac, none on Blueprint and Swiss), a
+theme may carry gradient sky palettes and condition colours, a designed widget
+style may move, draw bundled emoji artwork, and make one capped reading its
+lede, and Home Assistant readings may draw as tiles. So a theme is no longer
+only colours and a handful of shape rules — it also decides whether a wall's
+cards cast a shadow. The one change a hanging wall sees without choosing it is
+a widget that already stored `shadow: true`, which draws one again once the
+token lands.
 
 ~~Decided: **Board as default, Almanac scheduled for daylight hours.**~~
 **History: there is no default theme any more, and RFC 015 phase 2 is where

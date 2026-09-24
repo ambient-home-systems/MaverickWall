@@ -159,17 +159,21 @@ to the ratio it needs, so a future tweak cannot quietly go unreadable.
 It is a **modern-browser** surface — it uses `color-mix()`, `:has()`, and
 container-free CSS freely — and it is the one place in the product that **permits
 motion**: a settings screen is something a person is *touching*, where ~180ms of
-transition is the only thing confirming a tap landed. That is the deliberate
-inverse of the wall (`apps/display`), which has no pointer, redraws every 15s, and
-bans motion outright. All of it lives inside a single `prefers-reduced-motion:
-no-preference` block, so a reduced-motion visitor gets an instant, still admin.
+transition is the only thing confirming a tap landed. The wall (`apps/display`)
+has no pointer and redraws every 15s, so it has no tap to confirm: it banned
+motion outright until 2026-09-24, and now permits it only as decoration in a
+style a household picks — phase-locked to the wall clock, behind its own
+per-wall switch, and never on e-paper (see its `DESIGN.md`). This rule is
+unchanged by that. All of the admin's motion lives inside a single
+`prefers-reduced-motion: no-preference` block, so a reduced-motion visitor gets
+an instant, still admin.
 
 **Key Characteristics:**
 - Hand-picked tokens as reviewable facts; nothing is generated or seed-tinted.
 - Neutral grounds, one brand hue; a small vocabulary, not a tonal sprawl.
 - Two full schemes (dark default, light), one set of component rules across both.
 - Phone-first: 44/48px targets, 16px inputs, a script-free modal drawer, a skip link.
-- Motion allowed but pointer-scoped and reduced-motion-gated — the inverse of the wall.
+- Motion allowed but pointer-scoped and reduced-motion-gated — confirming a touch, where the wall's permitted motion is decoration on a clock.
 - Depth is a hairline and a ground step; two single-layer shadows, only for surfaces that truly float.
 
 ## Colors

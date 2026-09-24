@@ -190,7 +190,8 @@ export const householdSettings = sqliteTable('household_settings', {
   layoutLandscapeAspect: real('layout_landscape_aspect').notNull().default(1.7778),
   /**
    * The canvas background, per orientation, as JSON this process wrote (RFC 005
-   * Phase 3): a solid colour or a gradient. Null is no background — the theme's
+   * Phases 3 and 3b): a solid colour, a two-stop gradient, or an uploaded image
+   * by its stored name. Null is no background — the theme's
    * own wall colour shows through, which is what every existing wall has. The
    * shape is validated at the editor boundary; read back defensively here.
    */

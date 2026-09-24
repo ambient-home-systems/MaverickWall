@@ -6881,7 +6881,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             `<button class="secondary" type="submit" name="action" value="test">Test feed</button>` +
             `<button type="submit" name="action" value="save">Add</button>` +
             `</div></form>`,
-          // The fragment the empty state's action links to.
+          // A fragment somebody can link to (`admin/calendars#add`). The
+          // empty state above deliberately offers no action — it would only
+          // scroll to this form — so nothing on the page links here itself.
           'add',
         ) +
         // The ordinary form, where a household who is not mid-flow meets it.

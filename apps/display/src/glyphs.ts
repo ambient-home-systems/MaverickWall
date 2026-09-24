@@ -38,6 +38,23 @@
  * Read the conventions off these two literals rather than deriving them:
  *   - a clockwise disc is `M{cx-r} {cy}a{r} {r} 0 1 1 {2r} 0a{r} {r} 0 1 1 -{2r} 0Z`
  *   - the same disc anticlockwise is that with both sweep flags `0`.
+ *
+ * ## What changed on 2026-09-24, and what did not
+ *
+ * The owner's decisions D3 and D6 (`docs/plan-2026-09-household-review.md`)
+ * open two doors this file used to keep shut, and neither is through here.
+ * **D6** permits emoji on a *browser* wall — but as bundled artwork served from
+ * `/assets/emoji/` and drawn as an `<img>` (plan item P4.2), never as a code
+ * point handed to the device's own font, because a device font is exactly the
+ * third-party asset described above. **D3** opens the icon set for *occasion
+ * motifs* — a birthday, Christmas, the last day of school — and on a browser
+ * wall those are that same emoji artwork rather than new silhouettes drawn
+ * here. Drawn one-bit occasion motifs for e-paper are deferred.
+ *
+ * So this vocabulary is still the one a *panel* can draw, and it is still
+ * closed in the sense that matters for it: every key here is drawn, rasterised
+ * in `epaper/glyphs.ts`, and looked at at 8 pixels. A new *sky* or *device
+ * class* is still a drawing here and nowhere else.
  */
 
 /**
@@ -47,7 +64,10 @@
  * A closed list is the point rather than a limitation: an icon set that grows
  * by one entry per integration is an icon set nobody has looked at as a whole,
  * and this one has to read as one hand at 8 pixels. Adding a key means drawing
- * it here, rasterising it in `epaper/glyphs.ts`, and looking at both.
+ * it here, rasterising it in `epaper/glyphs.ts`, and looking at both. Occasion
+ * motifs are the one thing D3 (2026-09-24) let in from outside this list, and
+ * they arrive as bundled emoji artwork on a browser wall, not as keys here —
+ * see the end of this file's header.
  *
  * **This block is transcribed into `apps/server/src/glyphs.ts` character for
  * character** and `glyph-parity.test.ts` compares the two as text — the display
