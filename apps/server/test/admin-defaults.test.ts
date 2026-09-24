@@ -212,6 +212,12 @@ describe('the Overview says what needs attention and what the wall draws today',
   });
 });
 
+/*
+ * P2.1 moved step one of adding a rotation from the foot of Work Schedule to a
+ * page of its own, `GET /admin/shifts/new`, so these read the form there: the
+ * letter moved — which page is fetched — and the intent, a form whose untouched
+ * state can be submitted, did not. The POST it submits to is unchanged.
+ */
 describe('the Add-a-rotation form opens on a choice that can be submitted', () => {
   /** The options of the named select, in order, with the one a browser would post first. */
   const options = (html: string, name: string): { value: string; label: string }[] => {
@@ -230,7 +236,7 @@ describe('the Add-a-rotation form opens on a choice that can be submitted', () =
   it('with no calendar, offers only a pattern, and Continue on the untouched form is accepted', async () => {
     const h = await harness();
     await h.form('/admin/people', { name: 'Amy', color: '#E8A33D' });
-    const html = await h.text('/admin/shifts');
+    const html = await h.text('/admin/shifts/new');
     expect(options(html, 'kind').map((o) => o.value)).toEqual(['pattern']);
     expect(html).not.toContain('name="source_id"');
     // The form as drawn, posted as a browser would post it untouched.
@@ -245,7 +251,7 @@ describe('the Add-a-rotation form opens on a choice that can be submitted', () =
     const h = await harness();
     await h.form('/admin/people', { name: 'Amy', color: '#E8A33D' });
     addSource(h, 'src-work', 'Work');
-    const html = await h.text('/admin/shifts');
+    const html = await h.text('/admin/shifts/new');
     expect(options(html, 'kind').map((o) => o.value)).toEqual(['calendar', 'pattern']);
     const calendars = options(html, 'source_id');
     expect(calendars[0]).toEqual({ value: 'src-work', label: 'Work' });
@@ -266,7 +272,7 @@ describe('the Add-a-rotation form opens on a choice that can be submitted', () =
     await h.form('/admin/people', { name: 'Amy', color: '#E8A33D' });
     await h.form('/admin/people', { name: 'Ben', color: '#4A90D9' });
     h.db.prepare(`UPDATE people SET has_shift_rotation = 1 WHERE name = 'Amy'`).run();
-    const who = options(await h.text('/admin/shifts'), 'person_id');
+    const who = options(await h.text('/admin/shifts/new'), 'person_id');
     expect(who.map((o) => o.label)).toEqual(['Ben', 'Amy (has a rotation)']);
   });
 });

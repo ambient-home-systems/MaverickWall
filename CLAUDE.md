@@ -7694,6 +7694,57 @@ same diff read 3852 over 274 against 3830 over 271.
 **Still unproven where it counts:** no real Home Assistant, no real wall and
 no real phone has shown any of it.
 
+**P2.1's first half shipped: every list screen's only create action is one
+"Add …" in the app bar, and it always opens a page of its own.** Calendars,
+People, Work Schedule, Shift types, Chores and Themes. The inline add forms
+are gone from the lists, and that is the answer to the objection `admin.ts`
+used to record for keeping them there, not a reversal of it: a filled "Add"
+in the app bar competed with the form's own filled Add on the same screen —
+two primaries for one act — so the form moved, and there is one primary
+because there is one form, elsewhere. Calendars' add page is a **chooser**
+(`/admin/calendars/new`): an iCal address and a CalDAV account each have a
+page, and Home Assistant's calendars are one-press rows drawn only when a
+connection has something to offer. RFC 013's "Google, iCloud and Microsoft
+365" section moved there, because the chooser is where somebody stands with
+that problem, and with no connection it is the chooser's explanation that
+connecting is a way in. Work Schedule's step one is a `GET` page, and step
+two is unchanged. Shift types keeps its presets on its add page. "Generate
+from a colour" is on the theme builder's add page. The Store family's
+"Back to…" links left the filled action slot for `pageHeader`'s `back`, so
+that slot is only ever "Add …". Measured at 390px, the long labels all fit:
+one line each, the widest "Add a shift type" at 129px, and the bar at the
+64px it is with no action at all. **The move is also where three screens
+learned to echo**: People, Chores and Shift types had never handed a refused
+body back, and a household sent to a page of its own to type something should
+not lose it there. `admin-add-placement.test.ts` walks every list page, with
+nobody in the house and with somebody, and asserts:
+
+- one app-bar "Add …" to a `/new` route;
+- no form on the list posting to that screen's create endpoints;
+- every one of those endpoints reachable from the add page.
+
+Walls and the four Home Assistant screens are in it as `it.fails` under
+`TODO(S06)`, which is their session. Two of the fifteen mutations were green
+on the first try, and both were the test's fault. The walker read only a
+household with a person in it, so a form put back on People's *empty*
+branch passed. And a label too long for a phone does not wrap — it is
+`nowrap` — it pushes the heading beside it onto a second line, which the
+first draft of the 390px test did not measure. Both are measured now.
+
+**3875 tests passing, 1 skipped and 5 expected failures, over 278 files**:
+calendar 153 over 10 · core 314 over 9 · display 626 over 35 · server 2782
+over 224 plus the five `it.fails`. Measured with a real Chromium
+(`MW_BROWSER_EXECUTABLE`, the same provisioning note as the P0 paragraph
+above) on the tree after `main` was merged into this branch, which had taken
+P1.2 and P1.3 in the meantime. Against P1.3's 3859 over 275 above, the
+difference is +16 passing, +5 expected failures and +3 files. That is exactly
+this change's own count: 11 in the walker, 7 in the add-page file, 1 in the
+390px file and 2 in `admin-components.test.ts`, with the one rewritten
+`browser-calendars` test replacing one rather than adding one. Before the
+merge the same diff read 3846 over 274 against 3830 over 271, the same +16
+and +5. As with the paragraphs above, that agreement is an observation and
+not a method.
+
 ---
 
 ## Open decisions

@@ -3139,10 +3139,11 @@ export interface ShellPageOptions extends CommonPageOptions {
    */
   readonly self: string;
   /**
-   * A primary action for the top-right of the shell's topbar, where a page has
-   * one — e.g. Themes' "New theme", which opens a page of its own. Not for a
-   * page whose add form is already on it: Calendars and Chores deliberately
-   * carry no app-bar action, because a link to a form on screen only scrolls.
+   * A list page's one create action, for the top-right of the shell's topbar:
+   * "Add …", leading to an add page of its own (P2.1). The slot is for that
+   * and nothing else — not a "Back to…", which is `back`, and never a link to
+   * a form on the same page, which would only scroll: a list page carries no
+   * add form, which is what lets this be its one primary.
    * Already-escaped label; relative href.
    */
   readonly action?: { readonly label: string; readonly href: string };
