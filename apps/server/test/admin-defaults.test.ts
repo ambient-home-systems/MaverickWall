@@ -178,10 +178,14 @@ describe('the Overview says what needs attention and what the wall draws today',
     expect(html).not.toContain('Signed in as');
     expect(html).toContain('Needs attention');
     expect(html).toContain('No calendars yet');
-    expect(html).toContain('No walls paired yet');
-    // Each row is a link to where the thing is done.
+    // "No walls yet", not "paired": an e-paper wall is never paired, and
+    // pairing is one step of adding a browser wall (P2.2).
+    expect(html).toContain('No walls yet');
+    expect(html).not.toContain('No walls paired yet');
+    // Each row is a link to where the thing is done — adding a wall starts at
+    // its chooser.
     expect(html).toContain('href="admin/calendars"');
-    expect(html).toContain('href="admin/walls"');
+    expect(html).toContain('href="admin/walls/new"');
   });
 
   it('lists a wall that has never connected, and links to its page', async () => {
@@ -189,7 +193,7 @@ describe('the Overview says what needs attention and what the wall draws today',
     await h.form('/admin/screens', { name: 'Kitchen tablet', theme: 'panels' });
     const html = await h.text('/admin');
     expect(html).toContain('Kitchen tablet has never connected');
-    expect(html).not.toContain('No walls paired yet');
+    expect(html).not.toContain('No walls yet');
     const id = (h.db.prepare(`SELECT id FROM screens`).get() as { id: string }).id;
     expect(html).toContain(`href="admin/walls/${id}"`);
   });

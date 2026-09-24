@@ -762,7 +762,7 @@ function wallTemplatePreviews(
 ): readonly Record<string, unknown>[] {
   return catalogue.map((t) => ({
     id: t.id,
-    // The name travels for the suggestion on `/admin/walls/new`: a card
+    // The name travels for the suggestion on `/admin/walls/new/browser`: a card
     // reading "Suggested for Sky Week" has to name the card the household just
     // pressed, and reading it back out of the DOM would be a second copy of a
     // string this JSON already holds (RFC 015 §3.1).
@@ -1282,9 +1282,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     }
     if (screens.length === 0) {
       attention.push({
-        title: 'No walls paired yet',
-        detail: 'Pair a tablet, a television or an e-paper panel to put the calendar on a screen.',
-        href: 'admin/walls', tag: 'Not set up', bad: false,
+        // "Add", not "Pair" (P2.2): pairing is the step that opens a browser
+        // wall's link, and an e-paper panel is never paired at all.
+        title: 'No walls yet',
+        detail: 'Add a tablet, a television or an e-paper panel to put the calendar on a wall.',
+        href: 'admin/walls/new', tag: 'Not set up', bad: false,
       });
     }
     for (const screen of screens) {
@@ -2683,19 +2685,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
   // The Walls list itself — `admin-walls.ts` (RFC 016). Registered here rather
   // than beside the other modules at the top of this function, because this is
-  // where its route was: `/admin/walls` must be declared ahead of
-  // `/admin/walls/new` and `/admin/walls/:id` below.
+  // where its route was: `/admin/walls` and the `/admin/walls/new` chooser must
+  // be declared ahead of `/admin/walls/:id` below.
   registerWallsRoutes(app, deps);
   // A wall's own CSS (RFC 014 §7) — admin-css.ts, beside the wall it belongs to.
   registerCssRoutes(app, deps);
   /*
-   * Declared ahead of `/admin/walls/:id`, for the reason the approve route
+   * The browser wall's add page, one step behind the chooser (P2.2). Declared
+   * ahead of the `/admin/walls/:id/…` family for the reason the approve route
    * states one screen along: a static segment must come before the param that
-   * would otherwise swallow it. Here the swallow is silent rather than loud —
-   * `:id` redirects an id it does not recognise to the Walls list, so "new"
-   * would bounce off the list instead of 404ing.
+   * would otherwise swallow it.
    */
-  app.get('/admin/walls/new', (c: Context) => c.html(newWallPage(c)));
+  app.get('/admin/walls/new/browser', (c: Context) => c.html(newWallPage(c)));
   app.get('/admin/walls/:id', (c: Context) => {
     const id = c.req.param('id') ?? '';
     /*
@@ -5433,17 +5434,20 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     return page({
       self: selfHref(c),
       modules: navModules(deps.db),
-      title: 'Pair a new wall — Maverick Wall',
+      // The chooser's own words (P2.2): "Add a browser wall" is what was
+      // pressed, so it is what the page is called. "Pair" is the next page's
+      // verb — the QR and the code — and nothing before it.
+      title: 'Add a browser wall — Maverick Wall',
       nav: 'walls',
-      heading: 'Pair a new wall',
+      heading: 'Add a browser wall',
+      back: { label: 'Add a wall', href: 'admin/walls/new' },
       saved: readSaved(c),
       intro:
-        'A browser wall: a tablet, a monitor or a television with Maverick Wall open ' +
-        'in a browser. Name it and say what it is, and the next page has the QR and ' +
-        'the short code to open on the wall itself.',
+        'A tablet, a monitor or a television with Maverick Wall open in a browser. ' +
+        'Name it and say what it is, and the next page has the QR and the short ' +
+        'code to open on the wall itself.',
       body:
         (error === undefined ? '' : errorBlock(error)) +
-        `<p><a class="link" href="admin/walls">← Back to walls</a></p>` +
         `<form method="post" action="admin/screens" id="add">` +
         textField({
           label: 'Name',

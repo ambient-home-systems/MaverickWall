@@ -143,7 +143,11 @@ const PAGES = [
   '/admin/home-assistant/connection',
   '/admin/home-assistant/readings',
   '/admin/modules',
-  '/admin/epaper',
+  // The Walls chooser and the two add pages behind it (P2.2); the e-paper one
+  // lived at `/admin/epaper`, which is a redirect to it now.
+  '/admin/walls/new',
+  '/admin/walls/new/browser',
+  '/admin/walls/new/epaper',
   '/admin/system',
 ];
 

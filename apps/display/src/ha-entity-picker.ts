@@ -232,9 +232,16 @@ function boot(): void {
     })
       .then(async (response) => {
         if (response.ok) {
-          // The server re-renders with the new readings; a reload is the whole
-          // "show what happened" without duplicating the card markup here.
-          window.location.reload();
+          // Back to the list the page names, whose rows say which walls each
+          // new reading is on — the whole "show what happened" without
+          // duplicating the card markup here. The picker is on an add page of
+          // its own (P2.1), so reloading would only show the form again; a
+          // mount that names nowhere keeps the old reload. The address is
+          // relative and resolves against the page's `<base>`, which is what
+          // carries it through a Home Assistant ingress prefix.
+          const done = mount.dataset['done'];
+          if (done === undefined || done === '') window.location.reload();
+          else window.location.assign(done);
           return;
         }
         const body = (await response.json().catch(() => ({}))) as { message?: string };

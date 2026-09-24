@@ -50,8 +50,18 @@ iCloud or CalDAV account, or Home Assistant — and the note about reaching
 Google, iCloud and Microsoft 365 through Home Assistant is on that page now,
 where you are when you need it. "Generate from a colour" is on the Add a
 theme page, and the pages under the Store take you back with the link at the
-top left rather than a big button. Walls and the Home Assistant screens get
-the same treatment in a later release.
+top left rather than a big button.
+
+**Walls and the Home Assistant screens have their "Add" in the same place
+too.** Readings, Calendars, To-do lists and "Tell me when…" in Home Assistant
+each have one **Add …** button at the top right, opening a page of its own;
+the ready-made rules ("Garage door open late" and the rest) are on the **Add
+a rule** page, where you start one. On Walls, **Add a wall** asks which kind:
+**a browser wall** — a tablet, monitor or television showing a web page — or
+**an e-paper wall**, an ESPHome or OpenDisplay panel. The two pages behind it
+are named the same way and both finish on **Add wall**. "Approve a pairing
+code", for a wall that is already showing one, is a link at the top of the
+Walls page and on the Add a wall page.
 
 **The weather now knows what it is like outside right now, not just what the
 days will bring.** The wall checks the current conditions every fifteen

@@ -435,14 +435,29 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
    * `nav` stays `'homeassistant'` on all six, so the sidebar marks Integrations
    * › Home Assistant active throughout rather than going blank one level down.
    */
-  function child(c: Context, heading: string, error: PageError | undefined, body: string): string {
+  function child(
+    c: Context,
+    heading: string,
+    error: PageError | undefined,
+    body: string,
+    /*
+     * A list screen's one "Add …" (P2.1), or — on an add page — the list it
+     * came from as the way back. The two are never both set: an add page has
+     * nothing to add from its app bar, and a list screen's way back is the hub.
+     */
+    options: {
+      readonly action?: { readonly label: string; readonly href: string };
+      readonly back?: { readonly label: string; readonly href: string };
+    } = {},
+  ): string {
     return page({
       self: selfHref(c),
       modules: navModules(deps.db),
       title: `${heading} — Maverick Wall`,
       nav: 'homeassistant',
       heading,
-      back: { label: 'Home Assistant', href: 'admin/home-assistant' },
+      back: options.back ?? { label: 'Home Assistant', href: 'admin/home-assistant' },
+      ...(options.action === undefined ? {} : { action: options.action }),
       saved: readSaved(c),
       body: (error === undefined ? '' : errorBlock(error.message, error.suggestion)) + body,
     });
@@ -480,10 +495,41 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     );
   }
 
+  /*
+   * Four list screens and four add pages (P2.1). A list screen carries the
+   * one app-bar "Add …" and no form; its add page carries the form and says
+   * nothing else, with the list as its way back. Every refusal from a create
+   * POST re-renders the *add* page — that is where the form it is about now
+   * lives — with one exception, stated at its site: a to-do list that was
+   * added and could not be read comes back on the list, where the new row is.
+   *
+   * The action is drawn whether or not a house is connected. An add page with
+   * nothing connected says so and points at Connection, exactly as its list
+   * does, so the "Add …" is never a control that leads nowhere; and a list
+   * screen whose action came and went with the connection would be the one
+   * screen in the admin where "Add" was not in the same place.
+   */
+  const READINGS_ADD = { label: 'Add readings', href: 'admin/home-assistant/readings/new' } as const;
+  const CALENDARS_ADD = { label: 'Add a calendar', href: 'admin/home-assistant/calendars/new' } as const;
+  const LISTS_ADD = { label: 'Add a list', href: 'admin/home-assistant/lists/new' } as const;
+  const RULES_ADD = { label: 'Add a rule', href: 'admin/home-assistant/alerts/new' } as const;
+
   async function renderReadings(c: Context, error?: PageError, status?: number): Promise<Response> {
     const live = await look();
     return html(
-      child(c, 'Readings', error ?? live.problem ?? undefined, connectedOr(live, () => readings(live))),
+      child(c, 'Readings', error ?? live.problem ?? undefined, connectedOr(live, () => readings()), {
+        action: READINGS_ADD,
+      }),
+      status,
+    );
+  }
+
+  async function renderAddReadings(c: Context, error?: PageError, status?: number): Promise<Response> {
+    const live = await look();
+    return html(
+      child(c, 'Add readings', error ?? live.problem ?? undefined, connectedOr(live, () => addReadings(live)), {
+        back: { label: 'Readings', href: 'admin/home-assistant/readings' },
+      }),
       status,
     );
   }
@@ -491,7 +537,19 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
   async function renderCalendars(c: Context, error?: PageError, status?: number): Promise<Response> {
     const live = await look();
     return html(
-      child(c, 'Calendars', error ?? live.problem ?? undefined, connectedOr(live, () => calendars(live))),
+      child(c, 'Calendars', error ?? live.problem ?? undefined, connectedOr(live, () => calendars()), {
+        action: CALENDARS_ADD,
+      }),
+      status,
+    );
+  }
+
+  async function renderAddCalendar(c: Context, error?: PageError, status?: number): Promise<Response> {
+    const live = await look();
+    return html(
+      child(c, 'Add a calendar', error ?? live.problem ?? undefined, connectedOr(live, () => addCalendar(live)), {
+        back: { label: 'Calendars', href: 'admin/home-assistant/calendars' },
+      }),
       status,
     );
   }
@@ -499,12 +557,34 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
   async function renderLists(c: Context, error?: PageError, status?: number): Promise<Response> {
     const live = await look();
     return html(
-      child(c, 'To-do lists', error ?? live.problem ?? undefined, connectedOr(live, () => todoLists(live))),
+      child(c, 'To-do lists', error ?? live.problem ?? undefined, connectedOr(live, () => todoLists()), {
+        action: LISTS_ADD,
+      }),
       status,
     );
   }
 
-  async function renderAlerts(
+  async function renderAddList(c: Context, error?: PageError, status?: number): Promise<Response> {
+    const live = await look();
+    return html(
+      child(c, 'Add a list', error ?? live.problem ?? undefined, connectedOr(live, () => addList(live)), {
+        back: { label: 'To-do lists', href: 'admin/home-assistant/lists' },
+      }),
+      status,
+    );
+  }
+
+  async function renderAlerts(c: Context, error?: PageError, status?: number): Promise<Response> {
+    const live = await look();
+    return html(
+      child(c, 'Tell me when…', error ?? live.problem ?? undefined, connectedOr(live, () => rules()), {
+        action: RULES_ADD,
+      }),
+      status,
+    );
+  }
+
+  async function renderAddRule(
     c: Context,
     error?: PageError,
     status?: number,
@@ -515,9 +595,10 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     return html(
       child(
         c,
-        'Tell me when…',
+        'Add a rule',
         error ?? live.problem ?? undefined,
-        connectedOr(live, () => rules(live, template, echo)),
+        connectedOr(live, () => addRule(live, template, echo)),
+        { back: { label: 'Tell me when…', href: 'admin/home-assistant/alerts' } },
       ),
       status,
     );
@@ -526,55 +607,74 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
   /**
    * The hub, and the one query this family has.
    *
-   * A template row's whole effect is to fill in a form, and after the split
-   * that form is on `…/alerts` — so the rows link there. But a link already in
-   * the world is a contract, and this one is the *entire* interface the feature
-   * has: it is what makes a template script-free, and a household who
-   * bookmarked one, or a page left open across the upgrade, must not meet a hub
-   * that silently ignores the query. So the hub carries it through, unaltered,
-   * and a bare hub GET is untouched.
+   * A template row's whole effect is to fill in a form, and that form is on
+   * the rule's add page, `…/alerts/new` (P2.1) — so the rows link there. But a
+   * link already in the world is a contract, and this one is the *entire*
+   * interface the feature has: it is what makes a template script-free, and a
+   * household who bookmarked one, or a page left open across the upgrade, must
+   * not meet a hub that silently ignores the query. So the hub carries it
+   * through, unaltered, and a bare hub GET is untouched.
    *
    * Any non-empty key redirects, including one this version does not know:
-   * `…/alerts` draws an empty form for a template it cannot find, which is a
+   * the add page draws an empty form for a template it cannot find, which is a
    * better answer to a stale bookmark than a hub that drops the query on the
    * floor.
    */
   app.get('/admin/home-assistant', async (c: Context) => {
     const template = c.req.query('template');
     if (template !== undefined && template !== '') {
-      return c.redirect(`/admin/home-assistant/alerts?template=${encodeURIComponent(template)}`, 302);
+      return c.redirect(`/admin/home-assistant/alerts/new?template=${encodeURIComponent(template)}`, 302);
     }
     return renderHub(c);
   });
 
   app.get('/admin/home-assistant/connection', async (c: Context) => renderConnection(c));
   app.get('/admin/home-assistant/readings', async (c: Context) => renderReadings(c));
+  app.get('/admin/home-assistant/readings/new', async (c: Context) => renderAddReadings(c));
   app.get('/admin/home-assistant/calendars', async (c: Context) => renderCalendars(c));
+  app.get('/admin/home-assistant/calendars/new', async (c: Context) => renderAddCalendar(c));
   /*
    * A GET at a path that is already a POST, which is correct and is the shape
    * every other sub-screen here has (`/admin/shifts/types` is a GET and a
    * POST). Called out because a reader scanning the route list will see `lists`
-   * twice and should not "fix" it.
+   * twice and should not "fix" it. `lists/new` is a static segment one level
+   * down, so it cannot be read as a list called "new": the list routes that
+   * take an entity are all two segments deeper (`lists/:entity/remove`).
    */
   app.get('/admin/home-assistant/lists', async (c: Context) => renderLists(c));
+  app.get('/admin/home-assistant/lists/new', async (c: Context) => renderAddList(c));
+
+  /**
+   * The rules, and — one page along — the form that adds one.
+   *
+   * `?template=` used to be read here, when the form was on this screen. The
+   * form is on `…/alerts/new` now, so a template link from before the move is
+   * forwarded there with its query intact: the same contract the hub keeps.
+   */
+  app.get('/admin/home-assistant/alerts', async (c: Context) => {
+    const template = c.req.query('template');
+    if (template !== undefined && template !== '') {
+      return c.redirect(`/admin/home-assistant/alerts/new?template=${encodeURIComponent(template)}`, 302);
+    }
+    return renderAlerts(c);
+  });
 
   /**
    * A template is a query parameter, not a script.
    *
-   * Choosing one re-renders the form with its fields already filled in, which
-   * is the whole of "prefill" without a line of JavaScript. The household can
-   * change every one of them before saving — a template is a starting point,
-   * and the hard part of a rule builder is not the fields but knowing that a
-   * freezer door is worth five minutes and a leak is worth none.
+   * Choosing one re-renders the add page with its fields already filled in,
+   * which is the whole of "prefill" without a line of JavaScript. The household
+   * can change every one of them before saving — a template is a starting
+   * point, and the hard part of a rule builder is not the fields but knowing
+   * that a freezer door is worth five minutes and a leak is worth none.
    *
-   * It re-renders a page whose form is *visible* when it lands now, which was
-   * the point of moving it: on the old screen the builder sat below three
-   * hundred pixels of templates on a four-thousand-pixel page, so on a phone
-   * the thing that had just happened was off-screen.
+   * The templates sit above the form on this page and nowhere else (P2.1): a
+   * template is a way to *start* a rule, so it belongs where rules are
+   * started, and the list of rules no longer carries a form to fill in.
    */
-  app.get('/admin/home-assistant/alerts', async (c: Context) => {
+  app.get('/admin/home-assistant/alerts/new', async (c: Context) => {
     const chosen = RULE_TEMPLATES.find((entry) => entry.key === c.req.query('template'));
-    return renderAlerts(c, undefined, undefined, chosen);
+    return renderAddRule(c, undefined, undefined, chosen);
   });
 
   /**
@@ -763,11 +863,11 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
   app.post('/admin/home-assistant/entities', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const watched = parse(watchBody, body);
-    if (!watched.ok) return renderReadings(c, { message: watched.message }, 400);
+    if (!watched.ok) return renderAddReadings(c, { message: watched.message }, 400);
 
     const entityId = watched.value.entity_id;
     if (!isSupported(entityId)) {
-      return renderReadings(c,
+      return renderAddReadings(c,
         {
           message: 'Choose an entity from the list.',
           suggestion:
@@ -884,13 +984,13 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
   app.post('/admin/home-assistant/calendars', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const picked = parse(calendarSourceBody, body);
-    if (!picked.ok) return renderCalendars(c, { message: picked.message }, 400);
+    if (!picked.ok) return renderAddCalendar(c, { message: picked.message }, 400);
     const entityId = picked.value.entity_id;
     if (!entityId.startsWith('calendar.')) {
-      return renderCalendars(c, { message: 'Choose a calendar from the list.' }, 400);
+      return renderAddCalendar(c, { message: 'Choose a calendar from the list.' }, 400);
     }
     if (haCalendarEntityIds(deps.db).has(entityId)) {
-      return renderCalendars(c, { message: 'That calendar has already been added.' }, 400);
+      return renderAddCalendar(c, { message: 'That calendar has already been added.' }, 400);
     }
 
     const live = await look();
@@ -915,20 +1015,20 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
   app.post('/admin/home-assistant/lists', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const picked = parse(todoListBody, body);
-    if (!picked.ok) return renderLists(c, { message: picked.message }, 400);
+    if (!picked.ok) return renderAddList(c, { message: picked.message }, 400);
     const entityId = picked.value.entity_id;
     if (!/^todo\.[a-z0-9_]+$/.test(entityId)) {
-      return renderLists(c, { message: 'Choose a to-do list from the list.' }, 400);
+      return renderAddList(c, { message: 'Choose a to-do list from the list.' }, 400);
     }
 
     const live = await look();
     // A house that cannot be reached is not a house with no lists in it. §5.3's
     // unreachable-house path, arriving through the 400 door rather than the
     // page door: the refusal *is* `live.problem`.
-    if (live.problem !== null) return renderLists(c, live.problem, 400);
+    if (live.problem !== null) return renderAddList(c, live.problem, 400);
     const known = live.todo.find((entity) => entity.entityId === entityId);
     if (known === undefined) {
-      return renderLists(c,
+      return renderAddList(c,
         {
           message: 'Home Assistant has no to-do list by that name.',
           suggestion: 'Pick one from the list below; they come from your Home Assistant as it is now.',
@@ -943,7 +1043,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       label: picked.value.label ?? null,
       supportsUpdate: known.supportsUpdate,
     }, now());
-    if (!watched.ok) return renderLists(c, { message: watched.message }, 400);
+    if (!watched.ok) return renderAddList(c, { message: watched.message }, 400);
 
     const read = await pollTodoList(
       { db: deps.db, fetcher: deps.fetcher, keyring: deps.keyring, now: now() },
@@ -952,7 +1052,9 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     if (!read.ok) {
       // The write succeeded and the status is still a refusal, so this one must
       // come back with the new row already on it — the page contradicting
-      // neither itself nor the database it has just written to.
+      // neither itself nor the database it has just written to. That is the
+      // list rather than the add page (P2.1): the list is where the row is,
+      // and there is nothing left on the form for the household to correct.
       return renderLists(c,
         {
           message: `Added, but the list could not be read: ${read.message}`,
@@ -1020,13 +1122,13 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     const echo = ruleEchoOf(body);
 
     const shaped = parse(ruleBody, body);
-    if (!shaped.ok) return renderAlerts(c, { message: shaped.message }, 400, undefined, echo);
+    if (!shaped.ok) return renderAddRule(c, { message: shaped.message }, 400, undefined, echo);
 
     const { name, entity_id: entityId, condition, value, action } = shaped.value;
     // Membership rather than shape: which domains this can watch is a fact
     // about the application, not about the request.
     if (!isSupported(entityId)) {
-      return renderAlerts(c, { message: 'That entity is not one this can watch.' }, 400, undefined, echo);
+      return renderAddRule(c, { message: 'That entity is not one this can watch.' }, 400, undefined, echo);
     }
 
     const minutes = shaped.value.for_minutes;
@@ -1493,7 +1595,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
   function noWallDrawsReadings(walls: readonly WallDrawing[]): string {
     const where =
       walls.length === 0
-        ? `<p><a class="link" href="admin/walls">Pair a wall</a> first, then add the ` +
+        ? `<p><a class="link" href="admin/walls/new">Add a wall</a> first, then add the ` +
           `widget to its layout.</p>`
         : `<p>Add one from a wall's layout: ` +
           walls.map((wall) => tag(wall.name, 'neutral', wall.layoutHref)).join(' ') +
@@ -1509,16 +1611,10 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
   }
 
   /**
-   * The picker.
-   *
-   * A first-party script turns the entity list — hundreds of them — into a
-   * searchable, domain-filtered, multi-select picker that shows each entity's
-   * live state, the same pattern the layout editor uses. The data is handed in
-   * as JSON on the mount; the script fetches nothing and ships in the image
-   * (rule three). A `<datalist>` fallback stays in `<noscript>`, so the page
-   * still works with no script, just without the search.
+   * The watched readings, each saying which walls draw it (P1.3). The picker
+   * that adds one is `addReadings`, on a page of its own (P2.1).
    */
-  function readings(live: LiveState): string {
+  function readings(): string {
     const watched = readWatched(deps.db).filter((row) => row.watched === 1);
     const walls = readingWalls();
     const choices = watchedReadingChoices(deps.db);
@@ -1566,6 +1662,37 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       })
       .join('');
 
+    return (
+      (anyWallShowsReadings(walls) ? '' : noWallDrawsReadings(walls)) +
+      section(
+        // "On the wall" was untrue of every reading on a wall with no Home
+        // Assistant widget, which is every wall Classic seeds (P1.3). Each row
+        // now says where it is instead.
+        'Your readings',
+        'A few readings beside the calendar, drawn by a Home Assistant widget ' +
+          'wherever you put one. This is deliberately not a dashboard — Home ' +
+          'Assistant already has one, and it is better at it.',
+        rows === '' ? emptyState('No readings yet.', READINGS_ADD) : rows,
+      )
+    );
+  }
+
+  /**
+   * The picker, on a page of its own (P2.1).
+   *
+   * A first-party script turns the entity list — hundreds of them — into a
+   * searchable, domain-filtered, multi-select picker that shows each entity's
+   * live state, the same pattern the layout editor uses. The data is handed in
+   * as JSON on the mount; the script fetches nothing and ships in the image
+   * (rule three). A `<datalist>` fallback stays in `<noscript>`, so the page
+   * still works with no script, just without the search.
+   *
+   * `data-done` is where the picker goes once the readings are added: back to
+   * the list, whose rows say which walls each one is on. It reloaded the page
+   * it was on when that page was the list; reloading an add page would show
+   * the household the form they had just used and nothing about what it did.
+   */
+  function addReadings(live: LiveState): string {
     // What the picker needs, and no more — a resolved value and a label, never
     // anything that reaches back into the house.
     const entityData = live.entities.map((state) => ({
@@ -1586,60 +1713,46 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       .join('');
 
     return (
-      (anyWallShowsReadings(walls) ? '' : noWallDrawsReadings(walls)) +
-      section(
-        // "On the wall" was untrue of every reading on a wall with no Home
-        // Assistant widget, which is every wall Classic seeds (P1.3). Each row
-        // now says where it is instead.
-        'Your readings',
-        'A few readings beside the calendar, drawn by a Home Assistant widget ' +
-          'wherever you put one. This is deliberately not a dashboard — Home ' +
-          'Assistant already has one, and it is better at it.',
-        // Calendars used to be offered here too, and a calendar added as a
-        // reading drew "Bins · On" — its state, which means "an event is on
-        // right now". They are not in this picker any more, so this says
-        // where they went rather than leaving somebody hunting for one that
-        // has quietly vanished. Kept as a second `.hint` paragraph in the
-        // body, since `section`'s own `help` is one prose blurb and this is a
-        // second, narrower aside rather than the section's main reason.
-        `<p class="hint">Calendar entities are not readings — they are added as ` +
-        `calendars, below, and behave like any other feed.</p>` +
-        (rows === '' ? emptyState('No readings yet.') : rows),
-      ) +
-      section(
-        'Add readings',
-        undefined,
-        `<div id="ha-entity-picker" ` +
-        `data-entities="${escapeHtml(JSON.stringify(entityData))}" ` +
-        `data-modes="${escapeHtml(JSON.stringify(DISPLAY_MODES))}"></div>` +
-        `<script type="module" src="assets/ha-entity-picker.js"></script>` +
-        `<noscript>` +
-        `<form method="post" action="admin/home-assistant/entities">` +
-        textField({
-          label: 'Entity',
-          name: 'entity_id',
-          required: true,
-          placeholder: 'Start typing a name',
-          attrs: 'list="ha-entities" autocomplete="off"',
-        }) +
-        `<datalist id="ha-entities">${fallbackOptions}</datalist>` +
-        textField({
-          label: 'Call it',
-          name: 'label',
-          placeholder: 'Leave empty to use its own name',
-        }) +
-        selectField({
-          label: 'Show it as',
-          name: 'display_mode',
-          optionsHtml: DISPLAY_MODES.map(
-            (option) =>
-              `<option value="${escapeHtml(option.key)}">${escapeHtml(option.label)}</option>`,
-          ).join(''),
-        }) +
-        // "Add reading", not "Add to the wall": it watches the entity, and a
-        // Home Assistant widget is what puts it on a wall (P1.3).
-        `<button type="submit">Add reading</button></form></noscript>`,
-      )
+      `<div id="ha-entity-picker" ` +
+      `data-entities="${escapeHtml(JSON.stringify(entityData))}" ` +
+      `data-modes="${escapeHtml(JSON.stringify(DISPLAY_MODES))}" ` +
+      `data-done="admin/home-assistant/readings"></div>` +
+      `<script type="module" src="assets/ha-entity-picker.js"></script>` +
+      `<noscript>` +
+      `<form method="post" action="admin/home-assistant/entities">` +
+      textField({
+        label: 'Entity',
+        name: 'entity_id',
+        required: true,
+        placeholder: 'Start typing a name',
+        attrs: 'list="ha-entities" autocomplete="off"',
+      }) +
+      `<datalist id="ha-entities">${fallbackOptions}</datalist>` +
+      textField({
+        label: 'Call it',
+        name: 'label',
+        placeholder: 'Leave empty to use its own name',
+      }) +
+      selectField({
+        label: 'Show it as',
+        name: 'display_mode',
+        optionsHtml: DISPLAY_MODES.map(
+          (option) =>
+            `<option value="${escapeHtml(option.key)}">${escapeHtml(option.label)}</option>`,
+        ).join(''),
+      }) +
+      // "Add reading", not "Add to the wall": it watches the entity, and a
+      // Home Assistant widget is what puts it on a wall (P1.3).
+      `<button type="submit">Add reading</button></form></noscript>` +
+      // Calendars used to be offered here too, and a calendar added as a
+      // reading drew "Bins · On" — its state, which means "an event is on
+      // right now". They are not in this picker any more, so this says where
+      // they went rather than leaving somebody hunting for one that has
+      // quietly vanished. Under the picker rather than above it: the picker
+      // is what the page is for, so it is the first thing on it.
+      `<p class="hint">Calendar entities are not readings — they are added as ` +
+      `<a class="link" href="admin/home-assistant/calendars">calendars</a>, and behave ` +
+      `like any other feed.</p>`
     );
   }
 
@@ -1668,15 +1781,13 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
   function calendarRows(): string {
     const rows = readHaCalendarSources(deps.db);
     /*
-     * Nothing rather than an `emptyState` when none has been added: the add
-     * form is directly underneath, so a box reading "none yet" would be a
-     * sentence six inches above its own remedy — the shape
-     * `admin-saved.test.ts` already caught once on this family, where an empty
-     * state offered "Add a calendar" as an in-page anchor to a form already on
-     * screen. The add form's own empty states still say when the *house* has
-     * no calendars, which is a different fact.
+     * An `emptyState` with the add page as its action now that the form is not
+     * on this screen (P2.1). It used to be nothing at all, because the form was
+     * directly underneath and a box reading "none yet" would have been a
+     * sentence six inches above its own remedy; with the remedy a page away,
+     * the empty list is the sentence that leads to it.
      */
-    if (rows.length === 0) return '';
+    if (rows.length === 0) return emptyState('No Home Assistant calendars added yet.', CALENDARS_ADD);
     return rows
       .map((row) =>
         listRow(
@@ -1688,7 +1799,23 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       .join('');
   }
 
-  function calendars(live: LiveState): string {
+  function calendars(): string {
+    return section(
+      'Calendars',
+      'Calendars already in Home Assistant, added without finding a ' +
+        'single address. They appear on the Calendars page like any other, and can be ' +
+        'coloured and assigned to a person there.',
+      calendarRows(),
+    );
+  }
+
+  /**
+   * Adding one, on a page of its own (P2.1). The form offers only the calendars
+   * the house has that are not already added, and says so in each of the two
+   * ways it can have nothing to offer — the house has none, or every one is
+   * already here — which are different facts.
+   */
+  function addCalendar(live: LiveState): string {
     const already = haCalendarEntityIds(deps.db);
     const available = live.calendars.filter((entity) => !already.has(entity.entityId));
 
@@ -1699,30 +1826,16 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       )
       .join('');
 
-    /*
-     * One section holding the list and then the form, which is `todoLists`'
-     * shape one subject along rather than a second one invented here. Two
-     * sections were tried first — measured on a 390px phone, a second heading
-     * and the help prose above it put the add form 454px down a screen whose
-     * whole content is that form.
-     */
-    return section(
-      'Calendars',
-      'Calendars already in Home Assistant, added without finding a ' +
-        'single address. They appear on the Calendars page like any other, and can be ' +
-        'coloured and assigned to a person there.',
-      calendarRows() +
-        (available.length === 0
-          ? emptyState(already.size === 0 ? 'Home Assistant has no calendar entities.' : 'All of them have been added.')
-          : `<form method="post" action="admin/home-assistant/calendars">` +
-            selectField({ label: 'Calendar', name: 'entity_id', optionsHtml: options }) +
-            textField({
-              label: 'Call it',
-              name: 'name',
-              placeholder: 'Leave empty to use its own name',
-            }) +
-            `<button type="submit">Add calendar</button></form>`),
-    );
+    return available.length === 0
+      ? emptyState(already.size === 0 ? 'Home Assistant has no calendar entities.' : 'All of them have been added.')
+      : `<form method="post" action="admin/home-assistant/calendars">` +
+          selectField({ label: 'Calendar', name: 'entity_id', optionsHtml: options }) +
+          textField({
+            label: 'Call it',
+            name: 'name',
+            placeholder: 'Leave empty to use its own name',
+          }) +
+          `<button type="submit">Add calendar</button></form>`;
   }
 
   /**
@@ -1731,9 +1844,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
    * Built from the component layer and nothing else — a `section`, a `listRow`
    * per list with its state as a `tag` and its actions in the ⋮ (reorder above
    * the rule, `destructive()` below it, the one rule every ordered list here
-   * follows), an `emptyState` when there is none, and the add form from the
-   * field helpers. The picker is the same `/api/states` datalist the readings
-   * form uses, read for `todo.*` alone.
+   * follows), and an `emptyState` leading to the add page when there is none.
    *
    * The section says plainly where the tick lives, which is **not here**
    * (RFC 012 phase 2). Showing a list and letting a wall write to it are two
@@ -1747,16 +1858,35 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
    * rather than the eighth block of one page. Nothing in this function changed
    * with it: the rows, the reorder items, `destructive()`, the add form and the
    * `MAX_WATCHED_LISTS` refusal all travelled whole, which is the whole claim
-   * that this was a routing change and not a rewrite.
+   * that this was a routing change and not a rewrite. The add form and the
+   * refusal moved again in P2.1, one page along, to `addList`.
    */
-  function todoLists(live: LiveState): string {
+  function todoLists(): string {
     const watched = readTodoLists(deps.db);
-    const watchedIds = new Set(watched.map((list) => list.entityId));
 
     const rows = watched
       .map((list, index) => listRowFor(list, index === 0, index === watched.length - 1))
       .join('');
 
+    return section(
+      'To-do lists',
+      'A Home Assistant to-do list, read every minute, drawn by the To-do widget on ' +
+        'any wall or panel you put one on. To tick items off from a wall, turn on ' +
+        '“Allow ticking to-do items off” on that wall’s own page — it is off ' +
+        'everywhere until you do, and an e-paper panel cannot offer it at all.',
+      rows === '' ? emptyState('No to-do lists are shown yet.', LISTS_ADD) : rows,
+    );
+  }
+
+  /**
+   * Adding a list, on a page of its own (P2.1): the picker is the same
+   * `/api/states` datalist the readings form uses, read for `todo.*` alone,
+   * and the `MAX_WATCHED_LISTS` refusal is drawn in the form's place, as it
+   * was when the form sat under the list.
+   */
+  function addList(live: LiveState): string {
+    const watched = readTodoLists(deps.db);
+    const watchedIds = new Set(watched.map((list) => list.entityId));
     const available = live.todo.filter((entity) => !watchedIds.has(entity.entityId));
     const options = available
       .map(
@@ -1767,7 +1897,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       .join('');
 
     const full = watched.length >= MAX_WATCHED_LISTS;
-    const addForm = full
+    return full
       ? `<p class="hint">A wall reads at most ${MAX_WATCHED_LISTS} lists. Remove one to add another.</p>`
       : available.length === 0
         ? emptyState(
@@ -1791,15 +1921,6 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
             attrs: 'maxlength="60"',
           }) +
           `<button type="submit">Show this list</button></form>`;
-
-    return section(
-      'To-do lists',
-      'A Home Assistant to-do list, read every minute, drawn by the To-do widget on ' +
-        'any wall or panel you put one on. To tick items off from a wall, turn on ' +
-        '“Allow ticking to-do items off” on that wall’s own page — it is off ' +
-        'everywhere until you do, and an e-paper panel cannot offer it at all.',
-      (rows === '' ? emptyState('No to-do lists are shown yet.') : rows) + addForm,
-    );
   }
 
   /** One watched list: its name, its state as a word, and its actions in the ⋮. */
@@ -1831,7 +1952,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     return listRow('', { title: name, detail }, state + menu);
   }
 
-  function rules(live: LiveState, template?: RuleTemplate, echo?: RuleEcho): string {
+  function rules(): string {
     const stored = readRuleRows(deps.db).filter(
       (row) => row.trigger === 'homeassistant' || row.trigger === 'ha_entity',
     );
@@ -1881,6 +2002,20 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       })
       .join('');
 
+    return section(
+      'Tell me when…',
+      'The wall interrupts itself for things worth walking over for. ' +
+        'Everything else belongs in a Home Assistant notification.',
+      existing === '' ? emptyState('No rules yet.', RULES_ADD) : existing,
+    );
+  }
+
+  /**
+   * Adding a rule, on a page of its own (P2.1), with the templates above the
+   * form: a template is a way to start a rule, so it sits where rules are
+   * started.
+   */
+  function addRule(live: LiveState, template?: RuleTemplate, echo?: RuleEcho): string {
     /*
      * A row per template, which fills the form in below.
      *
@@ -1895,7 +2030,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
         {
           title: entry.name,
           detail: entry.hint,
-          href: `admin/home-assistant/alerts?template=${encodeURIComponent(entry.key)}`,
+          href: `admin/home-assistant/alerts/new?template=${encodeURIComponent(entry.key)}`,
         },
       ),
     ).join('');
@@ -1941,12 +2076,12 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       action: known(ACTION_KEYS, echo?.action) ?? template?.action,
     };
 
-    return section(
-      'Tell me when…',
-      'The wall interrupts itself for things worth walking over for. ' +
-        'Everything else belongs in a Home Assistant notification.',
-      (existing === '' ? '' : existing) +
-      templates +
+    return (
+      section(
+        'Start from one of these',
+        'Each one fills in the form below. Change anything before you add it.',
+        templates,
+      ) +
       `<form method="post" action="admin/home-assistant/rules">` +
       textField({
         label: 'What to say',
@@ -2025,7 +2160,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
             `${entry.key === filled.action ? ' selected' : ''}>${escapeHtml(entry.label)}</option>`,
         ).join(''),
       }) +
-      `<button type="submit">Add rule</button></form>`,
+      `<button type="submit">Add rule</button></form>`
     );
   }
 }

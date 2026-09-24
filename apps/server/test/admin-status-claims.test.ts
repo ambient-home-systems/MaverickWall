@@ -185,7 +185,7 @@ describe('the Overview calendar chip', () => {
       // One calendar: "No calendars yet" is gone, and with no wall paired the
       // page still has something to say — so it is not yet all good.
       expect(text).not.toContain('No calendars yet');
-      expect(text).toContain('No walls paired yet');
+      expect(text).toContain('No walls yet');
       expect(text).not.toContain('Everything is running');
 
       // Pair a wall and have it call in, and the page has nothing left to
