@@ -8,6 +8,12 @@
  * one; and a second filled "Add a calendar" rode the app bar while the form it
  * would scroll to was already on screen.
  *
+ * That last one is answered differently since P2.1, and this file says so
+ * where it measures it: the add form moved to a page of its own, so the list's
+ * one filled control *is* the app-bar "Add a calendar" and the add page's is
+ * its own Add. One primary per screen either way — the letter moved, the
+ * intent did not.
+ *
  * Every assertion here is on a **computed** colour or a measured rectangle,
  * never on a class name. This codebase has shipped a bug where the class was
  * applied and the pixels were wrong (`.ch-tick` clearing the background it was
@@ -194,7 +200,11 @@ async function signedInCalendars(): Promise<{ page: Page; home: Installation }> 
   return { page, home };
 }
 
+/** The add page, where the form has lived since P2.1. */
+const ADD_PAGE = '/admin/calendars/new/address';
 const ADD = 'form[action="admin/calendars"] button[value="save"]';
+/** The list's own primary: its one app-bar action. */
+const PRIMARY = 'header.topbar a.btn';
 const TEST = 'form[action="admin/calendars"] button[value="test"]';
 const SYNC = '.card form[action$="/sync"] button';
 /** By its words, not its treatment — the treatment is what is under test. */
@@ -206,10 +216,16 @@ describe('the Calendars page action hierarchy', () => {
   it(
     'draws Add as the filled primary and Test feed as a secondary, in every state',
     async () => {
-      const { page } = await signedInCalendars();
+      const { page, home } = await signedInCalendars();
 
+      // Add and Test feed on the add page, Sync now on the list: the same
+      // theme and so the same primary ground, on the two pages each is on.
+      await page.goto(`${home.base}${ADD_PAGE}`, { waitUntil: 'load' });
       const add = await threeStates(page, ADD);
       const test = await threeStates(page, TEST);
+      const addOwnGround = await hasOwnGround(page, ADD);
+      const testOwnGround = await hasOwnGround(page, TEST);
+      await page.goto(`${home.base}/admin/calendars`, { waitUntil: 'load' });
       const sync = await threeStates(page, SYNC);
       /*
        * The claim is absolute, not relational: **Add** is the control with a
@@ -217,12 +233,9 @@ describe('the Calendars page action hierarchy', () => {
        * two differ" would pass just as happily with them swapped, which is the
        * inversion being fixed.
        */
+      expect(addOwnGround, 'Add is the filled primary, not an outline').toBe(true);
       expect(
-        await hasOwnGround(page, ADD),
-        'Add is the filled primary, not an outline',
-      ).toBe(true);
-      expect(
-        await hasOwnGround(page, TEST),
+        testOwnGround,
         'Test feed is the optional diagnostic and carries no ground of its own',
       ).toBe(false);
       expect(await hasOwnGround(page, SYNC), 'Sync now carries no ground either').toBe(false);
@@ -261,52 +274,63 @@ describe('the Calendars page action hierarchy', () => {
   );
 
   it(
-    'has one primary on the screen: no app-bar Add competing with the form',
+    "has one primary per screen: the app-bar Add on the list, the form's Add on the add page",
     async () => {
-      const { page } = await signedInCalendars();
-
-      const addBox = await page.locator(ADD).boundingBox();
-      expect(addBox, 'the add form is on screen').not.toBeNull();
+      const { page, home } = await signedInCalendars();
 
       /*
        * Every *filled* control on the page, by its pixels: a background of its
-       * own that is opaque and is not the page's ground. There must be one,
-       * and it must be the thing this screen exists to do.
+       * own that is opaque and is not the page's ground.
        */
-      const filled = await page.evaluate(() => {
-        // Painted, not parsed — Chromium serialises color-mix() as oklab().
-        const probe = document.createElement('canvas').getContext('2d') as CanvasRenderingContext2D;
-        const bytes = (value: string): number[] => {
-          probe.clearRect(0, 0, 1, 1);
-          probe.fillStyle = 'rgba(0, 0, 0, 0)';
-          probe.fillStyle = value;
-          probe.fillRect(0, 0, 1, 1);
-          const d = probe.getImageData(0, 0, 1, 1).data;
-          return [d[0] as number, d[1] as number, d[2] as number, (d[3] as number) / 255];
-        };
-        const ground = bytes(getComputedStyle(document.body).backgroundColor);
-        const out: string[] = [];
-        /*
-         * The page's own content, not the shell. The sidebar's theme picker
-         * paints its selected segment with a tint — a *selection state*, not an
-         * action — and it is set by script after load, so counting it would
-         * make this assertion depend on whether the script beat the
-         * measurement. "One primary per screen" is a claim about the screen.
-         */
-        const main = document.getElementById('mw-main') as HTMLElement;
-        for (const el of main.querySelectorAll('button, a.btn, .btn')) {
-          const box = el.getBoundingClientRect();
-          if (box.width === 0 || box.height === 0) continue;
-          const own = bytes(getComputedStyle(el).backgroundColor);
-          if ((own[3] as number) < 0.99) continue;
-          const same = [0, 1, 2].every(
-            (i) => Math.abs((own[i] as number) - (ground[i] as number)) < 6,
-          );
-          if (!same) out.push((el.textContent ?? '').trim());
-        }
-        return out;
-      });
-      expect(filled, 'exactly one filled button on the screen, and it is Add').toEqual(['Add']);
+      const filled = (): Promise<string[]> =>
+        page.evaluate(() => {
+          // Painted, not parsed — Chromium serialises color-mix() as oklab().
+          const probe = document.createElement('canvas').getContext('2d') as CanvasRenderingContext2D;
+          const bytes = (value: string): number[] => {
+            probe.clearRect(0, 0, 1, 1);
+            probe.fillStyle = 'rgba(0, 0, 0, 0)';
+            probe.fillStyle = value;
+            probe.fillRect(0, 0, 1, 1);
+            const d = probe.getImageData(0, 0, 1, 1).data;
+            return [d[0] as number, d[1] as number, d[2] as number, (d[3] as number) / 255];
+          };
+          const ground = bytes(getComputedStyle(document.body).backgroundColor);
+          const out: string[] = [];
+          /*
+           * The page's own content and its app bar, not the drawer. The
+           * sidebar's theme picker paints its selected segment with a tint — a
+           * *selection state*, not an action — and it is set by script after
+           * load, so counting it would make this assertion depend on whether
+           * the script beat the measurement.
+           */
+          const main = document.getElementById('mw-main') as HTMLElement;
+          for (const el of main.querySelectorAll('button, a.btn, .btn')) {
+            const box = el.getBoundingClientRect();
+            if (box.width === 0 || box.height === 0) continue;
+            const own = bytes(getComputedStyle(el).backgroundColor);
+            if ((own[3] as number) < 0.99) continue;
+            const same = [0, 1, 2].every(
+              (i) => Math.abs((own[i] as number) - (ground[i] as number)) < 6,
+            );
+            if (!same) out.push((el.textContent ?? '').trim());
+          }
+          return out;
+        });
+
+      /*
+       * The list: one filled control, and it is the app bar's "Add a calendar".
+       * Before P2.1 this asserted the opposite placement — no app-bar Add, and
+       * the form's Add as the one primary — because the form was on this page
+       * and an app-bar link to it could only scroll. With the form elsewhere
+       * the app-bar action leads somewhere, and it is the list's one primary.
+       */
+      expect(await filled(), 'exactly one filled control on the list').toEqual(['Add a calendar']);
+
+      await page.goto(`${home.base}${ADD_PAGE}`, { waitUntil: 'load' });
+      expect(await page.locator(ADD).boundingBox(), 'the add form is on screen').not.toBeNull();
+      expect(await filled(), 'exactly one filled button on the add page, and it is Add').toEqual([
+        'Add',
+      ]);
     },
     SLOW,
   );
@@ -373,7 +397,9 @@ describe('the Calendars page action hierarchy', () => {
       // every state — the menu row clears its background, which is exactly
       // the class of control that fills with primary on press.
       const removeStates = await threeStates(page, '.card .ovf-menu button');
-      const primaryBg = (await paint(page, ADD)).bg;
+      // The list's own primary, which is its app-bar action since P2.1 took
+      // the add form — and its Add — to a page of its own.
+      const primaryBg = (await paint(page, PRIMARY)).bg;
       for (const [state, one] of [
         ['rest', removeStates.rest],
         ['hover', removeStates.hover],

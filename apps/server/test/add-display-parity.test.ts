@@ -15,6 +15,7 @@ import { createFetcher } from '../src/net/fetcher.js';
 import { readLayoutWidgets } from '../src/api/queries.js';
 import { TEMPLATES, PANEL_TEMPLATES } from '../src/templates/index.js';
 import { WALL_SIZE_CUSTOM, WALL_SIZE_PRESETS, wallSizePreset } from '../src/wall-sizes.js';
+import { WALL_KINDS } from '../src/http/admin-walls.js';
 
 /**
  * Adding a wall and adding a panel are one act with two doors, and this holds
@@ -166,6 +167,13 @@ const radioChecked = (html: string, name: string, value: string): boolean =>
 /** Whether a form control by that name is on the page at all. */
 const asks = (html: string, name: string): boolean => html.includes(`name="${name}"`);
 
+/*
+ * The two add pages, one step behind the Walls chooser (P2.2). `/admin/walls/new`
+ * is the chooser itself now, and `/admin/epaper` a redirect to the second.
+ */
+const WALL_PAGE = '/admin/walls/new/browser';
+const PANEL_PAGE = '/admin/walls/new/epaper';
+
 describe('adding a wall and adding a panel are one shape', () => {
   /*
    * The parity claim itself, and it is deliberately about the *questions*
@@ -179,8 +187,8 @@ describe('adding a wall and adding a panel are one shape', () => {
    */
   it('asks the same four questions on both add pages', async () => {
     const h = await harness();
-    const wall = await h.html('/admin/walls/new');
-    const panel = await h.html('/admin/epaper');
+    const wall = await h.html(WALL_PAGE);
+    const panel = await h.html(PANEL_PAGE);
 
     for (const [kind, page] of [['wall', wall], ['panel', panel]] as const) {
       expect(asks(page, 'name'), `${kind}: no name field`).toBe(true);
@@ -197,17 +205,64 @@ describe('adding a wall and adding a panel are one shape', () => {
     expect(panel).toContain('Starting layout');
   });
 
-  it('reaches both add pages from the Walls list, and neither form is on it', async () => {
+  it('reaches both add pages from the Walls list through one door, and neither form is on it', async () => {
     const h = await harness();
     const list = await h.html('/admin/walls');
-    expect(list).toContain('admin/walls/new');
-    expect(list).toContain('admin/epaper#add');
+    /*
+     * One "Add a wall" in the app bar, to the chooser (P2.2), where this used
+     * to find two doors on the list itself — one to each add page. The two
+     * add pages are one step further, from the chooser.
+     */
+    expect(list).toContain('href="admin/walls/new">Add a wall</a>');
+    expect(list).not.toContain('href="admin/walls/new/browser"');
+    expect(list).not.toContain('href="admin/epaper');
+    const chooser = await h.html('/admin/walls/new');
+    expect(chooser).toContain('href="admin/walls/new/browser"');
+    expect(chooser).toContain('href="admin/walls/new/epaper"');
     /*
      * The list must not still carry a name field of its own. Two ways to add a
      * wall — one of which asks for less — is the disjointedness this change is
      * about, and leaving the old form behind is exactly how it would come back.
      */
     expect(asks(list, 'name'), 'the old inline add form is still on the Walls list').toBe(false);
+    expect(asks(chooser, 'name'), 'the chooser asks nothing but which kind').toBe(false);
+  });
+
+  /*
+   * The words (P2.2). The browser page said "Pair a new wall" under a button
+   * reading "Pair a browser wall", the panel page "Add an e-paper wall" under
+   * "Add an e-paper panel", and their last buttons were "Add wall" and
+   * "Create" — both the verb and the noun differed for one act. Now each page
+   * is headed by the chooser row that leads to it, word for word, and both end
+   * on the same button. "Pair" is kept for the step that pairs a browser: the
+   * QR and the link, on the page *after* this one.
+   */
+  it('heads each add page with its chooser row, and ends both on "Add wall"', async () => {
+    const h = await harness();
+    const chooser = await h.html('/admin/walls/new');
+    const pages = { browser: await h.html(WALL_PAGE), epaper: await h.html(PANEL_PAGE) };
+    const headingOf = (html: string): string => /<h1>([^<]*)<\/h1>/.exec(html)?.[1] ?? '';
+    const submitsOf = (html: string): string[] =>
+      [...html.matchAll(/<button[^>]*type="submit"[^>]*>([^<]*)<\/button>/g)].map((m) => m[1] as string);
+
+    expect(WALL_KINDS.map((kind) => kind.href)).toEqual(['admin/walls/new/browser', 'admin/walls/new/epaper']);
+    for (const kind of WALL_KINDS) {
+      const html = kind.href.endsWith('/browser') ? pages.browser : pages.epaper;
+      expect(chooser, `the chooser offers "${kind.title}"`).toContain(
+        `<a class="mw-row-link" href="${kind.href}">${kind.title}</a>`,
+      );
+      expect(headingOf(html), `${kind.href} is headed by the row that leads to it`).toBe(kind.title);
+      expect(html, `${kind.href}'s <title>`).toContain(`<title>${kind.title} — Maverick Wall</title>`);
+    }
+    // The same verb and noun on both, and the one form each page has ends on it.
+    expect(headingOf(pages.browser).replace('a browser', '')).toBe(headingOf(pages.epaper).replace('an e-paper', ''));
+    expect(submitsOf(pages.browser)).toEqual(['Add wall']);
+    expect(submitsOf(pages.epaper)).toEqual(['Add wall']);
+    // "Pair" is the next page's verb, and neither of these says it.
+    for (const [kind, html] of Object.entries(pages)) {
+      expect(html.indexOf('<main'), `${kind} has a <main> to read`).toBeGreaterThan(0);
+      expect(html.slice(html.indexOf('<main')), `${kind} says "Pair"`).not.toMatch(/\bPair\b/);
+    }
   });
 
   /*
@@ -221,8 +276,8 @@ describe('adding a wall and adding a panel are one shape', () => {
   it('reveals conditional fields with script and shows them all without it', async () => {
     const h = await harness();
     for (const [kind, page] of [
-      ['wall', await h.html('/admin/walls/new')],
-      ['panel', await h.html('/admin/epaper')],
+      ['wall', await h.html(WALL_PAGE)],
+      ['panel', await h.html(PANEL_PAGE)],
     ] as const) {
       expect(page, `${kind}: no conditional group`).toContain('data-cond-show=');
       expect(page, `${kind}: the reveal script is not shipped`).toContain('conditional-fields.js');
@@ -238,7 +293,7 @@ describe('adding a wall and adding a panel are one shape', () => {
 
   it('offers every template it ships, from the right catalogue, on each page', async () => {
     const h = await harness();
-    expect(radiosOf(await h.html('/admin/walls/new'), 'template')).toEqual(
+    expect(radiosOf(await h.html(WALL_PAGE), 'template')).toEqual(
       TEMPLATES.map((one) => one.id),
     );
     /*
@@ -247,7 +302,7 @@ describe('adding a wall and adding a panel are one shape', () => {
      * panel, where `panel-built-in` is stored fractions approximating it. The
      * default has to be the real one.
      */
-    expect(radiosOf(await h.html('/admin/epaper'), 'layout')).toEqual([
+    expect(radiosOf(await h.html(PANEL_PAGE), 'layout')).toEqual([
       'builtin',
       ...PANEL_TEMPLATES.map((one) => one.id),
     ]);
@@ -264,7 +319,7 @@ describe('adding a wall and adding a panel are one shape', () => {
      * depending on which screen a household happened to be on.
      */
     const expected = ['', ...WALL_SIZE_PRESETS.map((one) => one.key), WALL_SIZE_CUSTOM];
-    expect(optionsOf(await h.html('/admin/walls/new'), 'panel_size')).toEqual(expected);
+    expect(optionsOf(await h.html(WALL_PAGE), 'panel_size')).toEqual(expected);
     expect(optionsOf(settings, 'panel_size')).toEqual(expected);
   });
 });

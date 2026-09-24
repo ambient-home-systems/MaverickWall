@@ -13,7 +13,6 @@ import {
   FACE_DIAL_PATH,
   FACE_HUB_PATH,
   analogueFace,
-  clockVariant,
   stackedDateLines,
   wallClockReading,
 } from './clock-face.js';
@@ -21,6 +20,7 @@ import { agendaTimeFitsBeside, weekColumnsFit } from './density.js';
 import type { PanelData, PanelReading } from './viewmodel.js';
 import type { ManifestWidget, CanvasBackground } from './manifest.js';
 import { glyphNode } from './glyphs.js';
+import { variantOf } from './variants.js';
 import { boxRect, gutterStepFor } from './gutter.js';
 import { childCells, groupChildren, topLevelWidgets } from './group-cells.js';
 import { applyStyleTokens, styleTokensOf } from './widget-style.js';
@@ -39,6 +39,7 @@ import {
 } from './ladder.js';
 import {
   clockWidgetView,
+  houseReadingsFor,
   panelRowLimit,
   shiftWidgetView,
   weatherWidgetView,
@@ -63,9 +64,10 @@ import {
   WIDGET_TIERS,
   columnsAt,
   itemsAt,
-  laddersToOneLine,
   rungsAt,
   rungsByPriority,
+  shiftBadgesToLines,
+  stackedItemHeight,
   widgetTierFor,
   type WidgetTier,
 } from './widget-tiers.js';
@@ -431,12 +433,10 @@ function renderHouse(
   config?: unknown,
   tier?: WidgetTier,
 ): HTMLElement | undefined {
-  // Which readings to show, by label — the manifest carries no entity id, so a
-  // per-widget selection can only ever be by the label the household sees.
-  // Empty means all, which is the default and what a bare widget draws.
-  const wanted = configStrings(widgetConfig(config)['readings']);
-  const readings =
-    wanted.length === 0 ? model.house : model.house.filter((r) => wanted.includes(r.label));
+  // Which readings to show, by the handle the server minted for each — never
+  // an entity id, and no longer the label, which a rename used to break
+  // (P1.3). Empty means all, which is the default and what a bare widget draws.
+  const readings = houseReadingsFor(model.house, config);
   if (readings.length === 0) return undefined;
 
   const strip = el('section', 'house');
@@ -1175,10 +1175,11 @@ function renderBanners(model: DisplayModel): HTMLElement | undefined {
 /**
  * The clock, as a widget: the time the today block already shows, on its own —
  * in whichever of its three designed variants the household chose (RFC 014
- * §4.2). What each variant *is* lives in `clock-face.ts`; this only builds it.
+ * §4.2). What each variant *is* lives in `clock-face.ts`, and which one a
+ * config means in `variants.ts`; this only builds it.
  */
 function renderClockWidget(model: DisplayModel, config?: unknown): HTMLElement {
-  const variant = clockVariant(config);
+  const variant = variantOf('clock', config);
   if (variant === 'analogue') return renderAnalogueClock(model);
   const view = clockWidgetView(config);
   const box = el('div', variant === 'stacked' ? 'fw-clock clk-stacked' : 'fw-clock');
@@ -2200,9 +2201,18 @@ function tierWeather(
  * The rota badge: how much one badge says, and how many of them there are.
  *
  * At one rung out of several the badge is a **line** rather than a word — the
- * ladder's rule, and the reason `laddersToOneLine` is a predicate in the table
- * rather than an `if` in here: two renderers holding one rule is this project's
- * most repeated bug.
+ * ladder's rule, and the reason `shiftBadgesToLines` is a predicate in the
+ * table rather than an `if` in here: two renderers holding one rule is this
+ * project's most repeated bug.
+ *
+ * **The tier is chosen for one badge, not for the box.** It used to be read off
+ * the whole box as if the box held one badge, then a card drawn at that tier
+ * for every person on the rota — so on Classic, whose rota box is one badge
+ * tall, the second person's card ended past the foot and the belt took them
+ * off the glass while the stamp still said two. Each badge's height is the
+ * box's less the gaps between them, shared out (`stackedItemHeight`); where
+ * that is too short for a card, every person is a line, which is what the
+ * panel has always drawn for more than one.
  */
 function tierShift(
   entry: TieredWidget,
@@ -2213,18 +2223,29 @@ function tierShift(
   emPx: number,
 ): void {
   const view = shiftWidgetView(model.todayShifts, entry.widget.config);
-  if (view.entries.length === 0) return;
-  const tier = widgetTierFor(table, inner.w, inner.h, chPx, emPx);
+  const people = view.entries.length;
+  if (people === 0) return;
+  // The stack's own gap, off the drawn body: the cards are what this tier is
+  // asking about, so it is the gap between cards that is charged. One person
+  // has no gap, so a one-person wall is asked exactly what it always was.
+  const gap = people > 1 ? parseFloat(getComputedStyle(entry.body).rowGap) : 0;
+  const perBadge = stackedItemHeight(inner.h, people, Number.isFinite(gap) ? gap : 0);
+  const tier = widgetTierFor(table, inner.w, perBadge, chPx, emPx);
   const ladder = rungsAt(tier, view.ladder);
-  const line = laddersToOneLine(tier, view.ladder.length);
-  stampTier(entry.box, tier, view.entries.length);
+  const line = shiftBadgesToLines(tier, view.ladder.length, people);
   // A badge collapsed onto one line has given up nothing: every rung is on it.
   stampRungs(entry.box, line ? view.ladder : ladder);
   if (ladder.length === view.ladder.length && !line) {
     beltShift(entry);
+    stampTier(entry.box, tier, visibleBadges(entry));
     return;
   }
-  const rebuilt = el('div', view.entries.length > 1 ? 'fw-shift is-several' : 'fw-shift');
+  // `is-lines` is the several-people list (`display.css`): each person a line
+  // at the list's own size, not the one-person line at the headline's.
+  const rebuilt = el(
+    'div',
+    people > 1 ? (line ? 'fw-shift is-several is-lines' : 'fw-shift is-several') : 'fw-shift',
+  );
   for (const person of view.entries) {
     rebuilt.appendChild(
       line
@@ -2234,6 +2255,20 @@ function tierShift(
   }
   replaceBody(entry, rebuilt);
   beltShift(entry);
+  stampTier(entry.box, tier, visibleBadges(entry));
+}
+
+/**
+ * How many badges are on the glass once the belt has run.
+ *
+ * Counted after the belt and never before it, because the count is what the
+ * editor is told this box shows and the belt is what decides it: stamped from
+ * the rota it said two while a household could read one.
+ */
+function visibleBadges(entry: TieredWidget): number {
+  return ([...entry.box.querySelectorAll('.shift-badge')] as HTMLElement[]).filter(
+    (badge) => badge.style.display !== 'none',
+  ).length;
 }
 
 /**

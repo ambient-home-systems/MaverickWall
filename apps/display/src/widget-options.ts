@@ -1,5 +1,5 @@
 import { shiftLadder, type ShiftField } from './ladder.js';
-import type { TodayShiftModel, WeatherDayModel } from './viewmodel.js';
+import type { HouseReadingModel, TodayShiftModel, WeatherDayModel } from './viewmodel.js';
 
 /**
  * What each widget shows, decided as data.
@@ -161,4 +161,53 @@ export function weatherWidgetView(
  */
 export function panelRowLimit(config?: unknown): number | undefined {
   return count(read(config)['count'], 12);
+}
+
+/* ---------------------------------------------------------------- HOUSE --- */
+
+/**
+ * Which of the house's readings one Home Assistant widget draws (P1.3).
+ *
+ * `readings` empty, or absent, is all of them — the default, and what a bare
+ * widget draws. Otherwise it is a list of the handles the server minted
+ * (`displayConfig` rewrites the entity ids a widget stores into them), and a
+ * reading is drawn when its own handle is on it. It used to be a list of
+ * **labels**, so renaming a reading on the Home Assistant screen took it off
+ * every widget that had picked it; a handle is the entity, and a rename cannot
+ * move it.
+ *
+ * A reading with no handle comes from a server older than the handle, whose
+ * widget still stores labels, and is matched on its label exactly as it always
+ * was — so this bundle draws the right thing against either server. A server
+ * that sends handles sends them on every reading, so the label path is never
+ * reached against it.
+ */
+export function houseReadingsFor(
+  house: readonly HouseReadingModel[],
+  config?: unknown,
+): readonly HouseReadingModel[] {
+  const wanted = strings(read(config)['readings']);
+  if (wanted.length === 0) return house;
+  return house.filter((reading) => wanted.includes(reading.key ?? reading.label));
+}
+
+/**
+ * A Home Assistant box's stored `readings`, as the editor's preview draws them.
+ *
+ * The widget stores entity ids and the wall receives handles (`displayConfig`,
+ * server side); the preview renders the real house panel through the wall's
+ * own renderer, so the box has to name handles too. Substituted from what the
+ * server handed the picker — the editor repeats a handle it was given and has
+ * no opinion about how one is made. An entry the picker does not know is left
+ * as it is and matches nothing, which is what the wall draws for it.
+ * `undefined` when the box names no list at all, so its config is untouched.
+ */
+export function previewReadingKeys(
+  entries: unknown,
+  choices: readonly { readonly id: string; readonly key: string }[],
+): string[] | undefined {
+  if (!Array.isArray(entries)) return undefined;
+  return entries
+    .filter((entry): entry is string => typeof entry === 'string')
+    .map((entry) => choices.find((choice) => choice.id === entry)?.key ?? entry);
 }

@@ -158,7 +158,7 @@ describe('the theme builder', () => {
     await h.form('/admin/themes', themeFields('Sunset'));
     const id = readThemes(h.db)[0]?.id ?? '';
 
-    const add = await (await h.call('/admin/walls/new')).text();
+    const add = await (await h.call('/admin/walls/new/browser')).text();
     expect(add).toContain(`custom:${id}`);
     expect(add).toContain('Sunset');
     expect(await (await h.call('/admin/system')).text()).not.toContain(`custom:${id}`);
@@ -430,7 +430,7 @@ describe('the two places a wall’s theme is chosen', () => {
     const wallId = /\/admin\/walls\/([^/]+)\/pair/.exec(made.headers.get('location') ?? '')?.[1] ?? '';
     expect(wallId).not.toBe('');
 
-    const creation = await (await h.call('/admin/walls/new')).text();
+    const creation = await (await h.call('/admin/walls/new/browser')).text();
     const wall = await (await h.call(`/admin/walls/${wallId}`)).text();
 
     const expected = [...THEMES.map((t) => t.key), ...custom];
@@ -465,7 +465,7 @@ describe('the two places a wall’s theme is chosen', () => {
     const made = await h.form('/admin/screens', { name: 'Kitchen', theme: 'almanac' });
     const wallId = /\/admin\/walls\/([^/]+)\/pair/.exec(made.headers.get('location') ?? '')?.[1] ?? '';
 
-    expect(checked(await (await h.call('/admin/walls/new')).text())).toEqual([]);
+    expect(checked(await (await h.call('/admin/walls/new/browser')).text())).toEqual([]);
     expect(checked(await (await h.call(`/admin/walls/${wallId}`)).text())).toEqual(['almanac']);
   });
 

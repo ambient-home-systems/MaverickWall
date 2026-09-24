@@ -132,6 +132,9 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
 
   app.get('/admin/themes', (c: Context) => c.html(themesPage(c)));
 
+  // Adding a theme is this page (P2.1): the builder, with "Generate from a
+  // colour" at its head — the second way to start one, which used to sit at
+  // the foot of the Themes list beside the app bar's own action.
   app.get('/admin/themes/new', (c: Context) => c.html(builderPage(null, undefined, undefined, c)));
 
   app.get('/admin/themes/:id', (c: Context) => {
@@ -158,12 +161,16 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
    */
   app.post('/admin/themes/generate', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
+    // A refusal comes back to the add page it was sent from, with what was
+    // typed, and the error above the form that produced it.
+    const refuse = (message: string): Response =>
+      c.html(builderPage(null, undefined, undefined, c, { message, values: body }), 400);
     const name = parse(nameBody, body['name']);
-    if (!name.ok) return c.html(themesPage(c, name.message), 400);
+    if (!name.ok) return refuse(name.message);
     const seed = parse(colour(), body['seed']);
-    if (!seed.ok) return c.html(themesPage(c, 'Pick a seed colour.'), 400);
+    if (!seed.ok) return refuse('Pick a seed colour.');
     const mode = parse(oneOf('Dark or light', ['dark', 'light'] as const), body['mode']);
-    if (!mode.ok) return c.html(themesPage(c, 'Choose dark or light.'), 400);
+    if (!mode.ok) return refuse('Choose dark or light.');
 
     const tokens = themeTokensSchema.parse(generateThemeTokens(seed.value, mode.value));
     // A generated theme starts with no shape borrowed — its whole point is a
@@ -354,7 +361,7 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
       nav: 'themes',
       heading: 'Themes',
       saved: readSaved(c),
-      action: { label: 'New theme', href: 'admin/themes/new' },
+      action: { label: 'Add a theme', href: 'admin/themes/new' },
       intro:
         'Every colour scheme a wall can draw — the ones that ship, and the ones ' +
         'you build. Each wall chooses a theme on the wall’s own page, and the ' +
@@ -365,26 +372,6 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
           'All themes',
           'The tags say which walls are wearing each one.',
           `<div class="themegrid">${themeChoices(custom).map(cardFor).join('')}</div>`,
-        ) +
-        section(
-          'Generate from a colour',
-          'Pick one colour — the seed — and a whole matching theme is worked out from ' +
-            'it: background, panels, text and the shift colours, every pairing kept ' +
-            'readable from across a room. It lands in the builder, so you can adjust ' +
-            'anything afterwards.',
-          `<form method="post" action="admin/themes/generate">` +
-            `<div class="row-fields">` +
-            textField({ label: 'Name', name: 'name', required: true, placeholder: 'Sea glass' }) +
-            textField({ label: 'Seed colour', name: 'seed', type: 'color', value: '#4C7FD1' }) +
-            selectField({
-              label: 'Dark or light',
-              name: 'mode',
-              optionsHtml:
-                `<option value="dark" selected>Dark — for a wall on all evening</option>` +
-                `<option value="light">Light — paper-bright</option>`,
-            }) +
-            `</div>` +
-            `<button type="submit">Generate theme</button></form>`,
         ),
     });
   }
@@ -394,8 +381,44 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
     values: Record<string, unknown> | undefined,
     error: string | undefined,
     c: Context,
+    /** A refused "Generate from a colour", and what was typed into it. */
+    generate?: { readonly message: string; readonly values: Record<string, unknown> },
   ): string {
     const editing = theme !== null;
+    const generated = (key: string, fallback: string): string => {
+      const typed = generate?.values[key];
+      return typeof typed === 'string' ? typed : fallback;
+    };
+    const mode = generated('mode', 'dark');
+    /*
+     * The second way to start a theme, and only on the add page: an edit
+     * already has its colours. Secondary, because the builder's own Add is
+     * this page's one primary — two filled buttons for "make a theme" would be
+     * the two-primaries fault the list pages have just shed.
+     */
+    const generateSection = editing
+      ? ''
+      : section(
+          'Generate from a colour',
+          'Pick one colour — the seed — and a whole matching theme is worked out from ' +
+            'it: background, panels, text and the shift colours, every pairing kept ' +
+            'readable from across a room. It lands back here, so you can adjust ' +
+            'anything afterwards.',
+          (generate === undefined ? '' : errorBlock(generate.message)) +
+            `<form method="post" action="admin/themes/generate">` +
+            `<div class="row-fields">` +
+            textField({ label: 'Name', name: 'name', required: true, placeholder: 'Sea glass', value: generated('name', '') }) +
+            textField({ label: 'Seed colour', name: 'seed', type: 'color', value: generated('seed', '#4C7FD1') }) +
+            selectField({
+              label: 'Dark or light',
+              name: 'mode',
+              optionsHtml:
+                `<option value="dark"${mode === 'light' ? '' : ' selected'}>Dark — for a wall on all evening</option>` +
+                `<option value="light"${mode === 'light' ? ' selected' : ''}>Light — paper-bright</option>`,
+            }) +
+            `</div>` +
+            `<button class="secondary" type="submit">Generate theme</button></form>`,
+        );
     // Prefer a rejected submission's own values, then the stored theme, then the
     // default palette — so nothing a household typed is lost to a validation slip.
     const stored = theme?.tokens as Record<string, string> | undefined;
@@ -441,15 +464,17 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
     return page({
       self: selfHref(c),
       modules: navModules(deps.db),
-      title: `${editing ? 'Edit theme' : 'New theme'} — Maverick Wall`,
+      title: `${editing ? 'Edit theme' : 'Add a theme'} — Maverick Wall`,
       nav: 'themes',
-      heading: editing ? 'Edit theme' : 'New theme',
+      heading: editing ? 'Edit theme' : 'Add a theme',
+      // The way back is the app bar's; it was a "← All themes" link in the body.
+      back: { label: 'Themes', href: 'admin/themes' },
       saved: c === undefined ? undefined : readSaved(c),
       intro:
         'Pick a colour for each part of the wall. The preview updates as you go; ' +
         'save when it looks right. Corners rounds the cards and badges.',
       body:
-        `<p><a class="link" href="admin/themes">← All themes</a></p>` +
+        generateSection +
         (error === undefined ? '' : errorBlock(error)) +
         `<form method="post" action="${action}" class="theme-builder">` +
         `<div class="tb-controls">` +
@@ -519,7 +544,7 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
           }),
         ) +
 
-        `<button type="submit">${editing ? 'Save theme' : 'Create theme'}</button>` +
+        `<button type="submit">${editing ? 'Save theme' : 'Add theme'}</button>` +
         `</div>` +
 
         // Enhanced by assets/theme-editor.js: the shadow-DOM preview and the

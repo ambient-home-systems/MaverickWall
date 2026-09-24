@@ -12,6 +12,7 @@ import { createApp } from '../src/http/app.js';
 import { createSetupTokenHolder } from '../src/http/setup.js';
 import { createKeyring } from '../src/secrets/keyring.js';
 import { createFetcher } from '../src/net/fetcher.js';
+import { createEventWriter } from '../src/jobs/events.js';
 
 /**
  * The e-paper endpoint, driven through the real app.
@@ -123,6 +124,44 @@ describe('the e-paper frame', () => {
     });
     expect(again.status).toBe(304);
     expect((await bytesOf(again)).length).toBe(0);
+  });
+
+  it('still answers 304 after a calendar check that found nothing new', async () => {
+    // Every sync stamps the source's `last_success_at`, the "feed unchanged"
+    // path included, and the manifest carries it. The panel draws no calendar
+    // health, so the sync must not cost it a frame — before P3.5's follow-up
+    // it did, every fifteen minutes, on every paired panel.
+    const h = await harness();
+    const at = Date.now();
+    h.db
+      .prepare(`INSERT INTO calendar_sources (id, name, url_encrypted, created_at, updated_at) VALUES ('s1', 'Family', 'x', ?, ?)`)
+      .run(at, at);
+    const wall = async (): Promise<string> =>
+      (await h.call('http://localhost:8080/d/manifest', { headers: { authorization: `Bearer ${h.token}` } })).headers.get('etag') ?? '';
+
+    const first = await h.call(`http://localhost:8080/d/epaper/${h.token}.png`);
+    const etag = first.headers.get('etag')!;
+    const wallBefore = await wall();
+
+    // The job's own writer, a check later: once found unchanged, once failed.
+    let clock = at;
+    const writer = createEventWriter(h.db, () => clock);
+    clock += 15 * 60_000;
+    writer.recordUnchanged('s1');
+    // The control: a browser wall, which is told a calendar's health, is right
+    // to get a new manifest for it.
+    expect(await wall()).not.toBe(wallBefore);
+    const checked = await h.call(`http://localhost:8080/d/epaper/${h.token}.png`, {
+      headers: { 'if-none-match': etag },
+    });
+    expect(checked.status).toBe(304);
+
+    clock += 15 * 60_000;
+    writer.recordFailure('s1', 'HTTP 503');
+    const failed = await h.call(`http://localhost:8080/d/epaper/${h.token}.png`, {
+      headers: { 'if-none-match': etag },
+    });
+    expect(failed.status).toBe(304);
   });
 
   it('serves the raw 1-bit packing at .bin, sized to the panel', async () => {

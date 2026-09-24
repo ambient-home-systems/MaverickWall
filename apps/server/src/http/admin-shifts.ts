@@ -1,6 +1,6 @@
 import type { Context, Hono } from 'hono';
 import { confirmDestroyPage, escapeHtml, errorBlock, icon, page, textField } from './html.js';
-import { card, destructive, listRow, section, tag } from './components.js';
+import { card, destructive, emptyState, listRow, section, tag } from './components.js';
 import {
   createShiftType,
   deleteShiftType,
@@ -66,10 +66,12 @@ function normaliseTime(value: string | undefined): string | null {
 
 export function registerShiftTypeRoutes(app: Hono, deps: AdminDeps): void {
   app.get('/admin/shifts/types', (c: Context) => c.html(typesPage(c)));
+  app.get('/admin/shifts/types/new', (c: Context) => c.html(newTypePage(c)));
 
   app.post('/admin/shifts/types', async (c: Context) => {
-    const shaped = parse(addBody, (await c.req.parseBody()) as Record<string, unknown>);
-    if (!shaped.ok) return c.html(typesPage(c, shaped.message), 400);
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const shaped = parse(addBody, body);
+    if (!shaped.ok) return c.html(newTypePage(c, shaped.message, body), 400);
     createShiftType(deps.db, {
       label: shaped.value.label,
       shortCode: shaped.value.short_code,
@@ -235,37 +237,63 @@ export function registerShiftTypeRoutes(app: Hono, deps: AdminDeps): void {
       nav: 'shifts',
       heading: 'Shift types',
       saved: readSaved(c),
+      // The way back is the app bar's, where every nested page keeps it; it
+      // used to be a "← Work Schedule" link in the body (P2.1).
+      back: { label: 'Work Schedule', href: 'admin/shifts' },
+      action: { label: 'Add a shift type', href: 'admin/shifts/types/new' },
       intro:
         'The kinds of shift the wall knows about — their names, short codes and ' +
         'colours. Rename or recolour any of them, add your own, or add a time-off ' +
         'type. A rotation refers to these, so a type in use cannot be removed.',
       body:
-        `<p><a class="link" href="admin/shifts">← Work Schedule</a></p>` +
         (error === undefined ? '' : errorBlock(error)) +
-        types.map((type, i) => typeCard(type, i === 0, i === types.length - 1)).join('') +
+        (types.length === 0
+          ? emptyState('No shift types yet.', {
+              label: 'Add a shift type',
+              href: 'admin/shifts/types/new',
+            })
+          : types.map((type, i) => typeCard(type, i === 0, i === types.length - 1)).join('')),
+    });
+  }
 
+  /**
+   * Adding a shift type, on a page of its own (P2.1): your own, or one of the
+   * common ones in a press. Both used to sit at the foot of the list; a 400 on
+   * the form comes back here with what was typed.
+   */
+  function newTypePage(c: Context, error?: string, values?: Record<string, unknown>): string {
+    const typed = (key: string): string | undefined =>
+      typeof values?.[key] === 'string' ? (values[key] as string) : undefined;
+    // An unticked checkbox is not sent, so a submitted body without it means
+    // off; with no body at all it is the form's own default, on.
+    const working = values === undefined ? true : typeof values['is_working'] === 'string';
+    return page({
+      self: selfHref(c),
+      modules: navModules(deps.db),
+      title: 'Add a shift type — Maverick Wall',
+      nav: 'shifts',
+      heading: 'Add a shift type',
+      back: { label: 'Shift types', href: 'admin/shifts/types' },
+      body:
+        (error === undefined ? '' : errorBlock(error)) +
         section(
-          'Add a shift type',
+          'Your own',
           undefined,
           `<form method="post" action="admin/shifts/types">` +
             `<div class="row-fields">` +
-            textField({ label: 'Name', name: 'label', required: true, placeholder: 'Swing', attrs: 'maxlength="40"' }) +
-            textField({ label: 'Short code', name: 'short_code', required: true, placeholder: 'Sw', attrs: 'maxlength="3"' }) +
-            textField({ label: 'Colour', name: 'color', type: 'color', value: '#6b7684' }) +
+            textField({ label: 'Name', name: 'label', required: true, placeholder: 'Swing', value: typed('label') ?? '', attrs: 'maxlength="40"' }) +
+            textField({ label: 'Short code', name: 'short_code', required: true, placeholder: 'Sw', value: typed('short_code') ?? '', attrs: 'maxlength="3"' }) +
+            textField({ label: 'Colour', name: 'color', type: 'color', value: typed('color') ?? '#6b7684' }) +
             `</div>` +
             `<div class="row-fields">` +
-            textField({ label: 'Starts (optional)', name: 'start_time', type: 'time' }) +
-            textField({ label: 'Ends (optional)', name: 'end_time', type: 'time' }) +
+            textField({ label: 'Starts (optional)', name: 'start_time', type: 'time', value: typed('start_time') ?? '' }) +
+            textField({ label: 'Ends (optional)', name: 'end_time', type: 'time', value: typed('end_time') ?? '' }) +
             `</div>` +
             `<p class="hint">A window like 07:00–19:00 shows on the wall. Leave blank for ` +
             `a shift with no set time.</p>` +
-            `<div class="checks"><label><input type="checkbox" name="is_working" value="1" checked> ` +
+            `<div class="checks"><label><input type="checkbox" name="is_working" value="1"${working ? ' checked' : ''}> ` +
             `This is a working shift</label></div>` +
             `<button type="submit">Add</button></form>`,
-          // The original heading carried `id="add"`; `section`'s own `id`
-          // lands on the whole run rather than the heading, so anything that
-          // already links to `admin/shifts/types#add` still resolves.
-          'add',
         ) +
 
         /*
@@ -277,7 +305,7 @@ export function registerShiftTypeRoutes(app: Hono, deps: AdminDeps): void {
          * trade `destructive` makes the other way round.
          */
         section(
-          'Add a common type',
+          'A common type',
           'One-click time-off and on-call types you can then use in a rotation.',
           Object.entries(PRESETS)
             .map(([key, p]) =>
