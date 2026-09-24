@@ -13,7 +13,6 @@ import {
   FACE_DIAL_PATH,
   FACE_HUB_PATH,
   analogueFace,
-  clockVariant,
   stackedDateLines,
   wallClockReading,
 } from './clock-face.js';
@@ -21,6 +20,7 @@ import { agendaTimeFitsBeside, weekColumnsFit } from './density.js';
 import type { PanelData, PanelReading } from './viewmodel.js';
 import type { ManifestWidget, CanvasBackground } from './manifest.js';
 import { glyphNode } from './glyphs.js';
+import { variantOf } from './variants.js';
 import { boxRect, gutterStepFor } from './gutter.js';
 import { childCells, groupChildren, topLevelWidgets } from './group-cells.js';
 import { applyStyleTokens, styleTokensOf } from './widget-style.js';
@@ -1175,10 +1175,11 @@ function renderBanners(model: DisplayModel): HTMLElement | undefined {
 /**
  * The clock, as a widget: the time the today block already shows, on its own —
  * in whichever of its three designed variants the household chose (RFC 014
- * §4.2). What each variant *is* lives in `clock-face.ts`; this only builds it.
+ * §4.2). What each variant *is* lives in `clock-face.ts`, and which one a
+ * config means in `variants.ts`; this only builds it.
  */
 function renderClockWidget(model: DisplayModel, config?: unknown): HTMLElement {
-  const variant = clockVariant(config);
+  const variant = variantOf('clock', config);
   if (variant === 'analogue') return renderAnalogueClock(model);
   const view = clockWidgetView(config);
   const box = el('div', variant === 'stacked' ? 'fw-clock clk-stacked' : 'fw-clock');

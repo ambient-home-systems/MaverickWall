@@ -155,6 +155,19 @@ export const INK_KEYS: readonly string[] = [
  */
 export interface PanelIgnores {
   readonly key: string;
+  /**
+   * The widget types the note is about, when it is not every one of them.
+   *
+   * Absent is every type, which is what every note but one means: a panel
+   * draws no shadow on anything. The exception is `variant`, which is one
+   * enum shared by every type (plan item P4.1) and honoured by the *clock* —
+   * so it cannot be an ignore for every type, and it cannot be left in
+   * neither table for the others either, because a household who picks a
+   * weather look on the wall deserves the sentence on the panel. A scoped
+   * note is held to the same test by rendering, on exactly its types, and
+   * `epaper-ink.test.ts` refuses one that names a type which honours its key.
+   */
+  readonly types?: readonly string[];
   /** The control's own words, so the note names what the household sees. */
   readonly label: string;
   readonly why: string;
@@ -203,6 +216,41 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
     key: 'showShifts',
     label: 'Shift colours',
     why: 'the colours are the point, and there are none.',
+  },
+  /*
+   * A widget's Look (plan item P4.1), on every type that has looks but the
+   * clock. The clock's three are drawn on one bit and are in `PANEL_HONOURS`;
+   * every other type's looks were added to the enum before any of them was
+   * designed, and each type's panel draw reads none of them — it draws the
+   * type's default, which is also exactly what the wall draws for them until
+   * the session that designs each (P5.1–P5.4) decides, per look, what one bit
+   * can carry. One note per type, because the sentence is about what *this*
+   * widget's panel draws instead, and `epaper-ink.test.ts` probes every value
+   * the schema holds on each type to keep all four true.
+   */
+  {
+    key: 'variant',
+    types: ['weather'],
+    label: 'Look',
+    why: 'a panel draws the forecast as its strip, whichever look is chosen.',
+  },
+  {
+    key: 'variant',
+    types: ['countdown'],
+    label: 'Look',
+    why: 'a panel draws the countdown as its number, whichever look is chosen.',
+  },
+  {
+    key: 'variant',
+    types: ['homeassistant'],
+    label: 'Look',
+    why: 'a panel draws the readings as a list, whichever look is chosen.',
+  },
+  {
+    key: 'variant',
+    types: ['calendar'],
+    label: 'Look',
+    why: 'a panel draws the calendar in its standard look, whichever look is chosen.',
   },
   { key: 'showTimes', label: 'Event times', why: 'the panel draws the title alone in a cell.' },
   {

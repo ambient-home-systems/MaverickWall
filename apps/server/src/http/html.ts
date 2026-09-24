@@ -1906,6 +1906,17 @@ pre.code{background:var(--mw-surface-2);
 .le-cfg-field .seg button{flex:1 1 auto;min-width:0;padding:0 var(--mw-s-2);
   white-space:normal;overflow-wrap:break-word;
   height:auto;min-height:38px;line-height:1.15;text-align:center;overflow:visible}
+/* The Look as a grid of labelled choices (plan item P4.1): a type with more
+ * than three designed looks (weather, countdown) draws them three across and as
+ * many rows deep as it needs, rather than as one segmented row that would
+ * break its labels in a 258px column. The same buttons as a segmented control —
+ * every hover, press, pressed-check and 48px pointer target above is theirs —
+ * each outlined on its own, because a joined row's shared edges mean nothing
+ * once the choices wrap onto a second row. */
+.le-cfg-field .seg.le-look-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:var(--mw-s-2);border:0}
+.le-cfg-field .seg.le-look-grid button{border:1px solid var(--mw-ink-3);border-radius:var(--mw-r-2);
+  padding:var(--mw-s-1) var(--mw-s-2)}
 .le-config .switch{margin:var(--mw-s-2) 0}
 .le-cfg-field{display:block;margin:var(--mw-s-3) 0 0}
 .le-cfg-field>span{display:block;

@@ -25,22 +25,12 @@
 
 import { DISPLAY_LOCALE } from './viewmodel.js';
 
-/**
- * Every value `config.variant` can hold that a *clock* draws.
- *
- * `variant` is one enum for every widget type, the way `mode` is, so a stored
- * value this list does not name is a variant for some other widget — "not for
- * me" — and the clock draws `plain`, the same way a Weather widget reads a
- * shift field in `fields` as nothing to do with it.
+/*
+ * Which of the three a stored config means is `variantOf('clock', config)` in
+ * `variants.ts`, which is this file's `clockVariant` generalised to every type
+ * (plan item P4.1): one list per type, the default first, and a value the
+ * list does not name — absent, or another type's — read as `plain`.
  */
-export const CLOCK_VARIANTS = ['plain', 'stacked', 'analogue'] as const;
-export type ClockVariant = (typeof CLOCK_VARIANTS)[number];
-
-export function clockVariant(config?: unknown): ClockVariant {
-  const raw =
-    typeof config === 'object' && config !== null ? (config as Record<string, unknown>)['variant'] : undefined;
-  return (CLOCK_VARIANTS as readonly unknown[]).includes(raw) ? (raw as ClockVariant) : 'plain';
-}
 
 /* ------------------------------------------------------------ READING --- */
 

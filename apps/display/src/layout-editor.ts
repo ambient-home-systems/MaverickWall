@@ -41,7 +41,14 @@ import {
   type CalendarView,
 } from './widget-views.js';
 import { clearLaneKeys, inkOf, mergeInk, setLaneValue } from './ink.js';
-import { clockVariant } from './clock-face.js';
+import {
+  VARIANT_LABELS,
+  hasVariants,
+  hiddenByVariant,
+  lookIsGrid,
+  variantOf,
+  variantsFor,
+} from './variants.js';
 import { createHistory, type History } from './history.js';
 import {
   SNAP,
@@ -278,8 +285,17 @@ function boot(): void {
     readonly panels: readonly InkPanel[];
     /** Which keys the lane offers, per widget type. */
     readonly lane: Readonly<Record<string, readonly string[]>>;
-    /** Wall settings a panel cannot draw, each with the reason. */
-    readonly ignores: readonly { readonly key: string; readonly label: string; readonly why: string }[];
+    /**
+     * Wall settings a panel cannot draw, each with the reason — on every type,
+     * or on only the `types` named (a Look is honoured on a clock and not yet
+     * on a forecast, plan item P4.1).
+     */
+    readonly ignores: readonly {
+      readonly key: string;
+      readonly types?: readonly string[];
+      readonly label: string;
+      readonly why: string;
+    }[];
   }
   let ink: InkTables | undefined;
   let lane: 'wall' | 'ink' = 'wall';
@@ -3353,6 +3369,33 @@ function boot(): void {
 
   /** The type's own controls — the Content tab, and the ink lane's raw material. */
   function buildTypeConfig(widget: Widget, cfg: Record<string, unknown>): void {
+    const before = new Set(Array.from(configPanel.children));
+    buildTypeControls(widget, cfg);
+    pruneToVariant(widget.type, cfg, before);
+  }
+
+  /**
+   * Take off the type's own controls that the chosen look does not use (plan
+   * item P4.1): `VARIANT_HIDES` in `variants.ts`, by the `data-cfg-key` each
+   * control is annotated with.
+   *
+   * `buildClockConfig`'s early returns, written down as data so every type's
+   * looks can state theirs in one table and a test can read it without a DOM.
+   * Read off the lane's own config, so the ink lane asks what the *panel* will
+   * draw. Only what this pass built is considered — the rows above it on the
+   * same panel belong to somebody else.
+   */
+  function pruneToVariant(type: string, cfg: Record<string, unknown>, before: ReadonlySet<Element>): void {
+    const hidden = hiddenByVariant(type, cfg);
+    if (hidden.length === 0) return;
+    for (const child of Array.from(configPanel.children)) {
+      if (before.has(child)) continue;
+      const key = (child as HTMLElement).dataset['cfgKey'];
+      if (key !== undefined && hidden.includes(key)) child.remove();
+    }
+  }
+
+  function buildTypeControls(widget: Widget, cfg: Record<string, unknown>): void {
     buildViewField(widget, cfg);
     if (widget.type === 'group') buildGroupConfig(widget, cfg);
     else if (widget.type === 'calendar') buildCalendarConfig(widget, cfg);
@@ -3534,7 +3577,9 @@ function boot(): void {
       return typeof lane === 'object' && lane !== null &&
         (lane as Record<string, unknown>)[key.slice('style.'.length)] !== undefined;
     };
-    const ignored = (ink?.ignores ?? []).filter((entry) => isSet(entry.key));
+    const ignored = (ink?.ignores ?? []).filter(
+      (entry) => isSet(entry.key) && (entry.types === undefined || entry.types.includes(widget.type)),
+    );
     if (ignored.length > 0) {
       const heading = document.createElement('p');
       heading.className = 'hint insp-ink-note';
@@ -4053,35 +4098,43 @@ function boot(): void {
    * The Look: a widget's designed variant (RFC 014 §4.2), at the top of the
    * Style tab because it is the largest thing the tab can change.
    *
-   * The clock is the one type with variants so far; a type without any draws
-   * no row rather than a picker of one. Annotated with `variant`, so the ink
-   * lane keeps it — a panel draws every clock variant (`PANEL_HONOURS`), so
-   * every value is offered there too. `plain` is the default and is stored as
-   * an absence on the wall; on the ink lane it is written out when the wall
-   * says otherwise, because clearing the override there would hand the panel
-   * straight back to the wall's variant rather than to the plain one chosen.
+   * Read off the type's own list in `variants.ts` (plan item P4.1), so every
+   * type with looks gets one control and a type without any draws no row
+   * rather than a picker of one. Up to three looks are one segmented row, the
+   * clock's; past that the row would break its labels in a 258px column, so
+   * the choices are a small grid of labelled buttons instead — the same
+   * buttons, the same pressed state, laid out two rows deep.
+   *
+   * Annotated with `variant`, so the ink lane keeps it wherever `INK_LANE`
+   * offers it — the clock's, today, because a panel draws every clock variant
+   * (`PANEL_HONOURS`). The default is stored as an absence on the wall; on the
+   * ink lane it is written out when the wall says otherwise, because clearing
+   * the override there would hand the panel straight back to the wall's look
+   * rather than to the default one chosen. A default that *is* an absence —
+   * the calendar's — is never written anywhere: the schema refuses the empty
+   * string, and no lane offers a Look whose default could not be stored.
    */
   function buildLookField(widget: Widget, cfg: Record<string, unknown>): void {
-    if (widget.type !== 'clock') return;
-    const wallVariant = clockVariant(widget.config);
-    configPanel.appendChild(
-      segControl(
-        'Look',
-        [
-          ['plain', 'Plain'],
-          ['stacked', 'Stacked'],
-          ['analogue', 'Analogue'],
-        ],
-        clockVariant(cfg),
-        (value) =>
-          setConfig(
-            widget,
-            'variant',
-            value === 'plain' && (lane === 'wall' || wallVariant === 'plain') ? undefined : value,
-          ),
-        'variant',
-      ),
+    if (!hasVariants(widget.type)) return;
+    const type = widget.type;
+    const values = variantsFor(type);
+    const labels = VARIANT_LABELS[type] as Readonly<Record<string, string>>;
+    const fallback = values[0] ?? '';
+    const wallVariant = variantOf(type, widget.config);
+    const field = segControl(
+      'Look',
+      values.map((value) => [value, labels[value] ?? value] as const),
+      variantOf(type, cfg),
+      (value) =>
+        setConfig(
+          widget,
+          'variant',
+          value === '' || (value === fallback && (lane === 'wall' || wallVariant === fallback)) ? undefined : value,
+        ),
+      'variant',
     );
+    if (lookIsGrid(type)) field.querySelector('.seg')?.classList.add('le-look-grid');
+    configPanel.appendChild(field);
   }
 
   /**
@@ -4602,11 +4655,10 @@ function boot(): void {
      * An analogue face has no digits to format and a stacked clock always
      * draws its date, so each of these rows is offered only where it does
      * something — an option that does nothing is worse than one not offered.
-     * Read off the lane's own config, so the ink lane asks what the *panel*
-     * will draw.
+     * Both are built here whatever the look, and `pruneToVariant` takes off
+     * the ones the look does not use: which is which is `VARIANT_HIDES` in
+     * `variants.ts`, the table every type's looks now state theirs in.
      */
-    const variant = clockVariant(cfg);
-    if (variant === 'analogue') return;
     configPanel.appendChild(
       segControl(
         'Time format',
@@ -4624,7 +4676,6 @@ function boot(): void {
         'clockFormat',
       ),
     );
-    if (variant !== 'plain') return;
     configPanel.appendChild(
       switchRow(
         'Show the date',

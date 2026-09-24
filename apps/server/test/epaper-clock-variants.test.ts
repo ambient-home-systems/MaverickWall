@@ -129,12 +129,16 @@ describe('plain is the clock a panel always drew', () => {
   }
 
   it('reads a variant belonging to another widget as plain — "not for me"', () => {
-    // `variant` is one enum for every type. A value the clock does not draw
-    // cannot reach it today (the schema lists only the clock's), but a row
-    // from a newer server can, and it must draw the clock's default rather
-    // than nothing.
+    // `variant` is one enum for every type, and since plan item P4.1 the
+    // schema holds a list for weather, countdown, Home Assistant and the
+    // calendar too — so a clock can be handed any of them (a box whose type
+    // was changed, or a row from a newer server), and it must draw the
+    // clock's default rather than nothing. `epaper-ink.test.ts` asks the same
+    // of every type, value by value.
     const which = CASES['800x480 whole']!;
     expect(frame({ variant: 'strip' }, which)).toBe(frame({}, which));
+    expect(frame({ variant: 'tile' }, which)).toBe(frame({}, which));
+    expect(frame({ variant: 'planner' }, which)).toBe(frame({}, which));
   });
 
   it('did not need the renderer version to move', () => {
@@ -142,6 +146,98 @@ describe('plain is the clock a panel always drew', () => {
     // upgrade — which is the only thing the version is for.
     expect(EPAPER_RENDERER_VERSION).toBe(9);
   });
+});
+
+/**
+ * The stacked clock and the face, rendered on a clean worktree of the commit
+ * plan item P4.1 landed on (35ea84d), before `variantOf` replaced the panel's
+ * own `str(config, 'variant')` comparison.
+ *
+ * The plain frames above were always pinned; these two were not, and a
+ * resolver swap is exactly the change that could quietly move one — so every
+ * config is pinned for both, including the ones a look ignores (a stacked
+ * clock always draws its date, a face has no digits to format), because the
+ * identity is what says the ignoring was preserved too.
+ */
+const BASE_HASHES: Readonly<Record<string, Readonly<Record<string, Readonly<Record<string, string>>>>>> = {
+  stacked: {
+    '800x480 whole': {
+      'bare':
+        'eb5e06c0f4ccc52bdfe7e80bbf7969d17b3b7e4c48c4df1d219f7a340e1b0760',
+      'no date':
+        'eb5e06c0f4ccc52bdfe7e80bbf7969d17b3b7e4c48c4df1d219f7a340e1b0760',
+      '12-hour':
+        '8fc4dc2ba2c0e1029a979031f8c64fd6e143d73c3652d3dc919bed891ea413d1',
+      'centred':
+        'ebf3666b2fa230a7111c249d11ba3fa67e1b3be3c33a948f3ec982623a4f00b5',
+    },
+    '1872x1404 column': {
+      'bare':
+        '782e89ad7aa034c4e4b5fb76b33bd96ce3c0493708a76d9d7706749151a14bf7',
+      'no date':
+        '782e89ad7aa034c4e4b5fb76b33bd96ce3c0493708a76d9d7706749151a14bf7',
+      '12-hour':
+        '455481ce8d041b368aa67791c34b9d97908789ab01fc1125bde10debd333d03d',
+      'centred':
+        'd99068064f2c08b148eeeded7fd57a10af41a820cca634ff8c20ed920edc102e',
+    },
+    '480x800 strip': {
+      'bare':
+        '8a6149d5eb4ed455746a3417e7992ffb596d34bb13fdf42a046c10c85dfa4780',
+      'no date':
+        '8a6149d5eb4ed455746a3417e7992ffb596d34bb13fdf42a046c10c85dfa4780',
+      '12-hour':
+        '1062b4b9f9b9658904b26c1189cf1ec60fa2a0a1ab069454cbe34f056b16da4f',
+      'centred':
+        '4df8122c3046c36ded11f7e398044c65ae5143ca1b6f5852cc14b7daad30a38e',
+    },
+  },
+  analogue: {
+    '800x480 whole': {
+      'bare':
+        '293364cb19262014d8cb269aff434ec4f1338fa62a9177544e25c9d78429dd6f',
+      'no date':
+        '293364cb19262014d8cb269aff434ec4f1338fa62a9177544e25c9d78429dd6f',
+      '12-hour':
+        '293364cb19262014d8cb269aff434ec4f1338fa62a9177544e25c9d78429dd6f',
+      'centred':
+        '293364cb19262014d8cb269aff434ec4f1338fa62a9177544e25c9d78429dd6f',
+    },
+    '1872x1404 column': {
+      'bare':
+        '1633e2f7222ddfedad450a2f076234a36fb058e7f972d1f4b9cf6794f5f81506',
+      'no date':
+        '1633e2f7222ddfedad450a2f076234a36fb058e7f972d1f4b9cf6794f5f81506',
+      '12-hour':
+        '1633e2f7222ddfedad450a2f076234a36fb058e7f972d1f4b9cf6794f5f81506',
+      'centred':
+        '1633e2f7222ddfedad450a2f076234a36fb058e7f972d1f4b9cf6794f5f81506',
+    },
+    '480x800 strip': {
+      'bare':
+        '8474e480b94324b3110f4b3aec5605a40a8537c73785b3fbb50a014828d38beb',
+      'no date':
+        '8474e480b94324b3110f4b3aec5605a40a8537c73785b3fbb50a014828d38beb',
+      '12-hour':
+        '8474e480b94324b3110f4b3aec5605a40a8537c73785b3fbb50a014828d38beb',
+      'centred':
+        '8474e480b94324b3110f4b3aec5605a40a8537c73785b3fbb50a014828d38beb',
+    },
+  },
+};
+
+describe('stacked and analogue draw the bytes they drew before every type had looks', () => {
+  for (const variant of ['stacked', 'analogue'] as const) {
+    for (const [name, which] of Object.entries(CASES)) {
+      it(`${variant}, ${name}: every config draws the base commit's bytes`, () => {
+        for (const [label, config] of Object.entries(PLAIN_CONFIGS)) {
+          expect(sha(frame({ ...config, variant }, which)), `${variant}, ${name}, ${label}`).toBe(
+            BASE_HASHES[variant]?.[name]?.[label],
+          );
+        }
+      });
+    }
+  }
 });
 
 describe('the other two are different drawings', () => {
