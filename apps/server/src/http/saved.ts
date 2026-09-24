@@ -126,8 +126,8 @@ export const SAVED_MESSAGES = {
   'layout-template-applied-almanac': 'Layout applied. This wall now wears Paper Almanac.',
   'layout-copied': 'Layout copied.',
   'layout-reset': 'Layout reset.',
-  // eInk (e-paper)
-  'epaper-screen-removed': 'eInk wall removed.',
+  // e-paper
+  'epaper-screen-removed': 'e-paper wall removed.',
   'epaper-source-saved': 'Panel layout source saved.',
   'epaper-lan-only-saved': 'Network access setting saved.',
   // Home Assistant

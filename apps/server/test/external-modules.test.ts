@@ -372,7 +372,7 @@ describe('the module store', () => {
   it('lists the built-in catalogue on the Store page', async () => {
     const h = await harness();
     const html = await (await h.call('/admin/modules')).text();
-    expect(html).toContain('Countdown');
+    expect(html).toContain('Countdown (example module)');
     expect(html).toContain('by Maverick Wall');
   });
 
