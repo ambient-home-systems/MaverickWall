@@ -72,7 +72,7 @@ import { join } from 'node:path';
 import { backupTo, databasePath, integrityCheck } from '../db/open.js';
 import { bytesOf, type WallAddress } from './app.js';
 import { epaperOrientation } from '../epaper/frame.js';
-import { INK_LANE, PANEL_IGNORES } from '../epaper/honours.js';
+import { INK_LANE, INK_LOOKS, PANEL_IGNORES } from '../epaper/honours.js';
 import { ingressPath } from './ingress.js';
 import { buildDiagnostics } from '../api/diagnostics.js';
 import { readImage, storeImage, listImages } from '../api/media.js';
@@ -5806,7 +5806,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
        */
       ...(inkPanels.length === 0
         ? {}
-        : { ink: { panels: inkPanels, lane: INK_LANE, ignores: PANEL_IGNORES } }),
+        : { ink: { panels: inkPanels, lane: INK_LANE, ignores: PANEL_IGNORES, looks: INK_LOOKS } }),
       // The watched Home Assistant to-do lists, for the To-do widget's picker
       // (RFC 012). Empty when there are none, and the picker says so.
       todoLists: todoListChoices(deps.db),

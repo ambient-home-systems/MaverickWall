@@ -45,7 +45,7 @@ import {
   VARIANT_LABELS,
   hasVariants,
   hiddenByVariant,
-  lookIsGrid,
+  LOOK_SEGMENTS_MAX,
   variantOf,
   variantsFor,
 } from './variants.js';
@@ -302,6 +302,14 @@ function boot(): void {
       readonly label: string;
       readonly why: string;
     }[];
+    /**
+     * The Looks the lane offers, per type, when it is fewer than the wall's
+     * (`INK_LOOKS`): a forecast's panel draws the strip and the range, and the
+     * lane offers those and `today` rather than looks it would draw as its
+     * strip. Absent is every look the type has. Optional so a server older
+     * than the table still gets a lane.
+     */
+    readonly looks?: Readonly<Record<string, readonly string[]>>;
   }
   let ink: InkTables | undefined;
   let lane: 'wall' | 'ink' = 'wall';
@@ -4167,14 +4175,23 @@ function boot(): void {
   function buildLookField(widget: Widget, cfg: Record<string, unknown>): void {
     if (!hasVariants(widget.type)) return;
     const type = widget.type;
-    const values = variantsFor(type);
+    /*
+     * On the ink lane, only the looks a panel is offered (`INK_LOOKS`): a
+     * forecast's `colour` and `playful` are drawn there as its strip, so a
+     * choice of them on the lane would be a control that moves nothing. The
+     * lane then shows what the panel *draws* — the strip, for a wall wearing
+     * one of those — and says so under the row.
+     */
+    const offered = lane === 'ink' ? ink?.looks?.[type] : undefined;
+    const values = offered === undefined ? variantsFor(type) : variantsFor(type).filter((v) => offered.includes(v));
     const labels = VARIANT_LABELS[type] as Readonly<Record<string, string>>;
     const fallback = values[0] ?? '';
     const wallVariant = variantOf(type, widget.config);
+    const chosen = variantOf(type, cfg);
     const field = segControl(
       'Look',
       values.map((value) => [value, labels[value] ?? value] as const),
-      variantOf(type, cfg),
+      values.includes(chosen) ? chosen : fallback,
       (value) =>
         setConfig(
           widget,
@@ -4183,8 +4200,15 @@ function boot(): void {
         ),
       'variant',
     );
-    if (lookIsGrid(type)) field.querySelector('.seg')?.classList.add('le-look-grid');
+    if (values.length > LOOK_SEGMENTS_MAX) field.querySelector('.seg')?.classList.add('le-look-grid');
     configPanel.appendChild(field);
+    if (!values.includes(chosen)) {
+      const note = document.createElement('p');
+      note.className = 'hint';
+      note.dataset['cfgKey'] = 'variant';
+      note.textContent = `A panel draws the ${labels[chosen] ?? chosen} look as its ${(labels[fallback] ?? fallback).toLowerCase()}.`;
+      configPanel.appendChild(note);
+    }
   }
 
   /**

@@ -18,7 +18,12 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   CHORE_TIERS,
+  COLOUR_TIERS,
   HOUSE_TIERS,
+  RANGE_COLUMNS,
+  RANGE_TIERS,
+  WEATHER_STYLE_TIERS,
+  rangeColumnsAt,
   NOTES_TIERS,
   SHIFT_TIERS,
   TODO_TIERS,
@@ -82,6 +87,66 @@ describe('every table is a ladder', () => {
     expect(Object.keys(WIDGET_TIERS).sort()).toEqual(
       ['chores', 'homeassistant', 'notes', 'shift', 'todo', 'weather'],
     );
+  });
+});
+
+describe('the forecast’s designed looks (plan item P5.1)', () => {
+  for (const [name, table] of [['colour', COLOUR_TIERS], ['range', RANGE_TIERS]] as const) {
+    it(`${name}: names its rungs in order and never goes backwards`, () => {
+      expect(table.map((tier) => tier.tier)).toEqual([...WIDGET_TIER_NAMES]);
+      for (let at = 1; at < table.length; at++) {
+        const above = table[at]!;
+        const below = table[at - 1]!;
+        expect(above.minCh).toBeGreaterThanOrEqual(below.minCh);
+        expect(above.minEm).toBeGreaterThanOrEqual(below.minEm);
+        expect(above.items).toBeGreaterThanOrEqual(below.items);
+        expect(above.rungs).toBeGreaterThanOrEqual(below.rungs);
+      }
+      for (const tier of table) expect(itemsAt(tier, 0)).toBeGreaterThanOrEqual(1);
+    });
+
+    it(`${name}: is the table the renderer looks up for that look`, () => {
+      expect(WEATHER_STYLE_TIERS[name]).toBe(table);
+    });
+  }
+
+  it('reads the strip’s table for the strip, and no table for a look the wall does not draw yet', () => {
+    expect(WEATHER_STYLE_TIERS['strip']).toBe(WEATHER_TIERS);
+    expect(Object.keys(WEATHER_STYLE_TIERS).sort()).toEqual(['colour', 'range', 'strip']);
+  });
+
+  it('colour gives up what the strip gives up, rung for rung, and pays for a glyph that grows', () => {
+    COLOUR_TIERS.forEach((tier, i) => {
+      const strip = WEATHER_TIERS[i]!;
+      expect(tier.rungs).toBe(strip.rungs);
+      expect(tier.minCh).toBe(strip.minCh);
+    });
+    // The glyph is 1.4em at T2 and 1.8em at T3, so the top rung costs height
+    // the one under it does not — where the strip's two cost the same.
+    expect(COLOUR_TIERS[3]!.minEm).toBeGreaterThan(COLOUR_TIERS[2]!.minEm);
+    expect(COLOUR_TIERS[0]!.minEm).toBe(WEATHER_TIERS[0]!.minEm);
+  });
+
+  it('range gives up the rain chance first and the glyph next, and never its bar or numbers', () => {
+    expect(RANGE_TIERS.map((tier) => rangeColumnsAt(tier))).toEqual([
+      ['bar', 'low', 'high'],
+      ['bar', 'low', 'high', 'glyph'],
+      ['bar', 'low', 'high', 'glyph', 'rain'],
+      ['bar', 'low', 'high', 'glyph', 'rain'],
+    ]);
+    expect(RANGE_COLUMNS.slice(0, 3)).toEqual(['bar', 'low', 'high']);
+    // Height buys days: a box at the floor draws one, a tall one what it holds.
+    expect(itemsAt(RANGE_TIERS[0]!, 1)).toBe(1);
+    expect(itemsAt(RANGE_TIERS[3]!, 7)).toBe(7);
+    expect(itemsAt(RANGE_TIERS[3]!, 1)).toBe(3);
+  });
+
+  it('picks a range tier from the room beside the name', () => {
+    // 10px a character and 20px an em: 23ch beside the name and one row is
+    // the full row; 17ch is not room for the glyph.
+    expect(widgetTierFor(RANGE_TIERS, 230, 40, 10, 20).tier).toBe('T2');
+    expect(widgetTierFor(RANGE_TIERS, 170, 40, 10, 20).tier).toBe('T0');
+    expect(widgetTierFor(RANGE_TIERS, 290, 120, 10, 20).tier).toBe('T3');
   });
 });
 
