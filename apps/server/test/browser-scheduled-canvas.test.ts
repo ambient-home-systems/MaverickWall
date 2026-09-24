@@ -17,16 +17,20 @@
  * The clock is the harness's, not the runner's (`HARNESS_HOUR`): nothing
  * scheduled for 06:30 happens at eleven, so the *app's* clock is moved to
  * 06:29:50 the next morning with `shiftClock`, which the wall picks up
- * through `x-server-time` on the load, and then real seconds pass. The device
- * clock under Playwright is the runner's own and would read a different hour
- * on every machine; it is fixed by `page.clock` only in the reload case,
- * where a wall with no server has nothing else to read — which is what a
- * real tablet has after a power cut.
+ * through `x-server-time` on the load. The device clock under Playwright is
+ * the runner's own and would read a different hour on every machine, so it is
+ * never *set* in the first case — only run on, with `page.clock.runFor`, which
+ * fires the wall's own fifteen-second tick where the test used to sleep
+ * through it (twenty-eight real seconds a crossing). It is fixed only in the
+ * reload case, where a wall with no server has nothing else to read — which is
+ * what a real tablet has after a power cut.
  *
  * The mutation check is a window one minute later than the wall's clock:
  * same load, same wait, and the canvas must *not* swap — because a boundary
  * test that only ever waits until something changes cannot tell a schedule
- * from a wall that swaps for any reason at all.
+ * from a wall that swaps for any reason at all. It also has to see the wall
+ * *redraw* past 06:30, so a tick that never fired cannot pass as a wall that
+ * declined to swap.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Page } from 'playwright-core';
@@ -114,9 +118,32 @@ async function scheduleMorning(wall: Installation, screenId: string, from: strin
   expect(rule.status, `scheduling ${from}–${to}`).toBe(302);
 }
 
-/** Sleep until the installation's own clock reads `at` or later. */
-async function untilWallClock(wall: Installation, at: number): Promise<void> {
-  while (wall.now() < at) await new Promise((resolve) => setTimeout(resolve, 250));
+/**
+ * Start counting the wall's redraws.
+ *
+ * A draw empties `#wall` and builds a new `.canvas` inside it, so a canvas
+ * arriving — on its own or inside whatever the draw appends — is a draw
+ * having happened. Counted rather than assumed because the
+ * boundary is crossed with `page.clock.runFor`: a swap proves a tick fired, but
+ * "it did not swap" proves nothing unless something shows a tick *did* fire
+ * after the boundary and chose not to.
+ */
+async function countDraws(page: Page): Promise<() => Promise<number>> {
+  await page.evaluate(() => {
+    const counter = window as unknown as { __draws: number };
+    counter.__draws = 0;
+    const wall = document.getElementById('wall');
+    if (wall === null) return;
+    new MutationObserver((records) => {
+      for (const record of records) {
+        record.addedNodes.forEach((node) => {
+          if (!(node instanceof HTMLElement)) return;
+          if (node.classList.contains('canvas') || node.querySelector('.canvas') !== null) counter.__draws += 1;
+        });
+      }
+    }).observe(wall, { childList: true, subtree: true });
+  });
+  return () => page.evaluate(() => (window as unknown as { __draws: number }).__draws);
 }
 
 async function pairingLink(wall: Installation, screenId: string): Promise<string> {
@@ -146,11 +173,13 @@ describe('the swap happens on the tick, with the server blocked', () => {
   /**
    * Load at a moment ten seconds before the boundary, block the manifest, and
    * read the canvas back once the wall's clock has crossed it plus one tick.
-   * Returns what was drawn just before the block and what was drawn after.
+   * Returns what was drawn just before the block and what was drawn after,
+   * how many redraws the wall made in between, and the wall's clock at the
+   * reading.
    */
   async function crossTheBoundary(
     boundary: { readonly hour: number; readonly minute: number },
-  ): Promise<{ before: Drawn; after: Drawn; delivered: number; tried: number }> {
+  ): Promise<{ before: Drawn; after: Drawn; delivered: number; tried: number; draws: number; wallClock: number }> {
     /*
      * Ten seconds before the window opens, tomorrow: the pinned hour is
      * eleven, so the boundary is on the next civil day and the shift is
@@ -159,7 +188,7 @@ describe('the swap happens on the tick, with the server blocked', () => {
      */
     const opens = instantAt(ZONE, 1, boundary.hour, boundary.minute);
     wall.shiftClock(opens - 10_000 - wall.now());
-    const { page, close } = await loadWallSettled(link, VIEWPORT);
+    const { page, close } = await loadWallSettled(link, VIEWPORT, { clock: 'installed' });
     try {
       const before = await drawn(page);
       expect(before.hasMorningNote, 'the window has not opened and the morning canvas is already up').toBe(false);
@@ -176,12 +205,31 @@ describe('the swap happens on the tick, with the server blocked', () => {
         if (response.url().includes('/d/manifest')) delivered += 1;
       });
 
-      // Past the boundary, then a whole tick after it, then a little for the
-      // draw itself — on the wall's clock, which is the installation's.
-      await untilWallClock(wall, opens + 15_000 + 2_000);
-      await page.waitForTimeout(1_500);
+      /*
+       * Past the boundary and a whole tick after it, on the wall's own timers.
+       *
+       * This used to be real seconds — the installation's clock watched until
+       * it read the boundary plus a tick, then a second and a half for the
+       * draw: twenty-eight seconds a crossing, two crossings a run. The wall
+       * was not doing anything in them but waiting for its own
+       * `setInterval(draw, 15_000)`, and `runFor` fires that same callback on
+       * that same schedule without the wait. The wall's clock is the device's
+       * plus the offset its last poll took from `x-server-time`, so moving
+       * the device's timers moves the wall's clock by exactly as much and the
+       * server's not at all — which is also why the reading's time is
+       * `wall.now()` plus everything run, rather than `wall.now()`.
+       *
+       * In two steps, so the redraws counted are the ones *after* the
+       * boundary: up to it first, then a whole tick and two seconds more.
+       * Seventeen seconds of a fifteen-second interval holds at least one.
+       */
+      const toBoundary = opens - wall.now();
+      await page.clock.runFor(toBoundary);
+      const draws = await countDraws(page);
+      await page.clock.runFor(15_000 + 2_000);
+      const wallClock = wall.now() + toBoundary + 15_000 + 2_000;
       const after = await drawn(page);
-      return { before, after, delivered, tried };
+      return { before, after, delivered, tried, draws: await draws(), wallClock };
     } finally {
       await close();
     }
@@ -202,8 +250,9 @@ describe('the swap happens on the tick, with the server blocked', () => {
         .format(new Date(wall.now()));
       expect(Number(localHour), 'the harness hour moved; this file’s arithmetic assumes eleven').toBe(HARNESS_HOUR);
 
-      const { before, after, delivered } = await crossTheBoundary({ hour: 6, minute: 30 });
+      const { before, after, delivered, draws } = await crossTheBoundary({ hour: 6, minute: 30 });
       expect(before.types).toContain('fw-calendar');
+      expect(draws, 'no tick redrew the wall after 06:30').toBeGreaterThan(0);
       // The swap: the morning canvas, and nothing of the everyday one.
       expect(after.hasMorningNote, `the wall did not swap at 06:30 (types: ${after.types.join(' ')})`).toBe(true);
       expect(after.types).toEqual(['fw-clock', 'fw-notes']);
@@ -228,9 +277,12 @@ describe('the swap happens on the tick, with the server blocked', () => {
        * turning this into the other test.
        */
       await scheduleMorning(wall, screenId, '06:31', '08:30');
-      const { after } = await crossTheBoundary({ hour: 6, minute: 30 });
+      const { after, draws, wallClock } = await crossTheBoundary({ hour: 6, minute: 30 });
       const opensLater = instantAt(ZONE, 1, 6, 31);
-      expect(wall.now(), 'the runner stalled past 06:31, so this reading proves nothing').toBeLessThan(opensLater);
+      expect(wallClock, 'the runner stalled past 06:31, so this reading proves nothing').toBeLessThan(opensLater);
+      // And the wall did redraw past 06:30 — it had its chance to swap, and
+      // declined. Without this, a tick that never fired would pass here.
+      expect(draws, 'no tick redrew the wall after 06:30, so "no swap" proves nothing').toBeGreaterThan(0);
       expect(after.hasMorningNote).toBe(false);
       expect(after.types).toContain('fw-calendar');
     },

@@ -40,16 +40,24 @@ jobs:
         env:
           CALENDAR_BENCH_BUDGET_MS: 5000
 
-  # The server suite, in three shards on three runners.
+  # The server suite, in four shards on four runners.
   #
-  # Three rather than four, and the number was measured rather than picked.
+  # The count is measured rather than picked, and it has been measured twice.
   # `vitest --shard` sorts files by the SHA-1 of their path and cuts the list
   # into equal *counts*, not equal durations, so where the heavy browser files
   # land is decided by their names. Simulated from a real run's per-file
-  # timings — a model that reproduced that unsharded run at 517s against 528s
-  # measured — three shards come out at 176, 172 and 169s of test time and
-  # four at 151, 100, 194 and 94: the fourth shard would have made CI slower.
-  # Adding files moves that balance, so re-measure before changing the count.
+  # timings (vitest's own hash order, then each shard's files dealt largest
+  # first to three workers), the model reproduces which shard every file ran
+  # in and lands a steady ~42s under each measured step, which is the shard's
+  # own startup.
+  #
+  # The first time, three won: four came out at 151, 100, 194 and 94s against
+  # three's 176, 172 and 169s, because the fourth shard happened to collect
+  # the heavy files. Then the browser tests stopped sleeping through fixed
+  # waits (#294), and the files that got faster were not spread evenly — so
+  # from that run's timings three shards model at 170, 122 and 186s and four
+  # at 147, 85, 143 and 109s. Five and six model at 129s and 99s. Adding
+  # files moves this balance again, so re-measure before changing the count.
   #
   # Each shard's runner carries the same load the single job did (vitest's
   # default workers on the same four cores), so the timing-sensitive browser
@@ -61,7 +69,7 @@ jobs:
       # behind a cancellation.
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -100,8 +108,12 @@ jobs:
       # display bundle from apps/display/dist, and the server's own build is
       # what typechecks its test files.
       - run: pnpm -r build
-      - name: Server tests, shard ${{ matrix.shard }} of 3
-        run: pnpm --filter @maverick-wall/server exec vitest run --shard=${{ matrix.shard }}/3
+      # The total comes from the matrix itself, so the count above is stated
+      # once: a list of four with a `/3` left down here would run a quarter
+      # of the files twice and a quarter of them never, and every shard would
+      # be green.
+      - name: Server tests, shard ${{ matrix.shard }} of ${{ strategy.job-total }}
+        run: pnpm --filter @maverick-wall/server exec vitest run --shard=${{ matrix.shard }}/${{ strategy.job-total }}
 
   # The one check that means "the suite passed", under the name the single job
   # had, so anything that asks for `test` — a branch protection rule, a person

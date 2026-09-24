@@ -255,12 +255,28 @@ describe('the widget inspector, across screen sizes', () => {
 
       const faults: string[] = [];
       const starved: string[] = [];
+      const missing: string[] = [];
       const seen = new Set<string>();
-      for (const width of WIDTHS) {
-        for (const tab of ['Content', 'Style'] as const) {
+      /*
+       * Opened once per tab and then resized, the way the two sweeps above
+       * measure — not reopened at every width. It used to pair a new wall and
+       * load the editor twenty-two times, a second and more each, for a
+       * measurement that is the stylesheet's answer at a width and nothing the
+       * page does on load. What reopening did buy was a guarantee the controls
+       * were drawn at each width, so that is asserted per width instead: a
+       * width that drew none of them would otherwise measure nothing and pass.
+       */
+      const expected = { Content: ['Arrange the widgets in it', 'Across'], Style: ['Weight', 'Inset'] } as const;
+      for (const tab of ['Content', 'Style'] as const) {
+        await page.setViewportSize({ width: WIDTHS[0], height: 900 });
+        await openWithGroup(app, page, tab);
+        for (const width of WIDTHS) {
           await page.setViewportSize({ width, height: 900 });
-          await openWithGroup(app, page, tab);
           const all = await segments(page);
+          const drawn = new Set(all.map((segment) => segment.control));
+          for (const control of expected[tab]) {
+            if (!drawn.has(control)) missing.push(`${width}px · ${tab} · "${control}" was not drawn`);
+          }
           for (const segment of all) {
             seen.add(segment.control);
             for (const line of segment.lines) {
@@ -295,6 +311,7 @@ describe('the widget inspector, across screen sizes', () => {
       // The controls this test exists for, by name, so it cannot go green by
       // measuring a page that no longer draws them.
       expect([...seen]).toEqual(expect.arrayContaining(['Arrange the widgets in it', 'Across', 'Weight', 'Inset']));
+      expect(missing).toEqual([]);
       expect(faults).toEqual([]);
       expect(starved).toEqual([]);
       await context.close();

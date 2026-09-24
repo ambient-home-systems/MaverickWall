@@ -236,13 +236,21 @@ describe('a one-shot on a real wall', () => {
         expect(fired.phase as number).toBeLessThan(ONCE_MS / 2);
         const firedAt = fired.at - (fired.phase as number);
 
-        // A redraw in the middle of it: resumed, not restarted.
+        // A redraw in the middle of it: resumed, not restarted. Asked for a
+        // third of the way in, on purpose: a redraw close to the start cannot
+        // tell a resumed burst from a restarted one, since both read near zero.
+        // It used to land about 820ms in by accident — the harness held every
+        // manifest for a fixed 750ms — and the hold now ends as soon as the
+        // fonts are in, which on a warm page is almost at once.
+        await page.waitForTimeout(ONCE_MS / 3);
         await page.evaluate(() => (window as unknown as { maverickWall: { poll(): void } }).maverickWall.poll());
         await redrawn(page, once);
         const middle = await read(page, once, true);
         const elapsed = middle.at - firedAt;
-        // The premise: the redraw landed inside the burst (measured, ~820ms in:
-        // the harness holds every manifest 750ms), or this proves nothing.
+        // The premise, both ways: the redraw landed inside the burst, and far
+        // enough into it that a restart would miss by more than the tolerance —
+        // or this proves nothing.
+        expect(elapsed, 'the redraw came too early to tell a resume from a restart').toBeGreaterThan(2 * TOLERANCE_MS);
         expect(elapsed, 'the redraw came after the burst had ended').toBeLessThan(ONCE_MS - TOLERANCE_MS);
         expect(middle.running, 'a redraw part-way through stopped the burst').toBe(1);
         expect(

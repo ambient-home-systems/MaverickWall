@@ -325,14 +325,30 @@ One `pnpm test` job took ten minutes, and 8m48s of it was the server suite —
 77% of that the 53 files that drive a real browser, on a four-core runner where
 each file's own Chromium competes with the workers. So `ci.yml` has a
 `packages` job (build, then calendar, core and display) and a `server` job in
-three `vitest --shard` runners, each building first exactly as `pnpm test`
+four `vitest --shard` runners, each building first exactly as `pnpm test`
 does, and a `test` job that passes only when every part did, under the name the
-one job had. **Three was measured, not picked:** vitest shards by equal file
-*counts* in SHA-1 order of the path, so where the heavy browser files land is
-decided by their names, and a model built from one run's per-file timings (it
-reproduced that run at 517s against 528 measured) put three shards at 176, 172
-and 169s of test time and four at 151, 100, 194 and 94 — slower than three.
-Adding files moves that balance, so re-measure before changing the count.
+one job had. **The count is measured, not picked, and the answer changed
+once:** vitest shards by equal file *counts* in SHA-1 order of the path, so
+where the heavy browser files land is decided by their names. A model built
+from one run's per-file timings (it reproduces which shard every file ran in,
+and lands a steady ~42s under each measured step) first put three shards at
+176, 172 and 169s and four at 151, 100, 194 and 94, which is slower than three.
+After #294 stopped the browser tests sleeping through fixed waits, the same
+model on that run's timings puts three at 170, 122 and 186s and four at 147,
+85, 143 and 109s, so it is four. **Measured, the gain is small and inside
+the noise, and that is worth knowing before reading one run as a verdict.**
+Two runs on four took 192, 109, 148 and 113s (4m05s end to end) and 183, 112,
+155 and 82s (3m51s). The same tests on three shards took 228, 219 and 182s at
+their slowest across three runs (4m39s, 4m29s and 3m53s). So four's slowest
+shard averages about 188s against three's 210s, and end to end about 3m58s
+against 4m20s: about 22s better, while three alone varies by 46s from one run
+to the next. The model's 39s
+is an upper bound rather than a promise, because per-file times move with what
+runs beside them. Shard 1 is the laggard at four, holding about 147s of work
+against the others' 85–143s. The step reads the total from
+`strategy.job-total`, so the matrix is the one place the count is written.
+Adding files moves the balance, so re-measure before changing it, and compare
+averages of several runs rather than one against one.
 
 ### Running it
 
@@ -8431,6 +8447,76 @@ server +22 in one new file and four touched): the arithmetic agrees with the
 reading, and that is recorded as an observation, for the reason every paragraph
 above says it should be.
 
+**The slow browser tests were mostly waiting, and now wait for the thing
+rather than for a time.** Profiled per test, most of the heaviest files spent
+2.8s on each wall load, and 2.0s of that was fixed sleeps. The biggest single
+waits were real fifteen-second ticks slept through: 32s and 29s in
+`browser-scheduled-canvas` and 33s in `browser-wall-a11y`. Four changes, each
+checked by breaking what it guards:
+
+- **`loadWallSettled` holds the manifest until the fonts are in.** It held
+  every manifest for a fixed 750ms, twice a load, on the reasoning that the
+  first draw must have the webfonts. That reasoning is unchanged. What changed
+  is the proxy for it: `faces` asks the page to `load()` every face
+  `display.css` declares and releases the manifest when they have. Instrumented
+  on `browser-month-grid`, 42 holds of 42 saw all eight faces `loaded`, and
+  none threw, in 40–160ms each. It is capped at 10s, so a slow runner waits
+  longer than it used to rather than drawing with fallback metrics.
+- **The two tick tests fire the tick.** `loadWallSettled({ clock: 'installed' })`
+  puts Playwright's clock in before the wall's script sets
+  `setInterval(draw, 15_000)`, and `page.clock.runFor` fires that callback on
+  its schedule. The clock is installed running rather than paused, so nothing
+  else about the load changes. Both files now **count the redraws**. Before,
+  "the wall did not swap at 06:31" and "the live region was not written again"
+  would each have passed over a tick that never fired. Dropping the installed
+  clock turns both red, and so do the product mutations that matter:
+  - never picking a scheduled layout;
+  - reading the wall's clock a minute fast;
+  - deleting `announce`'s `text === announced` guard.
+- **The inspector's group sweep opens the editor once per tab and resizes.** It
+  used to pair a wall and load the editor at every width, 22 times. The file's
+  other sweeps already open once and resize. It now asserts at every width that
+  the group's controls are drawn, which reopening had guaranteed. `flex:1` and
+  `overflow-wrap:anywhere` still turn it red.
+- **`browser-motion`'s mid-burst redraw is timed on purpose.** It had landed
+  about 820ms into the burst only because of the old fixed hold. With a faster
+  hold it lands 83ms in, where a restarted burst and a resumed one both read
+  near zero and the 300ms tolerance can no longer tell them apart. That is a
+  weakening this change would otherwise have introduced silently. The test now
+  waits a third of the burst and asserts the redraw came at least twice the
+  tolerance in. Removing the wait reddens that check with exactly that 83ms.
+
+**Measured on the 13 slowest files, on one four-core machine: 250.7s of wall
+clock became 174.3s, and 674s of summed test time became 465s.** Scheduled
+canvas went from 66s to 10s and the accessibility test from 46s to 12s. The
+seven files that load walls through the loader and have no other long wait each
+lost 25–43%. `browser-motion` lost 8%, because its time is spent on real
+animation. **Two files nobody touched got slower**:
+`browser-editor` +19% and `browser-wall` +41%. The files that slept for thirty
+seconds at a stretch were leaving their cores idle for their neighbours, and
+now every neighbour is busy. So the summed figure flatters the change and the
+wall-clock one is the honest number.
+
+**On CI it bought nothing end to end, and that is the finding worth keeping.**
+The PR's own run took 4m39s. `main`'s run on the commit before it took 4m42s.
+Its three server shards finished at 214, 163 and 228s, against `main`'s 226,
+153 and 203s. On the runner, the files changed here each fell by 10–53s:
+scheduled canvas went from 67s to 14s, the accessibility test from 46s to 18s,
+and six loader files by 17–23s each. Meanwhile `browser-wall`,
+`browser-admin` and `epaper-ink` each rose by about 20–26s. None of them was
+changed. A shard runs about three files at once on four cores, each with its own
+Chromium. A test asleep on a timer was giving its core to its neighbours, so
+waking it takes that core back. The slowest shard is set by CPU, not by
+waiting: `wall-density` did not move at all on the runner (83s both times)
+while losing 27% locally. What this change does buy is a file run on its own
+(scheduled canvas in 10s rather than 66s), and three tests that can now fail
+where they could not. The lever for CI's wall clock is CPU per shard: more
+shards, or less work per file. CI's three-shard split (Commands, above) was
+computed from timings taken before this change, so it should be re-measured
+before anybody reaches for that lever.
+**4143 tests passing, 1 skipped and 1 expected failure, over 296 files**, the
+same counts as `main`: no test was added or removed, and every change is inside
+tests that already existed.
 
 **Two of P5.1's five weather styles shipped: `range` and `colour`.** Both are
 opt-in Looks, and a wall that picks neither is unchanged to the pixel — Classic
@@ -8534,6 +8620,7 @@ one expected failure in three new files and two touched — which is what this
 diff adds, and agreeing is an observation rather than a method. **Still
 unproven where it counts:** nobody has looked at either style on a kitchen wall,
 and no panel has been photographed drawing a range.
+
 ---
 
 ## Open decisions
