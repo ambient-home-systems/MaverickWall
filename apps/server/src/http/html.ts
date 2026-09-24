@@ -1824,6 +1824,11 @@ pre.code{background:var(--mw-surface-2);
 .le-ladder-row{display:flex;align-items:center;gap:var(--mw-s-2);padding:var(--mw-s-2) var(--mw-s-2);
   border-radius:var(--mw-r-1);min-height:40px}
 .le-ladder-row.is-off{opacity:.55}
+/* The row but its grip is the checkbox's label, so the name is a target too;
+   it resets the bare-label treatment, which is for a field's own caption. */
+.le-ladder-pick{display:flex;align-items:center;gap:var(--mw-s-2);flex:1;min-width:0;
+  margin:0;font:inherit;letter-spacing:inherit;color:inherit;cursor:pointer}
+.le-ladder-row.is-dragging{background:var(--mw-accent-soft);color:var(--mw-accent-soft-ink)}
 .le-ladder-row.is-off .le-ladder-eg{visibility:hidden}
 /* Dashed, not hidden: the row is still on the ladder and comes back the moment
    the box grows. Struck through says "not drawn here" without saying "gone". */

@@ -3906,6 +3906,11 @@ function boot(): void {
     return field;
   }
 
+  /** Whether the widget's own colour lane paints its box (`applyStyleTokens`). */
+  function hasOwnGround(cfg: Record<string, unknown>): boolean {
+    return typeof styleLayerOf(cfg['style'])?.['--bg'] === 'string';
+  }
+
   /**
    * The Style tab: the box-level format every widget carries.
    *
@@ -3915,10 +3920,14 @@ function boot(): void {
    * the title field appears when the title is set to show, and the background
    * colour and its opacity appear when there is a background to colour.
    *
-   * Corners are deliberately *not* behind the background switch:
-   * `applyWidgetFormat` rounds and clips the box whether or not a background
-   * colour is set — so hiding it there would remove a working control rather
-   * than an irrelevant one.
+   * Corners appear when there is a ground to round — a card background, the
+   * widget's own lane background, or a picture. They used to be offered
+   * everywhere, on the argument that `applyWidgetFormat` rounds and clips the
+   * box whether or not a background is set, and that argument was written for
+   * the drop shadow beside them: a shadow was visible on a bare box, and a
+   * curve is not. The box is padded, so a bare box's rounded corner falls on
+   * empty space, and a household pressing Rounded on a forecast saw nothing
+   * move.
    *
    * There is no drop-shadow control here any more: a shadow bands on e-ink,
    * burns in on OLED, and buys nothing at reading distance. A widget that
@@ -3972,11 +3981,16 @@ function boot(): void {
     // Background
     const hasBg = typeof cfg['background'] === 'string';
     configPanel.appendChild(
-      switchRow('Card background', 'Fills the widget’s box behind what it draws.', hasBg, (checked) => {
-        setConfig(widget, 'background', checked ? '#111820' : undefined);
-        if (!checked) setConfig(widget, 'opacity', undefined);
-        renderConfigPanel();
-      }),
+      switchRow(
+        'Card background',
+        'Fills the widget’s box behind what it draws, and lets its corners be rounded.',
+        hasBg,
+        (checked) => {
+          setConfig(widget, 'background', checked ? '#111820' : undefined);
+          if (!checked) setConfig(widget, 'opacity', undefined);
+          renderConfigPanel();
+        },
+      ),
     );
     if (hasBg) {
       const colorField = cfgField('Background colour');
@@ -4002,18 +4016,33 @@ function boot(): void {
       configPanel.appendChild(opField);
     }
 
-    // Corners — 'square' is the default.
-    configPanel.appendChild(
-      segControl(
-        'Corners',
-        [
-          ['square', 'Square'],
-          ['rounded', 'Rounded'],
-        ],
-        typeof cfg['corners'] === 'string' ? (cfg['corners'] as string) : 'square',
-        (value) => setConfig(widget, 'corners', value === 'square' ? undefined : value),
-      ),
-    );
+    /*
+     * Corners — 'square' is the default — offered only where there is a ground
+     * to round.
+     *
+     * Rounding clips the box, and the box is padded on every side, so on a
+     * widget with nothing painted behind it the curve fell on empty space and
+     * the control did nothing a household could see — the `options.json` rule.
+     * A card background paints the box, and so does the widget's own colour
+     * lane when it sets a background. A picture is the third case: the curve
+     * is carried through to the picture itself (`--fw-radius`), because a
+     * rounded photograph is what somebody pressing Rounded on one is asking
+     * for. A stored `rounded` is left alone when the ground goes, so turning
+     * the background back on brings the corners back with it.
+     */
+    if (hasBg || hasOwnGround(cfg) || widget.type === 'image') {
+      configPanel.appendChild(
+        segControl(
+          'Corners',
+          [
+            ['square', 'Square'],
+            ['rounded', 'Rounded'],
+          ],
+          typeof cfg['corners'] === 'string' ? (cfg['corners'] as string) : 'square',
+          (value) => setConfig(widget, 'corners', value === 'square' ? undefined : value),
+        ),
+      );
+    }
 
     buildStyleLane([widget], cfg);
   }
@@ -4189,7 +4218,14 @@ function boot(): void {
       const value = current(token);
       if (value !== undefined && /^#[0-9a-fA-F]{6}$/.test(value)) input.value = value;
       input.addEventListener('change', () => {
+        const grounded = hasOwnGround(widget.config ?? {});
         setStyleMany(targets, token, input.value);
+        // A lane background is a ground Corners can round, so the panel is
+        // redrawn the moment it first appears rather than on the next select.
+        if (token === '--bg' && !grounded) {
+          renderConfigPanel();
+          return;
+        }
         renderContrast(contrast, { ...effective, ...styleLayerOf(widget.config?.['style']) } as Record<string, string>);
       });
       field.appendChild(input);
@@ -4803,7 +4839,13 @@ function boot(): void {
       eg.className = 'le-ladder-eg';
       eg.textContent = example;
 
-      row.append(grip, tick, text, eg);
+      // The whole row but the grip is the checkbox's label, so a tap on the
+      // field's name ticks it. The box alone is 13px, on a list built for a
+      // phone.
+      const pick = document.createElement('label');
+      pick.className = 'le-ladder-pick';
+      pick.append(tick, text, eg);
+      row.append(grip, pick);
       list.appendChild(row);
     }
 
@@ -4824,7 +4866,17 @@ function boot(): void {
     markLadderCut();
   }
 
-  /** Drag a ladder row to reorder. Same shape as the Layers list's reorder. */
+  /**
+   * Drag a ladder row to reorder, and write the new order once, on release.
+   *
+   * The rows follow the pointer by moving in place; nothing is written until
+   * the pointer comes up. The first version wrote on every move, and every
+   * write rebuilds the whole panel — so after the first step this function was
+   * holding a list that was no longer in the document, whose rows all measured
+   * zero high, and every later move read "below every row" and sent the
+   * dragged field to the bottom. A drag upwards landed it last. It also put one
+   * step on the undo stack per row crossed, where a drag is one edit.
+   */
   function startLadderDrag(
     event: PointerEvent,
     name: string,
@@ -4833,31 +4885,37 @@ function boot(): void {
   ): void {
     event.preventDefault();
     event.stopPropagation();
+    const onRows = (): HTMLElement[] =>
+      Array.from(list.querySelectorAll<HTMLElement>('.le-ladder-row:not(.is-off)'));
+    const orderOf = (rows: readonly HTMLElement[]): string[] => rows.map((row) => row.dataset['field'] ?? '');
+    const start = orderOf(onRows());
+    const dragged = onRows().find((row) => row.dataset['field'] === name);
+    if (dragged === undefined) return;
+    dragged.classList.add('is-dragging');
+
     const move = (moveEvent: PointerEvent): void => {
-      const rows = Array.from(list.querySelectorAll<HTMLElement>('.le-ladder-row:not(.is-off)'));
-      const order = rows.map((row) => row.dataset['field'] ?? '');
-      let target = order.length;
-      for (let index = 0; index < rows.length; index++) {
-        const rect = rows[index]!.getBoundingClientRect();
-        if (moveEvent.clientY < rect.top + rect.height / 2) {
-          target = index;
-          break;
-        }
-      }
-      const from = order.indexOf(name);
-      if (from === -1) return;
-      const insertAt = target > from ? target - 1 : target;
-      if (insertAt === from) return;
-      order.splice(from, 1);
-      order.splice(insertAt, 0, name);
-      write(order);
+      // The other rows decide where it goes: the first one whose middle is
+      // below the pointer is the row it now sits in front of.
+      const others = onRows().filter((row) => row !== dragged);
+      const before = others.find((row) => {
+        const rect = row.getBoundingClientRect();
+        return moveEvent.clientY < rect.top + rect.height / 2;
+      });
+      const anchor = before ?? others[others.length - 1]?.nextElementSibling ?? null;
+      if (anchor === dragged || dragged.nextElementSibling === anchor) return;
+      list.insertBefore(dragged, anchor);
     };
     const up = (): void => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      dragged.classList.remove('is-dragging');
+      const next = orderOf(onRows());
+      if (next.join(' ') !== start.join(' ')) write(next);
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
   }
 
   /**
@@ -4918,29 +4976,53 @@ function boot(): void {
 
   function markLadderCut(): void {
     for (const { widget, list } of ladderPanels) {
-      // The unit a ladder fills: one badge for a shift, one day's column for a
-      // forecast. Both are "the thing whose children are the ladder's rows".
-      const selector = widget.type === 'weather' ? '.wx-day' : '.shift-badge';
-      const badge = previewShadow?.querySelector(`[data-widget-id="${widget.id}"] ${selector}`);
       const rows = Array.from(list.querySelectorAll<HTMLElement>('.le-ladder-row:not(.is-off)'));
-      /*
-       * A collapsed badge has cut nothing.
-       *
-       * With room for a single row the wall draws every field joined onto one
-       * line, so the fields are all there and striking them through would say
-       * the opposite of what the screen shows. Counting children alone gets
-       * this exactly backwards, which is why the class is checked rather than
-       * inferred from the count.
-       */
-      const collapsed = badge?.classList.contains('is-line') === true;
-      const drawn = badge?.childElementCount;
-      rows.forEach((row, index) => {
-        row.classList.toggle(
-          'is-cut',
-          !collapsed && drawn !== undefined && drawn > 0 && index >= drawn,
-        );
-      });
+      const cut = lane === 'wall' ? cutFields(widget) : undefined;
+      for (const row of rows) {
+        row.classList.toggle('is-cut', cut !== undefined && cut.has(row.dataset['field'] ?? ''));
+      }
     }
+  }
+
+  /**
+   * The rungs the live preview gave up for one widget, by name.
+   *
+   * Read back by *field* rather than by counting rows, because a drawn row is
+   * not a rung. The high and the low share one row while they are adjacent, so
+   * counting took every ladder with both temperatures on it for one row short
+   * and struck the low through while it sat on the glass beside the high; and
+   * a field the day has nothing for — an untimed shift's hours — is no row at
+   * all without anything having been cut. So a rung is struck through for
+   * exactly two reasons, both the renderer's own: its tier kept fewer rungs
+   * (`data-rungs`, stamped where that was decided), or the belt hid its row
+   * because the box ended first.
+   *
+   * Nothing on the ink lane: this preview is the wall, and the list there is
+   * the panel's, whose frame is a picture with nothing in it to read back. A
+   * mark taken off the wall would be a second opinion about a different
+   * screen. And a collapsed shift badge has cut nothing — its one line names
+   * every rung on it — which falls out of reading names rather than being a
+   * case of its own.
+   */
+  function cutFields(widget: Widget): ReadonlySet<string> | undefined {
+    const box = previewShadow?.querySelector(`[data-widget-id="${widget.id}"]`);
+    if (!(box instanceof HTMLElement)) return undefined;
+    // The unit a ladder fills: one badge for a shift, one day's column for a
+    // forecast. Every column has the same rungs, so the first one answers.
+    const unit = box.querySelector(widget.type === 'weather' ? '.wx-day' : '.shift-badge');
+    if (!(unit instanceof HTMLElement)) return undefined;
+    const kept = box.getAttribute('data-rungs');
+    const keptSet = kept === null ? undefined : new Set(kept.split(' '));
+    const cut = new Set<string>();
+    for (const field of LADDERS[widget.type]?.fields ?? []) {
+      if (keptSet !== undefined && !keptSet.has(field)) {
+        cut.add(field);
+        continue;
+      }
+      const drawn = unit.querySelector(`[data-field~="${field}"]`);
+      if (drawn !== null && getComputedStyle(drawn).display === 'none') cut.add(field);
+    }
+    return cut;
   }
 
   function buildHaConfig(widget: Widget, cfg: Record<string, unknown>): void {

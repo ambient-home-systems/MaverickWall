@@ -114,7 +114,7 @@ with no shift worker can have the whole feature switched off.
 
 ### Verification is the job
 
-This project has found **one hundred and forty-seven real bugs**, and the pattern in how is the most
+This project has found **one hundred and fifty real bugs**, and the pattern in how is the most
 useful thing in this document:
 
 | Bug | Found by |
@@ -289,6 +289,9 @@ useful thing in this document:
 | **An admin-copy crawl blind to every conditional section on the page** | Planting a retired noun in one and watching the whole suite stay green |
 | A mutation that came back green because the edit never applied to the file | Asserting the anchor matched before believing the run |
 | A disclosure assertion that passed on every render, open or shut | Asking whether *any* `<details>` was open, then asking which one |
+| **The overnight low struck through as given up while the wall drew it beside the high** | A household's screenshot, then reading which rows a forecast column actually holds |
+| A ladder row dragged upwards landing at the bottom | Dragging one, and finding the drag measuring a list its own first write had detached |
+| A Corners control that rounded nothing on a widget with no background | The same screenshot: Rounded pressed on a forecast, and nothing on the wall moving |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -3036,11 +3039,45 @@ door" and not what the front door is doing.
 
 **The editor marks the cut from the preview, not from a prediction.** The
 inspector's list strikes through the rows the box is currently too small for,
-counted out of the real `renderFreeform` output in the shadow-root preview —
+read out of the real `renderFreeform` output in the shadow-root preview —
 because two opinions about what fits is the whole class of bug this project
-keeps finding. It also checks for the collapsed badge rather than inferring
-from the child count, which gets it exactly backwards: a one-line badge has cut
-nothing.
+keeps finding. **It reads them back by field name, never by counting rows**,
+and counting was a shipped fault rather than a hypothetical one: the high and
+the low share one row while they are adjacent, so a forecast column drawing all
+four fields holds three rows, and every weather widget nobody had touched showed
+"The overnight low" struck through beside a strip drawing it. Ticking it again
+changed nothing, which is how it was reported — as a field that could not be
+selected. A row is a rung only by coincidence: a field the day has nothing for
+(an untimed shift's hours) is no row either, without anything having been
+given up. So the renderer says which rungs its tier kept (`data-rungs`, stamped
+where that was decided) and which field each drawn row carries (`data-field`,
+two names on the paired row), and a rung is struck through for exactly two
+reasons: the tier gave it up, or the belt hid its row. A collapsed badge has cut
+nothing, which falls out of the names — its one line carries all of them —
+rather than being a case of its own. Nothing is marked on the ink lane, where
+the list is the panel's and the preview is the wall's.
+
+**The ladder's drag moves rows in place and writes once, on release.** It used
+to write on every pointer move, and every write rebuilds the inspector — so from
+the second move on it was measuring a list no longer in the document, whose
+rows were all zero pixels high, and the pointer read as below every one of them.
+A row dragged to the top landed at the bottom, and a drag put one undo step on
+the stack per row crossed. The Layers list never had it because it queries its
+own persistent container on every move; the ladder held the element it was
+given. And the row's name is now the checkbox's label, because the box alone is
+a 13px target on a list built for a phone.
+
+**Corners is offered only where there is a ground to round**, reversing the
+wall editor's bullet further down that kept it out from behind the background
+switch.
+That argument was written for the drop shadow beside it, which *was* visible on
+a bare box; a curve is not, because the box is padded and a rounded corner with
+nothing painted behind it falls on empty space. It appears with a card
+background, with the widget's own lane background, and always on a picture —
+which now takes the box's curve itself (`--fw-radius` on the box,
+`.fw-image` reading it), since a rounded photograph is what somebody pressing
+Rounded on one is asking for. `browser-field-ladder.test.ts` drives all of it in
+a real editor; seven mutations, all red.
 
 **A panel can follow a wall, and that is what made the ink lane worth
 building (RFC 005, direction B).** The lane is one optional `ink: {}` on a
@@ -4298,7 +4335,11 @@ Four things in it are load-bearing and none is obvious from the markup:
   switch.** `applyWidgetFormat` rounds, clips and casts a shadow with no
   background set, so hiding them there would have removed working controls
   rather than irrelevant ones. Progressive disclosure has to be checked against
-  the renderer, not assumed from the grouping.
+  the renderer, not assumed from the grouping. *(History: the shadow is gone,
+  and with it the half of this that was true. A curve on a padded box with
+  nothing behind it rounds empty space, so Corners now appears only where there
+  is a ground — see the field-ladder paragraphs above. The last sentence stands,
+  and it is what the reversal was checked against.)*
 
 **Two of the faults it introduced were only ever going to be found by
 measuring.** A transitioned `visibility` computes `hidden` at progress zero, so

@@ -186,10 +186,13 @@ function shiftBadge(
         who.appendChild(image);
       }
       who.appendChild(document.createTextNode(row.text));
+      who.setAttribute('data-field', row.field);
       badge.appendChild(who);
       continue;
     }
-    badge.appendChild(el('div', SHIFT_ROW_CLASS[row.field], row.text));
+    const line = el('div', SHIFT_ROW_CLASS[row.field], row.text);
+    line.setAttribute('data-field', row.field);
+    badge.appendChild(line);
   }
   return badge;
 }
@@ -222,7 +225,10 @@ function shiftLineBadge(
 
   const badge = el('div', 'shift-badge is-line');
   paintShift(badge, entry.shift.colorToken, entry.shift.color);
-  badge.appendChild(el('div', 'what', text));
+  const line = el('div', 'what', text);
+  // Every rung is on this one line, so the line names all of them.
+  line.setAttribute('data-field', rows.map((row) => row.field).join(' '));
+  badge.appendChild(line);
   return badge;
 }
 
@@ -333,6 +339,10 @@ function weatherColumn(
     if (paired && (row.field === 'high' || row.field === 'low') && next !== undefined &&
         (next.field === 'high' || next.field === 'low')) {
       const temp = el('div', 'wx-temp');
+      // One row carrying two rungs, and it says so: the editor reads the drawn
+      // fields back by name, and counting rows here would call the second of
+      // the pair given up while it is on the glass.
+      temp.setAttribute('data-field', `${row.field} ${next.field}`);
       temp.appendChild(document.createTextNode(`${row.text} `));
       temp.appendChild(el('span', 'lo', next.text));
       cell.appendChild(temp);
@@ -352,14 +362,19 @@ function weatherColumn(
      */
     if (row.field === 'icon') {
       const glyph = glyphNode(row.text, `${WEATHER_ROW_CLASS[row.field]} gl`);
-      if (glyph !== null) cell.appendChild(glyph);
+      if (glyph !== null) {
+        glyph.setAttribute('data-field', row.field);
+        cell.appendChild(glyph);
+      }
       continue;
     }
     // A low on its own row keeps the quieter treatment it has when it rides
     // beside the high: its emphasis is a property of the field, not of whether
     // the household happened to put it next to something.
     const cls = row.field === 'low' ? `${WEATHER_ROW_CLASS[row.field]} lo` : WEATHER_ROW_CLASS[row.field];
-    cell.appendChild(el('div', cls, row.text));
+    const line = el('div', cls, row.text);
+    line.setAttribute('data-field', row.field);
+    cell.appendChild(line);
   }
   return cell;
 }
@@ -1775,7 +1790,11 @@ function applyWidgetFormat(
     box.style.background = hexToRgba(c['background'], opacity / 100);
   }
   if (c['corners'] === 'rounded') {
-    box.style.borderRadius = '0.6rem';
+    // A property as well as the box's own radius, because the box is padded:
+    // a picture inset inside it has square corners of its own, and it reads
+    // this to curve itself the way the box does (`.fw-image`).
+    box.style.setProperty('--fw-radius', '0.6rem');
+    box.style.borderRadius = 'var(--fw-radius)';
     box.style.overflow = 'hidden';
   }
   // The drop shadow control is gone: a shadow bands on e-ink, burns in on
@@ -2111,6 +2130,20 @@ function stampTier(box: HTMLElement, tier: WidgetTier, items: number): void {
 }
 
 /**
+ * Stamp the ladder rungs a box kept, so the editor can read back which ones
+ * its tier gave up.
+ *
+ * Which rungs, never how many. A drawn row is not a rung: the high and the low
+ * share one while they are adjacent, and a field the day has nothing for (an
+ * untimed shift's hours) is no row at all without anything having been given
+ * up. Only the renderer knows which of those it was, so it says so here, at
+ * the moment it decided.
+ */
+function stampRungs(box: HTMLElement, rungs: readonly string[]): void {
+  box.setAttribute('data-rungs', rungs.join(' '));
+}
+
+/**
  * The forecast: how many days across, and how much each day says.
  *
  * **Width buys days and height buys rungs**, which is the shape of a strip and
@@ -2141,6 +2174,7 @@ function tierWeather(
   const full = weatherLadder(config);
   const ladder = rungsAt(tier, full);
   stampTier(entry.box, tier, columns);
+  stampRungs(entry.box, ladder);
 
   if (columns !== drawn || ladder.length !== full.length) {
     const rebuilt = renderWeather(model, { ...config, count: columns }, ladder as readonly WeatherField[]);
@@ -2184,6 +2218,8 @@ function tierShift(
   const ladder = rungsAt(tier, view.ladder);
   const line = laddersToOneLine(tier, view.ladder.length);
   stampTier(entry.box, tier, view.entries.length);
+  // A badge collapsed onto one line has given up nothing: every rung is on it.
+  stampRungs(entry.box, line ? view.ladder : ladder);
   if (ladder.length === view.ladder.length && !line) {
     beltShift(entry);
     return;
