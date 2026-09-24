@@ -8253,7 +8253,19 @@ above, the difference is +12 tests and +2 files — `emoji-parity.test.ts` (7),
 `browser-emoji.test.ts` (2), and one assertion added to each of
 `no-emoji.test.ts`, `catalog.test.ts` and `external-modules.test.ts` — which
 the arithmetic and the reading agree on, for the second time running rather
-than the fifth.
+than the fifth. **That count was taken on S11's own branch, before it carried
+`main`'s P1.2, P1.3, P2.1–P2.3, P3 and P4.1** — this paragraph sat beside the
+identical P4.1 paragraph above it for exactly the time it took to merge the
+two branches, which is the fault this document's header warns about arriving
+on schedule: two true counts, on two trees, side by side, neither labelled as
+provisional. Re-measured with a real Chromium after `main` was merged into
+this branch: **4061 tests passing, 1 skipped and 1 expected failure, over 291
+files** — calendar 153 over 10, core 314 over 9, display 647 over 37, server
+2947 over 235. Against the 4049 over 289 recorded above, that is +12 tests and
++2 files — the identical delta S11 shipped on its own branch, none of it lost
+and none of it double-counted in the merge. The arithmetic and the reading
+agree a third time running, because this delta never touched a file P4.1
+also touched.
 
 ---
 
