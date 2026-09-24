@@ -12,6 +12,7 @@ import { runMigrations } from '../src/db/migrate.js';
 import { weatherModule, type WeatherPanel } from '../src/modules/weather/index.js';
 import { readWeatherSettings, writeWeatherSettings } from '../src/api/queries.js';
 import type { ModuleContext } from '../src/modules/registry.js';
+import { epaperCurrent } from '../src/epaper/widgets.js';
 
 /**
  * The weather job, against a real server that answers with real bytes (plan
@@ -324,6 +325,47 @@ describe('Open-Meteo, one request for three parts', () => {
     expect(late).not.toHaveProperty('current');
     // The rest of the panel is still there, which is the point of per part.
     expect(late?.days).toHaveLength(5);
+    db.close();
+  });
+});
+
+describe('current conditions, as a panel may draw them (P3.5)', () => {
+  /*
+   * A battery panel can sleep for an hour, so a reading on one is always drawn
+   * with the time it was taken — "54F at 08:00" — and `epaperCurrent` is the
+   * only reader that hands a panel draw the current temperature. Read here off
+   * panels the job assembled from the real captured documents, so the words
+   * are the ones a real station and a real model produce.
+   */
+  it('stamps a station reading with the time it was observed, in the household’s zone', async () => {
+    const db = database('nws');
+    const server = await fake();
+    await run(db, server, T0);
+    // KDCA reported 12 °C at 12:00 UTC: 53.6 °F, and eight in the morning in New York.
+    const shown = panel(db, server, T0 + 20 * MINUTE);
+    expect(shown?.current?.source).toBe('observed');
+    expect(epaperCurrent(shown, 'America/New_York', true)).toEqual({ temp: '54F', at: '08:00', text: '54F at 08:00' });
+    expect(epaperCurrent(shown, 'America/New_York', false)?.text).toBe('54F at 08:00 am');
+    db.close();
+  });
+
+  it('stamps a modelled reading with the time the model describes', async () => {
+    const db = database('openmeteo');
+    const server = await fake();
+    await run(db, server, T0);
+    // Open-Meteo's current conditions are for 12:30 UTC, whatever minute they were fetched.
+    expect(epaperCurrent(panel(db, server, T0 + 30 * MINUTE), 'America/New_York', true)?.text).toBe('54F at 08:30');
+    db.close();
+  });
+
+  it('draws no reading at all once there is no current reading to draw', async () => {
+    const db = database('openmeteo');
+    const server = await fake();
+    await run(db, server, T0);
+    // Ninety-one minutes after 12:30 the panel carries no `current`, and a
+    // panel style falls back to the day's high and low (P3.4) rather than
+    // drawing an old number with no stamp.
+    expect(epaperCurrent(panel(db, server, Date.parse('2026-09-24T14:01:00Z')), 'America/New_York', true)).toBeUndefined();
     db.close();
   });
 });

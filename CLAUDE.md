@@ -7903,6 +7903,90 @@ is this change's own count (four new server files of 62, three tests in
 3907 over 276 against 3830 over 271. Agreement both times, recorded as an
 observation and not a method. No ratchet baseline moved.
 
+**An e-paper panel's frame ETag hashes what its widgets draw, not the whole
+manifest (plan item P3.5, session S09).** The preimage used to include
+`manifestEtag(manifest)`, and the manifest carries every module's panel whether
+or not a given panel draws it. A Home Assistant reading moved every paired
+panel, and so did a to-do list, and S08's current conditions would have moved
+every panel every fifteen minutes, weather widget or not. A panel that sees a
+new ETag downloads a new frame, and a battery panel does a full refresh to show
+it. The frame now hashes the manifest with `panels` emptied, plus
+`canvasPanelInputs`: for each widget on the canvas, what its draw reads.
+
+**`panelInput` in `epaper/widgets.ts` is the one place a widget reads a
+module's panel, and the design is that `drawWidget` no longer receives the
+manifest at all.** Each draw is handed `panelInput`'s answer, so it cannot read
+anything the ETag does not hash; there is nothing else for it to read. Each
+answer is as narrow as the draw it feeds:
+- The forecast strip reads `forecastDays`' output (a name, a high, a low and a
+  glyph per day). So `current`, `hourly`, `air`, `units`, `fetchedAt` and a
+  day's `detail` and rain chance cannot move a frame.
+- A list-backed to-do widget reads its own list, and a typed checklist reads no
+  panel at all.
+- The house, the chore board and a module's panel read their whole slice,
+  because each draw reads it whole.
+- The built-in layout reads no panel, because `renderEpaper` draws from the
+  model.
+
+`epaper-frame-etag.test.ts` holds this in both directions, and the direction
+that can hurt a household is derived by rendering rather than from a table.
+Fourteen probes (every widget type, a list-backed and a typed to-do, a group,
+and the built-in layout) meet eleven mutations. Every frame that changed by a
+single bit got a new ETag, which is the half that stops a panel keeping an old
+picture for ever. A panel's ETag moves only for something one of its widgets
+reads. Each read has a mutation that reaches the glass, so the probes are
+probing. The weather panel in that file comes from the real parsers over the
+owner's captured NWS documents. Twelve mutations were checked and all are red,
+including the one the brief named: reverting to `manifestEtag(manifest)`
+reddens "keeps its ETag across two manifests that differ only in `current`".
+
+**No pixel moved, so `EPAPER_RENDERER_VERSION` stays 9.** Every `epaper-*`
+file passes unchanged, including `epaper-clock-variants`' `MAIN_HASHES` and
+`epaper-todo-widget`'s pinned frames. Every paired panel's ETag does move once,
+at the upgrade that ships this, because the preimage changed shape. That is one
+full refresh per panel.
+
+**Nothing on a panel draws current conditions yet, and the brief's positive
+test is therefore an `it.fails`, owned by S14.** P5.1's `today` style is the
+first draw that will. The test is written against that style's name, and
+because `panelInput` is the only way a draw reaches `current`, the session that
+builds the draw makes it pass and has to drop `.fails`: P2.1's device for
+S06's screens. The stamp the brief asks for is built: `epaperCurrent` is the
+only reader that hands a panel draw the current temperature, and it hands it
+with its time, "54F at 08:00". The degree sign is not in the panel's faces, so
+the unit rides on the number the way the strip's low already does.
+`weather-job.test.ts` checks it against panels assembled from the real
+captures: the KDCA station at 08:00, the Open-Meteo model at 08:30, twelve-hour
+clocks, and nothing once the reading is ninety minutes old. One line in it can
+contradict nothing today and is kept anyway: `canvasPanelInputs` reads each
+widget's config through `withInk`, as the draw does. No key the ink lane offers
+changes which slice a widget reads, so the mutation that drops it stays green.
+
+**The fifteen-minute churn P3.5 names is still there for any household with a
+calendar, and that was measured rather than argued.** Every calendar sync
+stamps `last_success_at`, including the "feed unchanged" path. The manifest
+carries it as `sources[].lastSuccessAt`, which the manifest-minus-`panels` hash
+still includes. Driven through a real paired panel, the job's own
+`recordUnchanged` write turned the next request's `304` into a `200` with a new
+ETag. The panel reads no `sources` and no `notices` at all, so dropping them
+from the preimage is the obvious next change. It is outside P3.5's letter,
+which is about `panels`, and is recorded here and in the pull request rather
+than made.
+
+Merging `main` into this branch surfaced one fault in P2.3's new "Use this
+place" handler. It wrote the weather settings without the air quality switch,
+which `tsc` refused, and `weather-geocoding.test.ts` now holds the switch
+through the lookup and the choice.
+
+**3984 tests passing, 1 skipped and 6 expected failures, over 285 files**:
+calendar 153 over 10 · core 314 over 9 · display 638 over 36 · server 2879
+over 230, plus six `it.fails` (P2.1's five and this one). Measured with a real
+Chromium (`MW_BROWSER_EXECUTABLE`) on the tree after `main` was merged into
+this branch. Against S08's 3952 over 283 above, that is +32 and +2 files: P2.3's
+19 tests and one file, and this change's 13 and one file, plus the expected
+failure. The arithmetic and the reading agree again, which is recorded and is
+still not a method. No ratchet baseline moved.
+
 ---
 
 ## Open decisions

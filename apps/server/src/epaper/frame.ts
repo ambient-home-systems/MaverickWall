@@ -40,7 +40,7 @@ import { Framebuffer, rotate } from './framebuffer.js';
 import { typeTierFor } from './type-tiers.js';
 import { renderEpaper } from './render.js';
 import { buildEpaperModel } from './viewmodel.js';
-import { renderFreeformEpaper, type PlacedEpaperWidget } from './widgets.js';
+import { canvasPanelInputs, renderFreeformEpaper, type PlacedEpaperWidget } from './widgets.js';
 
 /**
  * Bump when the drawing changes in any way that alters pixels. It is in the
@@ -180,6 +180,34 @@ export function epaperOrientation(screen: FrameScreen): 'portrait' | 'landscape'
 }
 
 /**
+ * What this frame reads of the modules' panels, as the text its ETag hashes
+ * (P3.5).
+ *
+ * The preimage used to hash the whole manifest, and the manifest carries every
+ * module's panel whether or not this panel draws it — so a Home Assistant
+ * reading moved every paired panel's ETag, and once the weather carried current
+ * conditions it would have moved them every fifteen minutes, weather widget or
+ * not. A panel that sees a new ETag downloads a new frame, and a battery panel
+ * does a full refresh to show it: a flash, and a battery spent, on a picture
+ * that had not changed.
+ *
+ * So `panels` leaves the manifest's hash and comes back as exactly what the
+ * canvas's widgets read of it — `canvasPanelInputs`, the same answers
+ * `renderFreeformEpaper` hands each draw, so a draw cannot read anything this
+ * does not hash. **The built-in layout reads no panel at all**: `renderEpaper`
+ * draws from the model, which is built from the days, the window and the
+ * display settings, and those are all still in the manifest's hash.
+ *
+ * What moves once is every panel's ETag, at the upgrade that ships this — the
+ * preimage changed shape, so the old hashes cannot survive it. That is one full
+ * refresh per panel, where the change removes one every fifteen minutes, and
+ * no pixel moves, so `EPAPER_RENDERER_VERSION` is untouched.
+ */
+function framePanels(manifest: Manifest, widgets: readonly PlacedEpaperWidget[] | undefined): string {
+  return widgets === undefined ? 'no panels' : JSON.stringify(canvasPanelInputs(manifest, widgets));
+}
+
+/**
  * Render a screen's frame — the household's free-form canvas when it has one for
  * this orientation, otherwise the fixed agenda-and-month layout.
  *
@@ -236,7 +264,9 @@ export function renderScreenFrame(
 
   const preimage = [
     EPAPER_RENDERER_VERSION,
-    manifestEtag(manifest),
+    // Everything but the modules' panels, which are hashed below as what this
+    // canvas reads of them and nothing more (P3.5). See `framePanels`.
+    manifestEtag({ ...manifest, panels: {} }),
     `${panelWidth}x${panelHeight}`,
     // The resolved type tier — read off the panel's *visual* short side, which
     // is what `panelMetrics` reads and so what the frame was actually drawn at.
@@ -245,6 +275,7 @@ export function renderScreenFrame(
     rotation,
     model.today,
     freeform ? JSON.stringify(widgets ?? []) : 'auto',
+    framePanels(manifest, widgets),
   ].join('|');
   const etag = `"${createHash('sha256').update(preimage, 'utf8').digest('hex').slice(0, 32)}"`;
 
