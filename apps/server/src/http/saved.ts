@@ -133,7 +133,11 @@ export const SAVED_MESSAGES = {
   // Home Assistant
   'ha-connected': 'Connected to Home Assistant.',
   'ha-disconnected': 'Disconnected from Home Assistant.',
-  'ha-entity-added': 'Reading added.',
+  // Two keys for one act, because adding a reading watches an entity and only
+  // a Home Assistant widget puts it on a wall (P1.3): the handler asks which
+  // walls draw it and sends the sentence that is true of that branch.
+  'ha-entity-added': 'Reading added. No wall shows it yet — a wall needs a Home Assistant widget.',
+  'ha-entity-added-shown': 'Reading added — it is on the wall on its next refresh.',
   'ha-entity-removed': 'Reading removed.',
   'ha-calendar-added': 'Calendar added.',
   'ha-rule-added': 'Rule added.',

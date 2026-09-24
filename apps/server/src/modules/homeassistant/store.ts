@@ -4,6 +4,7 @@ import type { Keyring } from '../../secrets/keyring.js';
 import { HOME_BLOCK } from './index.js';
 import type { DisplayMode } from './entities.js';
 import { nextCalendarColor } from '../../api/palette.js';
+import { haReadingHandle } from '../../api/manifest.js';
 
 /**
  * This module's corner of the database.
@@ -154,6 +155,26 @@ export function readWatched(db: SqliteDatabase): WatchedRow[] {
         ORDER BY watched DESC, sort_order, entity_id`,
     )
     .all() as WatchedRow[];
+}
+
+/**
+ * The watched readings, for the Home Assistant widget's picker (P1.3).
+ *
+ * `todoListChoices` one widget along: `id` is what a widget stores, `name` is
+ * the label the wall draws — the household's own name for it, else Home
+ * Assistant's, else the id, exactly as `toReading` decides it — and `key` is
+ * the handle the house panel carries, so the editor's live preview can find
+ * the reading a box names without an opinion of its own about how a handle is
+ * made. In the order the panel draws them.
+ */
+export function watchedReadingChoices(db: SqliteDatabase): { id: string; name: string; key: string }[] {
+  return readWatched(db)
+    .filter((row) => row.watched === 1)
+    .map((row) => ({
+      id: row.entityId,
+      name: row.label ?? row.friendlyName ?? row.entityId,
+      key: haReadingHandle(row.entityId),
+    }));
 }
 
 export interface WatchInput {

@@ -39,6 +39,7 @@ import {
 } from './ladder.js';
 import {
   clockWidgetView,
+  houseReadingsFor,
   panelRowLimit,
   shiftWidgetView,
   weatherWidgetView,
@@ -432,12 +433,10 @@ function renderHouse(
   config?: unknown,
   tier?: WidgetTier,
 ): HTMLElement | undefined {
-  // Which readings to show, by label — the manifest carries no entity id, so a
-  // per-widget selection can only ever be by the label the household sees.
-  // Empty means all, which is the default and what a bare widget draws.
-  const wanted = configStrings(widgetConfig(config)['readings']);
-  const readings =
-    wanted.length === 0 ? model.house : model.house.filter((r) => wanted.includes(r.label));
+  // Which readings to show, by the handle the server minted for each — never
+  // an entity id, and no longer the label, which a rename used to break
+  // (P1.3). Empty means all, which is the default and what a bare widget draws.
+  const readings = houseReadingsFor(model.house, config);
   if (readings.length === 0) return undefined;
 
   const strip = el('section', 'house');
