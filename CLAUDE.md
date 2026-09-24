@@ -8563,6 +8563,11 @@ shard went from 133s to 125s, and `browser-editor` inside it from 72.4s to
 46.6s. Its neighbours stayed within about a second. That is the difference
 from the change above: its sleeps were idle time handed to neighbours, and this
 change removes CPU as well as idle time.
+**4144 tests passing, 1 skipped and 1 expected failure, over 296 files**:
+calendar 153 over 10 · core 314 over 9 · display 689 over 39 · server 2988
+over 238. Measured with `pnpm test` and a real Chromium, on a clone whose tags
+had been fetched. Against the 4143 over 296 above, that is one test and no
+file: the probe's own test, in a file that already existed.
 
 ---
 
