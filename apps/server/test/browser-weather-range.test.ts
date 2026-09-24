@@ -198,7 +198,7 @@ describe('what a range gives up, and what it keeps', () => {
       measureScreen(ww, undefined);
       const size = SIZES[0]!;
       const id = ww.weather[size.orientation].id;
-      const seen: { w: number; rungs: string; cells: Record<string, number> }[] = [];
+      const seen: { w: number; rungs: string; cells: Record<string, number>; bar: number; em: number }[] = [];
       for (const w of [0.9, 0.6, 0.45, 0.36, 0.3, 0.25]) {
         await setWeather(ww, size.orientation, { variant: 'range' }, { w, h: 0.3 });
         const { page, close } = await loadWallSettled(ww.link, size);
@@ -207,7 +207,13 @@ describe('what a range gives up, and what it keeps', () => {
           expect(box.clipped, `at w=${w}`).toEqual([]);
           expect(box.belted, `at w=${w}`).toBe(0);
           const rows = await readRows(page, id);
-          seen.push({ w, rungs: box.rungs ?? '', cells: rows[0]!.cells });
+          seen.push({
+            w,
+            rungs: box.rungs ?? '',
+            cells: rows[0]!.cells,
+            bar: rows[0]!.track[1] - rows[0]!.track[0],
+            em: rows[0]!.fonts['wr-hi'] ?? 0,
+          });
         } finally {
           await close();
         }
@@ -225,6 +231,13 @@ describe('what a range gives up, and what it keeps', () => {
       expect(lostGlyph, 'no width gave up the glyph').toBeGreaterThan(lostRain);
       for (const one of seen.slice(lostRain)) expect(has(one, 'wr-rain'), `rain back at w=${one.w}`).toBe(false);
       for (const one of seen.slice(lostGlyph)) expect(has(one, 'wr-ico'), `glyph back at w=${one.w}`).toBe(false);
+      // Above the table's floor the bar keeps the length `RANGE_TIERS` budgets
+      // for it (4ch, about 1.6em of the temperature): the widths are asked of
+      // the room *beside the name*, and a tier read off the whole box keeps a
+      // column the name has already spent the room for, shortening the bar.
+      for (const one of seen.filter((entry) => has(entry, 'wr-ico'))) {
+        expect(one.bar, `the bar at w=${one.w} is ${one.bar}px against ${one.em}px type`).toBeGreaterThanOrEqual(1.5 * one.em);
+      }
       // And the stamp says so, rung for rung.
       expect(seen[lostRain]!.rungs).toBe('bar low high glyph');
       expect(seen[lostGlyph]!.rungs).toBe('bar low high');
