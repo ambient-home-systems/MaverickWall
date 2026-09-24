@@ -69,7 +69,10 @@ export interface PageHeaderOptions {
    * crumb into a real back link.
    */
   readonly back?: { readonly label: string; readonly href: string } | undefined;
-  /** A single primary action for the top-right. Already-escaped href. */
+  /**
+   * A single primary action for the top-right: a list page's "Add …", a link
+   * to its add page (P2.1). Already-escaped href.
+   */
   readonly action?:
     | { readonly label: string; readonly href: string }
     | undefined;
@@ -149,7 +152,7 @@ export function section(
   help: string | undefined,
   children: string,
   /**
-   * A fragment somebody can link to — `admin/calendars#add`.
+   * A fragment somebody can link to — `admin/modules/advanced#add`.
    *
    * On the `<section>` rather than on the heading, so the anchor lands on the
    * whole run rather than on one line of it, and so a screen that wants to

@@ -1042,7 +1042,10 @@ describe('Home Assistant calendars, from the Calendars screen', () => {
     const ha = await fakeHomeAssistant();
     await connect(h, ha);
 
-    const page = await (await h.call('/admin/calendars')).text();
+    // On the add page's chooser, since P2.1 took every way of adding a
+    // calendar off the Calendars list: the page it is read from moved, and
+    // what it offers did not.
+    const page = await (await h.call('/admin/calendars/new')).text();
     expect(page).toContain('From Home Assistant');
     expect(page).toContain('calendar.family');
     expect(page).toContain('Family');
@@ -1071,7 +1074,10 @@ describe('Home Assistant calendars, from the Calendars screen', () => {
     await connect(h, ha);
     await h.form('/admin/home-assistant/calendars', { entity_id: 'calendar.family' });
 
-    const page = await (await h.call('/admin/calendars')).text();
+    // The chooser, where the offer lives since P2.1 — on the list page this
+    // would pass whatever the offer did, because the list draws none.
+    const page = await (await h.call('/admin/calendars/new')).text();
+    expect(page, 'the chooser is the page under test').toContain('href="admin/calendars/new/address"');
     // The only calendar the fake has, so the whole section goes rather than
     // standing there empty explaining itself.
     expect(page).not.toContain('From Home Assistant');

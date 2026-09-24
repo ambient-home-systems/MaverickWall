@@ -16,6 +16,18 @@
 
 ## Unreleased
 
+**"Add" is in the same place on every settings list.** Calendars, People,
+Work Schedule, Shift types, Chores and Themes each have one **Add …** button
+at the top right, and it opens a page of its own for the new thing, instead
+of a form at the bottom of the list that you had to scroll down to find.
+Adding a calendar starts by asking where it comes from — an iCal address, an
+iCloud or CalDAV account, or Home Assistant — and the note about reaching
+Google, iCloud and Microsoft 365 through Home Assistant is on that page now,
+where you are when you need it. "Generate from a colour" is on the Add a
+theme page, and the pages under the Store take you back with the link at the
+top left rather than a big button. Walls and the Home Assistant screens get
+the same treatment in a later release.
+
 ## 0.67.0
 
 **Grouping widgets now does what you would expect.** Press **Group** on two

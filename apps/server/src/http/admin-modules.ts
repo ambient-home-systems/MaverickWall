@@ -470,7 +470,10 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
       title: 'Advanced — Maverick Wall',
       nav: 'modules',
       heading: 'Advanced',
-      action: { label: 'Back to the Store', href: 'admin/modules' },
+      // The way back is the header's back link: the app bar's action slot is
+      // only ever an "Add …" (P2.1), and a filled "Back to…" there read as
+      // this page's one main act.
+      back: { label: 'Store', href: 'admin/modules' },
       intro:
         'Two power tools, off the everyday path: write a recipe by hand, or add a ' +
         'module that runs as its own service on your network.',
@@ -548,7 +551,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
       title: 'Add a recipe — Maverick Wall',
       nav: 'modules',
       heading: 'Add a recipe',
-      action: { label: 'Back to Advanced', href: 'admin/modules/advanced' },
+      back: { label: 'Advanced', href: 'admin/modules/advanced' },
       intro:
         'A recipe is a module with no service to host: it names a public web feed ' +
         'and how to draw it, and Maverick Wall does the fetching. A recipe is data, ' +
@@ -691,7 +694,10 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
       title: `Install ${entry.name} — Maverick Wall`,
       nav: 'modules',
       heading: `Install ${entry.name}`,
-      action: { label: 'Back to the Store', href: 'admin/modules' },
+      // The way back is the header's back link: the app bar's action slot is
+      // only ever an "Add …" (P2.1), and a filled "Back to…" there read as
+      // this page's one main act.
+      back: { label: 'Store', href: 'admin/modules' },
       intro: entry.description,
       body:
         `<form method="post" action="admin/modules/install/${encodeURIComponent(entry.id)}">` +

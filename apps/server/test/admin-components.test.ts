@@ -239,6 +239,38 @@ describe('pageHeader', () => {
     expect([...html.matchAll(/<h1/g)]).toHaveLength(1);
   });
 
+  it('draws one action, a filled link to an add page, inside the app bar', () => {
+    /*
+     * The app bar's action slot is only ever "Add …" and always leads to a page
+     * of its own (P2.1). It is a *link* rather than a button in a form, because
+     * the thing it opens is a form — a page with the one filled Add on it — and
+     * a control here that submitted anything would be a second primary for the
+     * same act on the same screen, which is the objection the list pages used to
+     * carry their add forms inline to avoid.
+     */
+    const html = pageHeader({
+      heading: 'Chores',
+      action: { label: 'Add a chore', href: 'admin/chores/new' },
+    });
+    const header = /<header class="topbar">([\s\S]*)<\/header>/.exec(html)?.[1] ?? '';
+    const actions = [...header.matchAll(/<a class="(btn[^"]*)" href="([^"]*)">([^<]*)<\/a>/g)];
+    expect(actions).toHaveLength(1);
+    const [, classes, href, label] = actions[0] as RegExpMatchArray;
+    expect((classes as string).split(' ')).toContain('btn');
+    expect(href).toMatch(/^admin\/[a-z/-]+\/new$/);
+    expect(label).toBe('Add a chore');
+    expect(html).not.toContain('<form');
+    // And it sits after the title, so it is the bar's right-hand end.
+    expect(html.indexOf('<h1>')).toBeLessThan(html.indexOf('href="admin/chores/new"'));
+  });
+
+  it('escapes an action label and draws none when there is none', () => {
+    expect(pageHeader({ heading: 'X', action: { label: 'Add <b>', href: 'admin/x/new' } })).toContain(
+      '>Add &lt;b&gt;</a>',
+    );
+    expect(pageHeader({ heading: 'X' })).not.toMatch(/<a class="btn/);
+  });
+
   it('escapes a heading somebody else chose', () => {
     // A wall's name is a household's own text and reaches this.
     const html = pageHeader({ heading: '<script>alert(1)</script>', crumb: 'Walls' });
