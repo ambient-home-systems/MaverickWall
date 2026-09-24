@@ -256,8 +256,9 @@ async function drawAt(
    * both browsers, are clean.
    *
    * **No single line of the helper is the cure**, and that was checked rather
-   * than assumed: it holds every manifest for 750ms so the first draw has the
-   * fonts in hand, waits for the manifest before settling, and reloads so the
+   * than assumed: it holds every manifest until the wall's faces have loaded
+   * so the first draw has the fonts in hand (a fixed 750ms, when this was
+   * measured), waits for the manifest before settling, and reloads so the
    * second draw takes its fonts from cache — and neutering any *one* of the
    * three leaves this file green, because the other two still land a settled
    * draw. The old path had none of them. So do not read one of those lines as
