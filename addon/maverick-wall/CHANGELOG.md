@@ -16,6 +16,15 @@
 
 ## Unreleased
 
+**A Shift widget showing two people now shows both of them.** When two people
+on the rota were working the same day, the wall drew the first person's badge
+and quietly left the second off, because the box was sized for one badge and
+the wall made both of them full size. On the standard layout that was every
+household with two shift workers, every day both were on. Now, when the box
+has room for one badge each, both get one; when it does not, each person gets
+one line of their own in their own colour — "Amy: Days", "Ben: Mids" —
+which is what an e-paper panel has always shown in the same place.
+
 ## 0.67.0
 
 **Grouping widgets now does what you would expect.** Press **Group** on two
