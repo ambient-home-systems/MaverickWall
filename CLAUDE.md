@@ -7550,6 +7550,78 @@ files — exactly the three new files' own count (`admin-external-links.test.ts`
 the reading agree, and is recorded as an observation rather than a method:
 the paragraphs above this one have been wrong about that five times running.
 
+**S11 shipped P4.2: the bundled emoji artwork, and the wall no longer draws a
+forecast icon or a countdown's own picture through whatever font a tablet
+happens to carry.** D6 permits emoji on a browser wall precisely because it is
+drawn rather than typed. `apps/server/assets/emoji/` holds a curated 155-SVG
+subset of Twemoji — weather conditions, the six countdown occasions, the five
+advice-line pictures, a general countdown picker, and the Store's own
+hourglass — served from `/assets/emoji/<key>.svg`, immutably cached, SVG-only
+and slash-free (`http/static.ts`'s `defaultEmojiDir()`, the fonts route's own
+pattern: `EMOJI_DIR`, copied into the image beside the display bundle and the
+fonts, named at every one of the three places the fonts are — `static.ts`, the
+Dockerfile, the pruned-tree boot check). `apps/display/src/emoji.ts`
+(`emojiNode`) and `apps/server/src/emoji.ts` (`emojiImg`) are twin
+vocabularies, held character-for-character identical by
+`emoji-parity.test.ts`, the `glyph-parity.test.ts` seam — the manifest carries
+a **key**, never a code point.
+
+**No designed style draws from the vocabulary yet** — P5.1 and P5.2 are later
+sessions, and building an emoji-drawing style before the seam it draws through
+is proven would be two things resolved as one. So `emojiNode` is proved
+directly, in a real browser: `browser-emoji.test.ts` pairs a real wall,
+imports the compiled module the way the bundle itself would, appends the node
+the function builds, and confirms a same-origin `<img>` actually loads (not a
+broken reference), a key nobody curated draws nothing, and no emoji character
+ever reaches the rendered DOM as text — the one thing the old source-scan ban
+was ever actually checking, now checked by rendering rather than by reading.
+
+**`no-emoji.test.ts` narrows to the panel, and the wall's own proof moved from
+a source scan to a render.** It used to scan the whole display bundle, the
+admin and every module; D6 makes that scope wrong for a browser wall, so it
+reads only `apps/server/src/epaper/**` and its own `epaper-*` tests now, with
+`asciiTitle` kept as the panel's one guard — there is still no drawn,
+black-and-white artwork for a 1-bit screen (D3 defers that), so an emoji set
+as a character still vanishes on a panel exactly as it always has. Checked
+both directions: a stray code point planted in `epaper/render.ts` still turns
+the file red, and the identical plant in `apps/display/src/main.ts` — which
+the old, wider scan would have caught — now leaves it green.
+
+**Q3's default was taken: Twemoji, not OpenMoji.** CC-BY 4.0 is attribution
+only; OpenMoji's CC BY-SA 4.0 carries a share-alike term neither this
+repository nor a household running the image should have to reason about.
+`apps/server/assets/emoji/LICENSES.md` and the root `NOTICE` record the
+attribution. **Q9's default needed no code at all**: an emoji a household
+types into a countdown's own title still renders in the device's own font,
+because `emojiNode` is never called on anything but a curated key and nothing
+in this phase touches how typed text renders — a bundled colour font is a
+later decision, and only after it is measured on the oldest supported tablet.
+
+**The Store's Countdown entry draws the bundled hourglass now** (P1.1's own
+promise, D5), in place of the `pressure` gauge glyph it was left wearing while
+there was no artwork to draw. The catalogue schema's `glyph` stays required of
+every entry — a module's own panel reading may still carry one — and `emoji`
+is the new optional field a card draws instead when it names one
+(`catalog.ts`, `admin-modules.ts`).
+
+Eight mutations were checked by reverting the fix and watching the test go
+red: the store card's emoji swap, the Countdown entry's `emoji` field, the
+route's `.svg`-only and immutable-cache guards (each on its own),
+`emoji-parity.test.ts`'s label block, and `emojiNode`'s own unknown-key guard
+— plus `no-emoji.test.ts`'s narrowed scope, checked both ways: a stray code
+point in `epaper/render.ts` still reddens it, and the identical stray in
+`apps/display/src/main.ts`, which the old wider scan would have caught,
+leaves it green.
+
+**3842 tests passing, and 1 skipped, over 273 files**: calendar 153 over 10 ·
+core 314 over 9 · display 616 over 35 · server 2759 over 219, measured on a
+clone whose tags had been fetched. Against the 3830 over 271 recorded just
+above, the difference is +12 tests and +2 files — `emoji-parity.test.ts` (7),
+`browser-emoji.test.ts` (2), and one assertion added to each of
+`no-emoji.test.ts`, `catalog.test.ts` and `external-modules.test.ts` — which
+the arithmetic and the reading agree on, for the second time running rather
+than the fifth.
+
 ---
 
 ## Open decisions
