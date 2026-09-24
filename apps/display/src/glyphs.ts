@@ -255,6 +255,100 @@ export const GLYPH_PATHS: Readonly<Record<GlyphKey, string>> = {
 };
 
 /**
+ * The parts of a sky, for the `colour` weather style (plan item P5.1).
+ *
+ * A two-tone glyph — a sun behind a cloud, rain falling out of one — needs its
+ * drawing split into the objects it is made of, so each can take its own
+ * condition colour (`--wx-*`, `theme.ts`'s palette). The drawings above are not
+ * touched: a part is a run of **consecutive subpaths** of the one path string,
+ * named in order, so `GLYPH_PATHS` stays the single drawing every renderer
+ * reads and `glyph-parity` keeps comparing it character for character with the
+ * server's. `glyph-parts.test.ts` holds each run to the path it cuts up — the
+ * runs' subpaths, joined, are the path exactly — so a drawing edited above
+ * without its runs here goes red rather than colouring half a cloud yellow.
+ *
+ * **Wall only, and only skies.** The panel draws one bit and its cells are a
+ * redraw at 12 pixels (`epaper/glyphs.ts`), so a colour style falls back to
+ * the strip there and nothing on it reads this; a device class stays one ink,
+ * because the `colour` style is a forecast's. Every subpath here is wound
+ * clockwise and no sky has a counter, so splitting one path into several
+ * changes no pixel of the silhouette: `nonzero` unions overlapping subpaths
+ * whether they share a `<path>` or not. What the split *does* decide is paint
+ * order, and it is the drawing's own — the sun is drawn first, so the cloud in
+ * front of it is in front of it.
+ */
+export type GlyphPart = 'sun' | 'cloud' | 'rain' | 'snow' | 'fog' | 'storm' | 'bolt' | 'wind';
+
+export const GLYPH_PARTS: Readonly<Partial<Record<GlyphKey, readonly (readonly [GlyphPart, number])[]>>> = {
+  clear: [['sun', 9]],
+  'mostly-clear': [['sun', 5], ['cloud', 3]],
+  'partly-cloudy': [['sun', 5], ['cloud', 4]],
+  cloudy: [['cloud', 4]],
+  fog: [['cloud', 4], ['fog', 2]],
+  drizzle: [['cloud', 4], ['rain', 3]],
+  rain: [['cloud', 4], ['rain', 3]],
+  showers: [['cloud', 4], ['rain', 3]],
+  snow: [['cloud', 4], ['snow', 3]],
+  // A drop, a flake, a drop — the drawing's own order, so three runs.
+  sleet: [['cloud', 4], ['rain', 1], ['snow', 1], ['rain', 1]],
+  // A storm's cloud is the storm colour and its bolt is lit, which is the one
+  // part that is not the colour of what it is named after.
+  thunderstorm: [['storm', 4], ['bolt', 1]],
+  wind: [['wind', 5]],
+};
+
+/** A path string cut at every subpath, in order. Every glyph here starts each with `M`. */
+export function subpaths(d: string): readonly string[] {
+  return d.split(/(?=M)/);
+}
+
+/**
+ * A glyph's parts as `[part, path]`, in drawing order, or undefined for a key
+ * with no parts (a device class) or runs that no longer cover its drawing —
+ * which `glyphPartsNode` answers by drawing the glyph in one ink, never half.
+ */
+export function glyphParts(key: GlyphKey): readonly (readonly [GlyphPart, string])[] | undefined {
+  const runs = GLYPH_PARTS[key];
+  if (runs === undefined) return undefined;
+  const pieces = subpaths(GLYPH_PATHS[key]);
+  const out: (readonly [GlyphPart, string])[] = [];
+  let at = 0;
+  for (const [part, count] of runs) {
+    if (count < 1 || at + count > pieces.length) return undefined;
+    out.push([part, pieces.slice(at, at + count).join('')]);
+    at += count;
+  }
+  return at === pieces.length ? out : undefined;
+}
+
+/**
+ * One glyph as an SVG node with a `<path>` per part, each classed `gl-<part>`
+ * for the stylesheet to paint, or `null` for a key this bundle cannot draw.
+ *
+ * A key with no parts is drawn exactly as `glyphNode` draws it, in one ink:
+ * the `colour` style never draws less than the strip would.
+ */
+export function glyphPartsNode(key: unknown, className: string): SVGSVGElement | null {
+  if (!isGlyphKey(key)) return null;
+  const parts = glyphParts(key);
+  if (parts === undefined) return glyphNode(key, className);
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'currentColor');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+  svg.setAttribute('class', `${className} gl-parts`);
+  for (const [part, d] of parts) {
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('class', `gl-${part}`);
+    svg.appendChild(path);
+  }
+  return svg;
+}
+
+/**
  * One glyph as an SVG node, or `null` for a key this bundle cannot draw.
  *
  * Built with `createElementNS` and `setAttribute` rather than `innerHTML`,

@@ -15,12 +15,14 @@
  * its default, the same way a Weather widget reads a shift field in `fields`
  * as nothing to do with it.
  *
- * **Only the clock's variants draw anything yet.** The other lists are the
- * values the plan names, added ahead of their drawings so the schema, the
- * editor and the panel's honours tables have one shape to grow into; every
- * renderer draws its type's default for every one of them until the session
- * that designs it (P5.1–P5.4). `browser-widget-looks.test.ts` holds the wall
- * to that and `epaper-ink.test.ts` holds the panel to it.
+ * **The clock's variants and the forecast's `range` and `colour` draw; the
+ * rest do not yet.** The other lists are the values the plan names, added
+ * ahead of their drawings so the schema, the editor and the panel's honours
+ * tables have one shape to grow into; every renderer draws its type's default
+ * for every one of them until the session that designs it (P5.1–P5.4).
+ * `browser-widget-looks.test.ts` holds the wall to that and
+ * `epaper-ink.test.ts` holds the panel to it; the two designed forecasts are
+ * measured in `browser-weather-range` and `browser-weather-colour`.
  *
  * Pure, with no DOM, for the reason `widget-options.ts`, `ink.ts` and
  * `ladder.ts` are: the renderer builds nodes and does no thinking, and there is
@@ -149,7 +151,11 @@ export const VARIANT_HIDES: {
   readonly [T in VariantType]: Readonly<Record<VariantOf<T>, readonly string[]>>;
 } = {
   clock: { plain: [], stacked: ['showDate'], analogue: ['clockFormat', 'showDate'] },
-  weather: { strip: [], today: [], range: [], colour: [], playful: [] },
+  // A `range` row is designed rather than laddered: its columns are the
+  // style, and what a narrow box gives up is `RANGE_TIERS`' to decide, so the
+  // field ladder would be a control that moves nothing. `colour` is the strip
+  // painted and reads every control the strip does.
+  weather: { strip: [], today: [], range: ['fields'], colour: [], playful: [] },
   countdown: { number: [], page: [], ticket: [], occasion: [], progress: [], month: [] },
   homeassistant: { list: [], tile: [] },
   calendar: { '': [], planner: [], bold: [] },

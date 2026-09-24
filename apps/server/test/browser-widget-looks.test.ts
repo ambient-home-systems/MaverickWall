@@ -14,12 +14,14 @@
  *     is asserted from where the buttons *landed* rather than from a class. A
  *     type with no looks draws no Look at all. The default is written as an
  *     absence and a chosen look as itself — the calendar's default included,
- *     which has no name to write. On the ink lane a forecast's Look is not
- *     offered and its note says what the panel draws instead.
+ *     which has no name to write. On the ink lane a forecast's Look is offered
+ *     as the three a panel is offered (P5.1: the strip, Today and Range), and
+ *     a wall wearing a look the panel draws as its strip says so under it.
  *
- *  2. **No new look draws anything yet.** Every renderer draws its type's
- *     default for every one of the new values, so a household who picks one
- *     sees exactly what they had. Measured rather than read: boxes of one size
+ *  2. **No undesigned look draws anything yet.** Every renderer draws its
+ *     type's default for every one of the new values but the two P5.1 designed
+ *     — the forecast's `range` and `colour`, measured in their own files — so a
+ *     household who picks one sees exactly what they had. Measured rather than read: boxes of one size
  *     in a row, one per value and one with none, and every element in each
  *     box — its tag, its class, its words, its rectangle relative to its box
  *     and its computed type — held to its default sibling's, at 1080x1920 and
@@ -51,8 +53,15 @@ let wall: Installation;
 let link: string;
 let screenId: string;
 
-/** The looks the wall does not draw yet: every type's but the clock's. */
+/** The types with looks the wall does not draw yet: every type's but the clock's. */
 const UNDRAWN: readonly VariantType[] = ['weather', 'countdown', 'homeassistant', 'calendar'];
+/**
+ * The looks on those types that *are* designed now, and are measured in their
+ * own files instead (plan item P5.1): `browser-weather-range` and
+ * `browser-weather-colour`. Every other value of the four types is still held
+ * to drawing its default here.
+ */
+const DESIGNED: ReadonlySet<string> = new Set(['weather.range', 'weather.colour']);
 
 /** What each type needs to have something to say, so no box is left out. */
 const BASE_CONFIG: Readonly<Record<string, Record<string, unknown>>> = {
@@ -315,6 +324,16 @@ describe('the editor offers exactly each type’s looks', () => {
         // It still draws the strip, so every control on it still does what it
         // did: the Content tab is the strip's, control for control.
         expect(await contentKeys('weather'), 'Today took a working control off the screen').toEqual(asStrip);
+        // Range is a designed row (P5.1): its columns are the style's, so the
+        // field ladder goes and the day count, which it reads, stays.
+        await page.locator('.insp-tab', { hasText: 'Style' }).click();
+        await page.locator('.le-config [data-cfg-key="variant"] button', { hasText: 'Range' }).click();
+        await save(page);
+        expect(storedConfig('weather')).toEqual({ variant: 'range' });
+        expect(asStrip, 'the strip offers no field ladder to take away').toContain('fields');
+        expect(await contentKeys('weather'), 'Range kept the ladder or lost the day count').toEqual(
+          asStrip.filter((key) => key !== 'fields'),
+        );
         await page.locator('.insp-tab', { hasText: 'Style' }).click();
         await page.locator('.le-config [data-cfg-key="variant"] button', { hasText: 'Strip' }).click();
         await save(page);
@@ -337,7 +356,7 @@ describe('the editor offers exactly each type’s looks', () => {
   );
 
   it(
-    'offers the clock’s Look on the ink lane and says what a panel draws instead of a forecast’s',
+    'offers the clock’s Look on the ink lane, and a forecast’s narrowed to what a panel draws',
     async () => {
       const canvas = editorCanvas().map((widget) =>
         widget.id === 'weather' ? { ...widget, config: { variant: 'today' } } : widget,
@@ -357,30 +376,50 @@ describe('the editor offers exactly each type’s looks', () => {
         const page = await context.newPage();
         await wall.signIn(page);
         await openEditor(page);
-        const inkLane = async (id: string): Promise<{ look: number; notes: string }> => {
+        const inkLane = async (id: string): Promise<{ look: number; notes: string; labels: string[]; pressed: string[]; hint: string }> => {
           await page.locator(`.le-overlay .le-widget[data-id="${id}"]`).click();
           await page.waitForSelector('.le-config', { timeout: 20_000 });
           const lane = page.locator('.insp-lane').nth(1);
           expect(await lane.isVisible(), 'no ink lane offered, so nothing to check').toBe(true);
           await lane.click();
           await page.waitForSelector('.insp-ink-head', { timeout: 20_000 });
+          const look = await readLook(page);
           const read = {
-            look: await page.locator('.le-config [data-cfg-key="variant"]').count(),
+            look: await page.locator('.le-config [data-cfg-key="variant"] [role="group"]').count(),
             notes: (await page.locator('.le-config .insp-ink-list').allTextContents()).join(' | '),
+            labels: [...look.labels],
+            pressed: [...look.pressed],
+            hint: (await page.locator('.le-config p.hint[data-cfg-key="variant"]').allTextContents()).join(' | '),
           };
           await page.locator('.insp-lane').nth(0).click();
           return read;
         };
 
+        // A forecast's Look is offered since P5.1, narrowed to what a panel is
+        // offered: the strip, Today and Range, and no note calling it ignored.
         const weather = await inkLane('weather');
-        expect(weather.look, 'a forecast’s Look offered on the ink lane').toBe(0);
-        expect(weather.notes).toContain('Look — a panel draws the forecast as its strip, whichever look is chosen.');
+        expect(weather.look, 'a forecast’s Look is missing from the ink lane').toBe(1);
+        expect(weather.labels).toEqual(['Strip', 'Today', 'Range']);
+        expect(weather.pressed).toEqual(['Today']);
+        expect(weather.notes).not.toContain('Look');
+        expect(weather.hint).toBe('');
 
         // The clock's Look is honoured on one bit, so it is offered and no
         // note calls it ignored — the note is scoped to the types it is true of.
         const clock = await inkLane('clock');
         expect(clock.look, 'the clock’s Look is missing from the ink lane').toBe(1);
         expect(clock.notes).not.toContain('Look');
+
+        // A wall wearing Colour: the panel draws it as its strip, so the lane
+        // shows the strip pressed and says why, rather than pressing nothing.
+        canvasOf(editorCanvas().map((widget) =>
+          widget.id === 'weather' ? { ...widget, config: { variant: 'colour' } } : widget,
+        ));
+        await openEditor(page);
+        const colour = await inkLane('weather');
+        expect(colour.labels).toEqual(['Strip', 'Today', 'Range']);
+        expect(colour.pressed).toEqual(['Strip']);
+        expect(colour.hint).toBe('A panel draws the Colour look as its strip.');
       } finally {
         await context.close();
       }
@@ -446,7 +485,7 @@ const SIZES: readonly { readonly width: number; readonly height: number; readonl
   { width: 1920, height: 1080, orientation: 'landscape' },
 ];
 
-describe('no new look draws anything yet', () => {
+describe('no undesigned look draws anything yet', () => {
   for (const size of SIZES) {
     it(
       `draws every type's default for every look it has not designed, at ${size.width}x${size.height}`,
@@ -461,7 +500,7 @@ describe('no new look draws anything yet', () => {
             expect(baseline, `${type} with no look was not drawn`).toBeDefined();
             // A box with nothing in it would make every comparison pass.
             expect(baseline!.count, `${type} with no look drew an empty box`).toBeGreaterThan(3);
-            for (const value of VARIANTS[type].filter((v) => v !== '')) {
+            for (const value of VARIANTS[type].filter((v) => v !== '' && !DESIGNED.has(`${type}.${v}`))) {
               const drawn = boxes[`${type}-${value}${suffix}`];
               expect(drawn, `${type} with ${value} was not drawn`).toBeDefined();
               expect(drawn!.lines, `${type} with ${value} drew something its default does not`).toEqual(

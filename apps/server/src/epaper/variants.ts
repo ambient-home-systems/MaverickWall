@@ -10,9 +10,11 @@
  *
  * What the panel honours of it is a separate fact, and it lives in
  * `honours.ts` where `epaper-ink.test.ts` derives it by rendering: the clock
- * draws all three of its looks on one bit, and every other type's looks are,
- * for now, values the panel draws as that type's default — which is exactly
- * what the wall draws for them too, until the sessions that design them.
+ * draws all three of its looks on one bit, the forecast draws `range` as
+ * black bars (plan item P5.1) and every other forecast look as its strip, and
+ * every other type's looks are, for now, values the panel draws as that type's
+ * default — which is what the wall draws for them too, until the sessions that
+ * design them. Which looks a panel draws as their own is `PANEL_LOOKS`.
  * The labels are carried with the lists because they are one table per type;
  * the panel draws no picker and reads none of them.
  */
