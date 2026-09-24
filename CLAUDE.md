@@ -8518,6 +8518,52 @@ before anybody reaches for that lever.
 same counts as `main`: no test was added or removed, and every change is inside
 tests that already existed.
 
+**`browser-editor` stopped paying for a server and a sign-in per test, and
+waits for what it used to guess at.** It was the slowest file in CI's first
+shard, at 87s on the runner. Of its 58s locally, about a third was sleeps and
+another third was setup (an install, a sign-in and an editor load per test).
+Two changes, each checked:
+
+- **Twenty-two of its tests share one server, and each pairs its own wall.**
+  Everything they change is the canvas of the wall they open, so sharing the
+  server shares nothing they read. The three that change the household — a
+  panel following a wall, a calendar feed, a Home Assistant connection — keep a
+  server of their own. Each server is signed in to once, through the form, and
+  its cookie is handed to every context (`storageState`). A sign-in per test is
+  a password hash per test, against a rate limit that is one bucket per server.
+- **Its 75 fixed waits are one `settle()`.** The editor does almost everything
+  synchronously, in the handler that got the key or the pointer. What it puts
+  off is the preview's 140ms debounce, the ink lane's and the e-paper
+  backdrop's frames, and its fetches. A test-side init script counts the timers
+  the bundle under `/assets/` sets and every fetch and body read in flight.
+  `settle` waits for two frames with nothing pending. The admin's own 800ms
+  ripple timer is deliberately not counted, because nothing asserts on a
+  ripple.
+
+**No wait in the file turned out to be load-bearing on an idle machine**, and
+that is why the probe has a test of its own. With `settle` made a no-op, all
+25 tests stayed green. Most config changes redraw the preview synchronously,
+and the rest finish inside Playwright's round trip. So nothing proved the probe
+counted anything, and a wait that counts nothing is the fixed sleep's
+flakiness back again, on a slower runner. The new first test dispatches a nudge
+and starts a save in one synchronous turn, where nothing can fire in between.
+It asserts the probe counted 1, then 2, and settles to 0. Each of three
+mutations turns it red: ignoring bundle timers, not counting fetches, and a
+no-op `settle`. Three product mutations, with the bundle rebuilt, are still
+red:
+
+- the orientation toggle posting;
+- Ctrl+Z stepping the hidden canvas;
+- the preview drawing a box the wall leaves out.
+
+**Measured locally, alone:** 58.0s of summed test time became 33–34s over
+three runs, and the file's wall time went from 66s to about 38s. **Measured
+locally as CI's shard 1 of 4** (60 files, three workers on four cores): the
+shard went from 133s to 125s, and `browser-editor` inside it from 72.4s to
+46.6s. Its neighbours stayed within about a second. That is the difference
+from the change above: its sleeps were idle time handed to neighbours, and this
+change removes CPU as well as idle time.
+
 ---
 
 ## Open decisions
