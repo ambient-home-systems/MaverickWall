@@ -16,6 +16,16 @@
 
 ## Unreleased
 
+**Each wall has a Motion switch.** It is under **Device and time** on the
+wall's settings, beside the wall's size, and it decides whether the styles
+that move — weather that drifts, a countdown that celebrates, both still to
+come — may move on that wall. It is on for every wall already hanging, and off
+by default when the wall's size is one of the e-ink panels, which redraw the
+whole screen for every frame. A tablet or television set to reduce motion
+stays still whatever the switch says. Nothing on any wall moves yet; this is
+the groundwork those styles need so that an animation carries on smoothly
+through the wall's redraw every fifteen seconds instead of starting again.
+
 **A Shift widget showing two people now shows both of them.** When two people
 on the rota were working the same day, the wall drew the first person's badge
 and quietly left the second off, because the box was sized for one badge and

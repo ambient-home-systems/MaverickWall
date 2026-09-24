@@ -3037,3 +3037,76 @@ body {
  * third-party module sending either never goes blank on upgrade (rule nine).
  */
 .gp-text { font-size: 2rem; color: var(--ink); line-height: 1.4; }
+
+/*
+ * The motion fixture's still frame (plan P4.3) — a dot and a bar, positioned
+ * in shares of their box. A test fixture no server sends: `motion-fixture.ts`
+ * says why it exists. Still by default, like everything else on the wall;
+ * what moves it is the scoped block below and nothing here.
+ */
+.fx-fixture { position: relative; width: 100%; height: 100%; overflow: hidden; }
+.fx-fixture-loop {
+  position: absolute; left: 0; top: 20%;
+  width: 20%; height: 30%;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.fx-fixture-once {
+  position: absolute; left: 0; right: 0; bottom: 10%;
+  height: 20%;
+  background: var(--muted);
+}
+
+/*
+ * **Motion on a browser wall, and all of it is in this one block** (plan P4.3,
+ * decision D7).
+ *
+ * The wall rebuilds its whole document every fifteen seconds, so an animation
+ * is a new animation on every tick and restarts from nought unless something
+ * says where it was. `motion.ts` is that something: it writes each animated
+ * element's `animation-duration` and a negative `animation-delay` taken from
+ * the corrected wall clock (a loop), or from the moment a one-shot first fired
+ * (a burst), inline. What is declared here is only *what* moves — the keyframes
+ * and the name that binds them — and four things about it are the rule rather
+ * than taste, each held by `apps/display/test/motion.test.ts`:
+ *
+ *  - **Inside `prefers-reduced-motion: no-preference`.** A household who has
+ *    asked their system for less motion is served none, with no setting of
+ *    ours to find. A keyframe set is inside it as well as every binding, so
+ *    the rule is one fence rather than two.
+ *  - **Under `.canvas[data-motion="on"]`**, which `main.ts` writes from the
+ *    wall's own Motion switch (`screens.motion`; null is on, and the e-ink
+ *    sizes default it off). An admin preview's canvas carries no attribute at
+ *    all, so a preview is always still.
+ *  - **`transform` and `opacity` only**, in every keyframe. Both are
+ *    composited; anything else is a layout or a paint on every frame, on a
+ *    cheap tablet bolted to a wall for a year.
+ *  - **No duration and no delay here.** The phase is computed from the
+ *    duration, so the duration is stated once, in TypeScript, where it is
+ *    computed; a second copy here is how the two would come to disagree.
+ *
+ * An e-paper panel reaches none of this: its frame is a packed raster drawn on
+ * the server, and every style draws its still frame there.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  /* The fixture's loop: a dot drifting across its box and back to the start. */
+  @keyframes fx-fixture-drift {
+    from { transform: translateX(0); }
+    to { transform: translateX(400%); }
+  }
+  /* The fixture's one-shot: a bar arriving from below, once per event. */
+  @keyframes fx-fixture-arrive {
+    from { opacity: 0; transform: translateY(100%); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .canvas[data-motion="on"] .fx-fixture-loop {
+    animation-name: fx-fixture-drift;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+  }
+  .canvas[data-motion="on"] .fx-fixture-once.fx-playing {
+    animation-name: fx-fixture-arrive;
+    animation-timing-function: ease-out;
+    animation-fill-mode: both;
+  }
+}

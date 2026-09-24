@@ -20,6 +20,7 @@ import { agendaTimeFitsBeside, weekColumnsFit } from './density.js';
 import type { PanelData, PanelReading } from './viewmodel.js';
 import type { ManifestWidget, CanvasBackground } from './manifest.js';
 import { glyphNode } from './glyphs.js';
+import { MOTION_FIXTURE_TYPE, renderMotionFixture } from './motion-fixture.js';
 import { variantOf } from './variants.js';
 import { boxRect, gutterStepFor } from './gutter.js';
 import { childCells, groupChildren, topLevelWidgets } from './group-cells.js';
@@ -1321,6 +1322,14 @@ export function renderWidget(
       return renderChoresWidget(model, config);
     case 'image':
       return renderImageWidget(config, mediaBase);
+    /*
+     * The motion demonstration (plan P4.3) — a test fixture no server sends:
+     * `WIDGET_TYPES` refuses it at the layout save and drops it from a stored
+     * row, so the only way it is ever drawn is a test rewriting the manifest.
+     * `motion-fixture.ts` says why it exists and why it stays.
+     */
+    case MOTION_FIXTURE_TYPE:
+      return renderMotionFixture(model.now, widgetId, config, model.oneShots);
     default:
       return undefined;
   }
@@ -2970,7 +2979,20 @@ export function renderFreeform(
    * and this picks the record for the theme actually on the glass. Absent is
    * the active theme, which is every preview and every wall with no schedule.
    */
-  options: { readonly daytime?: boolean } = {},
+  options: {
+    readonly daytime?: boolean;
+    /*
+     * Whether this wall may move (plan P4.3): `screens.motion` as the server
+     * resolved it, which only `main.ts` reads off the manifest. Stamped on the
+     * canvas as `data-motion`, where every animation rule in `display.css` is
+     * scoped. **Absent stamps nothing**, which is every admin preview — the
+     * gallery's cards and the editor's live canvas — and a canvas with no
+     * attribute matches no rule, so a preview is always still: a settings
+     * screen somebody is working in is not the place for a cloud to drift
+     * across the thing they are trying to arrange.
+     */
+    readonly motion?: boolean;
+  } = {},
 ): void {
   const takeover = model.interrupts.find((interrupt) => interrupt.takeover);
   if (takeover !== undefined) {
@@ -2982,6 +3004,9 @@ export function renderFreeform(
   const screen = el('div', 'screen freeform');
   const canvas = el('div', 'canvas');
   canvas.style.setProperty('--aspect', String(layout.aspect));
+  // Set before anything inside it is built, so an element that animates is
+  // created under the attribute rather than restyled into it a moment later.
+  if (options.motion !== undefined) canvas.setAttribute('data-motion', options.motion ? 'on' : 'off');
   /*
    * How much room between the widgets (RFC 014 §4.4), out of two budgets.
    *
@@ -3095,9 +3120,11 @@ export function renderFreeform(
       // A box the household placed but that has no data yet says so, rather
       // than being an empty rectangle nobody can explain from the kitchen.
       box.appendChild(el('div', 'fw-empty', 'Nothing to show yet.'));
-    } else if (widget.type === 'clock' || widget.type === 'image') {
+    } else if (widget.type === 'clock' || widget.type === 'image' || widget.type === MOTION_FIXTURE_TYPE) {
       // The clock sizes itself to its box, and the image covers it — both fill
-      // the box on their own, in CSS, with no measurement here at all.
+      // the box on their own, in CSS, with no measurement here at all. The
+      // motion fixture is two shapes positioned in percentages of its box, and
+      // has no form to take from a tier either.
       box.appendChild(body);
     } else if (widget.type === 'calendar' && calendarGridFills(widget.config)) {
       // The month and week grids fill their box: their rows/cells stretch to the

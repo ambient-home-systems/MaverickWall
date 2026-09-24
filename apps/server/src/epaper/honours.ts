@@ -389,6 +389,16 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
  */
 
 /*
+ * **Where a wall's Motion switch is, and why it is in neither table** (plan
+ * P4.3). `screens.motion` is a column on `screens`, so the gutter's argument
+ * above applies verbatim: there is no widget config to set it on. And there is
+ * nothing on a panel for it to govern — a frame is a packed 1-bit raster drawn
+ * on the server, so every style draws its still frame there whatever the wall
+ * it follows is allowed to do. `motion-scope.test.ts` holds the panel path to
+ * reaching no stylesheet at all, which is the fact rather than the promise.
+ */
+
+/*
  * **Where the wall's default style lane is, and why it is in neither table**
  * (RFC 014 §4.1 / §4.4).
  *

@@ -372,6 +372,13 @@
       "when": 1790256955149,
       "tag": "0052_air_quality",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "6",
+      "when": 1790275126266,
+      "tag": "0053_wall_motion",
+      "breakpoints": true
     }
   ]
 }

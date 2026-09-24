@@ -8,6 +8,7 @@ import type {
 } from './manifest.js';
 import { isGlyphKey, type GlyphKey } from './glyphs.js';
 import { styleTokensOf } from './widget-style.js';
+import { NO_ONE_SHOTS, type OneShotMemory } from './motion.js';
 export type { ManifestShift };
 export type { GlyphKey };
 
@@ -510,6 +511,18 @@ export interface DisplayModel {
    * it reaches the renderer, which is the one place that draws anything.
    */
   readonly todoNotices: Readonly<Record<string, string>>;
+  /**
+   * When each widget's one-shot effects fired, by widget id and event (plan
+   * P4.3) — the confetti on a countdown's day, a page flipping at midnight.
+   *
+   * The second piece of this model that is not the manifest, and it reaches the
+   * renderer the way `todoNotices` above does, for the reason `todoNotices`
+   * gives: the whole document is rebuilt every fifteen seconds, so the moment a
+   * burst began cannot live in the node that is showing it. `main.ts` owns the
+   * memory; a surface that keeps none — every admin preview — gets
+   * `NO_ONE_SHOTS`, which draws each one-shot's still frame.
+   */
+  readonly oneShots: OneShotMemory;
 }
 
 /**
@@ -1496,6 +1509,13 @@ export interface BuildOptions {
    * tell it.
    */
   readonly todoNotices?: Readonly<Record<string, string>>;
+  /**
+   * The wall's one-shot memory (plan P4.3). Optional and defaulted to none, on
+   * `todoNotices`' argument: it is what this page has already shown, which no
+   * manifest can say, and a caller with no page to remember for — a preview, a
+   * test building a model from a document — draws every one-shot still.
+   */
+  readonly oneShots?: OneShotMemory;
 }
 
 export function buildModel(options: BuildOptions): DisplayModel {
@@ -1688,6 +1708,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
     layoutStyle: styleTokensOf(manifest.screen?.layoutStyleTokens),
     layoutDaytimeStyle: styleTokensOf(manifest.screen?.layoutDaytimeStyleTokens),
     todoNotices: options.todoNotices ?? {},
+    oneShots: options.oneShots ?? NO_ONE_SHOTS,
     notices: manifest.notices.map((notice) => ({ level: notice.level, message: notice.message })),
     staleness,
     blocks,

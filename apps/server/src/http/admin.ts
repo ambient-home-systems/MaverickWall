@@ -88,6 +88,7 @@ import {
   WALL_SIZE_CUSTOM,
   WALL_SIZE_PRESETS,
 } from '../wall-sizes.js';
+import { wallMotion } from '../wall-motion.js';
 import type { LogBuffer } from '../logbuffer.js';
 import {
   parseBackground,
@@ -438,6 +439,16 @@ const screenBody = z.object({
    * a row *means* is decided in the handler against `layout-slots.ts`.
    */
   schedule_form: optionalText(1),
+  /*
+   * Whether this wall may move (plan P4.3). `motion_shown` is what the switch
+   * was drawn as, `1` or `0`, and it is the marker too: the handler writes the
+   * column only when the posted switch differs from it — the household moved
+   * it — and otherwise leaves it as it was, so a wall whose Motion nobody
+   * touched keeps the null that lets an e-ink size turn it off. A page cached
+   * from before the row existed posts neither, and changes nothing.
+   */
+  motion: checkbox(),
+  motion_shown: optionalText(1),
   ...Object.fromEntries(
     Array.from({ length: MAX_SCHEDULE_ROWS }, (_, i) => i + 1).flatMap((n) => [
       [`schedule_slot_${n}`, optionalText(24)],
@@ -3022,6 +3033,24 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       schedule = rows;
     }
 
+    /*
+     * Whether this wall may move (plan P4.3), written only when it was moved.
+     *
+     * A switch always posts an answer, so "on" in the body cannot tell a
+     * household who chose motion from one who never looked at the row — and
+     * the difference is the whole of the e-ink default: a wall saved with a
+     * 7.5" e-ink size and the switch untouched must be still, not locked on by
+     * a switch that was drawn on while the size was still a television. So the
+     * form says what it drew, and a posted value equal to that is the column
+     * handed back unchanged — null stays null, and `wallMotion` goes on reading
+     * it against whatever size this save stores.
+     */
+    let motion: number | null = stored?.motion ?? null;
+    const motionShown = (shaped.value.motion_shown ?? '').trim();
+    if ((motionShown === '1' || motionShown === '0') && shaped.value.motion !== (motionShown === '1')) {
+      motion = shaped.value.motion ? 1 : 0;
+    }
+
     // Density overrides: empty follows the household default, a number is
     // range-checked here beside the theme and zone checks.
     const density = (
@@ -3085,6 +3114,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         readDistanceMm: size.distanceMm,
         layoutGutter,
         layoutStyle,
+        motion,
       })
     ) {
       return c.redirect('/admin/walls', 302);
@@ -5129,6 +5159,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `</div>`;
 
     // --- Device and time --------------------------------------------------
+    const motionOn = wallMotion(screen.motion, screen.panelWidthMm, screen.panelHeightMm);
     const device =
       wsetGroup('Identity', textField({ label: 'Wall name', name: 'name', required: true, value: screen.name })) +
       `<div class="wset-group">` +
@@ -5234,6 +5265,32 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `<p class="hint-1">Two facts about the hardware, like the mounting above: ` +
           `nothing else in here knows how large this wall is or how far away it is ` +
           `read from. Leave them unset and it draws exactly as it does today.</p>`,
+      ) +
+      /*
+       * Whether this wall may move (plan P4.3, decision D7) — beside the size
+       * because the size is what decides its default: an e-ink panel running
+       * the browser wall repaints the whole screen for every frame, so the
+       * e-ink sizes default it off. Drawn as the answer `wallMotion` gives for
+       * the stored row, which is what the wall is doing; `motion_shown` says
+       * what that was, so the handler can tell a switch the household moved
+       * from one they left alone (see the handler). Nothing on a wall moves
+       * yet except where a style that moves has been chosen, and the hint says
+       * so rather than promising animation somebody will go looking for.
+       */
+      wsetGroup(
+        'Motion',
+        `<div class="rows">` +
+          switchRow({
+            label: 'Motion',
+            name: 'motion',
+            checked: motionOn,
+            hint:
+              'Lets the styles that move — weather that drifts, a countdown that ' +
+              'celebrates — move on this wall. Off by default for an e-ink size. ' +
+              'A device set to reduce motion stays still either way.',
+          }) +
+          `<input type="hidden" name="motion_shown" value="${motionOn ? '1' : '0'}">` +
+          `</div>`,
       ) +
       wsetGroup(
         'Time',

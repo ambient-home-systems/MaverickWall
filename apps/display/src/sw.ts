@@ -65,6 +65,8 @@ const SHELL = [
   '/assets/ladder.js',
   '/assets/manifest.js',
   '/assets/month-spans.js',
+  '/assets/motion.js',
+  '/assets/motion-fixture.js',
   '/assets/orientation.js',
   '/assets/render.js',
   '/assets/store.js',
