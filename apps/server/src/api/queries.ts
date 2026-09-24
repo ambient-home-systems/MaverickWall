@@ -1273,6 +1273,8 @@ export interface AdminScreenRow extends ScreenRow {
   readonly layoutGutter: number | null;
   /** The wall's default style lane as stored JSON; null is none (RFC 014 §4.1). */
   readonly layoutStyle: string | null;
+  /** Whether this wall may move; null is "never chosen" (plan P4.3). */
+  readonly motion: number | null;
   /** The viewport this screen last reported, for the editor's "match" (RFC 005). */
   readonly reportW: number | null;
   readonly reportH: number | null;
@@ -1302,7 +1304,7 @@ export function readAdminScreens(db: SqliteDatabase): AdminScreenRow[] {
               layout_landscape_aspect AS layoutLandscapeAspect,
               layout_background AS layoutBackground,
               layout_landscape_background AS layoutLandscapeBackground,
-              layout_gutter AS layoutGutter, layout_style AS layoutStyle,
+              layout_gutter AS layoutGutter, layout_style AS layoutStyle, motion,
               report_w AS reportW, report_h AS reportH,
               last_seen_at AS lastSeenAt, last_seen_ip AS lastSeenIp,
               last_seen_forwarding AS lastSeenForwarding, app_version AS appVersion
@@ -1381,6 +1383,13 @@ export interface ScreenSettings {
    * the row existed cannot clear a lane nobody touched.
    */
   readonly layoutStyle: string | null;
+  /**
+   * Whether this wall may move, or null for "never chosen" (plan P4.3). The
+   * handler writes a value only when the household moved the switch, and
+   * otherwise hands back what the column already holds — so a null survives
+   * a save, and the e-ink default goes on following the wall's size.
+   */
+  readonly motion: number | null;
 }
 
 export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSettings): boolean {
@@ -1394,7 +1403,7 @@ export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSet
                 display_today_events = ?, display_next_days = ?, display_horizon_weeks = ?,
                 clock_24 = ?,
                 panel_width_mm = ?, panel_height_mm = ?, read_distance_mm = ?,
-                layout_gutter = ?, layout_style = ?,
+                layout_gutter = ?, layout_style = ?, motion = ?,
                 updated_at = ?
           WHERE id = ?`,
       )
@@ -1404,7 +1413,7 @@ export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSet
         s.allowDismiss ? 1 : 0, s.allowChores ? 1 : 0, s.allowTodo ? 1 : 0,
         s.displayTodayEvents, s.displayNextDays, s.displayHorizonWeeks,
         s.clock24, s.panelWidthMm, s.panelHeightMm, s.readDistanceMm,
-        s.layoutGutter, s.layoutStyle,
+        s.layoutGutter, s.layoutStyle, s.motion,
         Date.now(), id,
       ).changes > 0
   );
@@ -2214,6 +2223,14 @@ export interface ScreenRow {
    * until one is written. Named in the `SELECT` for the reason the gutter is.
    */
   readonly customCss: string | null;
+  /**
+   * Whether this wall may move: `1`, `0`, or null for "never chosen", which
+   * `wallMotion` reads as on except on an e-ink size (plan P4.3). Named in the
+   * `SELECT` for the reason the gutter is — an unselected column reads as
+   * null, which is "on", which is exactly what a household who switched
+   * motion off would never notice was ignored.
+   */
+  readonly motion: number | null;
 }
 
 export function readScreens(db: SqliteDatabase): ScreenRow[] {
@@ -2240,7 +2257,7 @@ export function readScreens(db: SqliteDatabase): ScreenRow[] {
               layout_background AS layoutBackground,
               layout_landscape_background AS layoutLandscapeBackground,
               layout_gutter AS layoutGutter, layout_style AS layoutStyle,
-              custom_css_scoped AS customCss
+              custom_css_scoped AS customCss, motion
          FROM screens WHERE revoked_at IS NULL`,
     )
     .all() as ScreenRow[];

@@ -984,6 +984,8 @@ export function createApp(deps: AppDeps): Hono {
     readonly layoutStyle?: string | null;
     /** The wall's own CSS, already scoped (RFC 014 §7); null until written. */
     readonly customCss?: string | null;
+    /** Whether this wall may move; null is "never chosen" (plan P4.3). */
+    readonly motion?: number | null;
   }) => {
     const at = now();
     const household = readHousehold(deps.db);
@@ -1116,6 +1118,9 @@ export function createApp(deps: AppDeps): Hono {
         // The scoped text as stored (RFC 014 §7); `buildManifest` spreads an
         // absent one away, so a wall with none sends the document it always did.
         customCss: screenLike.customCss ?? null,
+        // As stored; `buildManifest` reads it with the size through
+        // `wallMotion` and says so only when the answer is "still".
+        motion: screenLike.motion ?? null,
         theme: screenLike.theme,
         timezone: screenLike.timezone,
         daytimeTheme: screenLike.daytimeTheme,
@@ -1167,6 +1172,7 @@ export function createApp(deps: AppDeps): Hono {
       layoutGutter: screen.layoutGutter,
       layoutStyle: screen.layoutStyle,
       customCss: screen.customCss,
+      motion: screen.motion,
     });
 
   // The push server, if boot wired one, builds from exactly this — see the dep.

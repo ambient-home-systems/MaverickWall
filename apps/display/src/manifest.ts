@@ -259,6 +259,13 @@ export interface Manifest {
      * the field; read defensively for the reason a widget's is.
      */
     readonly customCss?: unknown;
+    /**
+     * Whether this wall may move (plan P4.3): `screens.motion` resolved by the
+     * server, e-ink sizes included. **Absent means on** and only `false` is
+     * ever sent, so a wall nobody has touched — and every wall a server older
+     * than the switch draws — reads a document with nothing new in it.
+     */
+    readonly motion?: boolean;
   };
   readonly days: readonly ManifestDay[];
   readonly people: readonly ManifestPerson[];

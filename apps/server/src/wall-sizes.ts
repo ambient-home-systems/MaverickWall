@@ -34,6 +34,13 @@ export interface WallSizePreset {
   readonly heightMm: number;
   /** Where somebody stands to *read* one of these, not to glance at it. */
   readonly readAtMm: number;
+  /**
+   * An e-ink panel running the browser wall — a Boox, a Kindle-class tablet —
+   * rather than a lit screen. What turns a wall's Motion default off (plan
+   * P4.3, `wall-motion.ts`): e-ink redraws the whole picture for every frame
+   * of an animation, and bands and ghosts doing it.
+   */
+  readonly eink?: true;
 }
 
 /**
@@ -41,9 +48,9 @@ export interface WallSizePreset {
  * picture, which is what the arithmetic needs. A bezel is not legible.
  */
 export const WALL_SIZE_PRESETS: readonly WallSizePreset[] = [
-  { key: 'eink-7.5', label: '7.5 inch e-ink panel', widthMm: 163, heightMm: 98, readAtMm: 600 },
-  { key: 'eink-10.3', label: '10.3 inch e-ink panel', widthMm: 209, heightMm: 157, readAtMm: 700 },
-  { key: 'eink-13.3', label: '13.3 inch e-ink panel', widthMm: 270, heightMm: 202, readAtMm: 800 },
+  { key: 'eink-7.5', label: '7.5 inch e-ink panel', widthMm: 163, heightMm: 98, readAtMm: 600, eink: true },
+  { key: 'eink-10.3', label: '10.3 inch e-ink panel', widthMm: 209, heightMm: 157, readAtMm: 700, eink: true },
+  { key: 'eink-13.3', label: '13.3 inch e-ink panel', widthMm: 270, heightMm: 202, readAtMm: 800, eink: true },
   { key: 'tablet-10', label: '10 inch tablet', widthMm: 217, heightMm: 136, readAtMm: 800 },
   { key: 'monitor-24', label: '24 inch monitor', widthMm: 531, heightMm: 299, readAtMm: 1000 },
   { key: 'tv-32', label: '32 inch television', widthMm: 708, heightMm: 398, readAtMm: 1200 },

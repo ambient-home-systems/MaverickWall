@@ -67,7 +67,7 @@ Violating any of these is a failed task.
 - **Emoji on a browser wall are bundled artwork, never a device font; anything an e-paper panel draws carries none at all.** *(Rewritten 2026-09-24 for decision D6; the plan is `docs/plan-2026-09-household-review.md`.)* The rule this replaces was "no emoji in anything a screen renders", and its reason is unchanged: the image ships no emoji font, so an emoji set as *text* is a third-party asset resolved on the device — it differs on every panel, some kiosks draw an empty box, and `asciiTitle` deletes it outright on e-ink. **That rule was written down and broken at the same time** — every forecast and every device class chose one until the first-party vocabulary replaced them. What changed is the remedy, not the reason. The owner wants emoji in a weather or countdown style, so the wall ships its own: a curated Twemoji set under `apps/server/assets/emoji/`, served from `/assets/emoji/<name>.svg` and drawn as an `<img>` from a *key* the manifest carries, never a code point (plan item P4.2), so every screen draws the same picture. A code point handed to the device's font in a designed style is still the bug this rule was written for. The one exception is stated so nobody "fixes" it: text a household typed itself, such as a countdown's title, renders in the device's own font (Q9), because it is their string and the wall does not rewrite it. E-paper keeps the drawn glyphs. **Until S11 lands this is stricter than it reads**: `no-emoji.test.ts` still refuses an emoji anywhere a screen reads from, which is correct while there is no artwork to draw. Once S11 lands it is narrowed to the e-paper renderer and its tests, with `asciiTitle` as the panel's guard, and gains the assertion that a designed wall style draws emoji as a bundled `<img>` and never as text. It scans comments too, because a comment is where the next one gets pasted from.
 - **No stat tiles — but a designed widget style may make one reading its lede.** *(Amended 2026-09-24 for decision D1.)* A big number with a caption, or a 3-up row of them, is a dashboard idiom, and this is a calendar: the wall's job is the thing the household does not already know, and a row of tiles says the things they do. That is still out, on any widget. What D1 permits is narrower: a designed style — the weather "Today" card, a countdown's number — may carry **one** large reading, capped against the event role the way the clock is (1.8x, `WALL_TYPE_CAPS`), so the biggest number on the wall can never outsize an event name by more than the clock already may. The cap is the rule rather than the size; a large reading with no cap is a stat tile with a style name. Enforced once S15 and S16 land by each style's own ratio assertion at three sizes, the way `orientation.test.ts` holds the clock to 1.8x.
 - **Shadows on a browser wall come from one theme token, and a theme or an e-ink preset can switch them off.** *(Rewritten 2026-09-24 for decision D8.)* The rule this replaces was "no shadow on the display, at any size, in any theme", because a shadow bands on e-ink and burns in on OLED. Both are still true, and they are now the reason the shadow is a *token* rather than the reason for a ban: `--shadow-card` is set per theme (soft on Panels and Household, paper-like on Almanac, none on Blueprint and Swiss), derived for a custom theme, and set to none by the e-ink presets of the wall-size picker (plan item P4.4). A literal `box-shadow` in a widget rule is therefore still wrong — it is the one shadow a household with an OLED or e-ink screen could not turn off. An e-paper panel draws none: `shadow` stays in `PANEL_IGNORES`, which `epaper-ink.test.ts` already proves by rendering. Separation is still space, then a 1px rule, then a ground step, in that order; a shadow is a look a theme lays on top of that and never the only thing separating two boxes. Enforced once S13 lands by `builtin-themes-parity.test.ts`, which holds the token's per-theme values in the bundle and on the server to each other.
-- **Motion on a browser wall is phase-locked to the wall clock, gated by reduced motion and the wall's own switch, and moves only `transform` and `opacity`. An e-paper panel is always still.** *(Rewritten 2026-09-24 for decision D7.)* The rule this replaces was "no transition or animation on any surface a screen sees", because the wall has no pointer and redraws every 15 s: a transition there confirms nothing and reads as a flicker in a room, and `draw()` empties and rebuilds the whole wall on every tick, so a naive CSS animation restarts four times a minute. The owner decided weather and countdown styles may move, and that confetti may fall on a countdown's day. The reasons survive as the conditions (plan item P4.3): a looping effect takes a negative `animation-delay` from the corrected wall clock, so a rebuilt element resumes where the old one was; a one-shot fires once per event from a per-widget memory in `main.ts`, not once per tick; every `@keyframes`, `animation` and `transition` sits inside `prefers-reduced-motion: no-preference` and under `.canvas[data-motion="on"]`, the wall's Motion switch (`screens.motion`, null meaning on, Q6, and off by default on the e-ink presets); and only `transform` and `opacity` are animated, because anything else is layout or paint on every frame of an old tablet. The panel draws each style's still frame. **The ban was a convention for as long as it existed, and a convention is what a future contributor breaks** — reasonably, from a browser habit, in a file nobody re-reads — which is why its replacement is a build failure too. **Until S12 lands the ban is still what is enforced**: `apps/display/test/motion.test.ts` holds `display.css` (source *and* the copy `dist/` serves), the wall's HTML, its offline shell and every module in `main.ts`'s import graph to carrying neither word at all, and `apps/server/test/motion-scope.test.ts` holds the panel path to reaching no stylesheet. Once S12 lands `motion.test.ts` and the display half of `motion-scope.test.ts` enforce the scope instead — no animation outside the scoped block, keyframes that touch only `transform` and `opacity` — the panel path still reaches no stylesheet at all, and a browser test holds an animation's computed time continuous across a redraw. The admin's rule is unchanged and `motion-scope.test.ts` keeps holding it: three durations and three easings, every declaration inside `prefers-reduced-motion: no-preference`, because the admin is a settings screen somebody is touching, where the same 180ms is the only thing telling them the tap landed.
+- **Motion on a browser wall is phase-locked to the wall clock, gated by reduced motion and the wall's own switch, and moves only `transform` and `opacity`. An e-paper panel is always still.** *(Rewritten 2026-09-24 for decision D7.)* The rule this replaces was "no transition or animation on any surface a screen sees", because the wall has no pointer and redraws every 15 s: a transition there confirms nothing and reads as a flicker in a room, and `draw()` empties and rebuilds the whole wall on every tick, so a naive CSS animation restarts four times a minute. The owner decided weather and countdown styles may move, and that confetti may fall on a countdown's day. The reasons survive as the conditions (plan item P4.3): a looping effect takes a negative `animation-delay` from the corrected wall clock, so a rebuilt element resumes where the old one was; a one-shot fires once per event from a per-widget memory in `main.ts`, not once per tick; every `@keyframes`, `animation` and `transition` sits inside `prefers-reduced-motion: no-preference` and under `.canvas[data-motion="on"]`, the wall's Motion switch (`screens.motion`, null meaning on, Q6, and off by default on the e-ink presets); and only `transform` and `opacity` are animated, because anything else is layout or paint on every frame of an old tablet. The panel draws each style's still frame. **The ban was a convention for as long as it existed, and a convention is what a future contributor breaks** — reasonably, from a browser habit, in a file nobody re-reads — which is why its replacement is a build failure too. **S12 landed it, and the scope is what is enforced now.** `apps/display/test/motion.test.ts` parses `display.css` (source *and* the copy `dist/` serves) and refuses any `@keyframes` or animation binding outside `@media (prefers-reduced-motion: no-preference)`, any binding whose selector does not start at `.canvas[data-motion="on"]`, any keyframe that moves something other than `transform` or `opacity`, any transition at all, and any `animation-duration`, `animation-delay` or shorthand in the stylesheet — the duration is stated once, in `motion.ts`, where the phase is computed from it. It also holds `motion.ts` as **the one module** in `main.ts`'s import graph that says "animation", writing only `animationDuration` and `animationDelay`; every other wall module still carries none of the words. `apps/server/test/motion-scope.test.ts` holds the same scope on the stylesheet the server actually serves and the panel path to reaching no stylesheet at all, and `browser-motion.test.ts` measures a real Chromium: a loop's computed phase continuous across a tick, a one-shot that resumes through a redraw and does not refire, and nothing moving under reduced motion or with the switch off. The admin's rule is unchanged and `motion-scope.test.ts` keeps holding it: three durations and three easings, every declaration inside `prefers-reduced-motion: no-preference`, because the admin is a settings screen somebody is touching, where the same 180ms is the only thing telling them the tap landed.
 - No proportional figures on the display. font-variant-numeric: tabular-nums is not a preference here: a figure that changes width changes a row's geometry, and a geometry change forecloses e-ink partial refresh.
 - The date numeral is never larger than the event name beside it by more than 1.2x. The wall's job is the thing the household does not already know.
 - A month cell is not a card. No fill, no border, no radius, no shadow. Structure comes from the week rule and the column gutter. D8's shadow token is a widget's and a theme's and does not reach a cell, and full grid lines or weekend shading wait on Q1 rather than on this sentence being reread.
@@ -7547,6 +7547,78 @@ files — exactly the three new files' own count (`admin-external-links.test.ts`
 `admin-vocabulary.test.ts`), which is the rare case where the arithmetic and
 the reading agree, and is recorded as an observation rather than a method:
 the paragraphs above this one have been wrong about that five times running.
+
+
+**A browser wall may move now, and nothing it draws restarts on the tick (plan
+P4.3, session S12).** `draw()` still empties and rebuilds the whole wall every
+fifteen seconds, so every animated element is a new element four times a
+minute and a plain CSS animation would start again from nought each time.
+`apps/display/src/motion.ts` is the answer, and it is one idea twice: an
+animation's position is a function of the wall clock, never of when its
+element was made. A **loop** gets `animation-delay: -(now mod duration)` from
+the corrected clock (`phaseDelay`, `lockLoop`), so the rebuilt copy starts where
+the old one had got to. A **one-shot** is anchored to the moment it first fired,
+remembered per widget id and event by `createOneShotMemory` — owned by
+`main.ts` beside `todoNotices` and handed through the model the same way, and
+deliberately *not* cleared by a poll, since a new manifest is not a new event.
+A redraw mid-burst resumes it, the next tick after it ends draws the still
+frame, and an entry nobody has asked about for an hour is forgotten. What it
+does not survive is a reload, which is said at the constant rather than papered
+over. **The stylesheet declares only what moves**, in one
+`@media (prefers-reduced-motion: no-preference)` block with every binding under
+`.canvas[data-motion="on"]`; the duration and delay are written inline by
+`motion.ts` and are forbidden in `display.css`, because the phase is computed
+from the duration and two places stating it is how they drift. An admin preview
+stamps no `data-motion`, so a preview is always still.
+
+**The Motion switch is `screens.motion`** (migration `0052`, generated and read:
+one `ALTER TABLE ADD COLUMN`), on the wall's Device and time pane beside the
+size, read one way by `wallMotion`: null is on (Q6's proposed default), except on
+an e-ink preset, where null is off — `WALL_SIZE_PRESETS` gained `eink: true` for
+exactly that. The manifest carries `motion: false` spread, only when a wall is
+still, so a wall nobody touched sends the document it always did. The handler
+writes the column **only when the switch was moved**: the form posts what it
+drew as `motion_shown`, because a switch always posts an answer and one saved
+with a new e-ink size and the switch untouched would otherwise lock motion *on*,
+having been drawn on while the size was a television. Q6 is built as the plan
+proposes; nothing else in P4.3 had an open question.
+
+**The demonstration is a fixture and the tests hold that as a fact.**
+`motion-fixture.ts` draws a drifting dot and a bar that arrives once per event,
+through the same helpers the real styles (S15, S16) will use. It is not in
+`WIDGET_TYPES`, the layout save refuses it with a 400 (asserted), and the only
+way it reaches a wall is a test rewriting the manifest through `patchManifest`.
+Its six-second loop is chosen against the tick rather than for the look: 15,000
+mod 6,000 is half a cycle, so a loop that restarted would land as far from
+continuity as a phase can.
+
+**Measured on a real paired wall in Chromium** (`browser-motion.test.ts`), read
+off the `CSSAnimation` rather than a class: across a tick 14,216ms after the
+last draw, the rebuilt loop's computed phase was **3.9ms** from where the old one
+had reached; a one-shot redrawn 817ms into its burst resumed at 831ms. Six
+mutations were checked and all six are red — `phaseDelay` answering no delay
+(the rebuilt loop 2,199ms out, with its negative-delay premise disabled so the
+continuity assertion is what fails), the memory made forgetful (the burst
+restarting at 17ms; and, with the mid-burst checks disabled, "fired again on a
+tick with no new event" on its own), `main.ts` ignoring the switch, the handler
+writing whatever the switch posted, `motion` dropped from `readScreens`, and the
+manifest emitting `motion: true`. The stylesheet scope went red three ways on
+source (a binding off the switch, keyframes outside the media block, a second
+module writing `animationDelay`) and two on the served copy, and
+`motion-phase.test.ts` asserts continuity arithmetically across every redraw gap
+rather than the one a test happens to sample. **Still unproven where it
+counts:** nothing a household can choose moves yet — the first real styles are
+S15's and S16's — and no old tablet has run an animation locked this way.
+
+**3867 tests passing, and 1 skipped, over 274 files**: calendar 153 over 10 ·
+core 314 over 9 · display 635 over 36 · server 2765 over 219, measured on a
+clone whose tags had been fetched and with `MW_BROWSER_EXECUTABLE` naming the
+provisioned Chromium (this container's `playwright-core` looks for a revision
+the directory does not hold, as the S01 paragraph above records). Against the
+3830 over 271 recorded above, this session's own files account for +3 files
+(`motion-phase`, `wall-motion`, `browser-motion`) and 15 + 10 + 5 tests, plus
+the rewritten `motion.test.ts` and three new tests in `motion-scope`; the rest
+of the difference is work merged in between, measured rather than explained.
 
 ---
 
