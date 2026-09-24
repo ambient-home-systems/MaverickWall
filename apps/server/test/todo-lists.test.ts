@@ -554,7 +554,9 @@ describe('the manifest', () => {
  * this block reads moved there whole — `listRowFor`, the reorder items,
  * `destructive()`, the add form, the `MAX_WATCHED_LISTS` refusal and the
  * sentence about `allow_todo` living on the wall's own page — so the
- * assertions are unchanged and only the page they are read off is.
+ * assertions are unchanged and only the page they are read off is. P2.1 moved
+ * the add form and the refusal one page further, to `…/lists/new`, and the
+ * assertions about them read that page for the same reason.
  */
 describe('the To-do lists screen', () => {
   it('offers the to-do lists from the live house, and says where the tick is turned on', async () => {
@@ -562,10 +564,11 @@ describe('the To-do lists screen', () => {
     const ha = await fakeHomeAssistant();
     await connect(h, ha);
     const html = await (await h.call('/admin/home-assistant/lists')).text();
-    expect(html).toContain('<datalist id="ha-todo-lists">');
-    expect(html).toContain('value="todo.shopping"');
-    expect(html).toContain('value="todo.read_only"');
-    expect(html).toContain('cannot be ticked, in Home Assistant itself');
+    const add = await (await h.call('/admin/home-assistant/lists/new')).text();
+    expect(add).toContain('<datalist id="ha-todo-lists">');
+    expect(add).toContain('value="todo.shopping"');
+    expect(add).toContain('value="todo.read_only"');
+    expect(add).toContain('cannot be ticked, in Home Assistant itself');
     /*
      * Where the tick is turned on, said here (RFC 012 phase 2). Showing a list
      * and letting a wall write to it are two decisions in two places, and a
@@ -576,7 +579,11 @@ describe('the To-do lists screen', () => {
     expect(html).toContain('e-paper panel cannot offer it at all');
     expect(html).toContain('No to-do lists are shown yet.');
     // A list is not a reading: the readings datalist does not offer it.
-    const readings = /<datalist id="ha-entities">([\s\S]*?)<\/datalist>/.exec(html)?.[1] ?? '';
+    const readings =
+      /<datalist id="ha-entities">([\s\S]*?)<\/datalist>/.exec(
+        await (await h.call('/admin/home-assistant/readings/new')).text(),
+      )?.[1] ?? '';
+    expect(readings, 'the readings datalist is there to be read').not.toBe('');
     expect(readings).not.toContain('todo.');
   });
 
@@ -590,9 +597,10 @@ describe('the To-do lists screen', () => {
     expect(html).toContain('Groceries');
     expect(html).toContain('Can be ticked');
     expect(html).toContain('Read-only');
-    const offered = /<datalist id="ha-todo-lists">([\s\S]*?)<\/datalist>/.exec(html)?.[1] ?? '';
+    const add = await (await h.call('/admin/home-assistant/lists/new')).text();
+    const offered = /<datalist id="ha-todo-lists">([\s\S]*?)<\/datalist>/.exec(add)?.[1] ?? '';
     expect(offered).toBe('');
-    expect(html).toContain('Every to-do list Home Assistant has is already shown.');
+    expect(add).toContain('Every to-do list Home Assistant has is already shown.');
   });
 
   it('refuses a list that is not one, and one Home Assistant has not got', async () => {
@@ -643,7 +651,7 @@ describe('the To-do lists screen', () => {
     // And the page says so rather than drawing a form that would be refused.
     const ha = await fakeHomeAssistant();
     await connect(h, ha);
-    const html = await (await h.call('/admin/home-assistant/lists')).text();
+    const html = await (await h.call('/admin/home-assistant/lists/new')).text();
     expect(html).toContain(`at most ${MAX_WATCHED_LISTS} lists`);
     expect(html).not.toContain('<datalist id="ha-todo-lists">');
   });

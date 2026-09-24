@@ -7810,6 +7810,79 @@ cold context under load, not a fault in this change. Against P2.1's 3875 over
 `browser-admin.test.ts` — the fourth time running the arithmetic and the
 reading have agreed, and still not a method.
 
+**P2.1's second half and P2.2 shipped: Walls and the four Home Assistant list
+screens have their one "Add …" in the app bar too, and adding a wall is one
+door.** Readings, Calendars, To-do lists and "Tell me when…" each carry an
+app-bar **Add readings**, **Add a calendar**, **Add a list** and **Add a
+rule** to `…/new`, and the lists carry no form. The rule templates moved onto
+**Add a rule**, because a template starts a rule. Both old template addresses
+(`/admin/home-assistant?template=` and `…/alerts?template=`) answer a 302 to
+`…/alerts/new?template=` with the query intact. Every create refusal comes
+back on its add page, with one exception, stated at its site: a to-do list that
+was added and could not be read comes back on the list, where the new row is.
+The readings picker used to reload the page it was on, which was the list; on
+an add page that shows only the form again, so the mount names where to go
+(`data-done`). `browser-ha-add-readings.test.ts` drives that in a real browser
+and goes red on the old `reload()` with the bundle rebuilt. **The action is
+drawn whether or not a house is connected**, and its add page then says "not
+connected yet" and links to Connection, as the list does. An "Add" that came and
+went with the connection would be the one list in the admin whose create action
+was not always in the same place. Connection is not a collection and is
+unchanged.
+
+**Walls:** the three buttons under the header became one **Add a wall**, which
+leads to a chooser (`/admin/walls/new`) offering **Add a browser wall** and
+**Add an e-paper wall**, each with its one line. The two pages behind it
+(`/new/browser`, `/new/epaper`; `/admin/epaper` redirects to the second) are
+headed with the chooser row's exact words, and both end on **Add wall**, where
+the e-paper page said "Create". "Approve a pairing code" is a link in the
+list's lead line and under the chooser. "Pair" is kept for the step that pairs
+a browser (the QR and link page, and the "Pair it" on an unpaired card). The
+Overview's "No walls paired yet / Pair a tablet, a television or an e-paper
+panel … on a screen" is now "No walls yet / Add a tablet …", linking to the
+chooser. The wizard's last page and the Readings card say "Add a wall" too. No
+open question (Q1–Q10) touches either item.
+
+**The vocabulary crawl connects a fake house now**, which closes the blind spot
+its header had stated since it was written: "the Home Assistant page renders
+more once a connection exists (there is no fake HA here)". Every Home Assistant
+page is read unconnected first, the way the empty household's pages are, so
+connecting trades nothing away. The crawl then asserts each add page was read
+**with its form drawn**. That assertion was green against a crawl whose house
+never connected until the readings check stopped using "Add reading", which the
+page's own heading ("Add readings") contains either way. A new sweep refuses the
+retired phrasings ("Pair a browser wall", "Add an e-paper panel", "No walls
+paired yet"…) with a zero allow-list. It cannot see the Overview's no-walls row,
+because the crawl has walls; `admin-defaults` is what goes red there.
+
+Eighteen mutations were checked and all are red. Two needed a second test
+before they were. Hiding the HA "Add …" while disconnected stayed green until
+`ha-screens` read the list's app bar on a household that never connected. And
+the "form drawn" check above passed until its readings phrase changed. Measured
+at 390px: every app-bar label fits on one line in the 64px bar, the new ones
+from "Add a list" at 90.7px to "Add a calendar" at 124.5px. Every one of the ten
+Home Assistant pages puts its first control above the 355px the one old page
+did: the add pages at 92, 121, 121 and 185px, and the lists at 251, 316, 320 and
+207px, down from forms that sat lower on the same screens.
+
+**One red in the first full run was a race in a test this change touched, and
+it is fixed rather than re-run.** `browser-wall-theme` read the suggested theme
+after a refused POST. It waited only for a theme radio to be *attached*, which
+the server-rendered cards satisfy before `template-gallery.js` has written the
+suggestion. It passed five of five alone, and failed every time with that
+script's fetch delayed by 1.5s. It now waits for the re-rendered document's
+`load`, which a module script holds, and passes with the delay too.
+
+**3912 tests passing and 1 skipped, over 280 files**: calendar 153 over 10 ·
+core 314 over 9 · display 626 over 35 · server 2819 over 226. Measured with
+`pnpm test` and a real Chromium (`MW_BROWSER_EXECUTABLE`, as above), on the tree
+after `main` was merged in, which had taken P2.3 meanwhile. Against P2.3's 3894
+passing and 5 expected failures over 279, the five `it.fails` are now ordinary
+passes (+5), and this change adds 13 tests and one file. Before the merge the
+same diff read 3893 over 279 against S05's 3875 over 278, the same +18 and +1.
+The arithmetic agrees, which, as every paragraph above says, is an observation
+and not a method.
+
 ---
 
 ## Open decisions

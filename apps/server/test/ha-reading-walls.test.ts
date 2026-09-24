@@ -198,17 +198,22 @@ describe('adding a reading', () => {
     expect(page).toContain(`href="admin/walls/${hall}#layout"`);
     // And none of the copy that said otherwise.
     expect(page).toContain('<h2>Your readings</h2>');
-    expect(page).toContain('<button type="submit">Add reading</button>');
+    // The form that adds one is a page along since P2.1, under the same verb.
+    expect(await h.text('/admin/home-assistant/readings/new')).toContain(
+      '<button type="submit">Add reading</button>',
+    );
     expect(page).not.toContain('On the wall');
     expect(page).not.toContain('Add to the wall');
   });
 
-  it('points at pairing when there is no wall to add the widget to', async () => {
+  it('points at adding a wall when there is no wall to add the widget to', async () => {
     const h = await connected();
     await addReading(h, 'binary_sensor.freezer_door', 'Freezer');
     const page = await h.text('/admin/home-assistant/readings');
     expect(page).toContain('No wall shows readings yet');
-    expect(page).toContain('href="admin/walls">Pair a wall</a>');
+    // "Add", not "Pair" (P2.2): pairing is one step of adding a browser wall,
+    // and an e-paper wall is never paired at all.
+    expect(page).toContain('href="admin/walls/new">Add a wall</a>');
   });
 
   it('does not call a wall with the widget empty-handed before its first reading', async () => {

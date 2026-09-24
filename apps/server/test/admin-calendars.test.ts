@@ -518,7 +518,7 @@ describe('display settings', () => {
      * System has no colour to offer and no `theme` control to offer it with.
      */
     const h = await harness();
-    const add = await (await h.call('/admin/walls/new')).text();
+    const add = await (await h.call('/admin/walls/new/browser')).text();
     for (const theme of ['household', 'blueprint', 'panels', 'almanac', 'swiss']) {
       expect(add).toContain(`value="${theme}"`);
     }

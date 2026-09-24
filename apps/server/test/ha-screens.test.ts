@@ -62,6 +62,11 @@ const READINGS = `${HUB}/readings`;
 const CALENDARS = `${HUB}/calendars`;
 const LISTS = `${HUB}/lists`;
 const ALERTS = `${HUB}/alerts`;
+// The four add pages (P2.1): each list screen's app-bar "Add …" leads to one.
+const READINGS_NEW = `${READINGS}/new`;
+const CALENDARS_NEW = `${CALENDARS}/new`;
+const LISTS_NEW = `${LISTS}/new`;
+const ALERTS_NEW = `${ALERTS}/new`;
 
 /**
  * What each screen is, read off the page rather than guessed from the URL.
@@ -73,10 +78,19 @@ const ALERTS = `${HUB}/alerts`;
 const SCREEN = {
   hub: { heading: 'Home Assistant', form: null },
   connection: { heading: 'Connection and token', form: 'admin/home-assistant/connect' },
-  readings: { heading: 'Readings', form: 'admin/home-assistant/entities' },
-  calendars: { heading: 'Calendars', form: 'admin/home-assistant/calendars' },
-  lists: { heading: 'To-do lists', form: 'admin/home-assistant/lists' },
-  alerts: { heading: 'Tell me when…', form: 'admin/home-assistant/rules' },
+  /*
+   * The four list screens carry no create form since P2.1 — each has one
+   * app-bar "Add …" to a page of its own, which is where the form went and so
+   * where a refusal from it comes back.
+   */
+  readings: { heading: 'Readings', form: null },
+  calendars: { heading: 'Calendars', form: null },
+  lists: { heading: 'To-do lists', form: null },
+  alerts: { heading: 'Tell me when…', form: null },
+  addReadings: { heading: 'Add readings', form: 'admin/home-assistant/entities' },
+  addCalendar: { heading: 'Add a calendar', form: 'admin/home-assistant/calendars' },
+  addList: { heading: 'Add a list', form: 'admin/home-assistant/lists' },
+  addRule: { heading: 'Add a rule', form: 'admin/home-assistant/rules' },
 } as const;
 
 type ScreenKey = keyof typeof SCREEN;
@@ -222,6 +236,7 @@ async function refusedOn(
   expect(html, 'the error strip carries the refusal').toContain('<div class="error">');
   if (options.says !== '') expect(html).toContain(options.says);
   if (options.formIsDrawn !== false) {
+    expect(want.form, `${screen} has no form to re-render`).not.toBeNull();
     const at = html.indexOf(`action="${want.form}"`);
     expect(at, `${screen} must re-render its own form`).toBeGreaterThan(-1);
     expect(
@@ -463,29 +478,29 @@ describe('every refusal comes back on the screen its form is on', () => {
     });
   });
 
-  describe('POST …/entities — two, both on Readings', () => {
+  describe('POST …/entities — two, both on Add readings', () => {
     it('refuses a body that does not shape', async () => {
       const { h } = await connected();
-      await refusedOn(await h.form(`${HUB}/entities`, { entity_id: '' }), 'readings', { says: 'An entity' });
+      await refusedOn(await h.form(`${HUB}/entities`, { entity_id: '' }), 'addReadings', { says: 'An entity' });
     });
 
     it('refuses a domain a wall cannot draw', async () => {
       const { h } = await connected();
       const response = await h.form(`${HUB}/entities`, { entity_id: 'automation.morning_routine' });
-      await refusedOn(response, 'readings', { says: 'Choose an entity from the list.' });
+      await refusedOn(response, 'addReadings', { says: 'Choose an entity from the list.' });
     });
   });
 
-  describe('POST …/calendars — three, all on Calendars', () => {
+  describe('POST …/calendars — three, all on Add a calendar', () => {
     it('refuses a body that does not shape', async () => {
       const { h } = await connected();
-      await refusedOn(await h.form(`${HUB}/calendars`, { entity_id: '' }), 'calendars', { says: 'A calendar' });
+      await refusedOn(await h.form(`${HUB}/calendars`, { entity_id: '' }), 'addCalendar', { says: 'A calendar' });
     });
 
     it('refuses an id that is not a calendar', async () => {
       const { h } = await connected();
       const response = await h.form(`${HUB}/calendars`, { entity_id: 'sensor.kitchen_temperature' });
-      await refusedOn(response, 'calendars', { says: 'Choose a calendar from the list.' });
+      await refusedOn(response, 'addCalendar', { says: 'Choose a calendar from the list.' });
     });
 
     it('refuses one that has already been added', async () => {
@@ -495,23 +510,23 @@ describe('every refusal comes back on the screen its form is on', () => {
       // No add form to come back to: this is the branch where the only
       // calendar the house has is the one already added, so the section is an
       // `emptyState` saying so. The screen's own identity is what is asserted.
-      await refusedOn(response, 'calendars', {
+      await refusedOn(response, 'addCalendar', {
         says: 'That calendar has already been added.',
         formIsDrawn: false,
       });
     });
   });
 
-  describe('POST …/lists — six, all on To-do lists', () => {
+  describe('POST …/lists — six: five on Add a list, and one on the list itself', () => {
     it('refuses a body that does not shape', async () => {
       const { h } = await connected();
-      await refusedOn(await h.form(`${HUB}/lists`, { entity_id: '' }), 'lists', { says: 'A to-do list' });
+      await refusedOn(await h.form(`${HUB}/lists`, { entity_id: '' }), 'addList', { says: 'A to-do list' });
     });
 
     it('refuses an id that is not a to-do list', async () => {
       const { h } = await connected();
       const response = await h.form(`${HUB}/lists`, { entity_id: 'sensor.kitchen_temperature' });
-      await refusedOn(response, 'lists', { says: 'Choose a to-do list from the list.' });
+      await refusedOn(response, 'addList', { says: 'Choose a to-do list from the list.' });
     });
 
     it('refuses while the house cannot be reached, and says which', async () => {
@@ -523,13 +538,13 @@ describe('every refusal comes back on the screen its form is on', () => {
       // No form: the picker's options *are* the house's lists, and a house that
       // cannot be reached offers none. The screen and its problem are what come
       // back, which is the honest answer rather than an empty picker.
-      await refusedOn(response, 'lists', { says: '', formIsDrawn: false });
+      await refusedOn(response, 'addList', { says: '', formIsDrawn: false });
     });
 
     it('refuses a list Home Assistant has not got', async () => {
       const { h } = await connected();
       const response = await h.form(`${HUB}/lists`, { entity_id: 'todo.imaginary' });
-      await refusedOn(response, 'lists', { says: 'Home Assistant has no to-do list by that name.' });
+      await refusedOn(response, 'addList', { says: 'Home Assistant has no to-do list by that name.' });
     });
 
     it('refuses a ninth list', async () => {
@@ -549,7 +564,7 @@ describe('every refusal comes back on the screen its form is on', () => {
       // The add form is replaced by the "at most eight" hint on this branch by
       // construction — the state that reaches it is the state that removes the
       // form — so the screen is asserted by its heading and its own hint.
-      await refusedOn(response, 'lists', { says: 'a wall reads at most 8', formIsDrawn: false });
+      await refusedOn(response, 'addList', { says: 'a wall reads at most 8', formIsDrawn: false });
     });
 
     it('refuses a list that was added and could not be read, with the new row on it', async () => {
@@ -561,7 +576,9 @@ describe('every refusal comes back on the screen its form is on', () => {
       // one has to show instead is the thing the RFC singles it out for: the
       // write succeeded and the status is still a refusal, so the page must
       // come back with the new row *already on it* rather than contradicting
-      // the database it has just written to.
+      // the database it has just written to — which is why this one refusal
+      // comes back on the list rather than the add page (P2.1): the list is
+      // where the row is, and the form has nothing left to correct.
       const html = await refusedOn(response, 'lists', {
         says: 'Added, but the list could not be read',
         formIsDrawn: false,
@@ -573,10 +590,10 @@ describe('every refusal comes back on the screen its form is on', () => {
     });
   });
 
-  describe('POST …/rules — two, both on Tell me when…', () => {
+  describe('POST …/rules — two, both on Add a rule', () => {
     it('refuses a body that does not shape', async () => {
       const { h } = await connected();
-      await refusedOn(await h.form(`${HUB}/rules`, { name: '' }), 'alerts', { says: '' });
+      await refusedOn(await h.form(`${HUB}/rules`, { name: '' }), 'addRule', { says: '' });
     });
 
     it('refuses an entity outside the watchable set', async () => {
@@ -588,7 +605,7 @@ describe('every refusal comes back on the screen its form is on', () => {
         value: 'on',
         action: 'banner',
       });
-      await refusedOn(response, 'alerts', { says: 'That entity is not one this can watch.' });
+      await refusedOn(response, 'addRule', { says: 'That entity is not one this can watch.' });
     });
   });
 });
@@ -598,12 +615,15 @@ describe('every refusal comes back on the screen its form is on', () => {
 // ---------------------------------------------------------------------------
 
 describe('?template= keeps its meaning and changes its address', () => {
-  it('the rows link to the alerts screen', async () => {
+  it('the rows link to the rule add page, where the form is', async () => {
     const { h } = await connected();
-    const html = await h.text(ALERTS);
+    const html = await h.text(ALERTS_NEW);
     // Relative, so the single `<base>` decides where it points — which is what
     // lets the same markup work under a Home Assistant ingress prefix.
-    expect(html).toContain('href="admin/home-assistant/alerts?template=garage"');
+    expect(html).toContain('href="admin/home-assistant/alerts/new?template=garage"');
+    // And the list of rules offers none: a template starts a rule, so it sits
+    // where rules are started (P2.1).
+    expect(await h.text(ALERTS)).not.toContain('?template=');
   });
 
   it('the hub answers an old link with a 302 that carries the query', async () => {
@@ -613,7 +633,16 @@ describe('?template= keeps its meaning and changes its address', () => {
     const { h } = await connected();
     const response = await h.call(`${HUB}?template=garage`);
     expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe(`${ALERTS}?template=garage`);
+    expect(response.headers.get('location')).toBe(`${ALERTS_NEW}?template=garage`);
+  });
+
+  it('the alerts screen forwards a link from before the move, query and all', async () => {
+    // `…/alerts?template=` is the address the rows carried from RFC 014 until
+    // the form moved, so it is the other contract in the world.
+    const { h } = await connected();
+    const response = await h.call(`${ALERTS}?template=garage`);
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe(`${ALERTS_NEW}?template=garage`);
   });
 
   it('a bare hub GET is unchanged', async () => {
@@ -624,7 +653,7 @@ describe('?template= keeps its meaning and changes its address', () => {
 
   it('following the redirect fills the form in', async () => {
     const { h } = await connected();
-    const html = await h.text(`${ALERTS}?template=garage`);
+    const html = await h.text(`${ALERTS_NEW}?template=garage`);
     expect(html).toContain('value="Garage door open late"');
     expect(html).toContain('type="time" name="from_time" value="23:00"');
     expect(html).toContain('type="time" name="to_time" value="06:00"');
@@ -699,6 +728,62 @@ describe('all six screens render for a household that has never connected', () =
   });
 });
 
+// ---------------------------------------------------------------------------
+// 6b. The four add pages (P2.1)
+// ---------------------------------------------------------------------------
+
+const ADD: readonly {
+  readonly path: string;
+  readonly screen: ScreenKey;
+  readonly list: string;
+  readonly label: string;
+}[] = [
+  { path: READINGS_NEW, screen: 'addReadings', list: READINGS, label: 'Add readings' },
+  { path: CALENDARS_NEW, screen: 'addCalendar', list: CALENDARS, label: 'Add a calendar' },
+  { path: LISTS_NEW, screen: 'addList', list: LISTS, label: 'Add a list' },
+  { path: ALERTS_NEW, screen: 'addRule', list: ALERTS, label: 'Add a rule' },
+];
+
+describe('each list screen\'s "Add …" and the page it opens', () => {
+  it.each(ADD)('$list leads to $path, which carries the form and comes back to the list', async ({ path, screen, list, label }) => {
+    const { h } = await connected();
+    const listHtml = await h.text(list);
+    // The app bar's one action, on the list, and no form of its own there.
+    const bar = /<header class="topbar">([\s\S]*?)<\/header>/.exec(listHtml)?.[1] ?? '';
+    expect(bar).toContain(`<a class="btn btn-sm" href="${path.slice(1)}">${label}</a>`);
+    expect(listHtml.slice(listHtml.indexOf('</header>'))).not.toContain(`action="${SCREEN[screen].form ?? ''}"`);
+
+    const response = await h.call(path);
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(headingOf(html)).toBe(SCREEN[screen].heading);
+    expect(html).toContain(`action="${SCREEN[screen].form ?? ''}"`);
+    // The way back is the list it came from, not the hub, and it is the only one.
+    const crumbs = [...html.matchAll(/<a class="crumb crumb-back" href="([^"]*)"/g)];
+    expect(crumbs.map((m) => m[1])).toEqual([list.slice(1)]);
+    // An add page has nothing to add from its own app bar.
+    const addBar = /<header class="topbar">([\s\S]*?)<\/header>/.exec(html)?.[1] ?? '';
+    expect(addBar).not.toMatch(/<a class="btn[^"]*"/);
+  });
+
+  it.each(ADD)('$path says to connect first on a household that never has', async ({ path, screen, list, label }) => {
+    // Reachable, because its list's action is drawn whatever the connection:
+    // an "Add" that came and went with the house would be the one list in the
+    // admin whose create action was not always in the same place. What it
+    // leads to is the honest page, not an empty picker.
+    const h = await harness();
+    const listBar = /<header class="topbar">([\s\S]*?)<\/header>/.exec(await h.text(list))?.[1] ?? '';
+    expect(listBar, `${list} draws its "Add …" with no house connected`).toContain(
+      `<a class="btn btn-sm" href="${path.slice(1)}">${label}</a>`,
+    );
+    const html = await h.text(path);
+    expect(headingOf(html)).toBe(SCREEN[screen].heading);
+    expect(html).toContain('Home Assistant is not connected yet.');
+    expect(html).toContain('href="admin/home-assistant/connection"');
+    expect(html).not.toContain(`action="${SCREEN[screen].form ?? ''}"`);
+  });
+});
+
 describe('Home Assistant unreachable, with a token still stored', () => {
   /*
    * The case that matters and the one a split breaks: five new page functions
@@ -727,6 +812,14 @@ describe('Home Assistant unreachable, with a token still stored', () => {
       expect(response.status, path).toBe(200);
       const html = await response.text();
       expect(headingOf(html), path).toBe(SCREEN[screen].heading);
+    }
+
+    // The four add pages render too, with the problem on them rather than a
+    // throw — an unreachable house is exactly when a picker has nothing in it.
+    for (const { path, screen } of ADD) {
+      const response = await h.call(path);
+      expect(response.status, path).toBe(200);
+      expect(headingOf(await response.text()), path).toBe(SCREEN[screen].heading);
     }
 
     // The address survives so somebody can fix a typo.
@@ -825,16 +918,19 @@ describe('the entity picker', () => {
    * designed to hide — the datalist form is not rendered when script is
    * available, so the screen would show a heading and nothing under it.
    */
-  it('is served by Readings, both halves of it', async () => {
+  it('is served by Add readings, both halves of it, and goes back to Readings when it is done', async () => {
     const { h } = await connected();
-    const html = await h.text(READINGS);
+    const html = await h.text(READINGS_NEW);
     expect(html).toContain('id="ha-entity-picker"');
     expect(html).toContain('assets/ha-entity-picker.js');
+    // Where it goes after a successful add: the list, whose rows say which
+    // walls each reading is on. Reloading the add page would say nothing.
+    expect(html).toContain('data-done="admin/home-assistant/readings"');
   });
 
-  it('is served by none of the other five, either half', async () => {
+  it('is served by none of the other screens, either half — Readings included', async () => {
     const { h } = await connected();
-    for (const { path } of ALL.filter((entry) => entry.screen !== 'readings')) {
+    for (const path of [...ALL.map((entry) => entry.path), CALENDARS_NEW, LISTS_NEW, ALERTS_NEW]) {
       const html = await h.text(path);
       expect(html, `${path} must not mount the picker`).not.toContain('id="ha-entity-picker"');
       expect(html, `${path} must not ship the picker's script`).not.toContain('assets/ha-entity-picker.js');
@@ -941,9 +1037,9 @@ describe('the Calendars list', () => {
   it('adds here, reads back here, and goes when the source goes on the Calendars page', async () => {
     const { h } = await connected();
 
-    // Nothing added yet: no list, and no box saying "none yet" directly above
-    // the form that adds one. Asserted on the *row*, not on the entity id —
-    // which is on this page either way, as the add form's own `<option>`.
+    // Nothing added yet: no row, and an empty state whose action is the add
+    // page — the form is a page away now (P2.1), so the empty list is the
+    // sentence that leads to it.
     const before = await h.text(CALENDARS);
     // Scoped to the row's own anchor: the sidebar links to /admin/calendars on
     // every page in the admin, so a bare href match is a match on the
@@ -951,7 +1047,10 @@ describe('the Calendars list', () => {
     expect(before, 'no row until something is added').not.toContain(
       'class="mw-row-link" href="admin/calendars"',
     );
-    expect(before).toContain('action="admin/home-assistant/calendars"');
+    expect(before).toContain('No Home Assistant calendars added yet.');
+    expect(before).toContain('<a class="btn" href="admin/home-assistant/calendars/new">Add a calendar</a>');
+    expect(before).not.toContain('action="admin/home-assistant/calendars"');
+    expect(await h.text(CALENDARS_NEW)).toContain('action="admin/home-assistant/calendars"');
 
     const added = await h.form(`${HUB}/calendars`, { entity_id: 'calendar.family', name: 'Family' });
     expect(added.headers.get('location')).toBe('/admin/calendars?saved=ha-calendar-added');
@@ -980,7 +1079,9 @@ describe('the Calendars list', () => {
     expect(after, 'the row is gone because the source is').not.toContain(
       'class="mw-row-link" href="admin/calendars"',
     );
-    expect(after, 'and the house offers it again').toContain('value="calendar.family"');
+    expect(await h.text(CALENDARS_NEW), 'and the house offers it again').toContain(
+      'value="calendar.family"',
+    );
   });
 
   it('tags one that has stopped reading, which is what makes the list worth drawing', async () => {

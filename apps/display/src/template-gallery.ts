@@ -104,9 +104,9 @@ interface GalleryData {
  * (RFC 015 §3.1).
  *
  * Twelve of the fourteen shipped wall templates name a theme and applying one
- * writes it, so on `/admin/walls/new` the two fields are related and nothing on
- * the page said so: a household picked Sky Week, picked Panels beside it, and
- * the wall they were about to make would have come out Almanac.
+ * writes it, so on `/admin/walls/new/browser` the two fields are related and
+ * nothing on the page said so: a household picked Sky Week, picked Panels
+ * beside it, and the wall they were about to make would have come out Almanac.
  *
  * **It marks, and it never checks.** The no-script form is the specification —
  * nothing preselected, a choice still required — because a preselected card is
