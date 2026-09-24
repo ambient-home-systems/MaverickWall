@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.67.0
+
 **Grouping widgets now does what you would expect.** Press **Group** on two
 or more boxes and they become one thing: the group draws a dashed edge around
 its widgets so you can see what belongs together, it is laid out as a row (or
