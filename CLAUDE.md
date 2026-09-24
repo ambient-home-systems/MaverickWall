@@ -7456,6 +7456,34 @@ that names a *column* beside the config rather than a key in it
 kitchen wall, and the first household whose selector a release renames is the
 first test of the promise as stated.
 
+
+**The design rules were rewritten for the 2026-09-24 decisions before any code
+depended on them (plan items P0.1 and P0.2, session S01).** The emoji, stat-tile,
+shadow and motion rules at the top of this file, the display's `DESIGN.md` (its
+overview, Elevation & Depth, the weather and house strips and the Do's and
+Don'ts) and one paragraph of the admin's `DESIGN.md` now permit what D1–D8 allow
+on a browser wall, keep every old rule for e-paper, and name the test that
+enforces each one — as "once S11/S12/S13 lands" wherever that test has not been
+rewritten yet, because today's tests still enforce the bans. The stale comments
+the review found were corrected in nine source files, and the glyph vocabulary
+and the Store's Countdown entry now say that D3 opened the icon set for occasion
+motifs. **Nothing a household sees moved, and that is checked rather than
+asserted**: every touched `.ts` file transpiles to identical output with its
+comments removed, except `http/html.ts`, whose one difference is a CSS comment
+inside the served admin stylesheet. No assertion was written, so there was no fix
+to revert; no ratchet baseline moved. **3822 tests passing, and 1 skipped, over
+269 files**: calendar 153 over 10 · core 314 over 9 · display 616 over 35 ·
+server 2739 over 215, measured on a clone whose tags had been fetched. This
+session changed no test, so the difference from the 3817 over 268 recorded above
+is work merged since that count, measured rather than explained. **One thing
+about taking it is worth knowing**: in this container the first run read 292
+red over 50 files, every one of them "No Chromium to drive". `playwright-core`
+1.62.1 looks for Chromium revision 1234 and the provisioned directory holds
+1194, so the harness's search found nothing, and naming the binary with
+`MW_BROWSER_EXECUTABLE` gave the green run. That is a fact about which browser
+a machine carries, the same shape as the headless-shell paragraph above, and
+not a fault in any test.
+
 ---
 
 ## Open decisions
