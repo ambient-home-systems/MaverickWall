@@ -1937,6 +1937,10 @@ pre.code{background:var(--mw-surface-2);
 .le-emoji-grid button:hover,.le-emoji-grid button:active{color:var(--ink);background:var(--panel2)}
 .le-emoji-grid button[aria-pressed=true]{border-color:var(--accent);background:var(--panel2)}
 .le-emoji-grid img{width:70%;height:auto}
+/* A countdown's start date on or after its target (plan item P5.2): the
+ * sentence the save would refuse it with, said beside the field in the
+ * danger ink rather than left for the save bar to find. */
+.le-cfg-refused{color:var(--mw-danger)}
 .le-config .switch{margin:var(--mw-s-2) 0}
 .le-cfg-field{display:block;margin:var(--mw-s-3) 0 0}
 .le-cfg-field>span{display:block;

@@ -8903,8 +8903,8 @@ the count, its unit, the target's own date, and the label under the sheet.
 "Departs in 12 days", a perforated rule, and the count on a departure board.
 On the target day every look says "Today!" with a party popper, and with
 `celebrate` on (the default, and the only default here that does anything)
-throws a burst of confetti. `occasion`, `progress` and `month` are the item's
-second half and draw the number until then. No open question blocks any of it;
+throws a burst of confetti. `occasion`, `progress` and `month` were the item's
+second half, and drew the number until the paragraphs below. No open question blocks any of it;
 Q6 (motion on, off on the e-ink presets), Q7 (a panel honours what reads in one
 bit) and Q9 (a household's own typed emoji stays in the device font) are the
 defaults built on.
@@ -9027,6 +9027,150 @@ rain the test handed it. It passes the server's own header through now. Green
 with the fix, red with it reverted, and the other three files that patch a
 manifest pass either way. This is the `HARNESS_HOUR` fault a fourth time: a
 test that reads a clock passes in the hours the clock happens to agree.
+
+
+**The countdown's other three looks shipped: `occasion`, `progress` and
+`month` (plan item P5.2, second half).** All six looks now draw something of
+their own. Two new optional keys come with them, both absent by default:
+`occasion` (`christmas`, `birthday`, `halloween`, `vacation`, `schools-out`,
+`new-year` or `custom`; absent is `custom`) and `from`, the start date a
+progress bar counts from. The open questions that apply are already built on
+their proposed defaults: Q3 (Twemoji), Q6 (motion on, off on the e-ink
+presets), Q7 (a panel honours what reads in one bit) and Q9 (emoji a household
+types stays in the device font).
+
+**`occasion` is the number dressed for the day.** Each occasion has three
+things, all in `OCCASION_LOOKS` in `apps/display/src/countdown.ts`:
+
+- **An accent pair of tokens, never colours.** The count wears the first and
+  its unit the second. Every named occasion uses two of S13's readable palette
+  tokens, which each theme derives until they clear 4.5:1 on its `--bg` and
+  `--panel`, so both are legible on every theme without a check here.
+  `custom` is the theme's own `--accent` over its `--muted`.
+- **A motif**: a key from the bundled set, drawn as an `<img>` beside the count
+  and as tall as the count and its unit together. `custom` wears the
+  household's own picture, if they chose one. A picture chosen beside a named
+  occasion rides with the label, and is never drawn twice.
+- **A scene behind the words**: falling snow for Christmas, rising balloons
+  for a birthday, drifting leaves for Halloween, a sun and waves for a
+  holiday, paper planes for the end of term, fireworks for New Year, and
+  twinkling sparkles for `custom`. Every piece is placed from a fixed table and
+  locked to the wall clock with `lockLoop`, a share of its cycle behind the
+  one before. Each cycle is held to the tick rule the forecast's sky is held
+  to: a restart would land at least a quarter of a cycle out. The still frame,
+  under reduced motion or with Motion off, is the same pieces at rest.
+
+**The motif sits beside the count, not over it, and measuring is why.** Over
+the count it cost 1.6 ledes of height. Classic's forecast box is 4.4 ledes
+tall in portrait, which is where a countdown most often goes, so the tree was
+the first thing given up there. Beside the count it costs width, which that
+box has plenty of. `OCCASION_TIERS` still gives the motif up first (a box
+with room for one more part keeps the label, which says what is being
+counted to), but now it costs 15ch and no height.
+
+**`progress` is a bar of the days gone since `from`.** It draws the label, the
+count, the bar and "21% of the way" under it. The fraction is
+`countdownProgress`, which floors the percentage: the day before reads 99%,
+never 100%. Before the start the bar is empty; after the target it stays full.
+The bar grows once, at the first draw after midnight, from yesterday's length
+to today's (`changedAt`, the tear-off page's rule), so a wall reloaded at noon
+grows nothing. With no start date, the bar's place says "Set a start date in
+this widget's options." rather than drawing a made-up length.
+
+**A start date on or after the target is refused, not coerced.** The check is
+on the whole config (`startBeforeTarget`), attached to the two schemas that
+are parsed, because zod refuses to extend or pick from an object that carries a
+refinement. The 400 carries the sentence "The start date has to be before the
+date it counts down to." The editor says the same sentence beside the field,
+in the danger ink, before the save is tried. A parity test holds the two
+copies to each other. The first draft drew that hint once, when the widget was
+selected, and a write does not rebuild the inspector, so it went on saying
+whatever was true then; it is re-said on every change to either date.
+
+**`month` is a small month with the target ringed and today underlined.** It
+is laid out from the household's own first day of the week, so Monday is in
+the same column as on the calendar beside it; `weekStart` joins the wall's
+model and the panel's for this. The ring and the mark are painted as
+background gradients rather than borders, so neither moves a square: the
+grid's geometry depends on the target's month alone, and a test holds every
+square to the same rectangle on two days.
+
+**Two measurements changed the month's table:**
+
+- **A grid needs 20ch, not 12.** A square has to be about 1.5 scaffolds wide
+  for the ring to go round two figures rather than through them. The first
+  draft stated the width from the figures alone, and a narrow column on the
+  portrait wall drew every two-figure day cut: 27px of "30" in a 24px square.
+- **Classic's own box is below the grid's tier.** Five or six rows of type do
+  not fit in 4.4 ledes at a size read from across a kitchen, so there the look
+  draws the count. That is what a box gives up to, rather than a grid too
+  small to read.
+
+**On a panel, `progress` and `month` are still frames, and `occasion` is the
+number.**
+
+- The bar is an outline with its gone part filled. Its rectangle depends only
+  on the box and on whether today is the day, so only the ink inside it moves
+  from one day to the next.
+- The month's heads come from the model and its squares from `miniMonth`. The
+  target is ringed with an ellipse rasterised inside its square, and today is
+  underlined.
+- `variant` and `from` are honoured; `PANEL_LOOKS` and `INK_LOOKS` gain
+  `progress` and `month`. `occasion` gets a `PANEL_IGNORES` sentence, since
+  its colours, motif and scene are three things one still bit has none of.
+  The editor's lane says "A panel draws the Occasion look as its number."
+- `EPAPER_RENDERER_VERSION` did not move: no frame that exists today changes.
+
+**The editor** offers an Occasion picker on `occasion` alone and a "Counting
+from" date on `progress` alone (`VARIANT_HIDES`). "Something else" is written
+as an absence. Neither control is on the ink lane.
+
+**Measured on a real paired Classic wall** (`browser-countdown-occasion`,
+`-progress` and `-month`), at 1080x1920 and 1920x1080, unmeasured and as a 32"
+television, in Classic's box, a tall box and a narrow column:
+
+- nothing is cut, and the belt has nothing to do;
+- the parts on the glass are exactly the parts the tier names;
+- every figure is `tabular-nums`, and every run is its role to the px;
+- the count is at most 1.8 ledes, and exactly the clock's role where it has
+  room, at three sizes;
+- each occasion's count and unit compute to the page's own resolution of its
+  two tokens, and every picture is a same-origin `<img>` that loaded;
+- ten flakes resume within 300ms of where they were across a real redraw;
+- the bar's computed fill is the fraction of days gone;
+- the ring and the mark are on the right squares, in the page's accent and
+  ink.
+
+The panel frames are decoded (`epaper-countdown-looks`): the fill is measured
+against the bar's inside, and moving the target a day moves the ring a square
+and nothing else in the grid.
+
+**30 mutations were checked, and all are red.** Two were green at first, and
+both were the test's fault:
+
+- A panel ignoring the week start still drew a different frame, because the
+  heads moved. The test now asks which column the ring is in.
+- No box in the file was short enough to force the bar out. A box with room
+  for the count alone now has to draw no bar.
+
+The number, the page and the ticket are untouched, and so is Classic, which
+has no countdown: `wall-density` and `browser-classic-proportions` pass with
+every baseline where it was. **Still unproven where it counts:** nobody has
+watched snow fall on a kitchen tablet or a bar grow at a real midnight, and no
+panel has been photographed drawing a mini month.
+
+**4449 tests passing and 1 skipped, over 315 files**: calendar 153 over 10 ·
+core 314 over 9 · display 823 over 44 · server 3159 over 252. Measured with
+`pnpm test` and a real Chromium (no `PLAYWRIGHT_BROWSERS_PATH`), on a clone
+whose tags had been fetched. The run itself read server 3161 over 254: two
+untracked `zz-explore-*` files in the working tree, somebody's exploration
+and not part of this change, carry two tests, and are taken off rather than
+counted. Against 4393 over 312 above it is +56 and +3 files, and it
+reconciles file by file: the display's +15 is fourteen in `countdown.test`
+and one in `variants.test` (no new module, so `motion.test` generates
+nothing new); the server's +41 is the three new browser files' 28, nine in
+`epaper-countdown-looks`, three in `layout-save` and one in
+`countdown-parity`.
 
 
 ---

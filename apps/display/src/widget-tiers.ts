@@ -477,6 +477,127 @@ export const TICKET_TIERS: readonly WidgetTier[] = [
 ];
 
 /**
+ * The parts of a countdown's `occasion` look, in the order they are kept: the
+ * count, its unit, the household's label, and the occasion's motif. The scene
+ * behind them is not a part — it says nothing, and it is drawn in a layer of
+ * its own that takes no room.
+ */
+export const OCCASION_PARTS = ['num', 'unit', 'label', 'motif'] as const;
+
+/**
+ * The occasion: the number dressed for the day.
+ *
+ * **Primary role: the lede** (`.cdo-label`), the page's reason. The count is
+ * the clock's role capped by the box, the unit the scaffold, and the motif a
+ * picture beside them, as tall as the two together (2.4 ledes).
+ *
+ *     tier        needs           rungs  what the occasion says
+ *     T0 Count    7ch x 2.6em     2      the count and its unit
+ *     T1 Label   10ch x 3.9em     3      and the label under them
+ *     T2 Motif   15ch x 3.9em     4      and the motif beside the count
+ *
+ * **The motif goes first**, although it is the look: the colours and the
+ * scene say "Christmas" on their own, and a box that can hold one more thing
+ * keeps the one that says *what* is being counted to. It costs width and not
+ * height, because it sits beside the count — which is what lets the wide,
+ * short box a forecast leaves, where a countdown most often goes, keep it.
+ *
+ * Measured off the drawn look on Classic's wall nobody has measured, the
+ * page's method: the count and its unit stand 2.57 ledes tall, the label 1.15
+ * under a 0.12 gap (3.84 in all), and the count with its motif beside it is
+ * 5.41 ledes wide at three figures — 15ch of the label's condensed face, whose
+ * `ch` is 0.36 to 0.39 of its em. A 32" television needs less (its count and
+ * unit are 2.38 ledes), so the table is the unmeasured wall's, the larger.
+ */
+export const OCCASION_TIERS: readonly WidgetTier[] = [
+  { tier: 'T0', minCh: 7, minEm: 2.6, items: 1, rungs: 2 },
+  { tier: 'T1', minCh: 10, minEm: 3.9, items: 1, rungs: 3 },
+  { tier: 'T2', minCh: 15, minEm: 3.9, items: 1, rungs: 4 },
+];
+
+/**
+ * The parts of a countdown's `progress` look, in the order they are kept: the
+ * count, the bar, the household's label and the percentage.
+ */
+export const PROGRESS_PARTS = ['count', 'bar', 'label', 'pct'] as const;
+
+/**
+ * The progress bar.
+ *
+ * **Primary role: the lede** (`.cdg-label`). The count is the clock's role
+ * capped by the box, the bar half a lede tall, the percentage the scaffold.
+ *
+ *     tier        needs           rungs  what the bar says
+ *     T0 Count    6ch x 1.9em     1      the count and its unit
+ *     T1 Bar      8ch x 2.6em     2      and the bar under it
+ *     T2 Label   10ch x 4.0em     3      and the label over them
+ *     T3 Full    16ch x 5.0em     4      and the percentage under the bar
+ *
+ * **The percentage goes first**: it is the bar said again in words, which a
+ * box with room for the bar already shows. The bar goes before the count is
+ * ever touched, because "12 days" without a bar is the number, and a bar
+ * without its count is a line nobody can read a date off.
+ *
+ * Measured the page's way: the count is 1.80 ledes, the bar 0.50 and the
+ * percentage 0.77, with 0.24 between each (4.95 in all). The percentage's
+ * width sets T3's — "100% of the way" is fifteen tracked capitals that do not
+ * wrap, about 5.5 ledes.
+ */
+export const PROGRESS_TIERS: readonly WidgetTier[] = [
+  { tier: 'T0', minCh: 6, minEm: 1.9, items: 1, rungs: 1 },
+  { tier: 'T1', minCh: 8, minEm: 2.6, items: 1, rungs: 2 },
+  { tier: 'T2', minCh: 10, minEm: 4.0, items: 1, rungs: 3 },
+  { tier: 'T3', minCh: 16, minEm: 5.0, items: 1, rungs: 4 },
+];
+
+/**
+ * The parts of a countdown's `month` look, in the order they are kept: the
+ * count, the grid of days, the household's label, the month's name and the
+ * weekday heads.
+ */
+export const MONTH_PARTS = ['count', 'grid', 'label', 'title', 'heads'] as const;
+
+/**
+ * The mini month.
+ *
+ * **Primary role: the lede** (`.cdm-label`). The count is 1.4 ledes, the
+ * squares and the heads the scaffold.
+ *
+ *     tier        needs           rungs  what the month says
+ *     T0 Count    6ch x 1.5em     1      the count and its unit
+ *     T1 Grid    20ch x 8.5em     2      and the target's month, circled
+ *     T2 Label   20ch x 9.9em     3      and the label under it
+ *     T3 Full    20ch x 12.0em    5      and the month's name and the heads
+ *
+ * **The heads and the name go first**, together: they say what the household
+ * already knows (which month they chose, and which column is Monday), and a
+ * square with a ring round it on the fourth row of seven reads as a date
+ * without either. The grid is the look, so it comes straight after the count.
+ *
+ * Measured the page's way, and stated for a **six-week** month, the tallest a
+ * month can be — the table has to hold for whatever date the household picks,
+ * and a grid's rows are the one thing in it the target decides: a row is 1.7
+ * scaffolds, 1.13 ledes, so six rows are 6.8 under a 1.4 count, the label 1.15
+ * under that, and the heads a row more with the name 0.89 over them. **The
+ * width is the ring's**: a square has to be about 1.5 scaffolds wide for the
+ * ring to go round two figures rather than through them, so seven of them are
+ * 10.5 scaffolds — 7 ledes, 20ch of the label's face. That was 12ch in the
+ * first draft, from the figures alone, and a narrow column on the portrait
+ * wall drew every two-figure day cut: 27px of "30" in a 24px square.
+ *
+ * **Classic's own box is below T1**, at 4.4 ledes in portrait: a month is five
+ * or six rows of type, and a box a forecast was drawn in cannot hold one at a
+ * size somebody reads from across a kitchen — so it draws the count, which is
+ * what a box gives up to, rather than a grid too small to read.
+ */
+export const MONTH_TIERS: readonly WidgetTier[] = [
+  { tier: 'T0', minCh: 6, minEm: 1.5, items: 1, rungs: 1 },
+  { tier: 'T1', minCh: 20, minEm: 8.5, items: 1, rungs: 2 },
+  { tier: 'T2', minCh: 20, minEm: 9.9, items: 1, rungs: 3 },
+  { tier: 'T3', minCh: 20, minEm: 12.0, items: 1, rungs: 5 },
+];
+
+/**
  * A countdown's table for each of its looks the wall draws with one. `number`
  * is deliberately not here: it keeps the clock's `--buw`/`--buh` sizing, so an
  * existing countdown is drawn exactly as it was (plan item P5.2).
@@ -484,6 +605,18 @@ export const TICKET_TIERS: readonly WidgetTier[] = [
 export const COUNTDOWN_TIERS: Readonly<Record<string, readonly WidgetTier[]>> = {
   page: PAGE_TIERS,
   ticket: TICKET_TIERS,
+  occasion: OCCASION_TIERS,
+  progress: PROGRESS_TIERS,
+  month: MONTH_TIERS,
+};
+
+/** Each look's parts, in the order its table keeps them. */
+export const COUNTDOWN_PARTS: Readonly<Record<string, readonly string[]>> = {
+  page: PAGE_PARTS,
+  ticket: TICKET_PARTS,
+  occasion: OCCASION_PARTS,
+  progress: PROGRESS_PARTS,
+  month: MONTH_PARTS,
 };
 
 /** The parts a look keeps at this tier: its first `rungs`, never fewer than one. */

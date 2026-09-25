@@ -69,7 +69,18 @@ import { withInk } from './honours.js';
 import { childCells, groupChildren, topLevelWidgets } from './group-cells.js';
 import { clockLabel, type EpaperModel } from './viewmodel.js';
 import { drawAnalogueFace } from './clock-face.js';
-import { TODAY_WORDS, countDigits, countdownWords, ticketLine, unitWords } from './countdown.js';
+import {
+  TODAY_WORDS,
+  countDigits,
+  countdownFrom,
+  countdownProgress,
+  countdownWords,
+  miniMonth,
+  percentWords,
+  ticketLine,
+  todayInMonth,
+  unitWords,
+} from './countdown.js';
 
 /**
  * A widget placed on the canvas: fractional box, plus its stored options.
@@ -420,14 +431,16 @@ function drawClock(fb: Framebuffer, m: EpaperMetrics, box: Box, model: EpaperMod
 
 /**
  * A countdown, in the looks a panel draws (plan item P5.2): the number, the
- * tear-off page and the boarding pass, each as a still frame.
+ * tear-off page, the boarding pass, the progress bar and the mini month, each
+ * as a still frame.
  *
  * The words are the wall's — `countdown.ts` is its transcription, held to it
  * by `countdown-parity.test.ts` — so "sleeps" is honoured here and the day
  * says "Today!" on every look. What is not drawn is the picture and the
  * confetti: the alphabet is ASCII, which `asciiTitle` enforces on the label,
- * and a panel does not move. The other three looks draw the number until the
- * second half of the item designs them.
+ * and a panel does not move. `occasion` is drawn as the number, for good: its
+ * colours, its motif and its scene are the three things one still bit has none
+ * of, so what is left of it is the number it dresses.
  */
 function drawCountdown(fb: Framebuffer, m: EpaperMetrics, box: Box, model: EpaperModel, config: Config): void {
   const target = str(config, 'target');
@@ -438,6 +451,14 @@ function drawCountdown(fb: Framebuffer, m: EpaperMetrics, box: Box, model: Epape
   }
   if (target !== undefined && look === 'ticket') {
     drawCountdownTicket(fb, m, box, daysBetween(model.today, target), config);
+    return;
+  }
+  if (target !== undefined && look === 'progress') {
+    drawCountdownProgress(fb, m, box, model, target, config);
+    return;
+  }
+  if (target !== undefined && look === 'month') {
+    drawCountdownMonth(fb, m, box, model, target, config);
     return;
   }
   const title = str(config, 'title') ?? '';
@@ -622,6 +643,191 @@ function drawCountdownTicket(fb: Framebuffer, m: EpaperMetrics, box: Box, days: 
     fb.fillRect(x, top, w, h);
     drawText(fb, x + pad, top + pad, digit, { rung, ink: false });
   });
+}
+
+/**
+ * The progress bar, still: the label, the count with its unit under it, a bar
+ * of the days gone since the start date — an outline with its gone part
+ * filled — and the percentage under it.
+ *
+ * A short box gives up in the wall's order (`PROGRESS_PARTS`) from the end: the
+ * percentage, then the label, then the bar — never the count. With no start
+ * date the bar's place says so, in the panel's own capitals, rather than
+ * drawing a length made up. Every rectangle is a function of the box and of
+ * whether today is the day (the count's budget), never of how far through the
+ * run the household is: only the ink inside the bar moves from one day to the
+ * next, which is exactly what a partial refresh wants.
+ */
+function drawCountdownProgress(
+  fb: Framebuffer,
+  m: EpaperMetrics,
+  box: Box,
+  model: EpaperModel,
+  target: string,
+  config: Config,
+): void {
+  const gap = m.widget.linePad;
+  const days = daysBetween(model.today, target);
+  const label = asciiTitle(str(config, 'title') ?? '').trim();
+  const unit = unitWords(days, countdownWords(config));
+  const from = countdownFrom(config);
+  const progress = from === undefined ? undefined : countdownProgress(model.today, from, target);
+  const barH = progress === undefined ? m.small.height : m.body.height;
+
+  let withPct = progress !== undefined;
+  let withLabel = label !== '';
+  let withBar = true;
+  const fixed = (): number =>
+    (withLabel ? m.body.height + gap : 0) +
+    (unit !== '' ? m.small.height + gap : 0) +
+    (withBar ? barH + gap : 0) +
+    (withPct ? m.small.height + gap : 0);
+  const fits = (): boolean => box.h - fixed() >= m.body.height;
+  if (!fits()) withPct = false;
+  if (!fits()) withLabel = false;
+  if (!fits()) withBar = false;
+
+  let top = box.y;
+  if (withLabel) {
+    drawLines(fb, m, [label], { ...box, y: top, h: m.body.height }, m.body, 'center');
+    top += m.body.height + gap;
+  }
+  let foot = box.y + box.h;
+  if (withPct && progress !== undefined) {
+    foot -= m.small.height;
+    drawLines(fb, m, [percentWords(progress).toUpperCase()], { ...box, y: foot, h: m.small.height }, m.small, 'center');
+    foot -= gap;
+  }
+  if (withBar) {
+    foot -= barH;
+    if (progress === undefined) {
+      drawLines(fb, m, ['SET A START DATE'], { ...box, y: foot, h: barH }, m.small, 'center');
+    } else {
+      fb.strokeRect(box.x, foot, box.w, barH);
+      const inner = Math.max(0, box.w - 4);
+      const filled = Math.round(inner * progress.fraction);
+      if (filled > 0) fb.fillRect(box.x + 2, foot + 2, filled, Math.max(0, barH - 4));
+    }
+    foot -= gap;
+  }
+  if (unit !== '') {
+    foot -= m.small.height;
+    drawLines(fb, m, [unit.toUpperCase()], { ...box, y: foot, h: m.small.height }, m.small, 'center');
+    foot -= gap;
+  }
+  const room = Math.max(0, foot - top);
+  const rung = rungToFit(countBudget(days), box.w, tallerRung(m.body, shorterRung(scaleRung(m, 4.5), rungAtMost(room))));
+  const countY = top + Math.max(0, Math.floor((room - rung.height) / 2));
+  drawLines(fb, m, [days === 0 ? TODAY_WORDS : countDigits(days)], { ...box, y: countY, h: rung.height }, rung, 'center');
+}
+
+/**
+ * The mini month, still: the count, the target's month under its name and the
+ * weekday heads, with the target ringed and today underlined, and the label at
+ * the foot.
+ *
+ * The heads come from the model, already in the household's order, and the
+ * squares from `miniMonth` at the household's own week start — the calendar's
+ * rule, so Monday is in the same column on both widgets. A short box gives up
+ * in the wall's order (`MONTH_PARTS`) from the end: the heads and the name
+ * together, then the label, then the grid — never the count. The grid's shape
+ * is a fact about the target's month, and the count's rung is stepped against
+ * a budget rather than today's words, so no rectangle moves between two days.
+ */
+function drawCountdownMonth(
+  fb: Framebuffer,
+  m: EpaperMetrics,
+  box: Box,
+  model: EpaperModel,
+  target: string,
+  config: Config,
+): void {
+  const gap = m.widget.linePad;
+  const days = daysBetween(model.today, target);
+  const label = asciiTitle(str(config, 'title') ?? '').trim();
+  const unit = unitWords(days, countdownWords(config));
+  const month = miniMonth(target, model.weekStart);
+  const cellH = m.small.height + gap;
+  const countRung = rungToFit(
+    days === 0 ? TODAY_WORDS : '000 DAYS AGO',
+    box.w,
+    tallerRung(m.small, shorterRung(scaleRung(m, 2), rungAtMost(Math.max(m.small.height, Math.floor(box.h / 4))))),
+  );
+
+  let withHeads = true;
+  let withLabel = label !== '';
+  let withGrid = true;
+  const need = (): number =>
+    countRung.height +
+    (withGrid ? gap + (withHeads ? m.small.height + gap + cellH : 0) + month.weeks.length * cellH : 0) +
+    (withLabel ? gap + m.body.height : 0);
+  if (need() > box.h) withHeads = false;
+  if (need() > box.h) withLabel = false;
+  if (need() > box.h) withGrid = false;
+
+  let y = box.y;
+  const count = days === 0 ? TODAY_WORDS : `${countDigits(days)} ${unit.toUpperCase()}`;
+  drawLines(fb, m, [count], { ...box, y, h: countRung.height }, countRung, 'center');
+  y += countRung.height + gap;
+
+  if (withGrid) {
+    if (withHeads) {
+      const title = `${PANEL_MONTHS[month.month - 1] ?? ''} ${month.year}`;
+      drawLines(fb, m, [title], { ...box, y, h: m.small.height }, m.small, 'center');
+      y += m.small.height + gap;
+    }
+    const cellW = Math.floor(box.w / 7);
+    const left = box.x + Math.floor((box.w - cellW * 7) / 2);
+    const cellRung = rungToFit('30', Math.max(1, cellW - 2), m.small);
+    const centred = (text: string, column: number, rowTop: number): { x: number; w: number } => {
+      const w = measureText(text, { rung: cellRung });
+      const x = left + column * cellW + Math.floor((cellW - w) / 2);
+      drawText(fb, x, rowTop + Math.floor((cellH - cellRung.height) / 2), text, { rung: cellRung });
+      return { x, w };
+    };
+    if (withHeads) {
+      model.weekdayLabels.forEach((head, column) => centred(head.charAt(0).toUpperCase(), column, y));
+      y += cellH;
+    }
+    const targetDay = Number(target.slice(8, 10));
+    const todayDay = todayInMonth(model.today, target);
+    month.weeks.forEach((week, row) => {
+      const rowTop = y + row * cellH;
+      week.forEach((day, column) => {
+        if (day === null) return;
+        const drawn = centred(String(day), column, rowTop);
+        if (day === targetDay) ringAround(fb, left + column * cellW, rowTop, cellW, cellH, drawn.w);
+        if (day === todayDay) {
+          const under = rowTop + Math.floor((cellH + cellRung.height) / 2);
+          fb.hLine(drawn.x, drawn.x + drawn.w - 1, Math.min(rowTop + cellH - 1, under));
+        }
+      });
+    });
+  }
+  if (withLabel) {
+    drawLines(fb, m, [label], { ...box, y: box.y + box.h - m.body.height, h: m.body.height }, m.body, 'center');
+  }
+}
+
+/**
+ * A ring round a square's number: an ellipse inside the square, as wide as the
+ * number needs and no wider than the square, rasterised by asking of every
+ * pixel's centre whether it falls between the ellipse and one stroke inside it
+ * — crisp at one bit, and a function of the square alone.
+ */
+function ringAround(fb: Framebuffer, x: number, y: number, w: number, h: number, textW: number): void {
+  const ry = h / 2;
+  const stroke = Math.max(1, Math.round(ry / 5));
+  const rx = Math.min(w / 2, Math.max(ry, textW / 2 + stroke + 1));
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  for (let py = y; py < y + h; py++) {
+    for (let px = Math.floor(cx - rx); px < Math.ceil(cx + rx); px++) {
+      const outer = ((px + 0.5 - cx) / rx) ** 2 + ((py + 0.5 - cy) / ry) ** 2;
+      const inner = ((px + 0.5 - cx) / Math.max(0.5, rx - stroke)) ** 2 + ((py + 0.5 - cy) / Math.max(0.5, ry - stroke)) ** 2;
+      if (outer <= 1 && inner > 1) fb.set(px, py);
+    }
+  }
 }
 
 /**

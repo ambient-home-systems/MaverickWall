@@ -60,20 +60,20 @@ let screenId: string;
 
 /**
  * The types with looks the wall does not draw yet: every type's but the
- * clock's and the forecast's. The forecast left this list when P5.1 designed
- * the last two of its five (`today` and `playful`); its row stays on the
- * canvas below, so every other row keeps the box it was measured in.
+ * clock's, the forecast's and the countdown's. The forecast left this list
+ * when P5.1 designed the last two of its five (`today` and `playful`), and the
+ * countdown when P5.2's second half designed `occasion`, `progress` and
+ * `month`; their rows stay on the canvas below, so every other row keeps the
+ * box it was measured in.
  */
-const UNDRAWN: readonly VariantType[] = ['countdown', 'homeassistant', 'calendar'];
+const UNDRAWN: readonly VariantType[] = ['homeassistant', 'calendar'];
 /**
  * The looks on those types that *are* designed now, and are measured in their
- * own files instead. The forecast left `UNDRAWN` when P5.1 designed all five
- * of its looks; the countdown's `page` and `ticket` are here since P5.2
- * (`browser-countdown-page` and `browser-countdown-ticket`). Every other value
- * of its type is still held to drawing its default — `number` is the default,
- * and `occasion`, `progress` and `month` are the second half of P5.2.
+ * own files instead. Empty since the countdown left `UNDRAWN` (its six are
+ * measured in the `browser-countdown-*` files); kept, because the next type to
+ * design one look of several is exactly the case it is for.
  */
-const DESIGNED: ReadonlySet<string> = new Set(['countdown.page', 'countdown.ticket']);
+const DESIGNED: ReadonlySet<string> = new Set<string>();
 
 /** What each type needs to have something to say, so no box is left out. */
 const BASE_CONFIG: Readonly<Record<string, Record<string, unknown>>> = {
@@ -465,13 +465,14 @@ describe('the editor offers exactly each type’s looks', () => {
         expect(colour.pressed).toEqual(['Strip']);
         expect(colour.hint).toBe('A panel draws the Colour look as its strip.');
 
-        // A countdown's Look since P5.2: the three a panel draws, and no note
+        // A countdown's Look since P5.2: the five a panel draws, and no note
         // calling it ignored — and its words, which a panel may count in
         // differently from its wall. The picture and the celebration are the
-        // wall's alone and are not offered here.
+        // wall's alone and are not offered here, and nor is Occasion, which a
+        // panel draws as the number.
         const countdown = await inkLane('countdown');
         expect(countdown.look, 'a countdown’s Look is missing from the ink lane').toBe(1);
-        expect(countdown.labels).toEqual(['Number', 'Tear-off page', 'Ticket']);
+        expect(countdown.labels).toEqual(['Number', 'Tear-off page', 'Ticket', 'Progress', 'Month']);
         expect(countdown.pressed).toEqual(['Number']);
         expect(countdown.notes).not.toContain('Look');
         await page.locator('.le-overlay .le-widget[data-id="countdown"]').click();
@@ -483,6 +484,8 @@ describe('the editor offers exactly each type’s looks', () => {
         expect(inkKeys).toContain('unitWords');
         expect(inkKeys).not.toContain('emoji');
         expect(inkKeys).not.toContain('celebrate');
+        expect(inkKeys).not.toContain('occasion');
+        expect(inkKeys).not.toContain('from');
         await page.locator('.insp-lane').nth(0).click();
 
         /*

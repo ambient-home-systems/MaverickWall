@@ -119,4 +119,11 @@ describe('the words themselves', () => {
     expect(previousDigits(-1, 1)).toEqual([' ']); // the day after: the board read "Today!"
     expect(previousDigits(-3, 1)).toEqual(['2']); // 2 days ago → 3 days ago
   });
+
+  it('says the refused start date in the server’s own words beside the field', async () => {
+    // The editor states the sentence before the save is tried; the save
+    // refuses with it. Two copies of one sentence, held to each other.
+    const { START_AFTER_TARGET } = await import('../src/api/widget-schema.js');
+    expect(readFileSync(WALL_PATH, 'utf8')).toContain(`export const START_AFTER_TARGET = '${START_AFTER_TARGET}';`);
+  });
 });

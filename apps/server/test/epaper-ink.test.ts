@@ -207,8 +207,18 @@ const BASES: Readonly<Record<string, readonly Record<string, unknown>[]>> = {
    * countdown's `celebrate` does anything and the time its picture sits beside
    * "Today!" — so a base that never reaches it would "prove" both are ignored
    * by never giving them a chance. The model's today is 22 August.
+   *
+   * And a progress bar and an occasion (the item's second half): `from` moves
+   * ink only on the bar, so a base that never draws one would "prove" it is
+   * ignored, and `occasion` is proved to move none on the one look that reads
+   * it on the wall — which is what `PANEL_IGNORES` says of it.
    */
-  countdown: [{ target: '2026-12-25' }, { target: '2026-08-22' }],
+  countdown: [
+    { target: '2026-12-25' },
+    { target: '2026-08-22' },
+    { target: '2026-12-25', variant: 'progress', from: '2026-08-01' },
+    { target: '2026-12-25', variant: 'occasion', occasion: 'christmas' },
+  ],
   notes: [{ text: 'Hello there wall' }],
   // Both sources: `showDone` can only move ink on a list-backed widget, and
   // `list` is proved from the typed base by switching it to the list.
@@ -283,6 +293,9 @@ const PROBES: Readonly<Record<string, readonly unknown[]>> = {
   unitWords: ['sleeps'],
   emoji: ['christmas-tree', 'party-popper'],
   celebrate: [false],
+  // …and the second half's: which occasion, and where a bar counts from.
+  occasion: ['birthday', 'new-year'],
+  from: ['2026-06-01'],
   module: ['weather'],
   image: [`${'b'.repeat(64)}.png`],
   text: ['Different words entirely'],
@@ -532,7 +545,11 @@ describe('a Look, value by value', () => {
   for (const type of TYPES) {
     it(`draws only its own looks, on ${type}`, () => {
       const drawn = PANEL_LOOKS[type] ?? [];
-      for (const base of BASES[type] ?? []) {
+      for (const withLook of BASES[type] ?? []) {
+        // From the base with its own Look taken off, so the frame compared
+        // against is the type's default: a countdown's progress base carries
+        // one, because `from` moves ink only on the bar (P5.2).
+        const { variant: _look, ...base } = withLook;
         // With a title too, the way `movesInk` probes every key.
         for (const start of [base, { ...base, showTitle: true, title: 'Base' }]) {
           const before = frame(type, start);
@@ -556,7 +573,8 @@ describe('a Look, value by value', () => {
         expect(value, `${type}'s default is not a look of its own`).not.toBe(own[0]);
       }
     }
-    // The countdown joined in P5.2, with the page and the ticket as still frames.
+    // The countdown joined in P5.2, with the page, the ticket, the bar and the
+    // month as still frames.
     expect(Object.keys(PANEL_LOOKS).sort()).toEqual(['clock', 'countdown', 'weather']);
   });
 
@@ -589,7 +607,7 @@ describe('the Looks the lane offers', () => {
       expect(INK_LANE[type] ?? [], `${type} narrows a Look its lane does not offer`).toContain('variant');
     }
     expect(INK_LOOKS['weather']).toEqual(['strip', 'today', 'range']);
-    expect(INK_LOOKS['countdown']).toEqual(['number', 'page', 'ticket']);
+    expect(INK_LOOKS['countdown']).toEqual(['number', 'page', 'ticket', 'progress', 'month']);
   });
 
   it('offers no look a panel draws as its default, bar the ones owned by a later session', () => {
