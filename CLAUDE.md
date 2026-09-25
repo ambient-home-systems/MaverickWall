@@ -8893,6 +8893,142 @@ where it counts:** nobody has looked at either style on a kitchen wall or at an
 old tablet running its sky, and no panel has been photographed drawing a Today
 card.
 
+**The countdown has three looks now, and the day itself is a celebration
+(plan item P5.2, first half).** `number` is the countdown every wall has drawn,
+and it gains two optional keys: `unitWords` (`days`, or `sleeps`: "12 sleeps"),
+and `emoji`, a **key** from the bundled Twemoji set drawn beside the label as a
+same-origin `<img>` (D6). `page` is a tear-off calendar page: a binder strip,
+the count, its unit, the target's own date, and the label under the sheet.
+`ticket` is a boarding pass: a head, the destination (the label) large,
+"Departs in 12 days", a perforated rule, and the count on a departure board.
+On the target day every look says "Today!" with a party popper, and with
+`celebrate` on (the default, and the only default here that does anything)
+throws a burst of confetti. `occasion`, `progress` and `month` are the item's
+second half and draw the number until then. No open question blocks any of it;
+Q6 (motion on, off on the e-ink presets), Q7 (a panel honours what reads in one
+bit) and Q9 (a household's own typed emoji stays in the device font) are the
+defaults built on.
+
+**Sleeps count forward only.** A date that has passed reads "3 days ago"
+whichever words were chosen; nobody counts the sleeps since. The words are in
+`apps/display/src/countdown.ts`, pure, between markers that
+`apps/server/src/epaper/countdown.ts` transcribes character for character
+(`countdown-parity.test.ts`), so a panel following a wall cannot count in
+different words from it.
+
+**What moves goes through `motion.ts`, and two helpers were added there.**
+`changedAt` answers the moment a widget's reading took its current value, but
+only if the page was already drawing the widget: a tear-off page that flipped
+on every reload would be flipping at nothing. The page tears off once, at the
+first draw after midnight (keyed on the civil date, so editing the target tears
+nothing), and a board's flap falls only where its digit changed: 12 to 11 turns
+the units and leaves the tens. `repeatFiredAt` is "once, then at most once a
+period", and **its first version was wrong in a way only a gap shows**: it
+counted repeats from the first burst, so a wall that showed an alert takeover
+from 09:50 to 10:20 fired at 10:20 and again at 11:00, forty minutes apart. Each
+repeat is anchored on the one before now, and `countdown.test.ts` walks a whole
+day of ticks with the takeover in it. The confetti is 28 flat pieces, laid out
+the same way on every draw so a burst resumed through a redraw finds each piece
+where it was. Every piece is transparent at rest, so reduced motion, the wall's
+Motion switch or an admin preview draw nothing.
+
+**`page` and `ticket` have tier tables and `number` keeps `--buw`/`--buh`.**
+`PAGE_TIERS` and `TICKET_TIERS` are stated in `ch` and `em` of the label, at
+the lede, and the parts a box keeps are `PAGE_PARTS` and `TICKET_PARTS`. The
+page gives up the date, then the label; the ticket gives up its head, then the
+board, because the line already says the number in words. The count and the
+board are the clock's role, 1.8 ledes, and capped by the box the way the clock
+is. `browser-countdown-page` and `-ticket` hold the ratio to at most 1.8 at
+three sizes on both walls, and hold it to *equal* the clock's role where there
+is room, so the cap is what binds. The thresholds were measured off the drawn
+look on the Classic wall, not summed. One table in ledes cannot be exact for
+both kinds of wall, because a measured wall's scaffold is half a lede and the
+unmeasured fallback two thirds. So the tables are the unmeasured wall's, the
+larger.
+
+Two faults came out of measuring it:
+
+- **The page's binder was squeezed to 0.08em by flexbox** in Classic's
+  landscape box, because the count's height term reserved nothing for the parts
+  around it. It now takes the box's height less the binder, unit and padding.
+  A `flex-shrink: 0` written beside it turned no test red once that was fixed,
+  so it was deleted: a line nothing can contradict is not a fix.
+- **A `max-width: 100%` on the label clamped the tier pass's own probe.** The
+  probe is planted with the label's class, so in a narrow column it wrapped,
+  read `ch` as 4.5px against the face's 13.6, and handed the page a tier its
+  box could not hold. The date came out cut ("Sun 5 Sept", 148px in 109). A flex
+  item already fits its column, so the declaration only ever broke the
+  measurement.
+
+**A countdown with none of the new keys is the countdown it always was, on
+every day but its own, on both media.** On the wall, the drawn section's markup
+is held to the old renderer's (transcribed from `main` at 4ed99e0), and that
+same old markup, dropped into a twin box on the same page, draws every element
+at the same rectangle, size, weight and colour. Separately, the same countdown
+was measured on a clean worktree of `main` and on this branch, 24 renders
+written out as text, and the two are identical. On the panel, eight configs at
+three panel sizes are byte-identical to hashes rendered on `main`
+(`epaper-countdown-looks.test.ts`). **The day itself moves, deliberately**: it
+said "Today" and says "Today!".
+
+**`EPAPER_RENDERER_VERSION` did not move for that.** A bump costs every paired
+panel a full re-download at the upgrade. Not bumping costs a panel whose
+countdown is on its day at that moment a "Today" until midnight, when the
+frame's date bucket rolls its ETag anyway.
+
+**On a panel, `page` and `ticket` are still frames and the picture and the
+confetti are dropped.** The widget's frame is the sheet and the pass, since
+`drawFrame` already outlines every widget; the first draft drew a second
+rectangle inside it, found by rendering a frame as text and looking. The count
+and the board are stepped against a three-figure budget, the refresh contract's
+rule. `variant` and `unitWords` are in `PANEL_HONOURS.countdown` and
+`INK_LANE.countdown`, and `INK_LOOKS` offers the three a panel draws. `emoji`
+and `celebrate` are in `PANEL_IGNORES` with a sentence each, and
+`epaper-ink.test.ts` probes all three new keys, on a day before the target and
+on the day, where the last two could matter.
+
+**The editor** offers "Count in" (Days / Sleeps), a scrolling grid of the
+bundled pictures with "None" first, each a 44px target, and a "Celebrate on the
+day" switch, each default written as an absence. The schema refuses a code
+point, an unknown key, an unknown unit and a non-boolean celebration, and the ink
+lane refuses the picture and the celebration.
+
+**35 mutations were checked, and all but one are red.** The one green was the
+`flex-shrink` line above, which was then deleted. One other was green on its
+first run: loosening `emoji` to any string turned nothing red, because nothing
+tested that a code point is *refused*. `layout-save.test.ts` does now. **Still
+unproven where it counts:** nobody has watched confetti on a kitchen tablet, or
+a page tear off at a real midnight, and no panel has been photographed drawing a
+boarding pass.
+
+**4393 tests passing and 1 skipped, over 312 files**: calendar 153 over 10 ·
+core 314 over 9 · display 808 over 44 · server 3118 over 249. Measured with
+`pnpm test` and a real Chromium, on a clone whose tags had been fetched, after
+`main`'s #299 was merged in. Against its 4301 over 306 just above it is +92 and
++6 files, and it reconciles file by file rather than by arithmetic:
+
+- The display's +16 is `countdown.test.ts`'s 14, plus 2 that `motion.test.ts`
+  generates for the two modules the wall now reaches, `countdown` and
+  `countdown-looks`. (`emoji` would have been a third, but #299's playful look
+  had already brought it into the graph.)
+- The server's +76 is five new files of 73, two tests in `layout-save`, and one
+  more that `motion-scope` generates.
+
+Nobody writes those generated tests, which is how an incrementer misses them.
+
+**The merge found `main` red, and the fix is in this change.**
+`browser-weather-today` failed on a clean `main` on every run. `loadWallSettled`'s
+`patchManifest` answered with `x-server-time: Date.now()`, the runner's own
+clock, and the wall takes its clock from that header — so every patched load
+moved the wall off `HARNESS_HOUR` to whatever hour the runner read. At 23:03 in
+London the card's current reading, observed at 10:50 on the pinned clock, was
+twelve hours stale and dropped, and the card drew the day's sky instead of the
+rain the test handed it. It passes the server's own header through now. Green
+with the fix, red with it reverted, and the other three files that patch a
+manifest pass either way. This is the `HARNESS_HOUR` fault a fourth time: a
+test that reads a clock passes in the hours the clock happens to agree.
+
+
 ---
 
 ## Open decisions

@@ -394,6 +394,104 @@ export const WEATHER_STYLE_TIERS: Readonly<Record<string, readonly WidgetTier[]>
 };
 
 /**
+ * The parts of a countdown's `page` look (plan item P5.2), in the order they
+ * are **kept**: the count, its unit, the household's label, and the target's
+ * own date. The binder strip is not a part — it is what makes the sheet a
+ * page, and it is thin enough never to be the thing a box cannot hold.
+ */
+export const PAGE_PARTS = ['num', 'unit', 'label', 'date'] as const;
+export type PagePart = (typeof PAGE_PARTS)[number];
+
+/**
+ * The tear-off page: the count on a drawn sheet.
+ *
+ * **Primary role: the lede** (`.cdp-label`, the household's own label). The
+ * count is drawn at the clock's role — 1.8 ledes, the most any one reading on
+ * the wall may outsize an event name (D1, `WALL_TYPE_CAPS`) — and capped by
+ * the box as the clock is, so the table can be stated in one unit: every other
+ * run on the page is a fraction of the lede.
+ *
+ *     tier        needs           rungs  what the page says
+ *     T0 Count    6ch x 3.8em     2      the count and its unit
+ *     T1 Label   12ch x 5.3em     3      and the label under the sheet
+ *     T2 Dated   15ch x 6.5em     4      and the target's date on the sheet
+ *
+ * The date goes first because it is the fact the household already knows —
+ * they chose it — where the label is the thing the count is *for*; the unit
+ * stays to the end because "12" on a calendar page with no unit reads as the
+ * twelfth.
+ *
+ * **Measured off the drawn page rather than summed**, on the shipped Classic
+ * wall with the forecast's box made a page: the sheet with its count and unit
+ * is 3.80em tall on a wall nobody has measured, 4.96em with the date, and the
+ * label is 1.15em under it a step-2 gap below — 5.19em and 6.36em, taken up to
+ * 5.3 and 6.5. A measured wall needs less (its scaffold is half a lede where
+ * the fallback is two thirds: 5.64em for the whole page on a 32" television),
+ * and one table in ledes cannot be exact for both, so it is the unmeasured
+ * wall's, the larger: a measured wall reaches each rung a little later than it
+ * could, and no wall reaches one it cannot hold. The widths are the sheet's
+ * own 4.5-lede minimum (12.4ch) and the date with the sheet's padding (15ch).
+ * `browser-countdown-page` holds the table to the drawing by asserting the
+ * belt never has anything to do.
+ */
+export const PAGE_TIERS: readonly WidgetTier[] = [
+  { tier: 'T0', minCh: 6, minEm: 3.8, items: 1, rungs: 2 },
+  { tier: 'T1', minCh: 12, minEm: 5.3, items: 1, rungs: 3 },
+  { tier: 'T2', minCh: 15, minEm: 6.5, items: 1, rungs: 4 },
+];
+
+/**
+ * The parts of a countdown's `ticket` look, in the order they are **kept**:
+ * the destination (the household's label), the line "Departs in 12 days", the
+ * departure board under its perforated rule, and the pass's own head.
+ */
+export const TICKET_PARTS = ['dest', 'when', 'board', 'head'] as const;
+export type TicketPart = (typeof TICKET_PARTS)[number];
+
+/**
+ * The boarding pass.
+ *
+ * **Primary role: the lede** (`.cdt-dest`, the destination), the page's reason
+ * one look along. The board's flaps are the clock's role, capped by the box.
+ *
+ *     tier        needs           rungs  what the pass says
+ *     T0 Line     9ch x 3.2em     2      the destination and "Departs in 12 days"
+ *     T1 Board   12ch x 6.0em     3      and the board, under its perforation
+ *     T2 Pass    20ch x 6.9em     4      and the pass's head
+ *
+ * **The board goes before the line, and that is the one surprise in it.** The
+ * board is the look — but it says the number the line already says in words,
+ * at nearly twice the height, so a box with room for one of them keeps the one
+ * that also says what the number counts. The head is the last thing added
+ * because it is the only part that says nothing about this countdown.
+ *
+ * Measured the page's way: the pass is 3.13em with its line, 5.85em with the
+ * board and 6.71em with the head, on a wall nobody has measured. The head's
+ * width is what sets T2's: "BOARDING PASS" is thirteen tracked capitals that
+ * do not wrap, about 16ch, plus the pass's padding.
+ */
+export const TICKET_TIERS: readonly WidgetTier[] = [
+  { tier: 'T0', minCh: 9, minEm: 3.2, items: 1, rungs: 2 },
+  { tier: 'T1', minCh: 12, minEm: 6.0, items: 1, rungs: 3 },
+  { tier: 'T2', minCh: 20, minEm: 6.9, items: 1, rungs: 4 },
+];
+
+/**
+ * A countdown's table for each of its looks the wall draws with one. `number`
+ * is deliberately not here: it keeps the clock's `--buw`/`--buh` sizing, so an
+ * existing countdown is drawn exactly as it was (plan item P5.2).
+ */
+export const COUNTDOWN_TIERS: Readonly<Record<string, readonly WidgetTier[]>> = {
+  page: PAGE_TIERS,
+  ticket: TICKET_TIERS,
+};
+
+/** The parts a look keeps at this tier: its first `rungs`, never fewer than one. */
+export function partsAt<P extends string>(parts: readonly P[], tier: WidgetTier): readonly P[] {
+  return parts.slice(0, Math.max(1, Math.min(parts.length, tier.rungs)));
+}
+
+/**
  * The rota badge: one card of rows, per person on a rota today.
  *
  * **Primary role: the shift's own name** (`.shift-badge .what`) — the headline,

@@ -82,7 +82,9 @@ export const PANEL_HONOURS: Readonly<Record<string, readonly string[]>> = {
   weather: ['title', 'showTitle', 'count', 'fields', 'showLow', 'showIcon', 'variant', STYLE_INSET, WHEN_EMPTY],
   homeassistant: ['title', 'showTitle', 'count', 'fields', 'readings', STYLE_INSET, WHEN_EMPTY],
   external: ['title', 'showTitle', 'count', 'module', STYLE_INSET],
-  countdown: ['title', 'showTitle', 'target', STYLE_INSET],
+  // `variant` and `unitWords` since P5.2: `page` and `ticket` are drawn as
+  // still frames, and "sleeps" is words. `PANEL_LOOKS` says which looks.
+  countdown: ['title', 'showTitle', 'target', 'variant', 'unitWords', STYLE_INSET],
   notes: ['title', 'showTitle', 'align', 'text', STYLE_INSET],
   // `list` and `showDone` are read the way the wall reads them (RFC 012 §6.3):
   // a list absent means the typed items, present means that list's rows.
@@ -129,7 +131,11 @@ export const INK_LANE: Readonly<Record<string, readonly string[]>> = {
   homeassistant: ['readings', 'fields', 'count'],
   external: ['count'],
   notes: ['align'],
-  countdown: [],
+  // The Look and the words, since P5.2: a panel may draw the page where its
+  // wall draws the number, which is shape — and "sleeps" is a household's
+  // own way of counting, which a panel in a child's room may want and the
+  // kitchen's may not. The date and the label are identity and stay put.
+  countdown: ['variant', 'unitWords'],
   // `list` is honoured and deliberately absent: it is the widget's identity,
   // and the lane offers density and shape, never a different list on the
   // panel from the one on the wall. `showDone` is a display decision the same
@@ -162,6 +168,9 @@ export const INK_LANE: Readonly<Record<string, readonly string[]>> = {
 export const PANEL_LOOKS: Readonly<Record<string, readonly string[]>> = {
   clock: ['stacked', 'analogue'],
   weather: ['range', 'today'],
+  // The page and the ticket as still frames (P5.2). `occasion`, `progress`
+  // and `month` are the item's second half and draw the number until then.
+  countdown: ['page', 'ticket'],
 };
 
 /**
@@ -176,6 +185,11 @@ export const PANEL_LOOKS: Readonly<Record<string, readonly string[]>> = {
  */
 export const INK_LOOKS: Readonly<Record<string, readonly string[]>> = {
   weather: ['strip', 'today', 'range'],
+  // The three a panel draws (P5.2). The other three are offered when they
+  // are drawn — `progress` and `month` are one bit by design, and `occasion`
+  // falls back to the number on a panel for good, its motif being colour and
+  // motion the panel has neither of.
+  countdown: ['number', 'page', 'ticket'],
 };
 
 /** Every key the ink lane can carry, for the schema and for the merge. */
@@ -268,22 +282,17 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
   },
   /*
    * A widget's Look (plan item P4.1), on every type that has looks but the
-   * clock and the forecast. The clock's three are drawn on one bit and are in
-   * `PANEL_HONOURS`, and so is the forecast's key since P5.1 (`PANEL_LOOKS`);
+   * clock, the forecast and the countdown. The clock's three are drawn on one
+   * bit and are in `PANEL_HONOURS`, and so is the forecast's key since P5.1
+   * and the countdown's since P5.2 (`PANEL_LOOKS`);
    * every other type's looks were added to the enum before any of them was
    * designed, and each type's panel draw reads none of them — it draws the
    * type's default, which is also exactly what the wall draws for them until
    * the session that designs each (P5.1–P5.4) decides, per look, what one bit
    * can carry. One note per type, because the sentence is about what *this*
    * widget's panel draws instead, and `epaper-ink.test.ts` probes every value
-   * the schema holds on each type to keep all four true.
+   * the schema holds on each type to keep both true.
    */
-  {
-    key: 'variant',
-    types: ['countdown'],
-    label: 'Look',
-    why: 'a panel draws the countdown as its number, whichever look is chosen.',
-  },
   {
     key: 'variant',
     types: ['homeassistant'],
@@ -295,6 +304,21 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
     types: ['calendar'],
     label: 'Look',
     why: 'a panel draws the calendar in its standard look, whichever look is chosen.',
+  },
+  /*
+   * A countdown's picture and its confetti (plan item P5.2). The panel draws
+   * the same words — "Today!" on the day, "sleeps" if asked — and neither of
+   * these: its alphabet is ASCII and its ink does not move.
+   */
+  {
+    key: 'emoji',
+    label: 'Picture',
+    why: 'the panel has no colour artwork, so the picture is the wall’s alone.',
+  },
+  {
+    key: 'celebrate',
+    label: 'Celebrate on the day',
+    why: 'a panel is always still, so it says “Today!” and throws no confetti.',
   },
   { key: 'showTimes', label: 'Event times', why: 'the panel draws the title alone in a cell.' },
   {

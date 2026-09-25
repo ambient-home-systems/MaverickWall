@@ -17,11 +17,15 @@
  *     which has no name to write. On the ink lane a forecast's Look is offered
  *     as the three a panel is offered (P5.1: the strip, Today and Range), and
  *     a wall wearing a look the panel draws as its strip says so under it.
+ *     A countdown's (P5.2) is the three a panel draws, beside its words; and
+ *     its Content tab offers the words, a grid of the bundled pictures and the
+ *     celebration switch, each default written as an absence.
  *
  *  2. **No undesigned look draws anything yet.** Every renderer draws its
- *     type's default for every one of the new values but the forecast's five,
- *     which P5.1 designed and which are measured in their own files
- *     (`browser-weather-range`, `-colour`, `-today` and `-playful`) — so a
+ *     type's default for every one of the new values but the ones designed
+ *     since — the forecast's five (P5.1: `browser-weather-range`, `-colour`,
+ *     `-today` and `-playful`) and the countdown's `page` and `ticket` (P5.2:
+ *     `browser-countdown-page` and `-ticket`), each measured in its own files — so a
  *     household who picks one sees exactly what they had. Measured rather than read: boxes of one size
  *     in a row, one per value and one with none, and every element in each
  *     box — its tag, its class, its words, its rectangle relative to its box
@@ -63,11 +67,13 @@ let screenId: string;
 const UNDRAWN: readonly VariantType[] = ['countdown', 'homeassistant', 'calendar'];
 /**
  * The looks on those types that *are* designed now, and are measured in their
- * own files instead. Empty since the forecast left `UNDRAWN`, and kept as the
- * device the next designed look uses: its value goes here, for that value
- * alone, and every other value of its type stays held to drawing its default.
+ * own files instead. The forecast left `UNDRAWN` when P5.1 designed all five
+ * of its looks; the countdown's `page` and `ticket` are here since P5.2
+ * (`browser-countdown-page` and `browser-countdown-ticket`). Every other value
+ * of its type is still held to drawing its default — `number` is the default,
+ * and `occasion`, `progress` and `month` are the second half of P5.2.
  */
-const DESIGNED: ReadonlySet<string> = new Set<string>();
+const DESIGNED: ReadonlySet<string> = new Set(['countdown.page', 'countdown.ticket']);
 
 /** What each type needs to have something to say, so no box is left out. */
 const BASE_CONFIG: Readonly<Record<string, Record<string, unknown>>> = {
@@ -458,6 +464,94 @@ describe('the editor offers exactly each type’s looks', () => {
         expect(colour.labels).toEqual(['Strip', 'Today', 'Range']);
         expect(colour.pressed).toEqual(['Strip']);
         expect(colour.hint).toBe('A panel draws the Colour look as its strip.');
+
+        // A countdown's Look since P5.2: the three a panel draws, and no note
+        // calling it ignored — and its words, which a panel may count in
+        // differently from its wall. The picture and the celebration are the
+        // wall's alone and are not offered here.
+        const countdown = await inkLane('countdown');
+        expect(countdown.look, 'a countdown’s Look is missing from the ink lane').toBe(1);
+        expect(countdown.labels).toEqual(['Number', 'Tear-off page', 'Ticket']);
+        expect(countdown.pressed).toEqual(['Number']);
+        expect(countdown.notes).not.toContain('Look');
+        await page.locator('.le-overlay .le-widget[data-id="countdown"]').click();
+        await page.locator('.insp-lane').nth(1).click();
+        await page.waitForSelector('.insp-ink-head', { timeout: 20_000 });
+        const inkKeys = await page.evaluate(() =>
+          Array.from(document.querySelectorAll<HTMLElement>('.le-config [data-cfg-key]')).map((el) => el.dataset['cfgKey']),
+        );
+        expect(inkKeys).toContain('unitWords');
+        expect(inkKeys).not.toContain('emoji');
+        expect(inkKeys).not.toContain('celebrate');
+        await page.locator('.insp-lane').nth(0).click();
+
+        /*
+         * And on the wall's own lane, a countdown's words, a grid of bundled
+         * pictures and the celebration (P5.2), each written as an absence by
+         * default. Here rather than in a test of its own because this file
+         * signs in once a test and the auth limit is twenty requests a minute
+         * per address — commit #297's lesson in `browser-editor`.
+         */
+        canvasOf(editorCanvas());
+        await openEditor(page);
+        const openContent = async (): Promise<void> => {
+          await page.locator('.le-overlay .le-widget[data-id="countdown"]').click();
+          await page.waitForSelector('.le-config', { timeout: 20_000 });
+          await page.locator('.insp-tab', { hasText: 'Content' }).click();
+          await page.waitForTimeout(150);
+        };
+        await openContent();
+        const keys = await page.evaluate(() =>
+          Array.from(document.querySelectorAll<HTMLElement>('.le-config > [data-cfg-key]')).map((el) => el.dataset['cfgKey']),
+        );
+        expect(keys).toEqual(expect.arrayContaining(['unitWords', 'emoji', 'celebrate']));
+
+        // The picture grid is the bundled set itself, each a touch target,
+        // each an image that loads, and "None" pressed on a countdown with none.
+        const grid = await page.evaluate(async () => {
+          const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('.le-emoji-grid button'));
+          const imgs = buttons.map((b) => b.querySelector('img')).filter((i): i is HTMLImageElement => i !== null);
+          await Promise.all(imgs.slice(0, 12).map((img) => img.decode().catch(() => undefined)));
+          return {
+            count: buttons.length,
+            pressed: buttons.filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.dataset['emoji']),
+            shortest: Math.min(...buttons.map((b) => b.getBoundingClientRect().height)),
+            loaded: imgs.slice(0, 12).every((img) => img.naturalWidth > 0),
+            scrolls: (() => {
+              const g = document.querySelector<HTMLElement>('.le-emoji-grid');
+              return g === null ? false : g.scrollHeight > g.clientHeight;
+            })(),
+          };
+        });
+        expect(grid.count).toBe(1 + 155);
+        expect(grid.pressed).toEqual(['']);
+        expect(grid.shortest).toBeGreaterThanOrEqual(44);
+        expect(grid.loaded, 'the pictures in the grid did not load').toBe(true);
+        expect(grid.scrolls, 'the grid is laid out whole rather than scrolled').toBe(true);
+
+        await page.locator('.le-config [data-cfg-key="unitWords"] button', { hasText: 'Sleeps' }).click();
+        await page.locator('.le-emoji-grid button[data-emoji="christmas-tree"]').click();
+        await page.locator('.le-config [data-cfg-key="celebrate"] input[type="checkbox"]').uncheck();
+        await save(page);
+        expect(storedConfig('countdown')).toEqual({
+          title: 'Holiday',
+          target: '2027-08-01',
+          unitWords: 'sleeps',
+          emoji: 'christmas-tree',
+          celebrate: false,
+        });
+
+        // And back: each default is an absence, not a value written out.
+        await openEditor(page);
+        await openContent();
+        expect(
+          await page.locator('.le-emoji-grid button[aria-pressed="true"]').getAttribute('data-emoji'),
+        ).toBe('christmas-tree');
+        await page.locator('.le-config [data-cfg-key="unitWords"] button', { hasText: 'Days' }).click();
+        await page.locator('.le-emoji-grid button[data-emoji=""]').click();
+        await page.locator('.le-config [data-cfg-key="celebrate"] input[type="checkbox"]').check();
+        await save(page);
+        expect(storedConfig('countdown')).toEqual({ title: 'Holiday', target: '2027-08-01' });
       } finally {
         await context.close();
       }

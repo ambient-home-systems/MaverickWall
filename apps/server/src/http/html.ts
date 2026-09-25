@@ -1923,6 +1923,20 @@ pre.code{background:var(--mw-surface-2);
   gap:var(--mw-s-2);border:0}
 .le-cfg-field .seg.le-look-grid button{border:1px solid var(--mw-ink-3);border-radius:var(--mw-r-2);
   padding:var(--mw-s-1) var(--mw-s-2)}
+/* A countdown's picture (plan item P5.2): the bundled set as a grid of the
+ * artwork itself, scrolled rather than laid out whole — a hundred and fifty
+ * pictures is a list to look through, not a panel to fill. Each is a 44px
+ * target. Hover and press keep their own ground so the filled button's
+ * states never paint a picture gold. */
+.le-emoji-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--mw-touch),1fr));
+  gap:var(--mw-s-1);max-height:calc(var(--mw-touch) * 4.5);overflow-y:auto;padding:var(--mw-s-1);
+  border:1px solid var(--rule);border-radius:var(--mw-r-2)}
+.le-emoji-grid button{display:flex;align-items:center;justify-content:center;min-height:var(--mw-touch);
+  padding:var(--mw-s-1);color:var(--ink);background:transparent;border:1px solid transparent;
+  border-radius:var(--mw-r-2);font:var(--mw-t-label-sm)}
+.le-emoji-grid button:hover,.le-emoji-grid button:active{color:var(--ink);background:var(--panel2)}
+.le-emoji-grid button[aria-pressed=true]{border-color:var(--accent);background:var(--panel2)}
+.le-emoji-grid img{width:70%;height:auto}
 .le-config .switch{margin:var(--mw-s-2) 0}
 .le-cfg-field{display:block;margin:var(--mw-s-3) 0 0}
 .le-cfg-field>span{display:block;

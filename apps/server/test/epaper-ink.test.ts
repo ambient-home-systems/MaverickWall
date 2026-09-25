@@ -202,7 +202,13 @@ const BASES: Readonly<Record<string, readonly Record<string, unknown>[]>> = {
   clock: [{}],
   calendar: [{ mode: 'month' }, { mode: 'list' }, { mode: 'week' }],
   shift: [{}],
-  countdown: [{ target: '2026-12-25' }],
+  /*
+   * Counting down, and on the day (plan item P5.2). The day is the only time a
+   * countdown's `celebrate` does anything and the time its picture sits beside
+   * "Today!" — so a base that never reaches it would "prove" both are ignored
+   * by never giving them a chance. The model's today is 22 August.
+   */
+  countdown: [{ target: '2026-12-25' }, { target: '2026-08-22' }],
   notes: [{ text: 'Hello there wall' }],
   // Both sources: `showDone` can only move ink on a list-backed widget, and
   // `list` is proved from the typed base by switching it to the list.
@@ -273,6 +279,10 @@ const PROBES: Readonly<Record<string, readonly unknown[]>> = {
   showIcon: [false],
   readings: [['Kitchen']],
   target: ['2027-01-01'],
+  // The countdown's words, picture and confetti (plan item P5.2).
+  unitWords: ['sleeps'],
+  emoji: ['christmas-tree', 'party-popper'],
+  celebrate: [false],
   module: ['weather'],
   image: [`${'b'.repeat(64)}.png`],
   text: ['Different words entirely'],
@@ -546,7 +556,8 @@ describe('a Look, value by value', () => {
         expect(value, `${type}'s default is not a look of its own`).not.toBe(own[0]);
       }
     }
-    expect(Object.keys(PANEL_LOOKS).sort()).toEqual(['clock', 'weather']);
+    // The countdown joined in P5.2, with the page and the ticket as still frames.
+    expect(Object.keys(PANEL_LOOKS).sort()).toEqual(['clock', 'countdown', 'weather']);
   });
 
   it('draws a forecast’s range as bars, and its colour as the strip (plan item P5.1)', () => {
@@ -578,6 +589,7 @@ describe('the Looks the lane offers', () => {
       expect(INK_LANE[type] ?? [], `${type} narrows a Look its lane does not offer`).toContain('variant');
     }
     expect(INK_LOOKS['weather']).toEqual(['strip', 'today', 'range']);
+    expect(INK_LOOKS['countdown']).toEqual(['number', 'page', 'ticket']);
   });
 
   it('offers no look a panel draws as its default, bar the ones owned by a later session', () => {

@@ -1,6 +1,7 @@
 import { z } from '../validation.js';
 import { WIDGET_TYPES } from './manifest.js';
 import { widgetStyleBody } from './widget-style.js';
+import { EMOJI_KEYS } from '../emoji.js';
 
 /**
  * A stored image's own name — 64 hex plus a known extension, the shape
@@ -275,6 +276,25 @@ const widgetConfigFields = z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/, 'A countdown date has to be YYYY-MM-DD.')
       .optional(),
+    /*
+     * Countdown, since plan item P5.2 — three more, every one absent by
+     * default and every absence exactly what a countdown drew before:
+     *
+     *  - `unitWords` counts in `days` or in `sleeps` ("12 sleeps until
+     *    Christmas"). Absent is days. Sleeps count forward only: a date that
+     *    has passed reads "3 days ago" whichever is chosen.
+     *  - `emoji` is a **key** from the bundled set (P4.2), drawn beside the
+     *    label as an `<img>` — never a code point, so every wall draws the same
+     *    picture (D6). A key outside the set is refused rather than dropped.
+     *    A panel draws none of them; `asciiTitle` is still its guard.
+     *  - `celebrate` plays confetti on the day. **Absent is on**, the one
+     *    default here that does anything, and the day is the only time it
+     *    does: a burst the first time the day is drawn and at most once an
+     *    hour after. Only `false` switches it off.
+     */
+    unitWords: z.enum(['days', 'sleeps']).optional(),
+    emoji: z.enum(EMOJI_KEYS).optional(),
+    celebrate: z.boolean().optional(),
     // External module widget — which registered module's panel to draw (its id).
     module: z.string().max(64).optional(),
     // Image widget — a stored image's own name (RFC 005 Phase 3b). Served from
@@ -364,6 +384,7 @@ export const inkOverrideBody = widgetConfigFields
     readings: true,
     shiftName: true,
     showDate: true,
+    unitWords: true,
     variant: true,
   })
   .strict();

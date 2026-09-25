@@ -98,6 +98,8 @@ import {
 } from './omission.js';
 import { inspectorView } from './inspector.js';
 import { previewReadingKeys } from './widget-options.js';
+import { celebrates, countdownEmoji, countdownWords } from './countdown.js';
+import { EMOJI_KEYS, emojiNode } from './emoji.js';
 import { TIER_NAMES, type TierName } from './tiers.js';
 import { PALETTE, SWATCH, describeWidget, describeWidgetIn, labelFor } from './widget-labels.js';
 import {
@@ -3730,6 +3732,92 @@ function boot(): void {
     );
     dateField.appendChild(date);
     configPanel.appendChild(dateField);
+
+    /*
+     * The three the plan added (P5.2), each absent by default. The words are
+     * annotated for the ink lane, which offers them (`INK_LANE.countdown`); the
+     * picture and the celebration are the wall's alone, so the lane drops them
+     * and `PANEL_IGNORES` says why beside the widget that has them set.
+     *
+     * On the ink lane "Days" is written out when the wall says sleeps, the
+     * Look's own rule: clearing the override there would hand the panel back
+     * to the wall's words rather than to the days chosen.
+     */
+    const wallWords = countdownWords(widget.config);
+    configPanel.appendChild(
+      segControl(
+        'Count in',
+        [
+          ['days', 'Days'],
+          ['sleeps', 'Sleeps'],
+        ],
+        countdownWords(cfg),
+        (value) =>
+          setConfig(widget, 'unitWords', value === 'days' && (lane === 'wall' || wallWords === 'days') ? undefined : value),
+        'unitWords',
+      ),
+    );
+    const wordsHint = document.createElement('p');
+    wordsHint.className = 'hint';
+    wordsHint.dataset['cfgKey'] = 'unitWords';
+    wordsHint.textContent = 'Sleeps count forward only: once the date has passed it reads “3 days ago”.';
+    configPanel.appendChild(wordsHint);
+
+    configPanel.appendChild(emojiPicker(countdownEmoji(cfg), (key) => setConfig(widget, 'emoji', key)));
+
+    configPanel.appendChild(
+      switchRow(
+        'Celebrate on the day',
+        'Confetti the first time the day is shown, then again at most once an hour. It stays still on a wall ' +
+          'with Motion off, or one set to reduce motion.',
+        celebrates(cfg),
+        (on) => setConfig(widget, 'celebrate', on ? undefined : false),
+        'celebrate',
+      ),
+    );
+  }
+
+  /**
+   * A picture from the bundled set (plan items P4.2 and P5.2): a grid of the
+   * artwork itself, one button each, with "None" first.
+   *
+   * A grid of pictures rather than a list of names, because the choice is the
+   * picture — and the pictures are the wall's own files (`emojiNode`), so what
+   * is picked here is exactly what the wall draws, on every device. Built as a
+   * `div` rather than inside `cfgField`'s `<label>`: a label activates its
+   * first control when anything else in it is clicked, and with a hundred and
+   * fifty buttons in one that is a picture chosen by clicking the heading.
+   */
+  function emojiPicker(current: string | undefined, onPick: (key: string | undefined) => void): HTMLElement {
+    const field = document.createElement('div');
+    field.className = 'le-cfg-field';
+    field.dataset['cfgKey'] = 'emoji';
+    const heading = document.createElement('span');
+    heading.textContent = 'Picture';
+    field.appendChild(heading);
+    const grid = document.createElement('div');
+    grid.className = 'le-emoji-grid';
+    grid.setAttribute('role', 'group');
+    grid.setAttribute('aria-label', 'Picture');
+    const choice = (key: string | undefined, content: Node): void => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset['emoji'] = key ?? '';
+      button.setAttribute('aria-pressed', key === current ? 'true' : 'false');
+      button.appendChild(content);
+      button.addEventListener('click', () => {
+        onPick(key);
+        renderConfigPanel();
+      });
+      grid.appendChild(button);
+    };
+    choice(undefined, document.createTextNode('None'));
+    for (const key of EMOJI_KEYS) {
+      const picture = emojiNode(key);
+      if (picture !== null) choice(key, picture);
+    }
+    field.appendChild(grid);
+    return field;
   }
 
   /**
