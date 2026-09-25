@@ -281,12 +281,23 @@ describe("the wall's stylesheet keeps motion inside its scope", () => {
   });
 
   it('has something inside the scope, so the assertions above are about something', () => {
-    // The fixture's two keyframe sets (`motion-fixture.ts`), until S15 and S16
-    // bring the real styles; a scan that found no bindings would pass every
-    // assertion above on a stylesheet that had lost its motion entirely.
+    // The fixture's two keyframe sets (`motion-fixture.ts`), and the first real
+    // styles' (P5.1): the Today card's sky and the playful strip's bob. A scan
+    // that found no bindings would pass every assertion above on a stylesheet
+    // that had lost its motion entirely; the countdown's arrive with S16.
     const found = scopeFaults(readFileSync(join(SRC, 'display.css'), 'utf8'));
     expect(found.bindings).toBeGreaterThan(0);
-    expect(found.keyframes).toEqual(expect.arrayContaining(['fx-fixture-drift', 'fx-fixture-arrive']));
+    expect(found.keyframes).toEqual(
+      expect.arrayContaining([
+        'fx-fixture-drift',
+        'fx-fixture-arrive',
+        'wt-glow',
+        'wt-drift',
+        'wt-rain',
+        'wt-snow',
+        'wp-bob',
+      ]),
+    );
   });
 
   it('refuses each way out of the scope, which is how the checks above are known to see', () => {

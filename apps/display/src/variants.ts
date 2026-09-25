@@ -15,14 +15,14 @@
  * its default, the same way a Weather widget reads a shift field in `fields`
  * as nothing to do with it.
  *
- * **The clock's variants and the forecast's `range` and `colour` draw; the
- * rest do not yet.** The other lists are the values the plan names, added
- * ahead of their drawings so the schema, the editor and the panel's honours
- * tables have one shape to grow into; every renderer draws its type's default
- * for every one of them until the session that designs it (P5.1–P5.4).
+ * **The clock's variants and all five of the forecast's draw; the rest do
+ * not yet.** The other lists are the values the plan names, added ahead of
+ * their drawings so the schema, the editor and the panel's honours tables
+ * have one shape to grow into; every renderer draws its type's default for
+ * every one of them until the session that designs it (P5.2–P5.4).
  * `browser-widget-looks.test.ts` holds the wall to that and
- * `epaper-ink.test.ts` holds the panel to it; the two designed forecasts are
- * measured in `browser-weather-range` and `browser-weather-colour`.
+ * `epaper-ink.test.ts` holds the panel to it; the designed forecasts are
+ * measured in `browser-weather-range`, `-colour`, `-today` and `-playful`.
  *
  * Pure, with no DOM, for the reason `widget-options.ts`, `ink.ts` and
  * `ladder.ts` are: the renderer builds nodes and does no thinking, and there is
@@ -154,8 +154,18 @@ export const VARIANT_HIDES: {
   // A `range` row is designed rather than laddered: its columns are the
   // style, and what a narrow box gives up is `RANGE_TIERS`' to decide, so the
   // field ladder would be a control that moves nothing. `colour` is the strip
-  // painted and reads every control the strip does.
-  weather: { strip: [], today: [], range: ['fields'], colour: [], playful: [] },
+  // painted and reads every control the strip does. `today` is a card about
+  // today, so it reads neither the day count nor the ladder — its next days
+  // are however many fit on one line (P5.1: "`today` hides the day count").
+  // The advice line is `playful`'s alone, so every other look hides its
+  // switch: an option that does nothing is worse than one not offered.
+  weather: {
+    strip: ['advice'],
+    today: ['count', 'fields', 'advice'],
+    range: ['fields', 'advice'],
+    colour: ['advice'],
+    playful: [],
+  },
   countdown: { number: [], page: [], ticket: [], occasion: [], progress: [], month: [] },
   homeassistant: { list: [], tile: [] },
   calendar: { '': [], planner: [], bold: [] },

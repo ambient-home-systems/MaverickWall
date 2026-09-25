@@ -405,6 +405,13 @@ function horizonMonthLabel(
 
 export interface DisplayModel {
   readonly timezone: string;
+  /**
+   * Whether this wall reads a twelve-hour clock — the household's choice, as
+   * `clock` and every event time already draw it. Carried for the one draw that
+   * formats an instant of its own: the Today card names its next hours (plan
+   * item P5.1), and "14" on a wall whose clock says "2:00 pm" is two clocks.
+   */
+  readonly hour12: boolean;
   readonly theme: string;
   readonly todayLabel: string;
   readonly clock: string;
@@ -1691,6 +1698,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
 
   return {
     timezone,
+    hour12,
     theme: manifest.theme.active,
     todayLabel: `${weekday} ${dayNumber} ${month}`,
     clock: localTime(now, timezone, hour12),

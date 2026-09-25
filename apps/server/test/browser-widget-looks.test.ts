@@ -19,8 +19,9 @@
  *     a wall wearing a look the panel draws as its strip says so under it.
  *
  *  2. **No undesigned look draws anything yet.** Every renderer draws its
- *     type's default for every one of the new values but the two P5.1 designed
- *     — the forecast's `range` and `colour`, measured in their own files — so a
+ *     type's default for every one of the new values but the forecast's five,
+ *     which P5.1 designed and which are measured in their own files
+ *     (`browser-weather-range`, `-colour`, `-today` and `-playful`) — so a
  *     household who picks one sees exactly what they had. Measured rather than read: boxes of one size
  *     in a row, one per value and one with none, and every element in each
  *     box — its tag, its class, its words, its rectangle relative to its box
@@ -53,15 +54,20 @@ let wall: Installation;
 let link: string;
 let screenId: string;
 
-/** The types with looks the wall does not draw yet: every type's but the clock's. */
-const UNDRAWN: readonly VariantType[] = ['weather', 'countdown', 'homeassistant', 'calendar'];
+/**
+ * The types with looks the wall does not draw yet: every type's but the
+ * clock's and the forecast's. The forecast left this list when P5.1 designed
+ * the last two of its five (`today` and `playful`); its row stays on the
+ * canvas below, so every other row keeps the box it was measured in.
+ */
+const UNDRAWN: readonly VariantType[] = ['countdown', 'homeassistant', 'calendar'];
 /**
  * The looks on those types that *are* designed now, and are measured in their
- * own files instead (plan item P5.1): `browser-weather-range` and
- * `browser-weather-colour`. Every other value of the four types is still held
- * to drawing its default here.
+ * own files instead. Empty since the forecast left `UNDRAWN`, and kept as the
+ * device the next designed look uses: its value goes here, for that value
+ * alone, and every other value of its type stays held to drawing its default.
  */
-const DESIGNED: ReadonlySet<string> = new Set(['weather.range', 'weather.colour']);
+const DESIGNED: ReadonlySet<string> = new Set<string>();
 
 /** What each type needs to have something to say, so no box is left out. */
 const BASE_CONFIG: Readonly<Record<string, Record<string, unknown>>> = {
@@ -321,9 +327,41 @@ describe('the editor offers exactly each type’s looks', () => {
         await page.locator('.le-config [data-cfg-key="variant"] button', { hasText: 'Today' }).click();
         await save(page);
         expect(storedConfig('weather')).toEqual({ variant: 'today' });
-        // It still draws the strip, so every control on it still does what it
-        // did: the Content tab is the strip's, control for control.
-        expect(await contentKeys('weather'), 'Today took a working control off the screen').toEqual(asStrip);
+        // Today is a designed card about today (P5.1), so the day count and
+        // the field ladder go — "`today` hides the day count", the plan says,
+        // and the ladder is the strip's rows, which a card does not have.
+        // This read "Today took a working control off the screen" while Today
+        // still drew the strip; the letter moved because the look was drawn,
+        // and the intent — hide exactly what a look does not read — did not.
+        expect(asStrip, 'the strip offers no day count or ladder to take away').toEqual(
+          expect.arrayContaining(['count', 'fields']),
+        );
+        expect(await contentKeys('weather'), 'Today kept a control it does not read').toEqual(
+          asStrip.filter((key) => key !== 'count' && key !== 'fields'),
+        );
+        // The advice line is the playful look's alone: on the strip it is not
+        // offered at all, and on playful it is, beside every control the strip
+        // has — playful reads the day count and the ladder too.
+        expect(asStrip, 'the strip offered the playful look’s advice switch').not.toContain('advice');
+        await page.locator('.insp-tab', { hasText: 'Style' }).click();
+        await page.locator('.le-config [data-cfg-key="variant"] button', { hasText: 'Playful' }).click();
+        await save(page);
+        expect(storedConfig('weather')).toEqual({ variant: 'playful' });
+        const playful = await contentKeys('weather');
+        expect([...playful].sort(), 'Playful lost a control or gained one').toEqual([...asStrip, 'advice'].sort());
+        // …and the switch writes the key the wall reads, as an absence when on.
+        const advice = page.locator('.le-config label.switch[data-cfg-key="advice"] input');
+        expect(await advice.isChecked(), 'the advice line is off before anybody touched it').toBe(true);
+        await advice.uncheck();
+        await save(page);
+        expect(storedConfig('weather')).toEqual({ variant: 'playful', advice: false });
+        // Back on is the absence again, so a look chosen next stores only itself.
+        await contentKeys('weather');
+        expect(await advice.isChecked(), 'the switch did not read back what was saved').toBe(false);
+        await advice.check();
+        await save(page);
+        expect(storedConfig('weather')).toEqual({ variant: 'playful' });
+        await contentKeys('weather');
         // Range is a designed row (P5.1): its columns are the style's, so the
         // field ladder goes and the day count, which it reads, stays.
         await page.locator('.insp-tab', { hasText: 'Style' }).click();

@@ -590,18 +590,22 @@ describe('the Looks the lane offers', () => {
   });
 
   /*
-   * TODO(S14): the lane offers `today` because the plan says a panel honours
-   * it — a large temperature with its "at HH:MM" stamp — and the session that
-   * designs `today` builds that draw. Until then a panel draws it as the strip,
-   * and this is the assertion that says so; S14 drops `.fails`.
+   * The lane offers `today` because a panel draws it as its own look — a
+   * large temperature with its "at HH:MM" stamp (P5.1). This was an expected
+   * failure owned by the session that designed `today`, and it passes now
+   * that the draw exists.
    */
-  it.fails('draws a forecast’s today as its own look on a panel (TODO(S14))', () => {
+  it('draws a forecast’s today as its own look on a panel', () => {
     expect(frame('weather', { variant: 'today' })).not.toBe(frame('weather', {}));
   });
 });
 
-/** Lane looks a later session will draw: offered now, drawn as the default until then. */
-const AWAITING: ReadonlySet<string> = new Set(['weather.today']);
+/**
+ * Lane looks a later session will draw: offered now, drawn as the default
+ * until then. Empty since P5.1 drew `today` on a panel; kept as the device the
+ * next such look uses, and the assertion that reads it still runs.
+ */
+const AWAITING: ReadonlySet<string> = new Set<string>();
 
 describe('the lane the editor offers', () => {
   it('offers nothing the renderer would not draw', () => {

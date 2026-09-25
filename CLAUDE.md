@@ -64,8 +64,8 @@ Violating any of these is a failed task.
 - No absolute px in the display's type or layout. Every size on the wall derives from --px-arcmin, which derives from the screen's panel size and read distance. A hardcoded px legibility floor is the bug that made the month grid name zero events on a small panel: it is correct on one screen and wrong on all the others.
 - No scale-to-fit as a substitute for a density tier. A section that does not fit gives up content, not points. transform: scale() on a laid-out section is banned in new code — and there is none left in old code either: `fitToBox` is deleted, and `reflow-stability.test.ts` scans the stylesheet and the renderer for one. A uniform transform is photographic enlargement; it changes how big a widget looks and can never change what it says.
 - A widget reads its own box and chooses a form; it never draws everything and hides what spilled. The calendar's tiers are `tiers.ts` and the thresholds are in characters and ems of the event role, so one table is right on every panel — a new one belongs there rather than as a pixel threshold in a renderer. Hard rule 2 permits a container query for exactly this, and for nothing else yet.
-- **Emoji on a browser wall are bundled artwork, never a device font; anything an e-paper panel draws carries none at all.** *(Rewritten 2026-09-24 for decision D6; the plan is `docs/plan-2026-09-household-review.md`.)* The rule this replaces was "no emoji in anything a screen renders", and its reason is unchanged: the image ships no emoji font, so an emoji set as *text* is a third-party asset resolved on the device — it differs on every panel, some kiosks draw an empty box, and `asciiTitle` deletes it outright on e-ink. **That rule was written down and broken at the same time** — every forecast and every device class chose one until the first-party vocabulary replaced them. What changed is the remedy, not the reason. The owner wants emoji in a weather or countdown style, so the wall ships its own: a curated Twemoji set under `apps/server/assets/emoji/`, served from `/assets/emoji/<name>.svg` and drawn as an `<img>` from a *key* the manifest carries, never a code point (plan item P4.2), so every screen draws the same picture. A code point handed to the device's font in a designed style is still the bug this rule was written for. The one exception is stated so nobody "fixes" it: text a household typed itself, such as a countdown's title, renders in the device's own font (Q9), because it is their string and the wall does not rewrite it. E-paper keeps the drawn glyphs. **S11 has landed the artwork and the test narrowing described above.** `no-emoji.test.ts` now scans only `apps/server/src/epaper/**` and its own `epaper-*` tests, with `asciiTitle` kept as the panel's guard; the wall side of the old ban is enforced by rendering instead of by a source scan — `browser-emoji.test.ts` proves a real paired wall draws `emojiNode`'s output as a same-origin `<img>`, never a code point in the live DOM. It scans comments too, because a comment is where the next one gets pasted from. No designed style consumes the vocabulary yet (P5.1 and P5.2 are later sessions); `emojiNode`/`emojiImg` are the seam they will draw through, proved directly rather than through a widget that does not exist.
-- **No stat tiles — but a designed widget style may make one reading its lede.** *(Amended 2026-09-24 for decision D1.)* A big number with a caption, or a 3-up row of them, is a dashboard idiom, and this is a calendar: the wall's job is the thing the household does not already know, and a row of tiles says the things they do. That is still out, on any widget. What D1 permits is narrower: a designed style — the weather "Today" card, a countdown's number — may carry **one** large reading, capped against the event role the way the clock is (1.8x, `WALL_TYPE_CAPS`), so the biggest number on the wall can never outsize an event name by more than the clock already may. The cap is the rule rather than the size; a large reading with no cap is a stat tile with a style name. Enforced once S15 and S16 land by each style's own ratio assertion at three sizes, the way `orientation.test.ts` holds the clock to 1.8x.
+- **Emoji on a browser wall are bundled artwork, never a device font; anything an e-paper panel draws carries none at all.** *(Rewritten 2026-09-24 for decision D6; the plan is `docs/plan-2026-09-household-review.md`.)* The rule this replaces was "no emoji in anything a screen renders", and its reason is unchanged: the image ships no emoji font, so an emoji set as *text* is a third-party asset resolved on the device — it differs on every panel, some kiosks draw an empty box, and `asciiTitle` deletes it outright on e-ink. **That rule was written down and broken at the same time** — every forecast and every device class chose one until the first-party vocabulary replaced them. What changed is the remedy, not the reason. The owner wants emoji in a weather or countdown style, so the wall ships its own: a curated Twemoji set under `apps/server/assets/emoji/`, served from `/assets/emoji/<name>.svg` and drawn as an `<img>` from a *key* the manifest carries, never a code point (plan item P4.2), so every screen draws the same picture. A code point handed to the device's font in a designed style is still the bug this rule was written for. The one exception is stated so nobody "fixes" it: text a household typed itself, such as a countdown's title, renders in the device's own font (Q9), because it is their string and the wall does not rewrite it. E-paper keeps the drawn glyphs. **S11 has landed the artwork and the test narrowing described above.** `no-emoji.test.ts` now scans only `apps/server/src/epaper/**` and its own `epaper-*` tests, with `asciiTitle` kept as the panel's guard; the wall side of the old ban is enforced by rendering instead of by a source scan — `browser-emoji.test.ts` proves a real paired wall draws `emojiNode`'s output as a same-origin `<img>`, never a code point in the live DOM. It scans comments too, because a comment is where the next one gets pasted from. The forecast's `playful` look (P5.1) is the first designed style to draw from the vocabulary, through `emojiNode`, and `browser-weather-playful.test.ts` holds every picture it draws to a same-origin `<img>` from `/assets/emoji/` that actually loaded, with no emoji code point anywhere in the rendered text; the countdown's arrive with S16.
+- **No stat tiles — but a designed widget style may make one reading its lede.** *(Amended 2026-09-24 for decision D1.)* A big number with a caption, or a 3-up row of them, is a dashboard idiom, and this is a calendar: the wall's job is the thing the household does not already know, and a row of tiles says the things they do. That is still out, on any widget. What D1 permits is narrower: a designed style — the weather "Today" card, a countdown's number — may carry **one** large reading, capped against the event role the way the clock is (1.8x, `WALL_TYPE_CAPS`), so the biggest number on the wall can never outsize an event name by more than the clock already may. The cap is the rule rather than the size; a large reading with no cap is a stat tile with a style name. Enforced for the forecast's Today card by `browser-weather-today.test.ts`, which holds its lede to 1.8x the event role at three sizes (1080x1920, 1920x1080 and a 43" television at 2560x1440) and to reaching that cap where the box has room, the way `orientation.test.ts` holds the clock; the countdown's number is S16's to hold the same way.
 - **Shadows on a browser wall come from one theme token, and a theme or an e-ink preset can switch them off.** *(Rewritten 2026-09-24 for decision D8.)* The rule this replaces was "no shadow on the display, at any size, in any theme", because a shadow bands on e-ink and burns in on OLED. Both are still true, and they are now the reason the shadow is a *token* rather than the reason for a ban: `--shadow-card` is set per theme (soft on Panels and Household, paper-like on Almanac, none on Blueprint and Swiss), derived for a custom theme, and set to none by the e-ink presets of the wall-size picker (plan item P4.4). A literal `box-shadow` in a widget rule is therefore still wrong — it is the one shadow a household with an OLED or e-ink screen could not turn off. An e-paper panel draws none: `shadow` stays in `PANEL_IGNORES`, which `epaper-ink.test.ts` already proves by rendering. Separation is still space, then a 1px rule, then a ground step, in that order; a shadow is a look a theme lays on top of that and never the only thing separating two boxes. Enforced by `builtin-themes-parity.test.ts`, which holds the token's per-theme values in the bundle and on the server to each other, and by `browser-widget-shadow.test.ts`, which reads the computed `box-shadow` on a real wall: every box `none` on every built-in until a widget asks, and the theme's shadow — or none, on an e-ink-sized wall — once it does.
 - **Motion on a browser wall is phase-locked to the wall clock, gated by reduced motion and the wall's own switch, and moves only `transform` and `opacity`. An e-paper panel is always still.** *(Rewritten 2026-09-24 for decision D7.)* The rule this replaces was "no transition or animation on any surface a screen sees", because the wall has no pointer and redraws every 15 s: a transition there confirms nothing and reads as a flicker in a room, and `draw()` empties and rebuilds the whole wall on every tick, so a naive CSS animation restarts four times a minute. The owner decided weather and countdown styles may move, and that confetti may fall on a countdown's day. The reasons survive as the conditions (plan item P4.3): a looping effect takes a negative `animation-delay` from the corrected wall clock, so a rebuilt element resumes where the old one was; a one-shot fires once per event from a per-widget memory in `main.ts`, not once per tick; every `@keyframes`, `animation` and `transition` sits inside `prefers-reduced-motion: no-preference` and under `.canvas[data-motion="on"]`, the wall's Motion switch (`screens.motion`, null meaning on, Q6, and off by default on the e-ink presets); and only `transform` and `opacity` are animated, because anything else is layout or paint on every frame of an old tablet. The panel draws each style's still frame. **The ban was a convention for as long as it existed, and a convention is what a future contributor breaks** — reasonably, from a browser habit, in a file nobody re-reads — which is why its replacement is a build failure too. **S12 landed it, and the scope is what is enforced now.** `apps/display/test/motion.test.ts` parses `display.css` (source *and* the copy `dist/` serves) and refuses any `@keyframes` or animation binding outside `@media (prefers-reduced-motion: no-preference)`, any binding whose selector does not start at `.canvas[data-motion="on"]`, any keyframe that moves something other than `transform` or `opacity`, any transition at all, and any `animation-duration`, `animation-delay` or shorthand in the stylesheet — the duration is stated once, in `motion.ts`, where the phase is computed from it. It also holds `motion.ts` as **the one module** in `main.ts`'s import graph that says "animation", writing only `animationDuration` and `animationDelay`; every other wall module still carries none of the words. `apps/server/test/motion-scope.test.ts` holds the same scope on the stylesheet the server actually serves and the panel path to reaching no stylesheet at all, and `browser-motion.test.ts` measures a real Chromium: a loop's computed phase continuous across a tick, a one-shot that resumes through a redraw and does not refire, and nothing moving under reduced motion or with the switch off. The admin's rule is unchanged and `motion-scope.test.ts` keeps holding it: three durations and three easings, every declaration inside `prefers-reduced-motion: no-preference`, because the admin is a settings screen somebody is touching, where the same 180ms is the only thing telling them the tap landed.
 - No proportional figures on the display. font-variant-numeric: tabular-nums is not a preference here: a figure that changes width changes a row's geometry, and a geometry change forecloses e-ink partial refresh.
@@ -8757,6 +8757,141 @@ calendar 153 over 10 · core 314 over 9 · display 736 over 41 · server 3011
 over 241. Measured with `pnpm test` and a real Chromium, on a clone whose tags
 had been fetched. Against the 4213 above it is one test and no file: the
 font-race test that holds the fonts back, in a file that already existed.
+
+**The last two of P5.1's weather styles shipped: `today` and `playful` (session
+S15).** Both are opt-in Looks and a wall that picks neither is unchanged:
+Classic draws the strip, every rule is scoped under `.wx-today` or
+`.wx-playful`, and `wall-density` and `browser-classic-proportions` pass with
+every baseline where it was. Two open questions touch them and both proposed
+defaults are what is built: Q6, Motion on unless the wall is an e-ink size,
+which S12 built and these are the first styles to read; and Q7's rule of thumb,
+under which a panel honours `today`, which reads in one bit, and draws
+`playful` as the strip, whose pictures have no one-bit artwork.
+
+**`today` is the iOS card**: the reading now as the lede, today's high and low
+under it, the sky in words, the feels-like, and the next hours along the foot —
+or, in a box short of the hours' three lines, the next days as one line (the
+plan's "or, in a short box"). What each part *says* is `weather-looks.ts`,
+pure: which of six skies a reading sits on (only a sky with the sun in it
+follows the clock; an overcast, wet, snowy or stormy one is its weather's colour
+at any hour), what moves across it, what an hour is called in the wall's own
+zone and clock, and the card's **second mode**: with no reading recent enough to
+call now (P3.4), the lede is today's high with its low beside it, there is no
+feels-like and no separate range, and the words are the day's own — so a card
+never presents a forecast as a measurement. The sky is the theme's
+(`--sky-<kind>-top/-bottom/-ink` from S13's `paletteTokens`, each ink held to
+4.5:1 on both stops by construction) and the card casts `--shadow-card`, which
+Blueprint, Swiss and an e-ink-sized wall set to none.
+
+**The lede is decision D1's one large reading, and its size is the room the rest
+leaves.** It is capped at the clock's own role (`--t-wall-clock`, 1.8x the event
+role; `calc(var(--t-event) * 1.8)` where nobody measured), which the first draw
+draws; `tierToday` then measures what the kept rungs cost and writes the lede's
+size back as `--wt-lede-size`, no larger than the cap and no wider than the card
+— measured across the specimen "-00°" rather than the reading, so 9° and 19°
+draw at one size and the card does not grow when the temperature falls a degree.
+`TODAY_TIERS` states the rest in `em` of the condition words, summed at the
+lede's 1.6em floor from each rung measured off a drawn card at both sizes on
+both walls (padding 1.0, range 1.05, words 1.3, feels 1.05, days line 1.5;
+hours 3.8). A card whose words wrap past what the table priced gives up a rung
+rather than shrink the lede under its floor, hours to the days line first.
+How many hours and days is by width, cumulative off each item's own drawn
+width, so a wider card names more of the day — measured on a 32" television at
+1080x1920, 7 hours in a third of the wall's width and all 24 across it.
+
+**`playful` is the strip's days with big names and a bundled picture each**
+(`emojiNode`, decision D6 — an `<img>` from `/assets/emoji/`, never a code
+point), and it keeps the household's ladder: the icon rung is the picture, and
+`PLAYFUL_TIERS` gives up rungs in the strip's order. The advice line is not a
+rung. It is the first thing given up — kept only where the whole ladder is
+drawn and the box has room under it, measured off the line — because a card
+that had to choose between "Umbrella day" and the high keeps the fact the advice
+came from. The rules are `weather-advice.ts`, table-tested at every boundary in
+both systems: umbrella at 50% rain, a coat under 10°C/50°F, windy from 30 km/h
+or 19 mph, sunscreen from UV 6, shorts from 24°C/75°F, one line in that order of
+precedence, and **a figure whose unit nobody said fires nothing** — guessing the
+unit of 24 is how a wall tells somebody in a 24°F frost to wear shorts. 19 mph
+is 30.6 km/h and 75°F is 23.9°C, and both are stated rather than hidden. The
+switch is `advice` (absent is on, the `showFace` idiom), offered only on
+`playful` through `VARIANT_HIDES`, and a `PANEL_IGNORES` entry, since a panel
+draws the look as its strip.
+
+**What moves is scoped and continuous**, through S12's door: every element is
+placed from a fixed table and locked to the wall clock with `lockLoop`, a fixed
+share of the cycle behind its neighbour, and every keyframe sits in the scoped
+block moving `transform` or `opacity` alone — the glow breathes on opacity and
+does not swell, because `scale()` is the one transform `widget-tiers.test.ts`
+refuses outright. No flash for a storm. **Two cycles were changed for the tick
+rather than the look**, and the rule is pinned: a cycle that divides the
+fifteen-second redraw hides a restart from a household and from any continuity
+check, so each must land a restart at least a quarter of a cycle out. Snow was
+7 seconds, a seventh of a cycle, and is 6.5; the bob is 4.2 rather than a round
+5, which divides 15 exactly.
+
+**On e-paper, `today` is honoured and `playful` falls back to the strip.** A
+panel draws the large reading with the time it was read — "19C" over "at 13:30"
+— or, in a box too short for both, `epaperCurrent`'s own "19C at 13:30" on one
+line: the reading and its time are never drawn apart (P3.5). Every size is
+stepped against a character budget, never the words. `panelInput` hands the
+reading to that look alone, and of the days only today's name, high and low, so
+a strip's ETag does not move for a reading and a Today panel's does not move for
+Friday's sky; `epaper-frame-etag` gained a `today` probe and split
+`weather:glyph` and `weather:current` out of its reads to say so. **S09's and
+S14's two `it.fails` markers, `TODO(S14)`, pass now and are ordinary tests.**
+No `EPAPER_RENDERER_VERSION` bump: the frames that move are ones whose input
+changes with them.
+
+**Both tables were first drafted and then measured, and one was wrong.**
+`PLAYFUL_TIERS` guessed 4.6 and 5.8em where a drawn column costs 4.8 and 6.0;
+the belt had nothing to hide in the first measurement only because no box
+landed in the gap. The measurement itself was wrong once on the way: the script
+read its `em` off the card's container rather than the condition words, so every
+Today rung read 1.7x its size, and it was the `em` it printed — 19.2px beside
+condition words drawn at 32.6 — that gave it away, not the pictures.
+
+Measured on real paired walls at 1080x1920 and 1920x1080, unmeasured and as a
+32" television, over the captured London answer (with its 24 hours now seeded
+too) and the Washington one started on its 76°F day — the one real day in
+either capture that raises advice: nothing clipped, the belt given nothing, every
+figure `tabular-nums`, every run its role, the lede at most 1.8x the event role
+at three sizes (a 43" television at 2560x1440 the third) and at its cap where
+the box has room, the sky's computed gradient and ink and shadow the page's own
+tokens, every picture a same-origin `<img>` that loaded with no emoji code point
+in the text, and a glow and a bob each resuming within the draw's latency across
+a real fifteen-second redraw and still under reduced motion.
+
+**Forty-four mutations were checked and all forty-four are red**: twenty-nine on
+the pure modules, the tier tables, the stylesheet's scope and the panel, and
+fifteen on the wall in a real browser, each on a rebuilt bundle with its anchor
+confirmed to have applied. Five were not red first time, and that is the useful
+part. Four were refused by the typechecker for an unused name and were rewritten
+until they compiled, because a build failure proves nothing about a test. The
+fifth was a real gap: "the lede is the box's size, not the reading's" was first
+asserted in a full-panel box, where height binds before width and a lede fitted
+to its own words draws the same size anyway — so it stayed green with the fix
+reverted. It is asserted in a narrow box now, with that premise asserted beside
+it.
+
+**4301 tests passing and 1 skipped, over 306 files**: calendar 153 over 10 ·
+core 314 over 9 · display 792 over 43 · server 3042 over 244, measured with
+`pnpm test` and a real Chromium (the channel fallback, no
+`PLAYWRIGHT_BROWSERS_PATH`) on the tree after `main` was merged into this branch,
+which by then carried #297 and #298. Against their 4214, 1 skipped and 2
+expected failures over 301 recorded just above: display +56 over two new files
+(`weather-advice` 31, `weather-looks` 16, six more in `widget-tiers`, and three
+more in `motion.test` — one generated per module the wall's graph gained, which
+is the count nobody writes); server +31 over three new files
+(`browser-weather-today` 11, `browser-weather-playful` 9,
+`epaper-weather-today` 8), one new control in `epaper-frame-etag`, and the two
+expected failures passing — 3011 + 28 + 1 + 2. Before the merge the branch read
+4299 over 306 against S14's 4212, the same +87. The arithmetic and the reading
+agree, which is an observation. `pnpm test`'s build step earned its place once
+here: a test file vitest had happily transpiled carried a type error
+(`PANEL.width` inferred as the literal 800) that only `tsconfig.test.json`
+refused. **Still unproven
+where it counts:** nobody has looked at either style on a kitchen wall or at an
+old tablet running its sky, and no panel has been photographed drawing a Today
+card.
 
 ---
 

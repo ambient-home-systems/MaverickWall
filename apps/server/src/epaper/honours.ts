@@ -152,28 +152,27 @@ export const INK_LANE: Readonly<Record<string, readonly string[]>> = {
  *
  * `PANEL_HONOURS` says a panel *reads* `variant`; this says which values it
  * draws differently. They are separate because a forecast honours the key and
- * falls back per value: `range` is drawn as black bars, and `colour`, `today`
- * and `playful` are drawn as the strip — `colour` because a condition colour
- * is exactly what one bit does not have, and the other two until the sessions
- * that design them. A type is here exactly when it honours `variant`.
+ * falls back per value: `range` is drawn as black bars and `today` as its
+ * large reading with the time it was read ("52F at 07:15"), and `colour` and
+ * `playful` are drawn as the strip — `colour` because a condition colour is
+ * exactly what one bit does not have, and `playful` because its pictures are
+ * bundled colour artwork with no one-bit drawing (D3 defers those). A type is
+ * here exactly when it honours `variant`.
  */
 export const PANEL_LOOKS: Readonly<Record<string, readonly string[]>> = {
   clock: ['stacked', 'analogue'],
-  weather: ['range'],
+  weather: ['range', 'today'],
 };
 
 /**
  * The Looks the ink lane offers, per type, where that is fewer than the type
  * has. Absent is every one of them — the clock's three, all drawn on one bit.
  *
- * A forecast's lane offers the strip, `today` and `range`: the default, the
- * look the panel draws as its own, and the one the plan says a panel will
- * draw (a large temperature stamped with its time, P5.1's `today`). **`today`
- * is drawn as the strip on a panel until that session**, which is recorded in
- * `epaper-ink.test.ts` as an expected failure owned by S14 rather than left to
- * be found — the lane offering it now is the plan's shape, and the renderer is
- * what has not caught up. `colour` and `playful` are never offered here: one
- * has no colour to draw and the other's emoji have no one-bit artwork (D3).
+ * A forecast's lane offers the strip, `today` and `range`: the default and the
+ * two looks the panel draws as its own — `range` as black bars and `today` as
+ * a large temperature stamped with its time (P5.1). `colour` and `playful` are
+ * never offered here: one has no colour to draw and the other's emoji have no
+ * one-bit artwork (D3).
  */
 export const INK_LOOKS: Readonly<Record<string, readonly string[]>> = {
   weather: ['strip', 'today', 'range'],
@@ -255,6 +254,17 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
     key: 'showShifts',
     label: 'Shift colours',
     why: 'the colours are the point, and there are none.',
+  },
+  /*
+   * The `playful` forecast's advice line (plan item P5.1). A panel draws that
+   * look as its strip — its pictures are colour artwork with no one-bit
+   * drawing — and the strip carries no advice, so the switch moves no ink on
+   * any panel, and `epaper-ink.test.ts` proves that by setting it.
+   */
+  {
+    key: 'advice',
+    label: 'Advice line',
+    why: 'a panel draws the playful forecast as its strip, and the strip has no advice line.',
   },
   /*
    * A widget's Look (plan item P4.1), on every type that has looks but the
