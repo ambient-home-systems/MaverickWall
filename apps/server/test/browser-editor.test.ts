@@ -23,7 +23,7 @@
  * pixels are wrong, and "the frame changed" never proves a control was read.
  */
 import { afterAll, describe, expect, it } from 'vitest';
-import type { Page } from 'playwright-core';
+import type { BrowserContext, Page } from 'playwright-core';
 import { TEARDOWN, browser, install, shutDownBrowser, type Installation } from './browser-harness.js';
 import { closeFakeHomeAssistants, fakeHomeAssistant, TOKEN } from './fake-home-assistant.js';
 import { applyTemplate } from '../src/api/templates.js';
@@ -31,14 +31,38 @@ import { CLASSIC_TEMPLATE } from '../src/templates/index.js';
 
 process.env['TZ'] = 'UTC';
 
-/** Long, because each of these boots a server, a browser context and an editor. */
+/** Long, because each of these opens a browser context and an editor. */
 const SLOW = 60_000;
 
 const installations: Installation[] = [];
-async function fresh(options?: Parameters<typeof install>[0]): Promise<Installation> {
+
+/**
+ * A server of this test's own, for the three tests that change the household.
+ *
+ * A panel following a wall, a calendar feed and a Home Assistant connection
+ * are facts about the whole installation rather than about one wall, and a
+ * test reading the editor should not have to know which other test set one
+ * up before it — so a test that makes one gets a server nobody else reads.
+ */
+async function ownInstallation(options?: Parameters<typeof install>[0]): Promise<Installation> {
   const made = await install(options);
   installations.push(made);
   return made;
+}
+
+/**
+ * A wall of this test's own, on the one server every other test shares.
+ *
+ * Everything these tests change is the canvas of the wall they open, and each
+ * one pairs its own (`editorWall` keys on the object returned here), so
+ * sharing the server shares nothing a test reads. What it saves is a server
+ * booted, a database migrated and a wizard driven per test, which is CPU this
+ * file's CI runner spends while two other suites want it.
+ */
+let shared: Promise<Installation> | undefined;
+async function newWall(): Promise<Installation> {
+  shared ??= ownInstallation();
+  return { ...(await shared) };
 }
 
 afterAll(async () => {
@@ -71,15 +95,180 @@ interface EditorBox {
  * editor writes.
  */
 const editorWalls = new WeakMap<Installation, string>();
+let pairedWalls = 0;
 async function editorWall(wall: Installation): Promise<string> {
   const known = editorWalls.get(wall);
   if (known !== undefined) return known;
-  const id = await wall.pairWall('Editor wall');
+  pairedWalls += 1;
+  const id = await wall.pairWall(`Editor wall ${pairedWalls}`);
   editorWalls.set(wall, id);
   return id;
 }
 
-/** Sign in the way a household does, then open a wall's editor. */
+// ---------------------------------------------------------------------------
+// Signed in once per server, and told when the editor has caught up
+// ---------------------------------------------------------------------------
+
+type SignedIn = Awaited<ReturnType<BrowserContext['storageState']>>;
+
+/**
+ * One sign-in per server, driven through the form the way a household does,
+ * and its cookie handed to every context that opens an editor there.
+ *
+ * Not a sign-in per test: that is a password hash per test, and the auth
+ * library's rate limit is one in-memory bucket per server — the reason §5's
+ * viewport test already signs in once rather than eight times.
+ */
+const sessions = new Map<string, Promise<SignedIn>>();
+function session(wall: Installation): Promise<SignedIn> {
+  let known = sessions.get(wall.base);
+  if (known === undefined) {
+    known = (async () => {
+      const context = await (await browser()).newContext();
+      try {
+        const page = await context.newPage();
+        await wall.signIn(page);
+        return await context.storageState();
+      } finally {
+        await context.close();
+      }
+    })();
+    known.catch(() => sessions.delete(wall.base));
+    sessions.set(wall.base, known);
+  }
+  return known;
+}
+
+/**
+ * Counts what the editor has put off: a timer its own script set, and a fetch
+ * or a body read still in flight.
+ *
+ * The editor does almost everything synchronously in the handler that received
+ * the key or the pointer, so the DOM an assertion reads is already written by
+ * the time Playwright's action returns. What it defers is the preview (a 140ms
+ * debounce), the ink lane's frame and the e-paper backdrop (260 and 220ms, then
+ * a POST), the first preview's fetch, and a save. The fixed waits this file
+ * used to take were guesses at how long those take; this is the thing they were
+ * guessing at.
+ *
+ * Only timers set from the bundle under `/assets/` count. The admin page's own
+ * inline script sets an 800ms timer to clear the ripple on every button press,
+ * and waiting on that would be waiting on an animation nobody asserts.
+ */
+function idleProbe(): void {
+  const pending = new Set<number>();
+  const setTimer = window.setTimeout.bind(window);
+  const clearTimer = window.clearTimeout.bind(window);
+  const fromBundle = (): boolean => /\/assets\//.test(new Error().stack ?? '');
+  window.setTimeout = ((handler: TimerHandler, delay?: number, ...args: unknown[]): number => {
+    if (typeof handler !== 'function' || !fromBundle() || Number(delay ?? 0) > 2000) {
+      return setTimer(handler, delay, ...args);
+    }
+    const id: number = setTimer(
+      (...given: unknown[]) => {
+        pending.delete(id);
+        (handler as (...a: unknown[]) => void)(...given);
+      },
+      delay,
+      ...args,
+    );
+    pending.add(id);
+    return id;
+  }) as typeof window.setTimeout;
+  window.clearTimeout = ((id?: number): void => {
+    if (id !== undefined) pending.delete(id);
+    clearTimer(id);
+  }) as typeof window.clearTimeout;
+
+  // A fetch counts until it settles, and so does reading its body. The count
+  // goes down in the same microtask checkpoint as the code awaiting it resumes,
+  // so an `await fetch(...)` followed by `await response.json()` never shows a
+  // frame with nothing in flight between the two.
+  let inFlight = 0;
+  const track = <T,>(promise: Promise<T>): Promise<T> => {
+    inFlight += 1;
+    const done = (): void => {
+      inFlight -= 1;
+    };
+    promise.then(done, done);
+    return promise;
+  };
+  const fetchIt = window.fetch.bind(window);
+  window.fetch = ((...args: Parameters<typeof fetch>) => track(fetchIt(...args))) as typeof fetch;
+  for (const read of ['json', 'text', 'blob', 'arrayBuffer'] as const) {
+    const original = Response.prototype[read] as (this: Response) => Promise<unknown>;
+    (Response.prototype as unknown as Record<string, unknown>)[read] = function (this: Response) {
+      return track(original.call(this));
+    };
+  }
+  (window as unknown as { __mwBusy: () => number }).__mwBusy = () => pending.size + inFlight;
+}
+
+/**
+ * Wait until the editor has nothing pending for two frames running.
+ *
+ * Two, because a resize observer — which is how the stage re-sizes the canvas
+ * and the canvas re-draws the preview — runs after the frame's animation
+ * callbacks, so one calm frame can precede a preview the next frame schedules.
+ * A page without the probe is a failure rather than a pass: a wait that
+ * silently waits for nothing is how a fixed sleep's flakiness comes back.
+ */
+async function settle(page: Page): Promise<void> {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        const busy = (window as unknown as { __mwBusy?: () => number }).__mwBusy;
+        if (busy === undefined) {
+          reject(new Error('this page has no idle probe; open its context with editorContext()'));
+          return;
+        }
+        const started = performance.now();
+        let calm = 0;
+        const frame = (): void => {
+          const left = busy();
+          calm = left === 0 ? calm + 1 : 0;
+          if (calm >= 2) {
+            resolve();
+            return;
+          }
+          if (performance.now() - started > 15_000) {
+            reject(new Error(`the editor still had ${left} thing(s) pending after 15s`));
+            return;
+          }
+          requestAnimationFrame(frame);
+        };
+        requestAnimationFrame(frame);
+      }),
+  );
+}
+
+/** A browser context signed in to this wall's server, with the idle probe in it. */
+async function editorContext(
+  wall: Installation,
+  viewport: { width: number; height: number } = { width: 1440, height: 1000 },
+): Promise<BrowserContext> {
+  const context = await (await browser()).newContext({ viewport, storageState: await session(wall) });
+  await context.addInitScript(idleProbe);
+  return context;
+}
+
+/**
+ * The editor has drawn its boxes and its preview, and has nothing pending.
+ *
+ * The preview is fetched after the page loads, so a test reading it — or
+ * asserting what it does *not* draw — has to know it has arrived.
+ */
+async function editorReady(page: Page): Promise<void> {
+  await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
+  await page.waitForFunction(
+    () => document.querySelector('.le-preview')?.shadowRoot?.querySelector('.canvas') != null,
+    undefined,
+    { timeout: 20_000 },
+  );
+  await settle(page);
+}
+
+/** Open a wall's editor, in a context `editorContext` made. */
 async function openEditor(wall: Installation, page: Page): Promise<void> {
   /*
    * On Classic's full canvas, always.
@@ -95,9 +284,11 @@ async function openEditor(wall: Installation, page: Page): Promise<void> {
    */
   const id = await editorWall(wall);
   applyTemplate(wall.db, id, CLASSIC_TEMPLATE);
-  await wall.signIn(page);
   await page.goto(`${wall.base}/admin/walls/${encodeURIComponent(id)}`, { waitUntil: 'load' });
-  await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
+  if (new URL(page.url()).pathname.endsWith('/sign-in')) {
+    throw new Error('the editor asked for a sign-in; open this context with editorContext()');
+  }
+  await editorReady(page);
 }
 
 /**
@@ -160,8 +351,62 @@ async function dragBox(page: Page, index: number, dx: number, dy: number): Promi
 /** Undo the way a household does, with the keyboard. */
 async function pressUndo(page: Page): Promise<void> {
   await page.keyboard.press('Control+z');
-  await page.waitForTimeout(120);
+  await settle(page);
 }
+
+// ===========================================================================
+// 0 · The wait every other test stands on
+// ===========================================================================
+
+describe('0 · the idle probe', () => {
+  /**
+   * `settle` is only as good as what the probe counts, and a probe that counts
+   * nothing turns every wait in this file into no wait at all — green on a
+   * quiet machine and red on a loaded one, which is the fixed sleep's fault
+   * back again. So it is asked directly, in one synchronous turn where nothing
+   * can fire in between: a nudge puts off the preview, a save puts a request
+   * in flight, and the probe has to have seen both.
+   *
+   * A synthetic key event rather than Playwright's, because Playwright's
+   * returns after a round trip in which a loaded machine could run the 140ms
+   * debounce, and then "the probe saw nothing" would be a fact about the
+   * machine.
+   */
+  it(
+    'counts the preview a nudge puts off and the save in flight, and settles to nothing',
+    async () => {
+      const wall = await newWall();
+      const context = await editorContext(wall);
+      try {
+        const page = await context.newPage();
+        await openEditor(wall, page);
+        const seen = await page.evaluate(async () => {
+          const probe = window as unknown as {
+            __mwBusy: () => number;
+            mwEditor: { saveCurrent(): Promise<{ ok: boolean }> };
+          };
+          const before = probe.__mwBusy();
+          const box = document.querySelector<HTMLElement>('.le-overlay .le-widget');
+          box?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+          const nudged = probe.__mwBusy();
+          const saving = probe.mwEditor.saveCurrent();
+          const posting = probe.__mwBusy();
+          const saved = await saving;
+          return { before, nudged, posting, saved: saved.ok };
+        });
+        expect(seen.before, 'the editor had something pending after editorReady').toBe(0);
+        expect(seen.nudged, 'a nudge put off the preview and the probe did not count it').toBe(1);
+        expect(seen.posting, 'a save is in flight and the probe did not count it').toBe(2);
+        expect(seen.saved).toBe(true);
+        await settle(page);
+        expect(await page.evaluate(() => (window as unknown as { __mwBusy: () => number }).__mwBusy())).toBe(0);
+      } finally {
+        await context.close();
+      }
+    },
+    SLOW,
+  );
+});
 
 // ===========================================================================
 // 1 · Undo, across every mutation type
@@ -184,8 +429,8 @@ describe('1 · the undo stack', () => {
   it(
     'takes back a drag, a resize, a nudge, an add, a duplicate, a delete, a restack and a setting',
     async () => {
-      const wall = await fresh();
-      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      const wall = await newWall();
+      const context = await editorContext(wall);
       try {
         const page = await context.newPage();
         await openEditor(wall, page);
@@ -193,7 +438,7 @@ describe('1 · the undo stack', () => {
         const step = async (name: string, mutate: () => Promise<void>): Promise<void> => {
           const before = await canvasState(page);
           await mutate();
-          await page.waitForTimeout(120);
+          await settle(page);
           const after = await canvasState(page);
           expect(after, `${name} changed nothing, so its undo proves nothing`).not.toBe(before);
           await pressUndo(page);
@@ -290,7 +535,7 @@ describe('1 · the undo stack', () => {
           true,
         );
         await rung().click();
-        await page.waitForTimeout(200);
+        await settle(page);
         expect(await rung().isChecked()).toBe(false);
         await pressUndo(page);
         expect(
@@ -316,8 +561,8 @@ describe('1 · the undo stack', () => {
   it(
     'deletes without a dialogue, and Ctrl+Z brings the widget back with its options',
     async () => {
-      const wall = await fresh();
-      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      const wall = await newWall();
+      const context = await editorContext(wall);
       try {
         const page = await context.newPage();
         await openEditor(wall, page);
@@ -333,12 +578,12 @@ describe('1 · the undo stack', () => {
         await page.locator('.le-overlay .le-widget').first().click();
         await page.click('.insp-tab:has-text("Style")');
         await page.locator('.le-config .switch input[type=checkbox]').first().check();
-        await page.waitForTimeout(120);
+        await settle(page);
         const before = await canvasState(page);
         const removed = (await boxes(page))[0]?.id;
 
         await page.click('.insp-remove');
-        await page.waitForTimeout(150);
+        await settle(page);
         expect(asked, 'removing a widget still asks, and undo has made the question wrong').toBe(
           false,
         );
@@ -371,23 +616,23 @@ describe('1 · the undo stack', () => {
   it(
     'leaves the canvas alone when the Wall settings pane is the one showing',
     async () => {
-      const wall = await fresh();
-      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      const wall = await newWall();
+      const context = await editorContext(wall);
       try {
         const page = await context.newPage();
         await openEditor(wall, page);
         await dragBox(page, 0, 40, 60);
-        await page.waitForTimeout(150);
+        await settle(page);
         const arranged = await canvasState(page);
 
         await page.click('[data-mode="settings"]');
-        await page.waitForTimeout(150);
+        await settle(page);
         await page.keyboard.press('Control+z');
         await page.keyboard.press('Control+z');
-        await page.waitForTimeout(150);
+        await settle(page);
 
         await page.click('[data-mode="layout"]');
-        await page.waitForTimeout(150);
+        await settle(page);
         expect(
           await canvasState(page),
           'Ctrl+Z on the settings pane stepped the canvas back where nobody could see it',
@@ -417,8 +662,8 @@ describe('2 · the keyboard', () => {
   it(
     'nudges a widget by 1%, resizes with Shift, and keeps focus on the box',
     async () => {
-      const wall = await fresh();
-      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      const wall = await newWall();
+      const context = await editorContext(wall);
       try {
         const page = await context.newPage();
         await openEditor(wall, page);
@@ -441,7 +686,7 @@ describe('2 · the keyboard', () => {
         await page.keyboard.press('ArrowRight');
         await page.keyboard.press('ArrowRight');
         await page.keyboard.press('ArrowDown');
-        await page.waitForTimeout(120);
+        await settle(page);
 
         const moved = (await boxes(page)).find((one) => one.id === id);
         expect([moved?.x, moved?.y].map((n) => Math.round((n ?? 0) * 10) / 10)).toEqual([
@@ -461,14 +706,14 @@ describe('2 · the keyboard', () => {
         // widget that moved instead would be a browser control taken away.
         await page.keyboard.press('Alt+ArrowLeft');
         await page.keyboard.press('Control+ArrowLeft');
-        await page.waitForTimeout(120);
+        await settle(page);
         expect(
           (await boxes(page)).find((one) => one.id === id)?.x,
           'a modifier + arrow moved the widget, so Back does not work here',
         ).toBe(moved?.x);
 
         await page.keyboard.press('Shift+ArrowRight');
-        await page.waitForTimeout(120);
+        await settle(page);
         const bigger = (await boxes(page)).find((one) => one.id === id);
         expect(Math.round(((bigger?.w ?? 0) - (moved?.w ?? 0)) * 10) / 10).toBe(1);
         expect(bigger?.x, 'Shift+arrow moved the box instead of resizing it').toBe(moved?.x);
@@ -493,7 +738,8 @@ describe('2 · the keyboard', () => {
   it(
     'reaches Style, and the ink lane, with the arrow keys',
     async () => {
-      const wall = await fresh();
+      // Its own server: a panel following a wall is household state.
+      const wall = await ownInstallation();
       // A panel that follows the Default wall, so the lane is offered here.
       await wall.post('/admin/epaper', {
         name: 'Hall panel',
@@ -513,7 +759,7 @@ describe('2 · the keyboard', () => {
         source: `follow:${await editorWall(wall)}`,
       });
 
-      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      const context = await editorContext(wall);
       try {
         const page = await context.newPage();
         await openEditor(wall, page);
@@ -553,25 +799,25 @@ describe('2 · the keyboard', () => {
         // orientation, and this one is an 800×480 landscape screen — on
         // portrait it says so instead of offering controls.
         await page.click('.le-orient-btn:has-text("Landscape")');
-        await page.waitForTimeout(300);
+        await settle(page);
         const calendar = (await boxes(page)).find((one) => one.label.startsWith('Calendar'));
         expect(calendar, 'the landscape canvas has no calendar to override').toBeDefined();
         await page.locator(`.le-overlay .le-widget[data-id="${calendar?.id ?? ''}"]`).click();
         await page.click('.insp-lane:has-text("On ink")');
-        await page.waitForTimeout(200);
+        await settle(page);
         const mode = page.locator('.le-cfg-field[data-cfg-key="mode"] select');
         expect(await mode.count(), 'the ink lane offered no control to override').toBeGreaterThan(0);
         await mode.selectOption('list');
-        await page.waitForTimeout(250);
+        await settle(page);
 
         const reset = page.locator('.insp-ink-reset');
         expect(await reset.count(), 'changing an option on the lane recorded no override').toBe(1);
         await reset.click();
-        await page.waitForTimeout(250);
+        await settle(page);
         expect(await page.locator('.insp-ink-reset').count()).toBe(0);
 
         await page.keyboard.press('Control+z');
-        await page.waitForTimeout(250);
+        await settle(page);
         expect(
           await page.locator('.insp-ink-reset').count(),
           'Ctrl+Z did not bring back the overrides "Match the wall again" wiped',
@@ -595,8 +841,8 @@ describe('2 · the keyboard', () => {
   it(
     'places a widget by typing, and follows a drag back into the fields',
     async () => {
-      const wall = await fresh();
-      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      const wall = await newWall();
+      const context = await editorContext(wall);
       try {
         const page = await context.newPage();
         await openEditor(wall, page);
@@ -607,14 +853,14 @@ describe('2 · the keyboard', () => {
 
         const x = page.locator('.le-box-grid input[type=number]').first();
         await x.fill('37');
-        await page.waitForTimeout(150);
+        await settle(page);
         expect((await boxes(page)).find((one) => one.id === id)?.x).toBe(37);
 
         // Out of range comes back as what the canvas could take, once the edit
         // is committed — a clamp nobody can see is a field that lies.
         await x.fill('140');
         await x.press('Enter');
-        await page.waitForTimeout(150);
+        await settle(page);
         const clamped = (await boxes(page)).find((one) => one.id === id);
         expect(Number(await x.inputValue())).toBe(Math.round(clamped?.x ?? -1));
         expect(Number(await x.inputValue())).toBeLessThan(100);
@@ -630,7 +876,7 @@ describe('2 · the keyboard', () => {
          */
         await x.fill('10');
         await x.press('Enter');
-        await page.waitForTimeout(150);
+        await settle(page);
         const own = page.locator(`.le-overlay .le-widget[data-id="${id}"]`);
         const rect = await own.boundingBox();
         if (rect === null) throw new Error('the selected widget has no box');
@@ -638,7 +884,7 @@ describe('2 · the keyboard', () => {
         await page.mouse.down();
         await page.mouse.move(rect.x + 12 + 60, rect.y + rect.height / 2, { steps: 6 });
         await page.mouse.up();
-        await page.waitForTimeout(150);
+        await settle(page);
 
         const dragged = (await boxes(page)).find((one) => one.id === id);
         expect(dragged?.x, 'the drag moved some other widget').not.toBe(10);
@@ -682,8 +928,8 @@ describe('3 · the resize handle', () => {
   it(
     'takes a press well inside its corner, while the drawn mark stays 12px',
     async () => {
-      const wall = await fresh();
-      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      const wall = await newWall();
+      const context = await editorContext(wall);
       try {
         const page = await context.newPage();
         await openEditor(wall, page);
@@ -760,7 +1006,7 @@ describe('3 · the resize handle', () => {
         await page.mouse.down();
         await page.mouse.move(rect.x - 12 - 60, rect.y - 12 - 60, { steps: 6 });
         await page.mouse.up();
-        await page.waitForTimeout(120);
+        await settle(page);
         const after = (await boxes(page)).find((one) => one.id === id);
 
         expect(after?.x, 'that press dragged the widget instead of resizing it').toBe(before?.x);
@@ -793,8 +1039,8 @@ describe('4 · switching orientation', () => {
   it(
     'posts nothing on the toggle, and saves both canvases when Save is pressed',
     async () => {
-      const wall = await fresh();
-      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      const wall = await newWall();
+      const context = await editorContext(wall);
       try {
         const page = await context.newPage();
         const posted: string[] = [];
@@ -807,11 +1053,11 @@ describe('4 · switching orientation', () => {
         await openEditor(wall, page);
 
         await dragBox(page, 0, 50, 70);
-        await page.waitForTimeout(120);
+        await settle(page);
         const portrait = await canvasState(page);
 
         await page.click('.le-orient-btn:has-text("Landscape")');
-        await page.waitForTimeout(250);
+        await settle(page);
         expect(posted, 'the orientation toggle still writes to the server').toEqual([]);
         expect(
           await page.locator('[data-action="save"]').isEnabled(),
@@ -819,14 +1065,14 @@ describe('4 · switching orientation', () => {
         ).toBe(true);
 
         await dragBox(page, 0, -40, 60);
-        await page.waitForTimeout(120);
+        await settle(page);
         const landscape = await canvasState(page);
 
         await Promise.all([
           page.waitForNavigation({ timeout: 20_000 }),
           page.click('[data-action="save"]'),
         ]);
-        await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
+        await editorReady(page);
         expect(
           posted.slice().sort(),
           'Save wrote one canvas, so the other orientation lost its arrangement',
@@ -836,7 +1082,7 @@ describe('4 · switching orientation', () => {
         // that is the one to read first.
         expect(await canvasState(page)).toBe(landscape);
         await page.click('.le-orient-btn:has-text("Portrait")');
-        await page.waitForTimeout(250);
+        await settle(page);
         expect(await canvasState(page), 'the portrait canvas did not survive').toBe(portrait);
         expect(
           await page.locator('[data-action="save"]').isEnabled(),
@@ -870,13 +1116,13 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
   it(
     'gives the canvas the screen at 390, 768 and 1440',
     async () => {
-      const wall = await fresh();
+      const wall = await newWall();
       for (const [width, height] of [
         [390, 844],
         [768, 1000],
         [1440, 1000],
       ] as const) {
-        const context = await (await browser()).newContext({ viewport: { width, height } });
+        const context = await editorContext(wall, { width, height });
         try {
           const page = await context.newPage();
           await openEditor(wall, page);
@@ -976,17 +1222,16 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
   it(
     'sizes the canvas from the viewport, in both orientations, from 320 to 1920',
     async () => {
-      const wall = await fresh();
+      const wall = await newWall();
       /*
        * One signed-in context, resized and reloaded, rather than eight — each
        * measurement is still a fresh load at that viewport, which is the
        * journey, and eight sign-ups against one in-memory rate-limit bucket is
        * not.
        */
-      const context = await (await browser()).newContext({ viewport: { width: 1280, height: 900 } });
+      const context = await editorContext(wall, { width: 1280, height: 900 });
       try {
         const page = await context.newPage();
-        await wall.signIn(page);
         applyTemplate(wall.db, await editorWall(wall), CLASSIC_TEMPLATE);
 
         /** The canvas as drawn now, and the room the viewport can show it in. */
@@ -1022,7 +1267,7 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
         ] as const) {
           await page.setViewportSize({ width, height });
           await page.goto(`${wall.base}/admin/walls/${encodeURIComponent(await editorWall(wall))}`, { waitUntil: 'load' });
-          await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
+          await editorReady(page);
 
           /*
            * Stated, not inherited. The editor reopens on the orientation it was
@@ -1030,7 +1275,7 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
            * every later one measures whatever the previous width chose.
            */
           await page.click('.le-orient-btn:has-text("Portrait")');
-          await page.waitForTimeout(250);
+          await settle(page);
           const seen = await read();
           portrait.set(width, seen);
 
@@ -1044,7 +1289,7 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
           // out of the way.
           const foot = await page.evaluate(async () => {
             window.scrollTo(0, document.documentElement.scrollHeight);
-            await new Promise((settle) => setTimeout(settle, 150));
+            await new Promise((frame) => requestAnimationFrame(() => requestAnimationFrame(frame)));
             const canvas = document.querySelector('.le-canvas')!.getBoundingClientRect();
             const bar = document.getElementById('savebar')!.getBoundingClientRect();
             return { canvasBottom: Math.round(canvas.bottom), barTop: Math.round(bar.top) };
@@ -1075,7 +1320,7 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
 
             await page.evaluate(() => window.scrollTo(0, 0));
             await page.click('.le-orient-btn:has-text("Landscape")');
-            await page.waitForTimeout(250);
+            await settle(page);
             landscape.set(width, await read());
           }
         }
@@ -1141,10 +1386,10 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
          * thing the 1180px column was protecting.
          */
         await page.goto(`${wall.base}/admin/walls/${encodeURIComponent(await editorWall(wall))}`, { waitUntil: 'load' });
-        await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
+        await editorReady(page);
         const settings = await page.evaluate(async () => {
           (document.querySelector('#mode-tab-settings') as HTMLElement | null)?.click();
-          await new Promise((settle) => setTimeout(settle, 300));
+          await new Promise((frame) => requestAnimationFrame(() => requestAnimationFrame(frame)));
           const panels = document.querySelector('.wset-panels')?.getBoundingClientRect();
           return Math.round(panels?.width ?? -1);
         });
@@ -1170,8 +1415,8 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
   it(
     'opens the Layers and Layout popovers under their own buttons',
     async () => {
-      const wall = await fresh();
-      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      const wall = await newWall();
+      const context = await editorContext(wall);
       try {
         const page = await context.newPage();
         await openEditor(wall, page);
@@ -1181,7 +1426,7 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
           ['.le-tool-btn:not(:disabled)', '.le-canvas-pop'],
         ] as const) {
           await page.click(button);
-          await page.waitForTimeout(150);
+          await settle(page);
           const seen = await page.evaluate(
             ([b, p]) => {
               const one = document.querySelector(b as string)?.getBoundingClientRect();
@@ -1230,8 +1475,8 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
   it(
     'names a widget by the view it is set to, on the canvas and in Layers',
     async () => {
-      const wall = await fresh();
-      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      const wall = await newWall();
+      const context = await editorContext(wall);
       try {
         const page = await context.newPage();
         await openEditor(wall, page);
@@ -1261,7 +1506,7 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
         const monthBox = calendars.find((one) => one.label.includes('Month'));
         await page.locator(`.le-overlay .le-widget[data-id="${monthBox?.id ?? ''}"]`).click();
         await page.selectOption('.le-cfg-field[data-cfg-key="mode"] select', 'week');
-        await page.waitForTimeout(200);
+        await settle(page);
         expect(
           (await boxes(page)).find((one) => one.id === monthBox?.id)?.label,
           'the box kept the name of the view it no longer draws',
@@ -1355,7 +1600,7 @@ async function placeByField(
   await write(3, at.h);
   await write(0, at.x);
   await write(1, at.y);
-  await page.waitForTimeout(60);
+  await settle(page);
 }
 
 /**
@@ -1369,7 +1614,7 @@ async function restToIdle(page: Page): Promise<void> {
   await page.keyboard.press('Escape');
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.mouse.move(4, 4);
-  await page.waitForTimeout(150);
+  await settle(page);
 }
 
 describe('7 · the widget name chip', () => {
@@ -1393,8 +1638,8 @@ describe('7 · the widget name chip', () => {
   it(
     'draws every name outside the widget it names, at every size on the default wall',
     async () => {
-      const wall = await fresh();
-      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      const wall = await newWall();
+      const context = await editorContext(wall);
       try {
         const page = await context.newPage();
         await openEditor(wall, page);
@@ -1406,7 +1651,7 @@ describe('7 · the widget name chip', () => {
         for (const id of ids) {
           const selector = `.le-overlay .le-widget[data-id="${id}"]`;
           await page.locator(selector).hover();
-          await page.waitForTimeout(40);
+          await settle(page);
           const one = (await chips(page)).find((each) => each.id === id);
           if (one === undefined) {
             faults.push(`${id} vanished while being pointed at`);
@@ -1449,17 +1694,17 @@ describe('7 · the widget name chip', () => {
   it(
     'leaves the month grid’s MON TUE WED row uncovered while naming it',
     async () => {
-      const wall = await fresh({ feed: true });
-      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      const wall = await ownInstallation({ feed: true });
+      const context = await editorContext(wall);
       try {
         const page = await context.newPage();
         await openEditor(wall, page);
-        await page.waitForTimeout(400);
+        await settle(page);
 
         const month = (await chips(page)).find((one) => one.label.includes('Month'));
         expect(month, 'the default wall has no month grid to measure').toBeDefined();
         await page.locator(`.le-overlay .le-widget[data-id="${month?.id ?? ''}"]`).hover();
-        await page.waitForTimeout(60);
+        await settle(page);
 
         const header = await page.evaluate(() => {
           const root = document.querySelector<HTMLElement>('.le-preview')?.shadowRoot;
@@ -1517,8 +1762,8 @@ describe('7 · the widget name chip', () => {
   it(
     'paints no name over a neighbour on a canvas with no gaps',
     async () => {
-      const wall = await fresh();
-      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      const wall = await newWall();
+      const context = await editorContext(wall);
       try {
         const page = await context.newPage();
         await openEditor(wall, page);
@@ -1550,7 +1795,7 @@ describe('7 · the widget name chip', () => {
         // And pointing at one shows that one alone.
         const target = atRest[3];
         await page.locator(`.le-overlay .le-widget[data-id="${target?.id ?? ''}"]`).hover();
-        await page.waitForTimeout(60);
+        await settle(page);
         const pointed = await chips(page);
         expect(
           pointed.filter((one) => one.visible).map((one) => one.id),
@@ -1581,8 +1826,8 @@ describe('7 · the widget name chip', () => {
   it(
     'flips the name below a widget that has nothing above it',
     async () => {
-      const wall = await fresh();
-      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      const wall = await newWall();
+      const context = await editorContext(wall);
       try {
         const page = await context.newPage();
         await openEditor(wall, page);
@@ -1593,7 +1838,7 @@ describe('7 · the widget name chip', () => {
         await restToIdle(page);
 
         await page.locator(selector).hover();
-        await page.waitForTimeout(60);
+        await settle(page);
         const one = (await chips(page)).find((each) => each.id === first?.id);
         expect(one?.visible, 'a widget at the top of the canvas shows no name at all').toBe(true);
         expect(
@@ -1636,8 +1881,8 @@ describe('7 · the widget name chip', () => {
   it(
     'is not in the way of a press',
     async () => {
-      const wall = await fresh();
-      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      const wall = await newWall();
+      const context = await editorContext(wall);
       try {
         const page = await context.newPage();
         await openEditor(wall, page);
@@ -1666,7 +1911,7 @@ describe('7 · the widget name chip', () => {
          * under the pointer, which is where a press would land on it.
          */
         await page.locator(`.le-overlay .le-widget[data-id="${id}"]`).click();
-        await page.waitForTimeout(80);
+        await settle(page);
         const shown = (await chips(page)).find((each) => each.id === id);
         expect(shown?.visible, 'nothing to press through').toBe(true);
 
@@ -1687,7 +1932,7 @@ describe('7 · the widget name chip', () => {
         await page.mouse.down();
         await page.mouse.move(cx + 90, cy + 70, { steps: 6 });
         await page.mouse.up();
-        await page.waitForTimeout(150);
+        await settle(page);
         const after = (await boxes(page)).find((each) => each.id === id);
 
         expect(
@@ -1711,7 +1956,7 @@ describe('7 · the widget name chip', () => {
 async function addWidget(page: Page, label: string): Promise<void> {
   await page.locator('.le-add-primary').click();
   await page.locator('.le-modal-item').filter({ hasText: new RegExp(`^${label}$`) }).click();
-  await page.waitForTimeout(200);
+  await settle(page);
 }
 
 /** One overlay box, read for everything it says about itself. */
@@ -1761,13 +2006,13 @@ describe('8 · a box the wall leaves out', () => {
   it(
     'flags it, says why, and leaves it out of the preview — all four agreeing',
     async () => {
-      const wall = await fresh();
-      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      const wall = await newWall();
+      const context = await editorContext(wall);
       try {
         const page = await context.newPage();
         await openEditor(wall, page);
         await addWidget(page, 'Chores');
-        await page.waitForTimeout(500);
+        await settle(page);
 
         const chores = await saysAbout(page, 'Chores');
         const clock = await saysAbout(page, 'Clock');
@@ -1812,13 +2057,13 @@ describe('8 · a box the wall leaves out', () => {
   it(
     'renames a flagged box in its accessible name, not only on its chip',
     async () => {
-      const wall = await fresh();
-      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      const wall = await newWall();
+      const context = await editorContext(wall);
       try {
         const page = await context.newPage();
         await openEditor(wall, page);
         await addWidget(page, 'Chores');
-        await page.waitForTimeout(400);
+        await settle(page);
 
         const before = await saysAbout(page, 'Chores');
         expect(before.flagged, 'nothing is flagged, so there is no bug to catch').toBe(true);
@@ -1827,7 +2072,7 @@ describe('8 · a box the wall leaves out', () => {
         // The View picker, which is the control that renames the box.
         const view = page.locator('.le-cfg-field[data-cfg-key="mode"] select');
         await view.selectOption('people');
-        await page.waitForTimeout(300);
+        await settle(page);
 
         const after = await saysAbout(page, 'Chores');
         expect(after.id, 'the box was rebuilt, so this proves nothing about renaming in place').toBe(
@@ -1870,7 +2115,8 @@ describe('9 · a to-do box that names a list', () => {
   it(
     'is flagged only while the list it names is not one the household watches',
     async () => {
-      const wall = await fresh();
+      // Its own server: a Home Assistant connection is household state.
+      const wall = await ownInstallation();
       const ha = await fakeHomeAssistant();
       // Through the real forms: the connection, and the list with its first read.
       const connected = await wall.post('/admin/home-assistant/connect', {
@@ -1880,12 +2126,12 @@ describe('9 · a to-do box that names a list', () => {
       const listed = await wall.post('/admin/home-assistant/lists', { entity_id: 'todo.shopping', label: 'Shopping' });
       expect(listed.headers.get('location')).toBe('/admin/home-assistant/lists?saved=todo-list-added');
 
-      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      const context = await editorContext(wall);
       try {
         const page = await context.newPage();
         await openEditor(wall, page);
         await addWidget(page, 'To-do');
-        await page.waitForTimeout(400);
+        await settle(page);
 
         // Typed items: never flagged, whatever the household has set up.
         const typed = await saysAbout(page, 'To-do');
@@ -1895,7 +2141,7 @@ describe('9 · a to-do box that names a list', () => {
         // Pick the watched list. Still on the wall, and the preview draws it.
         const picker = page.locator('.le-cfg-field[data-cfg-key="list"] select');
         await picker.selectOption('todo.shopping');
-        await page.waitForTimeout(600);
+        await settle(page);
         const picked = await saysAbout(page, 'To-do');
         expect(picked.flagged, 'a box naming a watched list is flagged').toBe(false);
         expect(picked.inPreview, 'the preview did not draw the list-backed box').toBe(true);
@@ -1919,8 +2165,7 @@ describe('9 · a to-do box that names a list', () => {
         const removed = await wall.post(`/admin/home-assistant/lists/${encodeURIComponent('todo.shopping')}/remove`, {});
         expect(removed.headers.get('location')).toBe('/admin/home-assistant/lists?saved=todo-list-removed');
         await page.reload({ waitUntil: 'load' });
-        await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
-        await page.waitForTimeout(400);
+        await editorReady(page);
 
         const flagged = await saysAbout(page, 'To-do');
         expect(flagged.id, 'the box did not survive the save').toBe(picked.id);
@@ -1928,7 +2173,7 @@ describe('9 · a to-do box that names a list', () => {
         expect(flagged.flag).toBe('Not on the wall');
         // The reason names where the list is chosen, and the way out.
         await page.locator(`.le-overlay .le-widget[data-id="${flagged.id}"]`).click();
-        await page.waitForTimeout(300);
+        await settle(page);
         const opened = await saysAbout(page, 'To-do');
         expect(opened.note ?? '').toMatch(/^Not on the wall yet\. .*Home Assistant/);
         // The accessible name agrees with the chip, read off the attribute.
@@ -1940,7 +2185,7 @@ describe('9 · a to-do box that names a list', () => {
         // Going back to the typed items clears the flag live: the predicate
         // runs on the config change, and no reload is involved.
         await page.locator('.le-cfg-field[data-cfg-key="list"] select').selectOption('');
-        await page.waitForTimeout(400);
+        await settle(page);
         const back = await saysAbout(page, 'To-do');
         expect(back.id).toBe(picked.id);
         expect(back.flagged, 'the flag stayed after the list was cleared').toBe(false);
@@ -1971,13 +2216,13 @@ describe('10 · a fallback for a box the wall leaves out', () => {
   it(
     'says what stands in, follows a change of fallback in place, and saves it through the schema',
     async () => {
-      const wall = await fresh();
-      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      const wall = await newWall();
+      const context = await editorContext(wall);
       try {
         const page = await context.newPage();
         await openEditor(wall, page);
         await addWidget(page, 'Chores');
-        await page.waitForTimeout(400);
+        await settle(page);
 
         const before = await saysAbout(page, 'Chores');
         expect(before.flagged, 'nothing is flagged, so there is nothing to stand in for').toBe(true);
@@ -1986,9 +2231,9 @@ describe('10 · a fallback for a box the wall leaves out', () => {
 
         // "When this has nothing to show" → "Show another widget".
         await page.locator('.le-fallback .le-seg button', { hasText: 'Show another widget' }).click();
-        await page.waitForTimeout(400);
+        await settle(page);
         await page.locator('.le-fallback textarea').fill('Chores are on the fridge');
-        await page.waitForTimeout(500);
+        await settle(page);
 
         const notes = await saysAbout(page, 'Chores');
         expect(notes.id).toBe(before.id);
@@ -2012,7 +2257,7 @@ describe('10 · a fallback for a box the wall leaves out', () => {
 
         // Switch the stand-in; the box is renamed where it stands, not rebuilt.
         await page.locator('.le-fallback-type').selectOption('countdown');
-        await page.waitForTimeout(400);
+        await settle(page);
         const countdown = await saysAbout(page, 'Chores');
         expect(countdown.id, 'the box was rebuilt, so this proves nothing about renaming in place').toBe(
           before.id,
@@ -2037,7 +2282,7 @@ describe('10 · a fallback for a box the wall leaves out', () => {
 
         // "Leave the box empty" takes it back, and the name with it.
         await page.locator('.le-fallback .le-seg button', { hasText: 'Leave the box empty' }).click();
-        await page.waitForTimeout(400);
+        await settle(page);
         const empty = await saysAbout(page, 'Chores');
         expect(empty.flag).toBe('Not on the wall');
         expect(empty.aria).not.toContain('instead');
@@ -2095,16 +2340,16 @@ async function saveBar(page: Page): Promise<{ flagged: boolean; saveEnabled: boo
 async function selectViaLayers(page: Page, id: string): Promise<void> {
   await page.click('.le-layers-btn');
   await page.locator(`.le-layer[data-id="${id}"]`).click();
-  await page.waitForTimeout(150);
+  await settle(page);
   if (await page.locator('.le-layers-pop').isVisible()) await page.click('.le-layers-btn');
-  await page.waitForTimeout(100);
+  await settle(page);
 }
 
 /** Choose two boxes: a click, then a Shift+click. */
 async function chooseTwo(page: Page, first: string, second: string): Promise<void> {
   await page.locator(`.le-overlay .le-widget[data-id="${first}"]`).click();
   await page.locator(`.le-overlay .le-widget[data-id="${second}"]`).click({ modifiers: ['Shift'] });
-  await page.waitForTimeout(150);
+  await settle(page);
 }
 
 /** The boxes as one comparable string of exactly what `positionBox` wrote. */
@@ -2133,8 +2378,8 @@ describe('11 · groups', () => {
   it(
     'groups two boxes chosen by Shift+click in one step, and comes back to the pixel by undo and by Ungroup',
     async () => {
-      const wall = await fresh();
-      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      const wall = await newWall();
+      const context = await editorContext(wall);
       try {
         const page = await context.newPage();
         await openEditor(wall, page);
@@ -2179,7 +2424,7 @@ describe('11 · groups', () => {
         });
 
         await page.click('.le-group-btn');
-        await page.waitForTimeout(200);
+        await settle(page);
         const group = (await boxes(page)).find((one) => one.label.startsWith('Group'));
         if (group === undefined) throw new Error('no group box after Group');
         // Named from what it holds, in the group's own order, on the attribute.
@@ -2242,11 +2487,11 @@ describe('11 · groups', () => {
         // Group again, then Ungroup: the same three, and the children selected.
         await chooseTwo(page, clock.id, shift.id);
         await page.click('.le-group-btn');
-        await page.waitForTimeout(200);
+        await settle(page);
         expect(await page.locator('.le-ungroup-btn').isVisible()).toBe(true);
         expect(await page.locator('.le-group-btn').isHidden()).toBe(true);
         await page.click('.le-ungroup-btn');
-        await page.waitForTimeout(200);
+        await settle(page);
         expect(await pixels(page), 'Ungroup did not put the two boxes back to the pixel').toBe(beforePixels);
         expect(await canvasState(page)).toBe(before);
         expect(await saveBar(page)).toEqual({ flagged: false, saveEnabled: false });
@@ -2281,8 +2526,8 @@ describe('11 · groups', () => {
   it(
     'stops a child at its group’s edge, by drag and by a hundred arrow presses alike',
     async () => {
-      const wall = await fresh();
-      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      const wall = await newWall();
+      const context = await editorContext(wall);
       try {
         const page = await context.newPage();
         await openEditor(wall, page);
@@ -2293,10 +2538,10 @@ describe('11 · groups', () => {
 
         // The badge in from the right edge, so the union is narrower than the wall.
         await dragById(page, shift.id, -Math.round(canvas.width * 0.25), 0);
-        await page.waitForTimeout(150);
+        await settle(page);
         await chooseTwo(page, clock.id, shift.id);
         await page.click('.le-group-btn');
-        await page.waitForTimeout(200);
+        await settle(page);
         const group = (await boxes(page)).find((one) => one.label.startsWith('Group'));
         if (group === undefined) throw new Error('no group box after Group');
         expect(group.x + group.w, 'the group still reaches the wall’s edge, so the clamps cannot be told apart').toBeLessThan(90);
@@ -2305,14 +2550,14 @@ describe('11 · groups', () => {
         await page.locator(`.le-group-grip[data-for="${group.id}"]`).click();
         await page.click('.insp-tab:has-text("Content")');
         await page.locator('.le-cfg-field[data-cfg-key="layout"] .seg button', { hasText: 'Free' }).click();
-        await page.waitForTimeout(300);
+        await settle(page);
         expect(await boxById(page, clock.id), 'free put the clock somewhere other than its own stored box').toMatchObject({
           x: clock.x, y: clock.y, w: clock.w, h: clock.h,
         });
 
         // Drag the clock far past the wall's edge.
         await dragById(page, clock.id, Math.round(canvas.width * 2), 0);
-        await page.waitForTimeout(150);
+        await settle(page);
         const groupRect = await page.locator(`.le-overlay .le-widget[data-id="${group.id}"]`).boundingBox();
         const clockRect = await page.locator(`.le-overlay .le-widget[data-id="${clock.id}"]`).boundingBox();
         if (groupRect === null || clockRect === null) throw new Error('no rectangles to compare');
@@ -2329,7 +2574,7 @@ describe('11 · groups', () => {
         expect((await boxById(page, clock.id)).x, 'undo did not put the child back').not.toBe(dragged.x);
         await page.locator(`.le-overlay .le-widget[data-id="${clock.id}"]`).focus();
         for (let i = 0; i < 120; i += 1) await page.keyboard.press('ArrowRight');
-        await page.waitForTimeout(200);
+        await settle(page);
         const nudged = await boxById(page, clock.id);
         expect([nudged.x, nudged.y, nudged.w, nudged.h], 'the arrow keys stopped somewhere the drag did not').toEqual([
           dragged.x, dragged.y, dragged.w, dragged.h,
@@ -2359,8 +2604,8 @@ describe('11 · groups', () => {
   it(
     'renames a group in place when a child changes view, and says when a child’s place is the order',
     async () => {
-      const wall = await fresh();
-      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      const wall = await newWall();
+      const context = await editorContext(wall);
       try {
         const page = await context.newPage();
         await openEditor(wall, page);
@@ -2368,7 +2613,7 @@ describe('11 · groups', () => {
         const month = await boxNamed(page, 'Calendar — Month');
         await chooseTwo(page, clock.id, month.id);
         await page.click('.le-group-btn');
-        await page.waitForTimeout(200);
+        await settle(page);
         const group = (await boxes(page)).find((one) => one.label.startsWith('Group'));
         if (group === undefined) throw new Error('no group box after Group');
         const selector = `.le-overlay .le-widget[data-id="${group.id}"]`;
@@ -2381,7 +2626,7 @@ describe('11 · groups', () => {
         await page.locator(`.le-overlay .le-widget[data-id="${month.id}"]`).click();
         await page.click('.insp-tab:has-text("Content")');
         await page.locator('.le-cfg-field[data-cfg-key="mode"] select').selectOption('list');
-        await page.waitForTimeout(300);
+        await settle(page);
         const renamed = await boxById(page, month.id);
         expect(renamed.label).not.toBe(month.label);
         expect(await page.getAttribute(selector, 'data-marker'), 'the group box was rebuilt').toBe('kept');
@@ -2400,7 +2645,7 @@ describe('11 · groups', () => {
         await selectViaLayers(page, group.id);
         await page.click('.insp-tab:has-text("Content")');
         await page.locator('.le-cfg-field[data-cfg-key="layout"] .seg button', { hasText: 'Row' }).click();
-        await page.waitForTimeout(300);
+        await settle(page);
         await page.locator(`.le-overlay .le-widget[data-id="${clock.id}"]`).click();
         await page.click('.insp-tab:has-text("Style")');
         expect(await page.locator('.le-config .le-ordered').textContent()).toContain('takes its place from the group’s order');
@@ -2409,7 +2654,7 @@ describe('11 · groups', () => {
         const beforeOrder = await boxById(page, clock.id);
         await page.locator(`.le-overlay .le-widget[data-id="${clock.id}"]`).focus();
         await page.keyboard.press('ArrowRight');
-        await page.waitForTimeout(200);
+        await settle(page);
         const afterOrder = await boxById(page, clock.id);
         expect(afterOrder.x).toBeGreaterThan(beforeOrder.x);
         expect((await boxById(page, month.id)).x).toBe(beforeOrder.x);
@@ -2439,8 +2684,8 @@ describe('11 · groups', () => {
   it(
     'moves a group and its children together by its grip, draws its edge, and offers Ungroup from a child',
     async () => {
-      const wall = await fresh();
-      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      const wall = await newWall();
+      const context = await editorContext(wall);
       try {
         const page = await context.newPage();
         await openEditor(wall, page);
@@ -2460,10 +2705,10 @@ describe('11 · groups', () => {
 
         // The badge in from the right, so the group has room to move to the right.
         await dragById(page, shift.id, -Math.round(canvas.width * 0.25), 0);
-        await page.waitForTimeout(150);
+        await settle(page);
         await chooseTwo(page, clock.id, shift.id);
         await page.click('.le-group-btn');
-        await page.waitForTimeout(200);
+        await settle(page);
         const group = (await boxes(page)).find((one) => one.label.startsWith('Group'));
         if (group === undefined) throw new Error('no group box after Group');
         const groupSelector = `.le-overlay .le-widget[data-id="${group.id}"]`;
@@ -2506,7 +2751,7 @@ describe('11 · groups', () => {
         const neighbour = await widgetUnder(await gripCentre());
         if (neighbour === undefined) throw new Error('nothing under the grip to raise; the fixture cannot show a covered grip');
         await dragById(page, neighbour, 0, 3);
-        await page.waitForTimeout(150);
+        await settle(page);
         expect(Number((await boxById(page, neighbour)).z), 'the neighbour was not raised').toBeGreaterThan(Number(group.z));
         const centre = await gripCentre();
         expect(await widgetUnder(centre), 'the raised neighbour is no longer under the grip').toBe(neighbour);
@@ -2516,13 +2761,13 @@ describe('11 · groups', () => {
         );
         expect(under, 'something covers the grip at its own centre').toContain('le-group-grip');
         await page.locator(childSelector(clock.id)).click();
-        await page.waitForTimeout(100);
+        await settle(page);
         expect(await page.getAttribute(groupSelector, 'aria-pressed')).toBe('false');
         // A child selected: the group's edge takes the accent, so the household
         // can see what else the tapped widget is grouped with.
         expect(await page.evaluate((s) => document.querySelector(s)?.classList.contains('is-parent-selected'), groupSelector)).toBe(true);
         await grip.click();
-        await page.waitForTimeout(100);
+        await settle(page);
         expect(await page.getAttribute(groupSelector, 'aria-pressed'), 'pressing the grip did not select the group').toBe('true');
 
         // 3 — Dragging the grip moves the children with the group, during the drag.
@@ -2551,7 +2796,7 @@ describe('11 · groups', () => {
           expect(Math.abs(during[key]!.y - before[key]!.y - moved.y), `${key} did not follow the group down, mid-drag`).toBeLessThanOrEqual(1);
         }
         await page.mouse.up();
-        await page.waitForTimeout(200);
+        await settle(page);
         const after = await rects();
         for (const key of ['clock', 'shift'] as const) {
           expect(Math.abs(after[key]!.x - after['group']!.x - (before[key]!.x - before['group']!.x))).toBeLessThanOrEqual(1);
@@ -2565,11 +2810,11 @@ describe('11 · groups', () => {
 
         // 4 — Ungroup is offered with a child selected, and acts on its group.
         await page.locator(childSelector(clock.id)).click();
-        await page.waitForTimeout(100);
+        await settle(page);
         expect(await page.locator('.le-ungroup-btn').isVisible(), 'a selected child offers no Ungroup').toBe(true);
         expect(await page.locator('.le-group-btn').isHidden()).toBe(true);
         await page.click('.le-ungroup-btn');
-        await page.waitForTimeout(200);
+        await settle(page);
         expect((await boxes(page)).some((one) => one.id === group.id)).toBe(false);
         expect(await page.locator('.le-group-grip').count()).toBe(0);
         expect(await page.getAttribute(childSelector(clock.id), 'data-parent')).toBeNull();
