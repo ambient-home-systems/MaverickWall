@@ -28,15 +28,32 @@ temperature coloured by how warm it is. An e-paper panel draws Range as black
 bars on its own, and draws Colour as the plain strip, since a panel has no
 colours. Nothing changes on a wall until somebody picks one.
 
+**Two more: Today and Playful.** **Today** is a card like a phone's weather
+widget: the temperature now in large type, today's high and low under it, the
+sky in words, how it feels, and the next few hours along the bottom — or, in a
+shorter box, the next few days on one line. The card is painted the colour of
+the sky, blue on a clear day, indigo at night, grey when it is overcast, slate
+in the rain, and the sky moves gently: the sun glows, clouds drift, rain falls.
+When there is no recent reading it shows today's high and low instead, so it
+never shows an old temperature as the one outside now. On an e-paper panel,
+Today shows the temperature in large type with the time it was read, since a
+panel may sleep for an hour. **Playful** is the forecast strip with big day
+names and a big picture for each day's weather that bobs gently, and a line
+underneath when today calls for it: "Umbrella day" when rain is likely, "Coat
+weather" when the high stays under 10°C (50°F), "Shorts weather" from 24°C
+(75°F), "Sunscreen" when the UV is 6 or more, and "Windy" from 30 km/h (19
+mph). The line can be switched off on the widget's Content tab, and nothing
+moves on a device set to reduce motion or on a wall whose Motion switch is off.
+
 **Each wall has a Motion switch.** It is under **Device and time** on the
 wall's settings, beside the wall's size, and it decides whether the styles
-that move — weather that drifts, a countdown that celebrates, both still to
-come — may move on that wall. It is on for every wall already hanging, and off
-by default when the wall's size is one of the e-ink panels, which redraw the
-whole screen for every frame. A tablet or television set to reduce motion
-stays still whatever the switch says. Nothing on any wall moves yet; this is
-the groundwork those styles need so that an animation carries on smoothly
-through the wall's redraw every fifteen seconds instead of starting again.
+that move — the Today and Playful weather, and a countdown that celebrates,
+still to come — may move on that wall. It is on for every wall already
+hanging, and off by default when the wall's size is one of the e-ink panels,
+which redraw the whole screen for every frame. A tablet or television set to
+reduce motion stays still whatever the switch says. An animation carries on
+smoothly through the wall's redraw every fifteen seconds instead of starting
+again.
 
 **A Shift widget showing two people now shows both of them.** When two people
 on the rota were working the same day, the wall drew the first person's badge

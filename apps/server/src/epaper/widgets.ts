@@ -828,9 +828,10 @@ function forecastDays(panel: unknown, range = false): EpaperForecastDay[] {
  *
  * The time is the reading's own — `observedAt`, which for a modelled reading is
  * the hour it describes — in the household's zone and clock, through the same
- * `clockLabel` the panel's header uses. Nothing draws this yet: it is here so
- * the first draw that does cannot leave the stamp off, and so the frame's ETag
- * has the reading's exact words to hash when that draw arrives.
+ * `clockLabel` the panel's header uses. The `today` look (`drawWeatherToday`)
+ * is the draw that reads it, and `panelInput` hands it over only to that look,
+ * so the frame's ETag hashes the reading's exact words where it is drawn and
+ * nowhere else.
  */
 export interface EpaperCurrent {
   /** "52F" — rounded, with the panel's unit letter when it has one. */
@@ -864,6 +865,8 @@ function drawWeather(
   box: Box,
   forecast: readonly EpaperForecastDay[],
   config: Config,
+  /** The reading and its time, handed over only when the look draws it (`panelInput`). */
+  current?: EpaperCurrent,
 ): void {
   let days = [...forecast];
   if (days.length === 0) {
@@ -875,10 +878,16 @@ function drawWeather(
     days = days.slice(0, Math.trunc(wanted));
   }
 
-  // The `range` look is its own drawing (plan item P5.1); every other look —
-  // `colour`, `today`, `playful` — is drawn as the strip, below.
-  if (variantOf('weather', config) === 'range') {
+  // The `range` and `today` looks are drawings of their own (plan item P5.1);
+  // `colour` and `playful` are drawn as the strip, below — one has no colour
+  // to draw on one bit and the other's pictures have no one-bit artwork (D3).
+  const look = variantOf('weather', config);
+  if (look === 'range') {
     drawWeatherRange(fb, m, box, days);
+    return;
+  }
+  if (look === 'today') {
+    drawWeatherToday(fb, m, box, forecast, current);
     return;
   }
 
@@ -1024,6 +1033,73 @@ function drawWeather(
     m.body,
   );
   drawLines(fb, m, lines, box, rung, 'left');
+}
+
+/**
+ * The widest reading a Today panel's lede writes: a sign, two figures and the
+ * unit letter — and, with no reading to call now, today's high and low. Every
+ * size on the card is stepped against these rather than against the reading,
+ * the refresh contract's rule (`render.ts`): the lede is the same size at 9F
+ * and at 19F, so a new reading moves ink inside its rectangle and moves no
+ * rectangle.
+ */
+const TODAY_LEDE_BUDGET = '-00F';
+const TODAY_RANGE_LEDE_BUDGET = '-00/-00F';
+/** The widest line under the lede: "at 12:45 pm", or "H -00  L -00F". */
+const TODAY_LINE_BUDGET = 'H -00  L -00F';
+
+/**
+ * The `today` forecast on one bit (plan item P5.1): the large reading with the
+ * time it was read, and today's high and low under it. No sky and no gradient
+ * — one bit has neither — and no feels-like or hours, which are the wall's.
+ *
+ * **The reading and its time are one thing.** A battery panel may sleep for an
+ * hour, so its "52F" can be an hour older than the wall's beside it, and a
+ * temperature with no time on it says it is the temperature now (P3.5). So the
+ * stamp is drawn under the lede in every box that has room for a lede at all,
+ * and a box too short for both draws `epaperCurrent`'s own one line —
+ * "52F at 07:15" — rather than the number alone. With no reading, the lede is
+ * today's high and low with the day's name under it, exactly as the wall's
+ * card falls back: a forecast is never drawn as a measurement.
+ *
+ * Every size is the box's: the lede is the tallest rung the room above the
+ * lines has, no taller than the clock's own cap, and no wider than the budget
+ * above fits — never a function of the words.
+ */
+function drawWeatherToday(
+  fb: Framebuffer,
+  m: EpaperMetrics,
+  box: Box,
+  days: readonly EpaperForecastDay[],
+  current: EpaperCurrent | undefined,
+): void {
+  const today = days[0];
+  if (current === undefined && today === undefined) {
+    drawLines(fb, m, ['No weather yet'], box, rungToFit('No weather yet', box.w, m.body), 'left');
+    return;
+  }
+  const big = current !== undefined ? current.temp : `${today!.high}/${today!.low}`;
+  const budget = current !== undefined ? TODAY_LEDE_BUDGET : TODAY_RANGE_LEDE_BUDGET;
+  const lines: string[] =
+    current !== undefined
+      ? [`at ${current.at}`, ...(today === undefined ? [] : [`H ${today.high}  L ${today.low}`])]
+      : [today!.name];
+  const lineRung = rungToFit(TODAY_LINE_BUDGET, box.w, m.body);
+  const lineH = lineRung.height + m.widget.linePad;
+  // The stamp has to fit under the lede; the range may go, the stamp may not.
+  const room = (count: number): number => box.h - count * lineH - m.widget.rowGap;
+  const keep = room(lines.length) >= m.body.height ? lines.length : room(1) >= m.body.height ? 1 : 0;
+  if (keep === 0) {
+    // No room for a lede over its stamp: the reading and its time on one line.
+    const one = current !== undefined ? current.text : `${today!.high}/${today!.low} ${today!.name}`;
+    drawLines(fb, m, [one], box, rungToFit(`${TODAY_LEDE_BUDGET} at 12:45 pm`, box.w, m.body), 'left');
+    return;
+  }
+  const byHeight = tallerRung(m.body, shorterRung(scaleRung(m, 4.5), rungAtMost(room(keep))));
+  const lede = rungToFit(budget, box.w, byHeight);
+  drawLines(fb, m, [big], { ...box, h: lede.height }, lede, 'left');
+  const top = box.y + lede.height + m.widget.rowGap;
+  drawLines(fb, m, lines.slice(0, keep), { x: box.x, y: top, w: box.w, h: Math.max(0, box.y + box.h - top) }, lineRung, 'left');
 }
 
 /**
@@ -1585,10 +1661,10 @@ function weekdayOf(date: string): string {
  *   high, a low and a glyph each — so the fields the strip does not draw
  *   (`current`, `hourly`, `air`, `units`, `fetchedAt`, a day's `detail` and
  *   rain chance) cannot move a frame. A style that draws current conditions
- *   (P5.1's `today`) adds `epaperCurrent`'s answer here, which is the only way
- *   `current` can reach a draw and so the only way it can reach the ETag: a
- *   panel that draws the reading gets a new frame when it changes, and one
- *   that does not, does not.
+ *   (P5.1's `today`) has `epaperCurrent`'s answer added here, which is the
+ *   only way `current` can reach a draw and so the only way it can reach the
+ *   ETag: a panel that draws the reading gets a new frame when it changes, and
+ *   one that does not, does not.
  * - **A to-do widget** reads its own list and nothing else, and a typed
  *   checklist reads no panel at all.
  * - **The house, the chore board and a module's panel** read their whole slice,
@@ -1599,7 +1675,12 @@ function weekdayOf(date: string): string {
  */
 export type PanelInput =
   | { readonly kind: 'none' }
-  | { readonly kind: 'weather'; readonly days: readonly EpaperForecastDay[] }
+  | {
+      readonly kind: 'weather';
+      readonly days: readonly EpaperForecastDay[];
+      /** The reading and its time — only on the `today` look, which draws it. */
+      readonly current?: EpaperCurrent;
+    }
   | { readonly kind: 'todo'; readonly list: TodoRead | undefined }
   | { readonly kind: 'panel'; readonly panel: unknown };
 
@@ -1608,8 +1689,27 @@ const NO_INPUT: PanelInput = { kind: 'none' };
 export function panelInput(type: string, manifest: Manifest, config: Config): PanelInput {
   const panels = manifest.panels;
   switch (type) {
-    case 'weather':
-      return { kind: 'weather', days: forecastDays(panels['weather'], variantOf('weather', config) === 'range') };
+    case 'weather': {
+      const look = variantOf('weather', config);
+      const days = forecastDays(panels['weather'], look === 'range');
+      if (look !== 'today') return { kind: 'weather', days };
+      /*
+       * The `today` look draws the current reading with its time (P3.5, P5.1),
+       * so it is the one weather input that carries it — and so the one whose
+       * ETag moves when a new reading arrives. A strip, a range or any other
+       * look reads `days` alone, and a reading taken every fifteen minutes
+       * cannot refresh a panel that does not draw it.
+       *
+       * And of the days it reads today's name, high and low and nothing else:
+       * the card draws no glyph and no other day, so a revised sky on Friday
+       * must not refresh a panel whose card is about today.
+       */
+      const first = days[0];
+      const today: EpaperForecastDay[] =
+        first === undefined ? [] : [{ name: first.name, high: first.high, low: first.low, glyph: undefined }];
+      const current = epaperCurrent(panels['weather'], manifest.timezone, manifest.display.clock24 !== false);
+      return current === undefined ? { kind: 'weather', days: today } : { kind: 'weather', days: today, current };
+    }
     case 'todo': {
       const entityId = todoListOf(config);
       if (entityId === undefined) return NO_INPUT;
@@ -1676,7 +1776,9 @@ function drawWidget(
     case 'chores':
       return drawChores(fb, m, box, input.kind === 'panel' ? input.panel : undefined, config);
     case 'weather':
-      return drawWeather(fb, m, box, input.kind === 'weather' ? input.days : [], config);
+      return input.kind === 'weather'
+        ? drawWeather(fb, m, box, input.days, config, input.current)
+        : drawWeather(fb, m, box, [], config);
     case 'homeassistant':
       return drawHouse(fb, m, box, input.kind === 'panel' ? input.panel : undefined, config);
     case 'external': {

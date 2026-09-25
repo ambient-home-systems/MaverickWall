@@ -4791,6 +4791,20 @@ function boot(): void {
     // The symbol and the low used to be two switches here; they are rows on the
     // ladder now, which is the one place a widget's rows are decided.
     buildLadder(widget, cfg);
+
+    // The playful look's advice line (P5.1). Built for every look and taken off
+    // by `VARIANT_HIDES` wherever it does nothing, which is everywhere else.
+    // Absent is on, the `showFace` idiom: a household who picked the playful
+    // look picked its advice with it, and a switch is how they say otherwise.
+    configPanel.appendChild(
+      switchRow(
+        'Advice line',
+        'A line under the forecast, such as “Umbrella day”, when today calls for one.',
+        cfg['advice'] !== false,
+        (checked) => setConfig(widget, 'advice', checked ? undefined : false),
+        'advice',
+      ),
+    );
   }
 
   function buildShiftConfig(widget: Widget, cfg: Record<string, unknown>): void {

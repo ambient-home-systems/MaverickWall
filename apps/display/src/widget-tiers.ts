@@ -258,15 +258,139 @@ export function rangeColumnsAt(tier: WidgetTier): readonly RangeColumn[] {
 }
 
 /**
- * The forecast's table for each of its designed looks that the wall draws.
+ * What a Today card says, in the order it is **kept** (plan item P5.1). The
+ * lede — the one large reading, with today's high and low on the line under
+ * it — is never given up; the plan's order is the rest of the list read from
+ * the bottom: the next hours first, then the feels-like, then the condition
+ * words.
  *
- * `today` and `playful` are not here: they draw the strip until the sessions
- * that design them (P5.1's other three), so they read the strip's table.
+ * The high and the low ride with the lede rather than taking a rung of their
+ * own, because in the card's other mode (no current reading) they *are* the
+ * lede, and a card that had room for one number and not its range would be
+ * the one form in which the two modes said different kinds of thing.
+ */
+export const TODAY_RUNGS = ['lede', 'condition', 'feels', 'next'] as const;
+export type TodayRung = (typeof TODAY_RUNGS)[number];
+
+/**
+ * The smallest the lede is drawn while the card still keeps a rung under it,
+ * in `em` of the card's primary role.
+ *
+ * The lede is the reading the card exists for, and its size is whatever the
+ * box has left once the rungs the tier kept are drawn — up to the clock's cap
+ * (decision D1: 1.8x the event role, `--t-wall-clock`), which it reaches in
+ * any box with room. This is the other end: below it, a rung goes before the
+ * lede shrinks further. 1.6em is the height the heaviest condition words set
+ * at the event role would look *equal* to beside a lede drawn in the light
+ * weight the card uses — at which point the lede is no longer a lede.
+ */
+export const TODAY_LEDE_FLOOR_EM = 1.6;
+
+/**
+ * The `today` forecast (plan item P5.1, "iOS widget"): a card on its sky with a
+ * large reading, the words for the sky, how it feels, and the next hours — or,
+ * in a box with room for one line of them, the next days as that line.
+ *
+ * **Primary role: the condition words** (`.wt-cond`), the event role. The lede
+ * is not a role — it is the room left over, capped (`TODAY_LEDE_FLOOR_EM`) —
+ * so the table is stated in the one run whose size does not depend on the box.
+ *
+ *     tier        needs           rungs  what the card says
+ *     T0 Lede     8ch x 0em       1      the reading, its high and low
+ *     T1 Said    10ch x 5.0em     2      and the condition words
+ *     T2 Felt    10ch x 6.0em     3      and how it feels
+ *     T3 Next    12ch x 7.5em     4      and the next hours, or the next days on one line
+ *
+ * Summed at the lede's floor from each rung measured off a drawn card, in `em`
+ * of the event role, at 1080x1920 and 1920x1080 on a wall nobody measured and
+ * on a 32" television (the four agree to a hundredth): the card's padding
+ * 1.0em (step 3 each side), the lede 1.6em, and the range line under it 1.05em
+ * (the time role at 1.15 leading, and a step-1 gap) — T0 needs none of it,
+ * because rule nine draws the lede in any box. The condition words cost 1.3em,
+ * the feels-like 1.05em, and the one line of days 1.5em with its step-3 space
+ * above it. The hours are **three** lines — a time, a glyph and a temperature,
+ * 3.8em — and whether a card reaching T3 draws them or the one line of days is
+ * measured rather than tabled: the box's room once the lede has its floor,
+ * against the hours row drawn. That is the plan's "or, in a short box, the next
+ * days as one line", and it is a question about height alone.
+ *
+ * The widths are the lede's floor across "-12°" and its glyph (T0), then the
+ * shortest condition a provider sends ("Clear", "Fog") with room to be read
+ * (T1-T2), then two days of the next line (T3). A condition longer than the
+ * card is wide wraps at a word rather than being cut, and the lede gives up
+ * the height it costs.
+ */
+export const TODAY_TIERS: readonly WidgetTier[] = [
+  { tier: 'T0', minCh: 8, minEm: 0, items: 1, rungs: 1 },
+  { tier: 'T1', minCh: 10, minEm: 5.0, items: 1, rungs: 2 },
+  { tier: 'T2', minCh: 10, minEm: 6.0, items: 1, rungs: 3 },
+  { tier: 'T3', minCh: 12, minEm: 7.5, items: 1, rungs: 4 },
+];
+
+/** The rungs a Today card keeps at this tier. Never fewer than the lede. */
+export function todayRungsAt(tier: WidgetTier): readonly TodayRung[] {
+  return TODAY_RUNGS.slice(0, Math.max(1, Math.min(TODAY_RUNGS.length, tier.rungs)));
+}
+
+/**
+ * The `playful` forecast (plan item P5.1): the strip's days, each with its name
+ * large, a bundled picture for its weather that bobs, and its numbers — and an
+ * advice line under them in plain words.
+ *
+ * **It gives up what the strip gives up, in the strip's order**, for
+ * `COLOUR_TIERS`' reason: the ladder is the household's own list, and a look
+ * that reordered what it sacrifices would be a second ladder nobody can see.
+ * The advice line is not a rung. It is the first thing given up, before any of
+ * them: it is kept only where the whole ladder is drawn and the box has the
+ * room under it, measured off the drawn line — a card that had to choose
+ * between "Umbrella day" and the day's high keeps the high, which is the fact
+ * the advice was drawn from.
+ *
+ * **Primary role: the temperature** (`.wp-temp`), the strip's argument. The day
+ * name is the event role here too — "big day names" is the look — so the
+ * column is wider than the strip's for the same word count, which is
+ * `PLAYFUL_COLUMN_CH`.
+ *
+ *     tier        needs           columns  rungs  what one column says
+ *     T0 Name     5ch x 2.2em     1+       1      the day's name alone
+ *     T1 Picture  7ch x 4.8em     1+       2      name and picture
+ *     T2 High     9ch x 6.0em     1+       3      name, picture, high
+ *     T3 Full    11ch x 6.0em     1+       4      the whole ladder
+ *
+ * Summed from each row measured off a drawn playful strip, in `em` of the
+ * temperature, at 1080x1920 and 1920x1080 on a wall nobody measured and on a
+ * 32" television: the strip's padding 1.0em, a name's row 1.16em (the event
+ * role at 1.15 leading), the picture 2.63em (2.2em of it and a step-1 and a
+ * step-2 margin), and the temperatures' row 1.16em. The advice line, when it
+ * is kept, is another 1.9em under them. A first draft of this table guessed
+ * 4.6 and 5.8 and was short by a fifth of an em at both, which the belt would
+ * have paid for by hiding a row. T2 and T3 differ in width and not height, the
+ * strip's reason: the high and the low share a line while they are adjacent.
+ */
+export const PLAYFUL_TIERS: readonly WidgetTier[] = [
+  { tier: 'T0', minCh: 5, minEm: 2.2, items: 1, rungs: 1 },
+  { tier: 'T1', minCh: 7, minEm: 4.8, items: 1, rungs: 2 },
+  { tier: 'T2', minCh: 9, minEm: 6.0, items: 1, rungs: 3 },
+  { tier: 'T3', minCh: 11, minEm: 6.0, items: 1, rungs: 4 },
+];
+
+/**
+ * The width one playful column needs, in `ch` of the temperature role — the
+ * strip's `WEATHER_COLUMN_CH` for a column whose name is set at the event role
+ * rather than the scaffold's, so "Today" in the heavy weight is the widest thing
+ * in it rather than the temperatures.
+ */
+export const PLAYFUL_COLUMN_CH = 11;
+
+/**
+ * The forecast's table for each of its designed looks that the wall draws.
  */
 export const WEATHER_STYLE_TIERS: Readonly<Record<string, readonly WidgetTier[]>> = {
   strip: WEATHER_TIERS,
   colour: COLOUR_TIERS,
   range: RANGE_TIERS,
+  today: TODAY_TIERS,
+  playful: PLAYFUL_TIERS,
 };
 
 /**
