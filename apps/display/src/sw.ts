@@ -78,6 +78,8 @@ const SHELL = [
   '/assets/variants.js',
   '/assets/viewmodel.js',
   '/assets/watchdog.js',
+  '/assets/weather-advice.js',
+  '/assets/weather-looks.js',
   '/assets/weather-scale.js',
   '/assets/widget-options.js',
   '/assets/widget-style.js',

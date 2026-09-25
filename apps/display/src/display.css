@@ -958,6 +958,222 @@ body {
   background: var(--ink);
 }
 
+/*
+ * The `today` forecast (plan item P5.1, "iOS widget"): a card on its sky.
+ *
+ * **The only widget on the wall with a ground of its own**, and it earns one:
+ * the sky *is* the reading, the way a phone's weather card is blue at noon and
+ * indigo at midnight. `data-sky` picks one of the six gradients every theme
+ * derives (`paletteTokens` in `theme.ts`, decision D2), each with the ink that
+ * clears 4.5:1 on both of its stops, so no colour is chosen here and a custom
+ * theme restyles its skies by restyling its palette. It casts the theme's own
+ * `--shadow-card` (decision D8), which Blueprint, Swiss and every e-ink-sized
+ * wall set to none.
+ *
+ * The card fills its box: it is a card rather than a strip. Every size is a
+ * role on a measured wall and the design's rem on one nobody has measured,
+ * except the lede — the one large reading decision D1 permits — which is the
+ * room the rest leaves, written back by `tierToday` as `--wt-lede-size`, and
+ * never larger than the clock's own cap (`--t-wall-clock`, 1.8x the event
+ * role; `calc(var(--t-event) * 1.8)` where nobody measured). The first draw
+ * sets no size and draws the cap, which is what `tierToday` measures from.
+ * `line-height` is a number throughout, for the reason `.wx`'s neighbours give.
+ */
+.wx-today {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: var(--s3) var(--s4);
+  border-radius: var(--radius, 0.4rem);
+  background: linear-gradient(180deg, var(--wt-top), var(--wt-bottom));
+  color: var(--wt-ink);
+  box-shadow: var(--shadow-card, none);
+  line-height: 1.15;
+}
+.wx-today[data-sky="day"] {
+  --wt-top: var(--sky-day-top);
+  --wt-bottom: var(--sky-day-bottom);
+  --wt-ink: var(--sky-day-ink);
+}
+.wx-today[data-sky="night"] {
+  --wt-top: var(--sky-night-top);
+  --wt-bottom: var(--sky-night-bottom);
+  --wt-ink: var(--sky-night-ink);
+}
+.wx-today[data-sky="cloud"] {
+  --wt-top: var(--sky-cloud-top);
+  --wt-bottom: var(--sky-cloud-bottom);
+  --wt-ink: var(--sky-cloud-ink);
+}
+.wx-today[data-sky="rain"] {
+  --wt-top: var(--sky-rain-top);
+  --wt-bottom: var(--sky-rain-bottom);
+  --wt-ink: var(--sky-rain-ink);
+}
+.wx-today[data-sky="snow"] {
+  --wt-top: var(--sky-snow-top);
+  --wt-bottom: var(--sky-snow-bottom);
+  --wt-ink: var(--sky-snow-ink);
+}
+.wx-today[data-sky="storm"] {
+  --wt-top: var(--sky-storm-top);
+  --wt-bottom: var(--sky-storm-bottom);
+  --wt-ink: var(--sky-storm-ink);
+}
+/* The words sit in front of the sky's moving layer, which is the first child. */
+.wt-top, .wt-next { position: relative; }
+.wt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  column-gap: 0.2em;
+  font-size: var(--wt-lede-size, var(--t-wall-clock, calc(var(--t-event) * 1.8)));
+  line-height: 1;
+}
+.wt-lede { display: flex; align-items: baseline; column-gap: 0.12em; white-space: nowrap; }
+/* Light and tight, the way a phone sets its temperature: a reading this large
+   in the heavy weight would outshout the whole wall at the same size. */
+.wt-temp { font-weight: 300; letter-spacing: var(--ls-oversized); }
+/* In the card's other mode, today's low beside its high — the quieter partner. */
+.wt-temp-lo { font-size: 0.45em; font-weight: 500; }
+.wt-glyph { width: 0.62em; height: 0.62em; }
+.wt-range {
+  display: flex;
+  column-gap: var(--s3);
+  margin-top: var(--s1);
+  font-size: var(--t-wall-time, 1.3rem);
+  font-weight: 600;
+  white-space: nowrap;
+}
+/* The sky's words wrap at a word rather than being cut: "Light rain and fog"
+   is a different sky from "Light rain", and `tierToday` pays for the line. */
+.wt-cond {
+  margin-top: var(--s1);
+  font-size: var(--t-wall-event, 1.7rem);
+  font-weight: 600;
+  overflow-wrap: break-word;
+}
+.wt-feels { margin-top: var(--s1); font-size: var(--t-wall-time, 1.3rem); white-space: nowrap; }
+.wt-next {
+  display: flex;
+  justify-content: space-between;
+  column-gap: var(--s3);
+  padding-top: var(--s3);
+}
+.wt-hour {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  row-gap: var(--s1);
+  font-size: var(--t-wall-event, 1.7rem);
+}
+.wt-hour-at { font-size: var(--t-wall-scaffold, 1.25rem); font-weight: 600; white-space: nowrap; }
+.wt-hour-ico { width: 1em; height: 1em; }
+.wt-hour-temp { font-weight: 600; white-space: nowrap; }
+.wt-dl { flex: 0 0 auto; font-size: var(--t-wall-time, 1.3rem); white-space: nowrap; }
+.wt-dl-name { font-weight: 700; margin-right: 0.35em; }
+.wt-dl-hi { font-weight: 600; margin-right: 0.3em; }
+/*
+ * The sky's moving layer, and its still picture. Behind the words, clipped to
+ * the card's own corners, and never a target. Each element is placed by the
+ * renderer from a fixed table in shares of the card (`SKY_PARTICLES`), and
+ * painted in the theme's condition colour for what it is — the sun's glow in
+ * `--wx-sun`, a cloud in `--wx-cloud`, rain in `--wx-rain`, snow in
+ * `--wx-snow` — held faint, since it is the sky's texture rather than a
+ * reading. Nothing here moves: the scoped block at the foot of this file does,
+ * and only where it may.
+ */
+.wt-sky {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.wt-fx { position: absolute; display: block; }
+.wt-fx-glow {
+  right: -22%;
+  top: -48%;
+  width: 60%;
+  height: 120%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, var(--wx-sun), transparent);
+  opacity: 0.55;
+}
+.wt-fx-cloud {
+  width: 48%;
+  height: 36%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, var(--wx-cloud), transparent);
+  opacity: 0.4;
+}
+.wt-fx-drop {
+  width: calc(var(--s1) / 2);
+  height: 12%;
+  border-radius: var(--s1);
+  background: var(--wx-rain);
+  opacity: 0.45;
+}
+.wt-fx-flake {
+  width: var(--s2);
+  height: var(--s2);
+  border-radius: 50%;
+  background: var(--wx-snow);
+  opacity: 0.6;
+}
+
+/*
+ * The `playful` forecast (plan item P5.1): the strip's days, with their names
+ * large, a bundled picture each, and an advice line under them.
+ *
+ * The strip's own grid and rules (a column per day, a rule between two), sized
+ * by role on a measured wall and by the design's rem on one nobody measured.
+ * The names are the event role in the display face's heaviest weight — "big
+ * day names" is the look — and each picture is twice the temperature, an
+ * `<img>` from the bundled set (`emojiNode`, decision D6), never a character.
+ * The advice spans the strip, because it is about today rather than a column.
+ */
+.wx-playful {
+  display: grid;
+  grid-template-columns: repeat(var(--wx-days, 5), minmax(0, 1fr));
+  padding: var(--s3) 0;
+  flex: 0 0 auto;
+  line-height: 1.15;
+}
+.wp-day { display: flex; flex-direction: column; align-items: center; text-align: center; min-width: 0; }
+.wp-day + .wp-day { border-left: 1px solid var(--rule); }
+.wp-name {
+  font-family: var(--disp); font-stretch: var(--disp-stretch, 100%);
+  font-size: var(--t-wall-event, 1.7rem);
+  font-weight: 800;
+  white-space: nowrap;
+}
+.wp-emoji {
+  display: block;
+  width: calc(var(--t-wall-event, 1.7rem) * 2.2);
+  height: calc(var(--t-wall-event, 1.7rem) * 2.2);
+  margin: var(--s1) auto var(--s2);
+}
+.wp-temp { font-size: var(--t-wall-event, 1.7rem); font-weight: 700; white-space: nowrap; }
+.wp-temp .lo,
+.wp-temp.lo { color: var(--muted); font-weight: 400; }
+.wp-advice {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  column-gap: var(--s2);
+  padding-top: var(--s3);
+  font-size: var(--t-wall-event, 1.7rem);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.wp-advice-emoji { display: block; flex: 0 0 auto; width: 1.4em; height: 1.4em; }
+
 /* --- THE HOUSE -------------------------------------------------------- */
 
 /*
@@ -3515,5 +3731,70 @@ body {
     animation-name: cd-flap-fall;
     animation-timing-function: ease-in;
     animation-fill-mode: backwards;
+  }
+
+  /*
+   * The forecast's `today` card (plan item P5.1): its sky, per condition —
+   * the sun glows, clouds drift, rain streaks and snow falls. Every one is a
+   * loop locked to the wall clock by `motion.ts` (`skyLayer` in `render.ts`),
+   * so a card rebuilt on the tick carries on where it was. Only the glow
+   * touches `opacity`, and only by breathing between two faint values: a
+   * brighter pulse would be a flicker in a room. It does not swell, either:
+   * a `scale()` in this stylesheet is the one transform `widget-tiers.test.ts`
+   * refuses outright, because it is how `fitToBox` used to lie about a
+   * section's size. Nothing flashes, a storm included — `weather-looks.ts`
+   * says why.
+   */
+  @keyframes wt-glow {
+    0%, 100% { opacity: 0.45; }
+    50% { opacity: 0.7; }
+  }
+  @keyframes wt-drift {
+    from { transform: translateX(-120%); }
+    to { transform: translateX(240%); }
+  }
+  @keyframes wt-rain {
+    from { transform: translateY(-450%); }
+    to { transform: translateY(450%); }
+  }
+  @keyframes wt-snow {
+    0% { transform: translate(0, -500%); }
+    50% { transform: translate(150%, 0); }
+    100% { transform: translate(0, 500%); }
+  }
+  .canvas[data-motion="on"] .wt-fx-glow {
+    animation-name: wt-glow;
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
+  }
+  .canvas[data-motion="on"] .wt-fx-cloud {
+    animation-name: wt-drift;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+  }
+  .canvas[data-motion="on"] .wt-fx-drop {
+    animation-name: wt-rain;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+  }
+  .canvas[data-motion="on"] .wt-fx-flake {
+    animation-name: wt-snow;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+  }
+
+  /*
+   * The forecast's `playful` strip (plan item P5.1): each picture bobs, up a
+   * little and back, a fixed step behind its neighbour so the strip moves as
+   * one slow wave. `transform` alone, so the column around it never moves.
+   */
+  @keyframes wp-bob {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8%); }
+  }
+  .canvas[data-motion="on"] .wp-emoji {
+    animation-name: wp-bob;
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
   }
 }

@@ -20,9 +20,15 @@ import {
   CHORE_TIERS,
   COLOUR_TIERS,
   HOUSE_TIERS,
+  PLAYFUL_COLUMN_CH,
+  PLAYFUL_TIERS,
   RANGE_COLUMNS,
   RANGE_TIERS,
+  TODAY_LEDE_FLOOR_EM,
+  TODAY_RUNGS,
+  TODAY_TIERS,
   WEATHER_STYLE_TIERS,
+  todayRungsAt,
   rangeColumnsAt,
   NOTES_TIERS,
   SHIFT_TIERS,
@@ -91,7 +97,12 @@ describe('every table is a ladder', () => {
 });
 
 describe('the forecast’s designed looks (plan item P5.1)', () => {
-  for (const [name, table] of [['colour', COLOUR_TIERS], ['range', RANGE_TIERS]] as const) {
+  for (const [name, table] of [
+    ['colour', COLOUR_TIERS],
+    ['range', RANGE_TIERS],
+    ['today', TODAY_TIERS],
+    ['playful', PLAYFUL_TIERS],
+  ] as const) {
     it(`${name}: names its rungs in order and never goes backwards`, () => {
       expect(table.map((tier) => tier.tier)).toEqual([...WIDGET_TIER_NAMES]);
       for (let at = 1; at < table.length; at++) {
@@ -110,9 +121,39 @@ describe('the forecast’s designed looks (plan item P5.1)', () => {
     });
   }
 
-  it('reads the strip’s table for the strip, and no table for a look the wall does not draw yet', () => {
+  it('reads the strip’s table for the strip, and a table of its own for every designed look', () => {
+    // Every one of the forecast's five looks draws now (P5.1), so every one has
+    // the table the renderer looks up — a look with none would fall back to
+    // the strip's thresholds for a drawing they were never measured against.
     expect(WEATHER_STYLE_TIERS['strip']).toBe(WEATHER_TIERS);
-    expect(Object.keys(WEATHER_STYLE_TIERS).sort()).toEqual(['colour', 'range', 'strip']);
+    expect(Object.keys(WEATHER_STYLE_TIERS).sort()).toEqual(['colour', 'playful', 'range', 'strip', 'today']);
+  });
+
+  it('today gives up the next row first, then the feels-like, then the words, and never the lede', () => {
+    // The plan's order, read off the table rather than re-typed: each tier
+    // keeps one rung more than the one under it, and the lede is first.
+    expect(TODAY_TIERS.map((tier) => todayRungsAt(tier))).toEqual([
+      ['lede'],
+      ['lede', 'condition'],
+      ['lede', 'condition', 'feels'],
+      ['lede', 'condition', 'feels', 'next'],
+    ]);
+    expect(TODAY_RUNGS[0]).toBe('lede');
+    // The floor is always reached: rule nine draws the reading in any box.
+    expect(TODAY_TIERS[0]!.minEm).toBe(0);
+    expect(widgetTierFor(TODAY_TIERS, 1, 1, 10, 20).tier).toBe('T0');
+    // Each rung above the floor costs at least the lede's floor under it, so a
+    // tier is never reached by a card that could not also draw the lede.
+    for (const tier of TODAY_TIERS.slice(1)) expect(tier.minEm).toBeGreaterThan(TODAY_LEDE_FLOOR_EM);
+  });
+
+  it('playful gives up what the strip gives up, rung for rung, in wider columns', () => {
+    PLAYFUL_TIERS.forEach((tier, i) => expect(tier.rungs).toBe(WEATHER_TIERS[i]!.rungs));
+    // "Big day names": the column is wider than the strip's for the same words.
+    expect(PLAYFUL_COLUMN_CH).toBeGreaterThan(WEATHER_COLUMN_CH);
+    // A picture is taller than a glyph, so every rung from the picture up costs
+    // more than the strip's did.
+    for (const i of [1, 2, 3]) expect(PLAYFUL_TIERS[i]!.minEm).toBeGreaterThan(WEATHER_TIERS[i]!.minEm);
   });
 
   it('colour gives up what the strip gives up, rung for rung, and pays for a glyph that grows', () => {

@@ -36,7 +36,29 @@ export const WALLS: readonly (string | undefined)[] = [undefined, 'tv-32'];
 export const wallName = (preset: string | undefined): string => preset ?? 'unmeasured';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const LONDON = readFileSync(join(HERE, 'fixtures', 'open-meteo', 'real', 'forecast-london-metric.json'), 'utf8');
+const CAPTURES = {
+  london: readFileSync(join(HERE, 'fixtures', 'open-meteo', 'real', 'forecast-london-metric.json'), 'utf8'),
+  dc: readFileSync(join(HERE, 'fixtures', 'open-meteo', 'real', 'forecast-dc-imperial.json'), 'utf8'),
+} as const;
+
+/**
+ * Which captured answer a wall is seeded with, and how.
+ *
+ * `london` (metric) is the default and what `range` and `colour` are measured
+ * on. `dc` is the Washington capture from the same morning, in imperial units,
+ * for the looks whose rules differ by unit system (P5.1's advice line).
+ * `fromDay` skips that many of the captured days before re-dating the rest
+ * onto the wall's week — the capture's own first days are mild everywhere, and
+ * a rule that only fires on a warmer day is reached by starting the forecast on
+ * that day rather than by writing a temperature nobody measured. `hours` also
+ * writes the capture's next twenty-four hours, re-stamped onto the wall's own
+ * clock the way the current reading is.
+ */
+export interface WeatherWallOptions {
+  readonly capture?: keyof typeof CAPTURES;
+  readonly fromDay?: number;
+  readonly hours?: boolean;
+}
 
 export interface WeatherWall {
   readonly wall: Installation;
@@ -45,9 +67,19 @@ export interface WeatherWall {
   /** The Classic forecast's id, and its box as seeded, per orientation. */
   readonly weather: Record<Orientation, { readonly id: string; readonly w: number; readonly h: number }>;
   /** The real days, as the cache holds them. */
-  readonly days: readonly { readonly high: number; readonly low: number; readonly precipChance?: number }[];
+  readonly days: readonly {
+    readonly high: number;
+    readonly low: number;
+    readonly precipChance?: number;
+    readonly summary?: string;
+    readonly glyph?: string;
+  }[];
   /** The current reading's temperature, as seeded. */
   readonly currentTemp: number;
+  /** The current reading's own words, as seeded. */
+  readonly currentCondition: string;
+  /** The hours, as seeded: each one's instant and temperature. Empty unless asked for. */
+  readonly hours: readonly { readonly at: number; readonly temp: number }[];
 }
 
 /** Today's civil date in London, `days` from the wall's own now. */
@@ -57,16 +89,27 @@ function londonDate(at: number, days: number): string {
   return new Date(anchor).toISOString().slice(0, 10);
 }
 
-export async function weatherWall(): Promise<WeatherWall> {
+export async function weatherWall(options: WeatherWallOptions = {}): Promise<WeatherWall> {
   const wall = await install({ calendars: HOUSEHOLD_CALENDARS });
   const at = wall.now();
   equipHousehold(wall.db, at);
-  wall.db.prepare(`UPDATE household_settings SET weather_units = 'metric' WHERE id = 'singleton'`).run();
+  const capture = options.capture ?? 'london';
+  const units = capture === 'dc' ? 'imperial' : 'metric';
+  wall.db.prepare(`UPDATE household_settings SET weather_units = ? WHERE id = 'singleton'`).run(units);
 
-  const parts = parseOpenMeteo(LONDON, { now: at, units: 'metric', todayIso: '2026-09-24', limit: 5 });
-  if (parts.forecast === undefined || parts.current === undefined) throw new Error('the London capture did not parse');
-  const days = parts.forecast.days.map((day, i) => ({ ...day, date: londonDate(at, i) }));
+  // The capture's own "Today" is the day the forecast starts on, so a
+  // forecast started two days in calls its first day Today, as it would.
+  const todayIso = new Date(Date.parse('2026-09-24T12:00:00Z') + (options.fromDay ?? 0) * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  const parts = parseOpenMeteo(CAPTURES[capture], { now: at, units, todayIso, limit: 5 });
+  if (parts.forecast === undefined || parts.current === undefined) throw new Error(`the ${capture} capture did not parse`);
+  const days = parts.forecast.days.slice(options.fromDay ?? 0).map((day, i) => ({ ...day, date: londonDate(at, i) }));
   const current = { ...parts.current, observedAt: at - 10 * 60_000 };
+  // The capture's hours, moved so the first one is the hour the wall is in.
+  const captured = options.hours === true ? (parts.hours ?? []) : [];
+  const shift = captured.length === 0 ? 0 : Math.floor(at / 3_600_000) * 3_600_000 - (captured[0]!.at as number);
+  const hours = captured.map((hour) => ({ ...hour, at: hour.at + shift, end: hour.end + shift }));
   const write = (key: string, payload: unknown): void => {
     wall.db
       .prepare(
@@ -78,6 +121,7 @@ export async function weatherWall(): Promise<WeatherWall> {
   };
   write('openmeteo:forecast', { days, fetchedAt: at });
   write('openmeteo:current', { reading: current });
+  if (hours.length > 0) write('openmeteo:hourly', { hours });
 
   const screenId = await wall.pairWall('Kitchen');
   const html = await (await wall.call(`/admin/walls/${screenId}/pair`)).text();
@@ -98,8 +142,12 @@ export async function weatherWall(): Promise<WeatherWall> {
       high: day.high as number,
       low: day.low as number,
       ...(day.precipChance === undefined ? {} : { precipChance: day.precipChance }),
+      ...(typeof day.summary === 'string' ? { summary: day.summary } : {}),
+      ...(typeof day.glyph === 'string' ? { glyph: day.glyph } : {}),
     })),
     currentTemp: current.temp as number,
+    currentCondition: String(current.condition),
+    hours: hours.map((hour) => ({ at: hour.at, temp: hour.temp })),
   };
 }
 
@@ -197,7 +245,7 @@ export async function readForecastBox(page: Page, widgetId: string): Promise<{
     };
     const clipped: string[] = [];
     const numerals: { text: string; variant: string }[] = [];
-    for (const node of Array.from(box.querySelectorAll<HTMLElement | SVGElement>('span, div, svg'))) {
+    for (const node of Array.from(box.querySelectorAll<HTMLElement | SVGElement>('span, div, svg, img'))) {
       if (!visible(node)) continue;
       const r = node.getBoundingClientRect();
       if (r.width === 0 && r.height === 0) continue;
@@ -211,10 +259,12 @@ export async function readForecastBox(page: Page, widgetId: string): Promise<{
         clipped.push(`${label} is cut: ${node.scrollWidth} > ${node.clientWidth}`);
       }
       // The bar's own parts are drawn inside the track on purpose (the ramp
-      // is a whole track wide and its window clips it); every other node has
-      // to sit inside the box.
+      // is a whole track wide and its window clips it), and so is a Today
+      // card's sky: each thing moving across it is placed in shares of the
+      // card and clipped by the sky layer, which itself has to sit inside the
+      // box like everything else. Every other node has to sit inside the box.
       const cls = node.getAttribute('class') ?? '';
-      if (/\bwr-(ramp|fill|now)\b/.test(cls)) continue;
+      if (/\bwr-(ramp|fill|now)\b|\bwt-fx\b/.test(cls)) continue;
       if (r.bottom > content.bottom + 0.5 || r.right > content.right + 0.5 || r.left < content.left - 0.5) {
         clipped.push(`${label} ends outside the box: ${JSON.stringify([r.left, r.right, r.bottom])} vs ${JSON.stringify(content)}`);
       }

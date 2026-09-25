@@ -253,6 +253,13 @@ const widgetConfigFields = z
     showLow: z.boolean().optional(),
     showIcon: z.boolean().optional(),
     /*
+     * The `playful` look's advice line (plan item P5.1) — "Umbrella day" when
+     * today calls for one. Absence means on, like `showFace`: only `playful`
+     * reads it, so a wall that has not picked that look is unchanged whatever
+     * this says.
+     */
+    advice: z.boolean().optional(),
+    /*
      * Home Assistant — which watched readings this widget shows, **by entity
      * id** (P1.3); absent or empty is all of them. It held labels until then,
      * so a rename took a reading off every widget that had picked it, and a

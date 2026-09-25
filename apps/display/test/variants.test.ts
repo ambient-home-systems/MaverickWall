@@ -112,24 +112,31 @@ describe('which controls a look hides', () => {
 
   it('hides nothing on a look that still draws its type’s default', () => {
     /*
-     * Every non-clock value but the forecast's range still reads every
-     * control its type's default does, so every control on it still does what it did — and taking a
-     * working setting off the screen is the other half of the rule that an
-     * option which does nothing is worse than one not offered.
+     * Every non-clock, non-forecast value still reads every control its type's
+     * default does, so every control on it still does what it did — and
+     * taking a working setting off the screen is the other half of the rule
+     * that an option which does nothing is worse than one not offered. The
+     * forecast's five are all designed now (P5.1) and are stated below.
      */
-    for (const type of TYPES.filter((one) => one !== 'clock')) {
+    for (const type of TYPES.filter((one) => one !== 'clock' && one !== 'weather')) {
       for (const variant of VARIANTS[type]) {
-        if (type === 'weather' && variant === 'range') continue;
         expect(hiddenByVariant(type, { variant }), `${type}.${variant}`).toEqual([]);
       }
     }
   });
 
-  it('hides the field ladder on a forecast’s range, which draws designed columns instead (P5.1)', () => {
+  it('hides on each forecast look exactly the controls it does not read (P5.1)', () => {
     // A range row is the style's own columns and `RANGE_TIERS` decides what a
     // narrow box gives up, so the ladder would be a control that moves nothing.
-    // The colour look is the strip painted, and keeps every control the strip has.
-    expect(hiddenByVariant('weather', { variant: 'range' })).toEqual(['fields']);
-    expect(hiddenByVariant('weather', { variant: 'colour' })).toEqual([]);
+    // The colour look is the strip painted, and keeps every control the strip
+    // has. Today is a card about today: no day count and no ladder ("`today`
+    // hides the day count", the plan). The advice line is playful's alone, so
+    // every other look hides its switch — and playful hides nothing, since it
+    // reads the strip's count and ladder as well as its own advice.
+    expect(hiddenByVariant('weather', {})).toEqual(['advice']);
+    expect(hiddenByVariant('weather', { variant: 'range' })).toEqual(['fields', 'advice']);
+    expect(hiddenByVariant('weather', { variant: 'colour' })).toEqual(['advice']);
+    expect(hiddenByVariant('weather', { variant: 'today' })).toEqual(['count', 'fields', 'advice']);
+    expect(hiddenByVariant('weather', { variant: 'playful' })).toEqual([]);
   });
 });

@@ -318,18 +318,27 @@ describe('a panel with the forecast strip', () => {
 
 describe('a panel whose canvas draws current conditions', () => {
   /*
-   * Nothing on a panel draws current conditions yet: P5.1's `today` style is
-   * the first, and it is S14's. This is written now, against that style's
-   * name, so the session that builds it cannot land the draw without the ETag
-   * following it — and `panelInput` is the only way a draw reaches a module's
-   * panel, so the draw cannot read `current` without adding it there, which is
-   * what makes the body below pass. When it does, `it.fails` goes red and the
-   * fix is to drop `.fails`: the same device P2.1 used for S06's screens.
-   * TODO(S14)
+   * P5.1's `today` look is the one draw on a panel that reads current
+   * conditions: the large reading with the time it was read. This was written
+   * by S09 as an expected failure against that look's name, before the look
+   * existed, so the session that built the draw could not land it without the
+   * ETag following — `panelInput` is the only way a draw reaches a module's
+   * panel, so the draw cannot read `current` without handing it over there.
+   * The draw has landed and the `.fails` with it.
    */
-  it.fails('moves its ETag when the reading changes — TODO(S14): nothing draws `today` yet', () => {
+  it('moves its ETag, and its frame, when the reading changes', () => {
     const today: readonly PlacedEpaperWidget[] = [at('weather', { variant: 'today' })];
-    expect(draw(NEXT_READING, today).etag).not.toBe(draw(BASE, today).etag);
+    const before = draw(BASE, today);
+    const after = draw(NEXT_READING, today);
+    expect(after.etag).not.toBe(before.etag);
+    // …and the frame moved with it, so the ETag moved for something drawn.
+    expect(after.bits).not.toBe(before.bits);
+  });
+
+  it('keeps the strip’s ETag across the same new reading, beside it', () => {
+    // The control: the reading is handed to the look that draws it and to no
+    // other, so the strip on the next panel still does not refresh for it.
+    expect(draw(NEXT_READING, STRIP).etag).toBe(draw(BASE, STRIP).etag);
   });
 });
 
@@ -357,14 +366,22 @@ const PROBES: readonly {
   { name: 'to-do, typed', widgets: [at('todo', { items: ['Milk', 'Bread'] })], reads: [] },
   { name: 'to-do, a list', widgets: [at('todo', { list: 'todo.shopping' })], reads: ['todo:shopping'] },
   { name: 'chores', widgets: [at('chores')], reads: ['chores'] },
-  { name: 'weather', widgets: STRIP, reads: ['weather:days'] },
+  // The strip reads every day's name, numbers and glyph; the Today card reads
+  // today's name and numbers and the current reading, and no glyph (P5.1).
+  { name: 'weather', widgets: STRIP, reads: ['weather:days', 'weather:glyph'] },
+  { name: 'weather, today', widgets: [at('weather', { variant: 'today' })], reads: ['weather:days', 'weather:current'] },
   { name: 'house', widgets: [at('homeassistant')], reads: ['home'] },
   { name: 'a module', widgets: [at('external', { module: 'mymod' })], reads: ['mymod'] },
 ];
 
-/** What changes, and which read it touches — `weather:other` is a field no draw reads. */
+/**
+ * What changes, and which read it touches — `weather:other` is a field no draw
+ * reads. The current reading has a read of its own since P5.1's `today` look
+ * draws it, and a day's glyph since that look reads a day without one: two
+ * looks reading two subsets of one slice is what the finer names are for.
+ */
 const MUTATIONS: readonly { name: string; touches: string; manifest: Manifest }[] = [
-  { name: 'current conditions', touches: 'weather:other', manifest: NEXT_READING },
+  { name: 'current conditions', touches: 'weather:current', manifest: NEXT_READING },
   {
     name: 'the next hours',
     touches: 'weather:other',
@@ -388,7 +405,7 @@ const MUTATIONS: readonly { name: string; touches: string; manifest: Manifest }[
   },
   {
     name: 'a wetter day',
-    touches: 'weather:days',
+    touches: 'weather:glyph',
     manifest: edit(BASE, (panels) => {
       firstDay(panels)['glyph'] = 'rain';
     }),
