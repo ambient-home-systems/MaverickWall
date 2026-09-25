@@ -2971,6 +2971,236 @@ body {
   text-align: center;
 }
 
+/*
+ * A countdown's picture (plan item P5.2): bundled artwork drawn as an `<img>`
+ * at the size of the words beside it, never a code point for the device's
+ * font (D6). With the label it leads; beside "Today!" it follows.
+ */
+.cd-emoji {
+  height: 1em;
+  width: auto;
+  vertical-align: -0.12em;
+  margin-right: 0.3em;
+}
+.cd-emoji-today { height: 0.8em; margin: 0 0 0 0.15em; vertical-align: 0; }
+
+/*
+ * The tear-off page (plan item P5.2). A sheet with a binder strip, the count
+ * large, its unit and the target's own date; the household's label under it.
+ *
+ * **Its type is roles, not the box.** The label is the lede and every other
+ * run is a fraction of it, so the page's tier (`PAGE_TIERS`) can be stated in
+ * one unit and a larger box buys a larger form rather than larger letters.
+ * The count is the clock's role — 1.8 ledes, the most one reading may outsize
+ * an event name (D1) — and capped by the box the way the clock is, so the
+ * smallest page still draws its count whole: `--cd-chars` is how many
+ * characters it holds, the clock's `--clock-chars` one widget along.
+ */
+.cd-page { gap: var(--s2); }
+.cdp-sheet {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+  min-width: min(100%, calc(var(--t-wall-lede, var(--t-event)) * 4.5));
+  max-width: 100%;
+  padding: 0 var(--s4) var(--s3);
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+/* The binder: a band in the accent with two holes punched through it. */
+.cdp-binder {
+  align-self: stretch;
+  height: calc(var(--t-wall-lede, var(--t-event)) * 0.5);
+  margin: 0 calc(var(--s4) * -1) var(--s2);
+  background:
+    radial-gradient(circle at 28% 50%, var(--bg) 0 0.16em, transparent 0.18em),
+    radial-gradient(circle at 72% 50%, var(--bg) 0 0.16em, transparent 0.18em),
+    var(--accent);
+  font-size: var(--t-wall-lede, var(--t-event));
+}
+.cdp-num {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 700;
+  /*
+   * The clock's role, or what the box can hold: its height less the box's own
+   * padding and the 2.1 ledes the binder, the unit and the sheet's padding
+   * take — so in a box too short for the whole page the count gives way and
+   * nothing else is squeezed — or its width shared across the characters.
+   */
+  font-size: min(
+    var(--t-wall-clock, calc(var(--t-event) * 1.8)),
+    calc(var(--buh) * 100 - var(--s4) - var(--t-wall-lede, var(--t-event)) * 2.1),
+    calc(var(--buw) * 110 / var(--cd-chars, 2))
+  );
+  line-height: 1;
+  white-space: nowrap;
+}
+.cdp-unit, .cdp-date {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 600;
+  font-size: var(--t-wall-scaffold, 1.3rem);
+  letter-spacing: var(--ls-scaffold);
+  text-transform: uppercase;
+  line-height: 1.15;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.cdp-date {
+  align-self: stretch;
+  text-align: center;
+  margin-top: var(--s2);
+  padding-top: var(--s1);
+  border-top: 1px solid var(--rule);
+}
+.cdp-label {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 600;
+  font-size: var(--t-wall-lede, var(--t-event));
+  line-height: 1.15;
+  color: var(--ink);
+  text-align: center;
+  /*
+   * No `max-width`: a flex item already fits its column, and the tier pass
+   * plants its measuring probe with this class — a `max-width` would clamp the
+   * probe in a narrow box, read `ch` as a third of itself, and hand the page a
+   * tier it cannot hold. Measured, in a narrow column: 4.5px a character where
+   * the face's own is 13.6.
+   */
+  overflow-wrap: break-word;
+}
+/*
+ * Yesterday's page, lifted away at midnight. Transparent at rest, so its still
+ * frame — and every frame on a wall that asks for less motion — is today's
+ * page with nothing over it.
+ */
+.cdp-leaf {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 var(--s4) var(--s3);
+  background: var(--bg);
+  opacity: 0;
+  transform-origin: 50% 0;
+  pointer-events: none;
+}
+
+/*
+ * The boarding pass (plan item P5.2): a head, the destination large, "Departs
+ * in 12 days", a perforated rule and the count on a departure board. The same
+ * roles-not-box rule as the page, and the board's flaps are the clock's role
+ * capped by the box.
+ */
+.cd-ticket { align-items: stretch; }
+.cdt-pass {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  max-width: 100%;
+  padding: var(--s2) var(--s4) var(--s3);
+  overflow: hidden;
+  text-align: left;
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+.cdt-head {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 700;
+  font-size: var(--t-wall-label, 1.2rem);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  line-height: 1.15;
+  color: var(--muted);
+  white-space: nowrap;
+  padding-bottom: var(--s1);
+  border-bottom: 1px solid var(--rule);
+}
+.cdt-dest {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 700;
+  font-size: var(--t-wall-lede, var(--t-event));
+  line-height: 1.15;
+  margin-top: var(--s1);
+  overflow-wrap: break-word;
+}
+.cdt-when {
+  font-family: var(--f-sans);
+  font-size: var(--t-wall-event, 1.7rem);
+  line-height: 1.15;
+  color: var(--ink);
+  margin-top: var(--s1);
+}
+/* The perforation is the board's own top edge: a row of round holes. */
+.cdt-board {
+  display: flex;
+  gap: var(--s1);
+  margin-top: var(--s2);
+  padding-top: var(--s3);
+  border-top: calc(var(--s1) * 0.9) dotted var(--muted);
+}
+.cdt-flap {
+  position: relative;
+  display: inline-block;
+  min-width: 0.62em;
+  padding: 0.04em 0.08em;
+  overflow: hidden;
+  text-align: center;
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 700;
+  font-size: min(
+    var(--t-wall-clock, calc(var(--t-event) * 1.8)),
+    calc(var(--buh) * 26),
+    calc(var(--buw) * 22)
+  );
+  line-height: 1;
+  color: var(--bg);
+  background:
+    linear-gradient(to bottom, transparent calc(50% - 0.02em), var(--panel) calc(50% - 0.02em), var(--panel) calc(50% + 0.02em), transparent calc(50% + 0.02em)),
+    var(--ink);
+  border-radius: 0.08em;
+}
+/* The digit that was, falling away over the one that is. At rest, nothing. */
+.cdt-flap-old {
+  position: absolute;
+  inset: 0;
+  padding: inherit;
+  color: var(--bg);
+  background: var(--ink);
+  opacity: 0;
+  transform-origin: 50% 100%;
+}
+
+/*
+ * The day's confetti: pieces thrown from above the box. Transparent until the
+ * scoped block below moves them, so a still wall draws none.
+ */
+.cd-confetti {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.cd-bit {
+  position: absolute;
+  top: -6%;
+  width: var(--s2);
+  height: var(--s3);
+  opacity: 0;
+  background: var(--accent);
+}
+.cd-bit-1 { background: var(--wx-sun, var(--accent)); }
+.cd-bit-2 { background: var(--wx-rain, var(--accent)); }
+.cd-bit-3 { background: var(--temp-hot, var(--accent)); }
+.cd-bit-4 { background: var(--state-active, var(--accent)); }
+
 /* Image widget: an uploaded picture covering its box. Its corners follow the
    box's Corners option: the box is padded, so rounding the box alone curves
    empty space and leaves the picture square. */
@@ -3247,5 +3477,43 @@ body {
     animation-name: fx-fixture-arrive;
     animation-timing-function: ease-out;
     animation-fill-mode: both;
+  }
+  /*
+   * A countdown's day (plan item P5.2): each piece falls the height of its box
+   * (`--buh` is one percent of it), drifting and turning as it goes, and fades
+   * at the foot. Flat, and capped at `CONFETTI_PIECES`.
+   */
+  @keyframes cd-confetti-fall {
+    0% { opacity: 1; transform: translate(0, 0) rotate(0deg); }
+    85% { opacity: 1; }
+    100% {
+      opacity: 0;
+      transform: translate(calc(var(--cf-drift, 0) * var(--s3)), calc(var(--buh, 1vh) * 115)) rotate(var(--cf-turn, 360deg));
+    }
+  }
+  .canvas[data-motion="on"] .cd-bit.fx-playing {
+    animation-name: cd-confetti-fall;
+    animation-timing-function: cubic-bezier(0.25, 0.55, 0.4, 1);
+    animation-fill-mode: both;
+  }
+  /* The tear-off page, once at midnight: yesterday lifts away. */
+  @keyframes cd-page-tear {
+    0% { opacity: 1; transform: none; }
+    100% { opacity: 0; transform: translateY(-45%) rotate(-9deg); }
+  }
+  .canvas[data-motion="on"] .cdp-leaf.fx-playing {
+    animation-name: cd-page-tear;
+    animation-timing-function: ease-in;
+    animation-fill-mode: both;
+  }
+  /* A board's flap, only where its digit changed: the old half folds down. */
+  @keyframes cd-flap-fall {
+    0% { opacity: 1; transform: scaleY(1); }
+    100% { opacity: 1; transform: scaleY(0); }
+  }
+  .canvas[data-motion="on"] .cdt-flap-old.fx-playing {
+    animation-name: cd-flap-fall;
+    animation-timing-function: ease-in;
+    animation-fill-mode: backwards;
   }
 }

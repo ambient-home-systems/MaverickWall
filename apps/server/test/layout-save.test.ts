@@ -638,3 +638,38 @@ describe('a per-wall layout', () => {
     expect(hall.layout.portrait.widgets.map((w) => w.type)).toEqual(['clock']);
   });
 });
+
+describe('a countdown’s words, picture and celebration (plan item P5.2)', () => {
+  const countdown = (config: Record<string, unknown>) => ({
+    mode: 'freeform',
+    aspect: 0.5625,
+    widgets: [{ id: 'c', type: 'countdown', x: 0, y: 0, w: 0.5, h: 0.2, z: 0, config: { target: '2026-12-25', ...config } }],
+  });
+
+  it('keeps each through the save and into the manifest a screen polls', async () => {
+    const h = await harness();
+    const config = { unitWords: 'sleeps', emoji: 'christmas-tree', celebrate: false, variant: 'ticket' };
+    expect((await h.saveLayout(countdown(config))).status).toBe(200);
+    const layout = await h.manifestLayout();
+    expect((layout.widgets[0] as unknown as { config: Record<string, unknown> }).config).toEqual({
+      target: '2026-12-25',
+      ...config,
+    });
+  });
+
+  it('refuses a picture that is not a key from the bundled set, rather than dropping it (rule five)', async () => {
+    const h = await harness();
+    // A code point is the fault the bundled set exists to replace (D6): it would
+    // reach the device's own emoji font, which differs on every panel.
+    for (const emoji of ['🎄', 'not-a-key', 'Christmas tree', '']) {
+      expect((await h.saveLayout(countdown({ emoji }))).status, `emoji ${JSON.stringify(emoji)}`).toBe(400);
+    }
+    expect((await h.saveLayout(countdown({ unitWords: 'weeks' }))).status).toBe(400);
+    expect((await h.saveLayout(countdown({ celebrate: 'yes' }))).status).toBe(400);
+    // …and a panel may count in sleeps where its wall counts in days, but the
+    // picture and the celebration are never a panel's to change.
+    expect((await h.saveLayout(countdown({ ink: { unitWords: 'sleeps' } }))).status).toBe(200);
+    expect((await h.saveLayout(countdown({ ink: { emoji: 'christmas-tree' } }))).status).toBe(400);
+    expect((await h.saveLayout(countdown({ ink: { celebrate: false } }))).status).toBe(400);
+  });
+});

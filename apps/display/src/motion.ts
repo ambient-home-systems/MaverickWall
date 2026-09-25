@@ -187,6 +187,71 @@ export function createOneShotMemory(): OneShotMemory & { sweep(wallNowMs: number
 }
 
 /**
+ * When a widget's reading took the value it has now — but only if it took it
+ * **while this page was drawing the widget** (plan item P5.2).
+ *
+ * The one-shots above fire the first time an event is asked about, which is
+ * right for an event that *is* news — the confetti on the day. It is wrong for
+ * a change: a tear-off page that flipped every time a wall was reloaded would
+ * be flipping at nothing, because nothing changed; the page is simply being
+ * drawn for the first time. So a change is two questions of the same memory:
+ * when was this widget first drawn at all (`<name>:drawn`), and when did it
+ * first read this value? Asked in the same draw at load, they answer the same
+ * moment and nothing fires. At midnight the new value is first asked about a
+ * whole day after the widget was, and the answer is that moment.
+ *
+ * `undefined` on a surface with no memory, as everything here is: a preview
+ * draws the still frame.
+ */
+export function changedAt(
+  memory: OneShotMemory,
+  widgetId: string,
+  name: string,
+  value: string,
+  wallNowMs: number,
+): number | undefined {
+  const drawn = memory.firedAt(widgetId, `${name}:drawn`, wallNowMs);
+  const since = memory.firedAt(widgetId, `${name}=${value}`, wallNowMs);
+  if (drawn === undefined || since === undefined) return undefined;
+  return since > drawn ? since : undefined;
+}
+
+/**
+ * The moment the current repeat of a recurring one-shot fired: the first at
+ * the moment the event was first asked about, and each one after it no sooner
+ * than `periodMs` after **the one before** (plan item P5.2, the countdown's
+ * hourly celebration).
+ *
+ * Anchored on the previous burst rather than on the first, and that is the
+ * whole of "at most once a period". Counted from the first — the n-th repeat
+ * at `first + n × period` — a wall that was showing an alert takeover across
+ * a mark would fire when it came back at 10:20 and again at 11:00, forty
+ * minutes apart. Keyed by the clock hour it is worse: an event first seen at
+ * 10:59:50 fires again fifteen seconds later at 11:00:05. Here each repeat is
+ * its own remembered moment, so the chain is walked from the first and a new
+ * link is added only once the last one is a whole period old.
+ *
+ * Every link is asked on every draw, which keeps them all from being swept for
+ * as long as the event is drawn: a day of hourly bursts is two dozen entries.
+ */
+export function repeatFiredAt(
+  memory: OneShotMemory,
+  widgetId: string,
+  event: string,
+  periodMs: number,
+  wallNowMs: number,
+): number | undefined {
+  let at = memory.firedAt(widgetId, event, wallNowMs);
+  if (at === undefined || !Number.isFinite(periodMs) || periodMs <= 0) return at;
+  for (let repeat = 1; wallNowMs - at >= periodMs; repeat++) {
+    const next: number | undefined = memory.firedAt(widgetId, `${event}#${repeat}`, wallNowMs);
+    if (next === undefined) return at;
+    at = next;
+  }
+  return at;
+}
+
+/**
  * Lock a looping element to the wall clock: its duration, and where in it now is.
  *
  * The element's class is what names the keyframes, in the scoped block of

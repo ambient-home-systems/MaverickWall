@@ -9,7 +9,7 @@ import type {
   TodayShiftModel,
   TodoItemModel,
 } from './viewmodel.js';
-import { DISPLAY_LOCALE, localDate, localTime } from './viewmodel.js';
+import { DISPLAY_LOCALE, localTime } from './viewmodel.js';
 import {
   FACE_DIAL_PATH,
   FACE_HUB_PATH,
@@ -22,6 +22,7 @@ import type { PanelData, PanelReading } from './viewmodel.js';
 import type { ManifestWidget, CanvasBackground } from './manifest.js';
 import { glyphNode, glyphPartsNode } from './glyphs.js';
 import { MOTION_FIXTURE_TYPE, renderMotionFixture } from './motion-fixture.js';
+import { renderCountdown } from './countdown-looks.js';
 import { variantOf } from './variants.js';
 import { boxRect, gutterStepFor } from './gutter.js';
 import { childCells, groupChildren, topLevelWidgets } from './group-cells.js';
@@ -62,12 +63,16 @@ import {
   type CalendarTier,
 } from './tiers.js';
 import {
+  COUNTDOWN_TIERS,
+  PAGE_PARTS,
+  TICKET_PARTS,
   WEATHER_COLUMN_CH,
   WEATHER_STYLE_TIERS,
   WIDGET_TIERS,
   columnsAt,
   rangeColumnsAt,
   itemsAt,
+  partsAt,
   rungsAt,
   rungsByPriority,
   shiftBadgesToLines,
@@ -1475,7 +1480,7 @@ export function renderWidget(
     case 'shift':
       return renderShiftWidget(model, config);
     case 'countdown':
-      return renderCountdownWidget(model, config);
+      return renderCountdown(model, config, widgetId);
     case 'external':
       return renderExternalWidget(model, config);
     case 'notes':
@@ -1700,41 +1705,6 @@ function renderExternalWidget(model: DisplayModel, config: unknown): HTMLElement
   const panel = typeof id === 'string' ? model.externalPanels[`ext:${id}`] : undefined;
   if (panel === undefined) return el('div', 'cd-empty', 'Pick a module in this widget’s options.');
   return renderGenericPanel(panel, panelRowLimit(config));
-}
-
-/**
- * A countdown to a date the household set.
- *
- * Days are counted from the wall's own clock reading against the target — and
- * `model.now` is the *server's* time, not the tablet's, so a countdown does not
- * drift with a screen whose clock is two hours out. The label is the widget's
- * title. A date not yet set says so rather than drawing a bare zero.
- */
-function renderCountdownWidget(model: DisplayModel, config: unknown): HTMLElement {
-  const c = widgetConfig(config);
-  const target = typeof c['target'] === 'string' ? c['target'] : '';
-  const label = typeof c['title'] === 'string' ? (c['title'] as string).trim() : '';
-
-  const box = el('section', 'cd');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(target)) {
-    box.appendChild(el('div', 'cd-empty', 'Set a date in this widget’s options.'));
-    return box;
-  }
-
-  const today = localDate(model.now, model.timezone);
-  const days = Math.round(
-    (Date.parse(`${target}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86_400_000,
-  );
-  const abs = Math.abs(days);
-
-  if (days === 0) {
-    box.appendChild(el('div', 'cd-num', 'Today'));
-  } else {
-    box.appendChild(el('div', 'cd-num', String(abs)));
-    box.appendChild(el('div', 'cd-unit', `${abs === 1 ? 'day' : 'days'}${days < 0 ? ' ago' : ''}`));
-  }
-  if (label !== '') box.appendChild(el('div', 'cd-label', label));
-  return box;
 }
 
 /**
@@ -2279,6 +2249,10 @@ function applyWidgetTiers(
      * `range` is rows of a different markup with its own table, and `colour`
      * is the strip's markup with a larger glyph and so its own table too.
      */
+    if (entry.widget.type === 'countdown') {
+      tierCountdown(entry);
+      continue;
+    }
     const look = entry.widget.type === 'weather' ? variantOf('weather', entry.widget.config) : undefined;
     const table = look !== undefined ? (WEATHER_STYLE_TIERS[look] ?? WIDGET_TIERS['weather']) : WIDGET_TIERS[entry.widget.type];
     const primary = look === 'range' ? RANGE_PRIMARY : WIDGET_PRIMARY[entry.widget.type];
@@ -2386,6 +2360,53 @@ function tierWeather(
   for (const column of [...entry.body.querySelectorAll('.wx-day')] as HTMLElement[]) {
     beltItems(entry.box, [...column.children] as HTMLElement[]);
   }
+}
+
+/**
+ * A countdown's primary run in each look that has a table: the household's
+ * label, at the lede (`widget-tiers.ts` says why). The probe is planted in the
+ * look's own section, so it inherits exactly the cascade the label does.
+ */
+const COUNTDOWN_PRIMARY: Readonly<Record<string, { readonly cls: string; readonly host: string }>> = {
+  page: { cls: 'cdp-label', host: '.cd-page' },
+  ticket: { cls: 'cdt-dest', host: '.cd-ticket' },
+};
+
+/**
+ * A countdown's `page` or `ticket` look: which of its parts the box affords
+ * (plan item P5.2).
+ *
+ * The parts are drawn in full by `renderCountdown` and the tier takes off
+ * what this box cannot hold — chosen from the box's size in the label's own
+ * `ch` and `em`, never from what spilled, which is the difference between a
+ * form and a belt. The belt still runs after, as it does on every widget, and
+ * the browser tests hold it to having nothing to do.
+ *
+ * `number` has no table and comes through here to the belt alone: it sizes to
+ * its box by `--buw`/`--buh` and draws exactly what it always drew.
+ */
+function tierCountdown(entry: TieredWidget): void {
+  const look = variantOf('countdown', entry.widget.config);
+  const table = COUNTDOWN_TIERS[look];
+  const primary = COUNTDOWN_PRIMARY[look];
+  if (table === undefined || primary === undefined) {
+    beltGenericRows(entry);
+    return;
+  }
+  const host = entry.box.querySelector(primary.host);
+  if (!(host instanceof HTMLElement)) return;
+  const inner = innerBox(entry.box);
+  const { chPx, emPx } = typeMetrics(host, primary.cls);
+  if (!(chPx > 0) || !(emPx > 0)) return;
+  const tier = widgetTierFor(table, inner.w, inner.h, chPx, emPx);
+  const parts: readonly string[] = look === 'page' ? PAGE_PARTS : TICKET_PARTS;
+  const kept = partsAt(parts, tier);
+  for (const node of [...entry.body.querySelectorAll<HTMLElement>('[data-part]')]) {
+    if (!kept.includes(node.dataset['part'] ?? '')) node.remove();
+  }
+  stampTier(entry.box, tier, 1);
+  stampRungs(entry.box, kept);
+  beltItems(entry.box, [...entry.body.querySelectorAll<HTMLElement>('[data-part]')]);
 }
 
 /** The `range` look's primary run: its temperatures, as the strip's is. */

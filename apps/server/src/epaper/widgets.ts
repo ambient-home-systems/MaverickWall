@@ -69,6 +69,7 @@ import { withInk } from './honours.js';
 import { childCells, groupChildren, topLevelWidgets } from './group-cells.js';
 import { clockLabel, type EpaperModel } from './viewmodel.js';
 import { drawAnalogueFace } from './clock-face.js';
+import { TODAY_WORDS, countDigits, countdownWords, ticketLine, unitWords } from './countdown.js';
 
 /**
  * A widget placed on the canvas: fractional box, plus its stored options.
@@ -417,17 +418,37 @@ function drawClock(fb: Framebuffer, m: EpaperMetrics, box: Box, model: EpaperMod
   );
 }
 
+/**
+ * A countdown, in the looks a panel draws (plan item P5.2): the number, the
+ * tear-off page and the boarding pass, each as a still frame.
+ *
+ * The words are the wall's — `countdown.ts` is its transcription, held to it
+ * by `countdown-parity.test.ts` — so "sleeps" is honoured here and the day
+ * says "Today!" on every look. What is not drawn is the picture and the
+ * confetti: the alphabet is ASCII, which `asciiTitle` enforces on the label,
+ * and a panel does not move. The other three looks draw the number until the
+ * second half of the item designs them.
+ */
 function drawCountdown(fb: Framebuffer, m: EpaperMetrics, box: Box, model: EpaperModel, config: Config): void {
   const target = str(config, 'target');
+  const look = variantOf('countdown', config);
+  if (target !== undefined && look === 'page') {
+    drawCountdownPage(fb, m, box, daysBetween(model.today, target), target, config);
+    return;
+  }
+  if (target !== undefined && look === 'ticket') {
+    drawCountdownTicket(fb, m, box, daysBetween(model.today, target), config);
+    return;
+  }
   const title = str(config, 'title') ?? '';
   let big = '--';
   let unit = '';
   if (target !== undefined) {
     const days = daysBetween(model.today, target);
-    if (days === 0) big = 'Today';
+    if (days === 0) big = TODAY_WORDS;
     else {
-      big = String(Math.abs(days));
-      unit = days > 0 ? (days === 1 ? 'day' : 'days') : days === -1 ? 'day ago' : 'days ago';
+      big = countDigits(days);
+      unit = unitWords(days, countdownWords(config));
     }
   }
   // Same fitting as the clock: "365" in a narrow box must shrink, not lose its
@@ -443,6 +464,164 @@ function drawCountdown(fb: Framebuffer, m: EpaperMetrics, box: Box, model: Epape
     m.body,
     'center',
   );
+}
+
+const PANEL_MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+const PANEL_WEEKDAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+
+/** A target as a page prints it on one bit: "THU 25 DEC", in the panel's own alphabet. */
+function panelTargetDate(target: string): string {
+  const at = new Date(`${target}T12:00:00Z`);
+  if (Number.isNaN(at.getTime())) return target;
+  return `${PANEL_WEEKDAYS[at.getUTCDay()]} ${at.getUTCDate()} ${PANEL_MONTHS[at.getUTCMonth()]}`;
+}
+
+/**
+ * The widest thing the count's slot has to hold, in the state it is in.
+ *
+ * The refresh contract (`render.ts`) wants a rectangle's size to be a function
+ * of the panel and never of today's words, so the count's rung is stepped
+ * against a budget rather than against the number: three figures while it is
+ * counting, whatever the number is, and the day's words on the day. The slot
+ * moves once, at the midnight the words change, which is a full refresh the
+ * panel was going to take for a new date anyway.
+ */
+function countBudget(days: number): string {
+  return days === 0 ? TODAY_WORDS : '000';
+}
+
+/**
+ * The tear-off page, still. **The widget's own frame is the sheet** — every
+ * panel widget is outlined by `drawFrame` — so the page is what goes inside
+ * it: a solid binder band across the top with two holes knocked through it,
+ * the count, its unit, a rule, the target's date, and the label at the foot.
+ *
+ * What a short box gives up is the wall's order (`PAGE_PARTS`), read from the
+ * end: the date, then the label, then the unit — never the count. Predicted
+ * rather than measured, which is what a panel that owns its line heights does.
+ */
+function drawCountdownPage(
+  fb: Framebuffer,
+  m: EpaperMetrics,
+  box: Box,
+  days: number,
+  target: string,
+  config: Config,
+): void {
+  const gap = m.widget.linePad;
+  const label = asciiTitle(str(config, 'title') ?? '').trim();
+  const unit = unitWords(days, countdownWords(config));
+  const binderH = Math.max(6, Math.round(m.body.height * 0.75));
+
+  let withDate = true;
+  let withLabel = label !== '';
+  let withUnit = unit !== '';
+  const below = (): number =>
+    (withUnit ? m.small.height + gap : 0) +
+    (withDate ? m.small.height + gap * 2 + 1 : 0) +
+    (withLabel ? m.body.height + gap : 0);
+  const fits = (): boolean => box.h - binderH - gap - below() >= m.body.height;
+  if (!fits()) withDate = false;
+  if (!fits()) withLabel = false;
+  if (!fits()) withUnit = false;
+
+  const band = Math.min(binderH, box.h);
+  fb.fillRect(box.x, box.y, box.w, band);
+  // The binder's two holes, knocked out of the band.
+  const hole = Math.max(2, Math.round(band / 3));
+  for (const at of [0.28, 0.72]) {
+    fb.fillRect(box.x + Math.round(box.w * at) - Math.floor(hole / 2), box.y + Math.floor((band - hole) / 2), hole, hole, false);
+  }
+
+  let foot = box.y + box.h;
+  if (withLabel) {
+    foot -= m.body.height;
+    drawLines(fb, m, [label], { ...box, y: foot, h: m.body.height }, m.body, 'center');
+    foot -= gap;
+  }
+  if (withDate) {
+    foot -= m.small.height;
+    drawLines(fb, m, [panelTargetDate(target)], { ...box, y: foot, h: m.small.height }, m.small, 'center');
+    foot -= gap + 1;
+    fb.hLine(box.x, box.x + box.w - 1, foot);
+    foot -= gap;
+  }
+  if (withUnit) {
+    foot -= m.small.height;
+    drawLines(fb, m, [unit.toUpperCase()], { ...box, y: foot, h: m.small.height }, m.small, 'center');
+    foot -= gap;
+  }
+  const top = box.y + band + gap;
+  const room = Math.max(0, foot - top);
+  const rung = rungToFit(countBudget(days), box.w, tallerRung(m.body, shorterRung(scaleRung(m, 4.5), rungAtMost(room))));
+  const countY = top + Math.max(0, Math.floor((room - rung.height) / 2));
+  drawLines(fb, m, [days === 0 ? TODAY_WORDS : countDigits(days)], { ...box, y: countY, h: rung.height }, rung, 'center');
+}
+
+/**
+ * The boarding pass, still. The frame is the pass; inside it, the pass's head
+ * over a rule, the destination, the line "Departs in 12 days", a perforated
+ * rule, and the count on a board of filled tiles, each digit knocked out of
+ * its own and the board centred in the room left under the perforation.
+ *
+ * A short box gives up in the wall's order (`TICKET_PARTS`) from the end: the
+ * head, then the board with its perforation — never the destination or the
+ * line. On the day the line says "Today!" and there is no board: nothing is
+ * left to count.
+ */
+function drawCountdownTicket(fb: Framebuffer, m: EpaperMetrics, box: Box, days: number, config: Config): void {
+  const gap = m.widget.linePad;
+  const pad = Math.max(2, gap);
+  const dest = asciiTitle(str(config, 'title') ?? '').trim();
+  const line = ticketLine(days, countdownWords(config));
+  const destRung = rungToFit(dest, box.w, tallerRung(m.body, scaleRung(m, 1.5)));
+  const tileFloor = m.body.height + pad * 2;
+
+  let withHead = true;
+  let withBoard = days !== 0;
+  const text = (): number =>
+    (withHead ? m.small.height + gap * 2 + 1 : 0) + (dest !== '' ? destRung.height + gap : 0) + m.body.height;
+  const perforation = gap * 3 + 1;
+  if (withBoard && box.h - text() - perforation < tileFloor) withHead = false;
+  if (withBoard && box.h - text() - perforation < tileFloor) withBoard = false;
+
+  let y = box.y;
+  if (withHead) {
+    drawLines(fb, m, ['BOARDING PASS'], { ...box, y, h: m.small.height }, m.small, 'left');
+    y += m.small.height + gap;
+    fb.hLine(box.x, box.x + box.w - 1, y);
+    y += gap + 1;
+  }
+  if (dest !== '') {
+    drawLines(fb, m, [dest], { ...box, y, h: destRung.height }, destRung, 'left');
+    y += destRung.height + gap;
+  }
+  drawLines(fb, m, [line], { ...box, y, h: m.body.height }, m.body, 'left');
+  y += m.body.height;
+  if (!withBoard) return;
+
+  // The perforation: a dashed rule across the pass.
+  y += gap;
+  const dash = Math.max(2, pad);
+  for (let x = box.x; x < box.x + box.w; x += dash * 2) fb.hLine(x, Math.min(box.x + box.w - 1, x + dash - 1), y);
+  y += gap * 2 + 1;
+
+  const room = Math.max(0, box.y + box.h - y);
+  const digits = countDigits(days).split('');
+  const tallest = tallerRung(m.body, shorterRung(scaleRung(m, 3), rungAtMost(Math.max(0, room - pad * 2))));
+  // Stepped against three figures, the refresh contract's budget: the board is
+  // the same size at 12 and at 345, so only the ink inside it changes.
+  const tileOf = (rung: TypeRung): number => measureText('0', { rung }) + pad * 2;
+  let rung = tallest;
+  while (rung.index > 0 && tileOf(rung) * 3 + gap * 2 > box.w) rung = rungStep(rung, -1);
+  const w = tileOf(rung);
+  const h = rung.height + pad * 2;
+  const top = y + Math.max(0, Math.floor((room - h) / 2));
+  digits.forEach((digit, index) => {
+    const x = box.x + index * (w + gap * 2);
+    fb.fillRect(x, top, w, h);
+    drawText(fb, x + pad, top + pad, digit, { rung, ink: false });
+  });
 }
 
 /**
