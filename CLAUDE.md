@@ -8673,7 +8673,90 @@ over 238. Measured with `pnpm test` and a real Chromium, on a clone whose tags
 had been fetched, **before `main`'s weather looks were merged in**, so it sits
 beside their 4212 as a count of a different tree. Against the 4143 over 296
 that branch started from, it is one test and no file: the probe's own test, in
-a file that already existed.
+a file that already existed. **Measured again on the merged tree: 4213
+passing, 1 skipped and 2 expected failures, over 301 files**: calendar 153
+over 10 · core 314 over 9 · display 736 over 41 · server 3010 over 241. That
+is the weather looks' 4212 plus the probe's test.
+
+**On CI the change shows in the file and not in the shard.** Against `main`'s
+run just before it, both on four shards with the weather looks in,
+`browser-editor` went from 91.8s to 71.6s on the runner. Shard 1 as a whole
+went from 159s to 180s. Every other heavy file in that shard got slower too
+(`browser-month-grid` 40.8s to 48.3s, `browser-inspector` 24.8s to 32.1s),
+and so did the shard's import time, 71s to 98s, which no change to a test can
+touch. That is a slower runner, and it hides the gain. One run against one is
+noise, as the Commands section says.
+
+**`loadWallSettled` loads a wall once now, and checks on every load that the
+fonts were in.** It used to load each wall and then reload it. The reload was
+the proof: the second load had the fonts in the HTTP cache. That was needed
+while the manifest hold was a fixed 750ms. The hold now waits for every face
+to load (`faces`), so the first draw already has them, and the reload was
+about 0.8s of CPU out of 1.9s per wall, measured across the whole machine.
+This helper is how most of the suite's browser files load a wall, and a CI
+shard's time is set by CPU.
+
+The proof is now a check rather than an inference. An init script records
+each face's status when the wall first draws a canvas, and the helper throws
+if any face was still loading or unloaded. `browser-font-race` gains a test
+that holds the font files for three seconds on a cold context and requires the
+first draw to have them. With the hold's wait removed, it goes red and names
+every face that was not in.
+
+**The check's first version was wrong on a wall with a household CSS block,
+and CI found it.** It read the faces from a `MutationObserver`, which reports
+after the whole draw. The draw that builds the first canvas ends with
+`customCss.apply` inserting rules into `display.css`'s own sheet. Editing a
+sheet that holds `@font-face` rules makes Chromium rebuild those faces, and a
+rebuilt face reads `unloaded` until the next style pass. So three tests on two
+shards failed the check after draws whose tiers had been measured with every
+face loaded: `reflow-stability`'s colours-only wall and two in
+`browser-custom-css`. The reading is now taken at the first `insertRule` or
+`deleteRule` while a canvas is on the page, or at the first canvas mutation,
+whichever comes first. The tiers are measured inside `renderFreeform`, before
+that edit, in the same task. Whether a household ever sees the rebuild (one
+frame in a fallback face when a block is first applied) has not been measured.
+
+**Measured locally, as CI's shards on one four-core machine** (three workers,
+one Chromium each):
+
+- Shard 1: 130.3s to 116.1s, and summed test time 309.5s to 266.4s.
+  `browser-month-grid` 35.4s to 19.1s, `browser-widget-shadow` 29.6s to
+  18.4s, `browser-month-spans` 27.9s to 16.3s. `browser-editor` does not use
+  the helper and did not move.
+- Shard 3: 127.6s to 96.8s, and summed test time 294.1s to 206.1s.
+  `browser-density-tiers` 37.0s to 20.5s, `browser-canvas-gutter` 33.9s to
+  18.2s, `browser-clock-variants` 33.3s to 18.5s, `browser-weather-range`
+  30.8s to 15.9s, `wall-density` 29.5s to 16.2s,
+  `browser-classic-proportions` 18.0s to 10.1s.
+
+The heaviest file left in shard 3 is `browser-admin`, at 37s, which the helper
+does not touch. About two dozen of its tests each build a fresh installation
+and sign in through the form, which is a sign-up and a sign-in, each a
+password hash. That is the next lever.
+
+**On CI the slowest shard fell by about 17 seconds, and that is within this
+page's own noise.** Server shard steps on four runners, two runs each:
+
+| run | shard 1 | shard 2 | shard 3 | shard 4 | end to end |
+|---|---|---|---|---|---|
+| `main` after the weather looks | 159s | 117s | 186s | 125s | 3m59s |
+| `main` after `browser-editor` | 177s | 116s | 139s | 119s | 3m46s |
+| this change | 162s | 104s | 150s | 83s | 3m30s |
+| this change, CLAUDE.md commit | 166s | 101s | 148s | 121s | 3m34s |
+
+The slowest shard averages 164s against 182s, and end to end is about 3m32s
+against 3m53s. The Commands section records three shards varying by 46s from
+one run to the next, so two runs each way is a direction and not a verdict.
+The local full runs on one machine say the same, one run each: the server
+suite took 369.8s against 445.8s for `main`'s count above, and its summed test
+time fell from 1077s to 856s.
+
+**4214 tests passing, 1 skipped and 2 expected failures, over 301 files**:
+calendar 153 over 10 · core 314 over 9 · display 736 over 41 · server 3011
+over 241. Measured with `pnpm test` and a real Chromium, on a clone whose tags
+had been fetched. Against the 4213 above it is one test and no file: the
+font-race test that holds the fonts back, in a file that already existed.
 
 ---
 
