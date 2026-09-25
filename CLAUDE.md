@@ -9001,17 +9001,32 @@ unproven where it counts:** nobody has watched confetti on a kitchen tablet, or
 a page tear off at a real midnight, and no panel has been photographed drawing a
 boarding pass.
 
-**4307 tests passing, 1 skipped and 2 expected failures, over 307 files**:
-calendar 153 over 10 · core 314 over 9 · display 753 over 42 · server 3087
-over 246. Measured with `pnpm test` and a real Chromium, on a clone whose tags
-had been fetched, after `main`'s #298 was merged in. Against the 4214 over 301
-above it is +93 and +6 files, and it reconciles file by file rather than by
-arithmetic. The display's +17 is `countdown.test.ts`'s 14, plus 3 that
-`motion.test.ts` generates for the three modules the wall now reaches
-(`countdown`, `countdown-looks` and `emoji`, which S11 shipped and nothing on
-the wall imported until now). The server's +76 is five new files of 73, two
-tests in `layout-save`, and one more that `motion-scope` generates. Nobody
-writes those generated tests, which is how an incrementer misses them.
+**4393 tests passing and 1 skipped, over 312 files**: calendar 153 over 10 ·
+core 314 over 9 · display 808 over 44 · server 3118 over 249. Measured with
+`pnpm test` and a real Chromium, on a clone whose tags had been fetched, after
+`main`'s #299 was merged in. Against its 4301 over 306 just above it is +92 and
++6 files, and it reconciles file by file rather than by arithmetic:
+
+- The display's +16 is `countdown.test.ts`'s 14, plus 2 that `motion.test.ts`
+  generates for the two modules the wall now reaches, `countdown` and
+  `countdown-looks`. (`emoji` would have been a third, but #299's playful look
+  had already brought it into the graph.)
+- The server's +76 is five new files of 73, two tests in `layout-save`, and one
+  more that `motion-scope` generates.
+
+Nobody writes those generated tests, which is how an incrementer misses them.
+
+**The merge found `main` red, and the fix is in this change.**
+`browser-weather-today` failed on a clean `main` on every run. `loadWallSettled`'s
+`patchManifest` answered with `x-server-time: Date.now()`, the runner's own
+clock, and the wall takes its clock from that header — so every patched load
+moved the wall off `HARNESS_HOUR` to whatever hour the runner read. At 23:03 in
+London the card's current reading, observed at 10:50 on the pinned clock, was
+twelve hours stale and dropped, and the card drew the day's sky instead of the
+rain the test handed it. It passes the server's own header through now. Green
+with the fix, red with it reverted, and the other three files that patch a
+manifest pass either way. This is the `HARNESS_HOUR` fault a fourth time: a
+test that reads a clock passes in the hours the clock happens to agree.
 
 
 ---
