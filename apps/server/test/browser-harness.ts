@@ -1193,13 +1193,23 @@ async function faces(page: Page): Promise<void> {
  * `applyMonthTier` and the widget tier pass (`render.ts`) measure the drawn
  * face as they run, so a draw that beats the webfont resolves its rungs against
  * fallback metrics — which measured anywhere from 2 to 13 named month cells
- * across runs of the identical wall. Holding the manifest back gives the page
- * time to fetch its fonts, and the reload is what proves it: the second load
- * has them in the HTTP cache, which is the steady state a wall that has been
- * hanging for a while is actually in, and it is repeatable. See
- * `browser-font-race.test.ts`, which asserts the half of this that is now
- * structural — the wall's *geometry* is identical either way, and only how many
- * things it names can move.
+ * across runs of the identical wall. So the manifest is held back until every
+ * face `display.css` declares has loaded, and the helper then **checks that it
+ * worked**: an init script records each face's status at the moment the wall
+ * first draws a canvas, and a face still loading then is a thrown error rather
+ * than a measurement of a different wall. See `browser-font-race.test.ts`,
+ * which forces the fonts to arrive late and holds this helper to that, and
+ * which asserts the half of this that is structural — the wall's *geometry* is
+ * identical either way, and only how many things it names can move.
+ *
+ * **One load, not two.** It used to load the wall and then reload it, on the
+ * argument that the second load has its fonts in the HTTP cache and so proves
+ * the settle. That was right while the hold was a fixed 750ms, which could be
+ * shorter than the fonts, and it stopped being needed when the hold became the
+ * faces themselves: the first draw already has them, and the self-check above
+ * is the proof, taken on every call rather than inferred from a reload.
+ * Measured, the reload was half the helper's cost — about 0.8s of CPU of 1.9s
+ * per wall — on runners where CPU is what decides how long a shard takes.
  *
  * Extracted from `browser-classic-proportions.test.ts`'s `measureWallBoxes`,
  * which had this inline — every file measuring a real drawn wall needs the
@@ -1246,6 +1256,13 @@ export async function loadWallSettled(
      * interval, and the settle below is the whole value of this helper.
      */
     readonly clock?: 'installed';
+    /**
+     * Prepare the context before the wall is loaded into it — a route, most
+     * often. Here for the same reason `clock` is: a context this helper made
+     * is the only one its settle applies to. `browser-font-race.test.ts` uses
+     * it to make the fonts late, which is how the settle is tested at all.
+     */
+    readonly beforeLoad?: (context: BrowserContext) => Promise<unknown>;
   } = {},
 ): Promise<{ readonly page: Page; readonly context: BrowserContext; readonly close: () => Promise<void> }> {
   const context = await (await browser()).newContext({
@@ -1253,6 +1270,8 @@ export async function loadWallSettled(
     ...(options.locale !== undefined ? { locale: options.locale } : {}),
   });
   if (options.clock === 'installed') await context.clock.install();
+  await context.addInitScript(recordFirstDrawFonts);
+  if (options.beforeLoad !== undefined) await options.beforeLoad(context);
   const page: Page = await context.newPage();
   /*
    * **Every** manifest is held, not only the first, and that is a correction
@@ -1319,13 +1338,72 @@ export async function loadWallSettled(
   await page.goto(link, { waitUntil: 'load' });
   await first;
   await settleWall(page);
-  const second = page.waitForResponse((response) => response.url().includes('/d/manifest'), {
-    timeout: 30_000,
-  });
-  await page.reload({ waitUntil: 'load' });
-  await second;
-  await settleWall(page);
+  const late = (await page.evaluate(() => (window as unknown as FirstDrawWindow).__mwFirstDrawFonts)) ?? [];
+  const unready = late.filter((face) => face.status === 'loading' || face.status === 'unloaded');
+  if (late.length === 0 || unready.length > 0) {
+    await context.close();
+    throw new Error(
+      late.length === 0
+        ? 'loadWallSettled saw no face at the first draw, so it cannot say the fonts were in'
+        : `the wall drew before its fonts had loaded, so this is not a settled wall: ` +
+            unready.map((face) => `${face.family} ${face.status}`).join(', '),
+    );
+  }
   return { page, context, close: (): Promise<void> => context.close() };
+}
+
+/** What `recordFirstDrawFonts` leaves on the page for `loadWallSettled` to read. */
+interface FirstDrawWindow {
+  __mwFirstDrawFonts?: { readonly family: string; readonly status: string }[];
+}
+
+/**
+ * An init script: the status of every face at the moment the wall's first
+ * canvas is drawn.
+ *
+ * Read once the settle is over rather than asked then, because by then every
+ * face has loaded either way — the question is whether they had when the wall
+ * chose its forms. The canvas is what the first *data* draw builds: a fresh
+ * context has no stored manifest to draw from, so nothing reaches
+ * `#wall .canvas` before the held manifest is released.
+ *
+ * **Taken before the household's CSS goes on, and that is what the stylesheet
+ * hook is for.** A mutation observer reports after the whole draw, and the
+ * draw that builds the first canvas ends by inserting the household's rules
+ * into `display.css`'s own sheet (`customCss.apply`). Editing that sheet makes
+ * Chromium rebuild its `@font-face` objects, and a rebuilt face reads
+ * `unloaded` until the next style pass asks for it again, from the memory
+ * cache. So on a wall with a household block, an observer alone saw every face
+ * `unloaded` after a draw whose tiers had been measured with every face in.
+ * The first edit to a sheet while a canvas is on the page is therefore the
+ * other moment the reading is taken, whichever comes first: the tiers are
+ * measured inside `renderFreeform`, before that edit, in the same task.
+ */
+function recordFirstDrawFonts(): void {
+  let recorded = false;
+  const record = (): boolean => {
+    if (recorded) return true;
+    if (document.querySelector('#wall .canvas') === null) return false;
+    const faces: { family: string; status: string }[] = [];
+    document.fonts.forEach((face) => faces.push({ family: face.family, status: face.status }));
+    (window as unknown as FirstDrawWindow).__mwFirstDrawFonts = faces;
+    recorded = true;
+    return true;
+  };
+  for (const method of ['insertRule', 'deleteRule'] as const) {
+    const original = CSSStyleSheet.prototype[method] as (...args: unknown[]) => unknown;
+    (CSSStyleSheet.prototype as unknown as Record<string, unknown>)[method] = function (
+      this: CSSStyleSheet,
+      ...args: unknown[]
+    ): unknown {
+      record();
+      return original.apply(this, args);
+    };
+  }
+  const observer = new MutationObserver(() => {
+    if (record()) observer.disconnect();
+  });
+  observer.observe(document, { childList: true, subtree: true });
 }
 
 // ---------------------------------------------------------------------------
