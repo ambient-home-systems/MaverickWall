@@ -1312,10 +1312,22 @@ export async function loadWallSettled(
     /*
      * Answered without the ETag it came with, so the wall never gets a 304
      * carrying the *unpatched* body back on the next poll.
+     *
+     * **With the server's own `x-server-time`, never the runner's.** The wall
+     * takes its clock from this header on every poll, and the installation's
+     * clock is pinned to `HARNESS_HOUR`; stamping `Date.now()` here moved the
+     * wall to whatever hour the runner happened to read. Measured: at 23:03 in
+     * London a `today` card's current reading, observed at 10:50 on the pinned
+     * clock, read as twelve hours stale and was dropped — so
+     * `browser-weather-today` drew the day's sky in place of the rain it was
+     * handed, on every run outside the couple of hours around eleven.
      */
     await route.fulfill({
       status: 200,
-      headers: { 'content-type': 'application/json', 'x-server-time': String(Date.now()) },
+      headers: {
+        'content-type': 'application/json',
+        'x-server-time': response.headers()['x-server-time'] ?? String(Date.now()),
+      },
       body: JSON.stringify(body),
     });
   });
