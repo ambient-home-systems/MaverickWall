@@ -1,5 +1,6 @@
 import type {
   ChoreItemModel,
+  WeatherDayModel,
   DayModel,
   DisplayModel,
   EventModel,
@@ -19,7 +20,7 @@ import {
 import { agendaTimeFitsBeside, weekColumnsFit } from './density.js';
 import type { PanelData, PanelReading } from './viewmodel.js';
 import type { ManifestWidget, CanvasBackground } from './manifest.js';
-import { glyphNode } from './glyphs.js';
+import { glyphNode, glyphPartsNode } from './glyphs.js';
 import { MOTION_FIXTURE_TYPE, renderMotionFixture } from './motion-fixture.js';
 import { variantOf } from './variants.js';
 import { boxRect, gutterStepFor } from './gutter.js';
@@ -62,16 +63,29 @@ import {
 } from './tiers.js';
 import {
   WEATHER_COLUMN_CH,
+  WEATHER_STYLE_TIERS,
   WIDGET_TIERS,
   columnsAt,
+  rangeColumnsAt,
   itemsAt,
   rungsAt,
   rungsByPriority,
   shiftBadgesToLines,
   stackedItemHeight,
   widgetTierFor,
+  type RangeColumn,
   type WidgetTier,
 } from './widget-tiers.js';
+import {
+  barSpan,
+  rampGradient,
+  rampWithin,
+  scalePercent,
+  tempTone,
+  unitOf,
+  weekScale,
+  type TempUnit,
+} from './weather-scale.js';
 
 /**
  * The DOM, and no decisions.
@@ -334,8 +348,26 @@ const WEATHER_ROW_CLASS: Readonly<Record<WeatherField, string>> = {
 function weatherColumn(
   rows: readonly { readonly field: WeatherField; readonly text: string }[],
   paired: boolean,
+  tint?: { readonly day: WeatherDayModel; readonly unit: TempUnit },
 ): HTMLElement {
   const cell = el('div', 'wx-day');
+  /*
+   * The `colour` look's one difference from the strip, row by row: a
+   * temperature carries the tone of the stop nearest it, which the stylesheet
+   * turns into a colour. Stamped as data rather than as a class so the tone
+   * is read back off the page by name, and never on a day with no number —
+   * an em dash is not a temperature and is not tinted as one.
+   */
+  const toneOf = (field: WeatherField): string | undefined => {
+    if (tint === undefined) return undefined;
+    const value = field === 'high' ? tint.day.highValue : field === 'low' ? tint.day.lowValue : undefined;
+    return value === undefined ? undefined : tempTone(value, tint.unit);
+  };
+  const toned = (node: HTMLElement, field: WeatherField): HTMLElement => {
+    const tone = toneOf(field);
+    if (tone !== undefined) node.setAttribute('data-tone', tone);
+    return node;
+  };
   for (let index = 0; index < rows.length; index++) {
     const row = rows[index]!;
     const next = rows[index + 1];
@@ -346,8 +378,17 @@ function weatherColumn(
       // fields back by name, and counting rows here would call the second of
       // the pair given up while it is on the glass.
       temp.setAttribute('data-field', `${row.field} ${next.field}`);
-      temp.appendChild(document.createTextNode(`${row.text} `));
-      temp.appendChild(el('span', 'lo', next.text));
+      if (tint === undefined) {
+        temp.appendChild(document.createTextNode(`${row.text} `));
+      } else {
+        // Each half of the pair takes its own tone, so the first is a span
+        // too; the space between them stays a text node, as the strip's is.
+        temp.appendChild(toned(el('span', 'wx-hi', row.text), row.field));
+        temp.appendChild(document.createTextNode(' '));
+      }
+      // The second of the pair is `.lo` whichever field it is, as it is on the
+      // strip — the look adds tones and moves nothing else.
+      temp.appendChild(toned(el('span', 'lo', next.text), next.field));
       cell.appendChild(temp);
       index++;
       continue;
@@ -364,7 +405,7 @@ function weatherColumn(
      * the one that matters if the first is ever loosened.
      */
     if (row.field === 'icon') {
-      const glyph = glyphNode(row.text, `${WEATHER_ROW_CLASS[row.field]} gl`);
+      const glyph = (tint === undefined ? glyphNode : glyphPartsNode)(row.text, `${WEATHER_ROW_CLASS[row.field]} gl`);
       if (glyph !== null) {
         glyph.setAttribute('data-field', row.field);
         cell.appendChild(glyph);
@@ -375,7 +416,7 @@ function weatherColumn(
     // beside the high: its emphasis is a property of the field, not of whether
     // the household happened to put it next to something.
     const cls = row.field === 'low' ? `${WEATHER_ROW_CLASS[row.field]} lo` : WEATHER_ROW_CLASS[row.field];
-    const line = el('div', cls, row.text);
+    const line = toned(el('div', cls, row.text), row.field);
     line.setAttribute('data-field', row.field);
     cell.appendChild(line);
   }
@@ -389,22 +430,145 @@ function renderWeather(
 ): HTMLElement | undefined {
   const view = weatherWidgetView(model.weather, config);
   if (view.days.length === 0) return undefined;
+  /*
+   * A designed look (plan item P5.1). `range` is a different drawing and has
+   * its own function; `colour` is the strip with its tones on, so it goes
+   * through the strip's own column builder and differs from it only where it
+   * means to. `today` and `playful` are not designed yet and draw the strip,
+   * exactly as they did before this.
+   */
+  const variant = variantOf('weather', config);
+  if (variant === 'range') return renderWeatherRange(model, view.days, RANGE_ALL);
 
   const paired = pairsTemperatures(ladder);
-  const strip = el('section', 'wx');
+  const colour = variant === 'colour';
+  const unit = unitOf(view.days, model.weatherUnits?.temp);
+  const strip = el('section', colour ? 'wx wx-colour' : 'wx');
   for (const day of view.days) {
     const rows = ladderRows(
       ladder,
       { name: day.name, icon: day.glyph ?? '', high: day.high, low: day.low },
       WEATHER_ROLES,
     );
-    strip.appendChild(weatherColumn(rows, paired));
+    strip.appendChild(weatherColumn(rows, paired, colour ? { day, unit } : undefined));
   }
 
   if (model.weatherNote !== undefined) {
     strip.appendChild(el('div', 'wx-note', model.weatherNote));
   }
   return strip;
+}
+
+/** Every column of a `range` row: what the first draw asks for, before the box is asked. */
+const RANGE_ALL: readonly RangeColumn[] = ['bar', 'low', 'high', 'glyph', 'rain'];
+
+/**
+ * The `range` forecast (plan item P5.1, "iOS 10-day"): a row per day — its
+ * name, its glyph, its rain chance, its low, a bar from the low to the high on
+ * the week's own scale, and its high.
+ *
+ * **Each row is a grid of its own with the same columns**, so the tier pass can
+ * give up rows by whole rows (`beltItems`) the way every other list does. The
+ * columns line up because the tier pass measures the widest name and the
+ * widest temperature and writes them back as the widths every row uses
+ * (`--wr-name-w`, `--wr-temp-w`); before it has, each row sizes to itself.
+ *
+ * **The bar is one ramp in a window.** Every row carries the same ramp, as wide
+ * as the whole track, with its four stops placed where the anchors fall on
+ * this week (`weather-scale.ts`); the window is the day's low-to-high. So a
+ * temperature is one colour on every row, and the colour is absolute — a
+ * freezing week is blue however its days compare with each other.
+ *
+ * A column the tier gave up is not drawn at all, and a column no drawn day has
+ * anything for (a provider with no rain chance) is not drawn either — an empty
+ * track down the middle of a list is room spent on nothing. A day that lacks a
+ * glyph or a rain chance where others have one keeps an empty cell, so its
+ * numbers stay under everybody else's.
+ */
+function renderWeatherRange(
+  model: DisplayModel,
+  week: readonly WeatherDayModel[],
+  columns: readonly RangeColumn[],
+  rows = week.length,
+): HTMLElement {
+  const section = el('section', 'wx-range');
+  const days = week.slice(0, rows);
+  const unit = unitOf(week, model.weatherUnits?.temp);
+  const current = model.weatherCurrent;
+  /*
+   * The scale is the whole forecast the widget shows, never only the rows its
+   * box has room for: a shorter box draws fewer days, and redrawing the ones
+   * it keeps on a different scale would move every bar for a reason that has
+   * nothing to do with the weather.
+   */
+  const scale = weekScale(week, current?.tempValue);
+  const glyphs = columns.includes('glyph');
+  const rain = columns.includes('rain') && days.some((day) => day.precipChance !== undefined);
+  const todayDate = model.today?.date;
+  // One template for every row, so the columns line up once the tier pass has
+  // written the widths back; until it has, each width is the row's own.
+  const template = [
+    'var(--wr-name-w, max-content)',
+    ...(glyphs ? ['1.3em'] : []),
+    ...(rain ? ['var(--wr-rain-w, max-content)'] : []),
+    'var(--wr-temp-w, max-content)',
+    // No floor of its own: `RANGE_TIERS` gives any box that reaches T0 4ch of
+    // bar, and in a box below the table's floor the bar is what gets shorter —
+    // measured, a 1.5em minimum pushed the high past the box's edge at a
+    // quarter of a 1080px wall, and a cut number is worse than a short bar.
+    'minmax(0, 1fr)',
+    'var(--wr-temp-w, max-content)',
+  ];
+  section.style.setProperty('--wr-cols', template.join(' '));
+
+  days.forEach((day, index) => {
+    const row = el('div', 'wr-row');
+    row.appendChild(el('span', 'wr-name', day.name));
+    if (glyphs) {
+      const glyph = glyphNode(day.glyph, 'wr-ico gl');
+      row.appendChild(glyph ?? el('span', 'wr-ico'));
+    }
+    if (rain) {
+      row.appendChild(el('span', 'wr-rain', day.precipChance === undefined ? '' : `${day.precipChance}%`));
+    }
+    row.appendChild(el('span', 'wr-temp wr-lo', rangeDegrees(day.lowValue)));
+    const bar = el('span', 'wr-bar');
+    const span = scale === undefined ? undefined : barSpan(scale, day.lowValue, day.highValue);
+    if (scale !== undefined && span !== undefined) {
+      const fill = el('span', 'wr-fill');
+      fill.style.left = `${span.left}%`;
+      fill.style.width = `${span.width}%`;
+      const ramp = el('span', 'wr-ramp');
+      const within = rampWithin(span);
+      ramp.style.left = `${within.left}%`;
+      ramp.style.width = `${within.width}%`;
+      ramp.style.backgroundImage = rampGradient(scale, unit);
+      fill.appendChild(ramp);
+      bar.appendChild(fill);
+    }
+    /*
+     * Where it is now, on today's bar alone — the first day, and only when it
+     * is today by date (or carries none, which is a cache older than dates).
+     * The scale already reaches the reading, so the dot is never off the end.
+     */
+    if (index === 0 && scale !== undefined && current !== undefined &&
+        (day.date === undefined || day.date === todayDate)) {
+      const dot = el('span', 'wr-now');
+      dot.style.left = `${scalePercent(scale, current.tempValue)}%`;
+      bar.appendChild(dot);
+    }
+    row.appendChild(bar);
+    row.appendChild(el('span', 'wr-temp wr-hi', rangeDegrees(day.highValue)));
+    section.appendChild(row);
+  });
+
+  if (model.weatherNote !== undefined) section.appendChild(el('div', 'wx-note', model.weatherNote));
+  return section;
+}
+
+/** A temperature with no unit on it — the bar says which end is which, as iOS's does. */
+function rangeDegrees(value: number | undefined): string {
+  return value === undefined ? '—' : `${Math.round(value)}°`;
 }
 
 /* -------------------------------------------------------------- HOUSE ---- */
@@ -2110,8 +2274,14 @@ function applyWidgetTiers(
   mediaBase: string,
 ): void {
   for (const entry of entries) {
-    const table = WIDGET_TIERS[entry.widget.type];
-    const primary = WIDGET_PRIMARY[entry.widget.type];
+    /*
+     * A forecast's table and primary run depend on its look (plan item P5.1):
+     * `range` is rows of a different markup with its own table, and `colour`
+     * is the strip's markup with a larger glyph and so its own table too.
+     */
+    const look = entry.widget.type === 'weather' ? variantOf('weather', entry.widget.config) : undefined;
+    const table = look !== undefined ? (WEATHER_STYLE_TIERS[look] ?? WIDGET_TIERS['weather']) : WIDGET_TIERS[entry.widget.type];
+    const primary = look === 'range' ? RANGE_PRIMARY : WIDGET_PRIMARY[entry.widget.type];
     if (table === undefined || primary === undefined) {
       // Not one of the six. It still may not be cut through a row.
       beltGenericRows(entry);
@@ -2125,7 +2295,8 @@ function applyWidgetTiers(
 
     switch (entry.widget.type) {
       case 'weather':
-        tierWeather(entry, model, table, inner, chPx, emPx);
+        if (look === 'range') tierRange(entry, model, table, inner, chPx, emPx);
+        else tierWeather(entry, model, table, inner, chPx, emPx);
         break;
       case 'shift':
         tierShift(entry, model, table, inner, chPx, emPx);
@@ -2215,6 +2386,80 @@ function tierWeather(
   for (const column of [...entry.body.querySelectorAll('.wx-day')] as HTMLElement[]) {
     beltItems(entry.box, [...column.children] as HTMLElement[]);
   }
+}
+
+/** The `range` look's primary run: its temperatures, as the strip's is. */
+const RANGE_PRIMARY = { cls: 'wr-temp', host: '.wr-row' } as const;
+
+/**
+ * The `range` forecast: how many days, and how much each row says.
+ *
+ * **Height buys days and width buys columns**, the strip's shape turned on its
+ * side. The width is asked *beside the widest name* (`RANGE_TIERS` says why:
+ * a provider's own word for a day is never cut), so the first draw's names are
+ * measured before anything is decided — each row sized itself to its own
+ * content on that draw, so a name's cell is exactly its width.
+ *
+ * Then the rows are drawn once more with the columns the tier kept and the
+ * days the box holds, the widest name and temperature are written back as the
+ * widths every row shares so the columns line up, and the one belt runs over
+ * whole rows. What one row costs is read off the drawn row, never declared —
+ * the rule every table in `widget-tiers.ts` states.
+ */
+function tierRange(
+  entry: TieredWidget,
+  model: DisplayModel,
+  table: readonly WidgetTier[],
+  inner: { readonly w: number; readonly h: number },
+  chPx: number,
+  emPx: number,
+): void {
+  const config = widgetConfig(entry.widget.config);
+  const view = weatherWidgetView(model.weather, config);
+  const firstRows = [...entry.body.querySelectorAll('.wr-row')] as HTMLElement[];
+  if (firstRows.length === 0 || view.days.length === 0) return;
+  const nameW = widest(entry.body, '.wr-name');
+  const gap = parseFloat(getComputedStyle(firstRows[0] as HTMLElement).columnGap) || 0;
+  const tier = widgetTierFor(table, Math.max(0, inner.w - nameW - gap), inner.h, chPx, emPx);
+  const columns = rangeColumnsAt(tier);
+
+  // One row's pitch — its height and the room between two — off the drawn rows.
+  const pitch = firstRows.length > 1
+    ? (firstRows[1] as HTMLElement).offsetTop - (firstRows[0] as HTMLElement).offsetTop
+    : (firstRows[0] as HTMLElement).offsetHeight;
+  const rowH = (firstRows[0] as HTMLElement).offsetHeight;
+  // The section's top padding is room no row is drawn in — measured, leaving
+  // it in put a third row past the foot of Classic's forecast box at
+  // 1080x1920, and the belt took it off the glass. Its *bottom* padding is not
+  // charged: the belt measures a row against the box's foot, so the last row
+  // may end in it, and charging it cost 1920x1080 a day that fits.
+  const room = inner.h - parseFloat(getComputedStyle(entry.body).paddingTop);
+  const capacity = pitch > 0 ? Math.floor((room - rowH) / pitch + 1 + 0.001) : Infinity;
+  const days = Math.min(view.days.length, itemsAt(tier, capacity));
+
+  replaceBody(entry, renderWeatherRange(model, view.days, columns, days));
+  const section = entry.body;
+  section.style.setProperty('--wr-name-w', `${widest(section, '.wr-name')}px`);
+  section.style.setProperty('--wr-temp-w', `${widest(section, '.wr-temp')}px`);
+  const rain = section.querySelector('.wr-rain');
+  if (rain !== null) section.style.setProperty('--wr-rain-w', `${widest(section, '.wr-rain')}px`);
+  const rows = [...section.querySelectorAll('.wr-row')] as HTMLElement[];
+  beltItems(entry.box, rows);
+  stampRungs(entry.box, columns);
+  stampTier(entry.box, tier, rows.filter((row) => row.style.display !== 'none').length);
+}
+
+/**
+ * The widest drawn run of one class, in the cascade's own pixels — `offsetWidth`,
+ * untransformed, for `typeMetrics`' reason. Rounded up, so a column set to it
+ * never clips its own widest word by a subpixel.
+ */
+function widest(root: HTMLElement, selector: string): number {
+  let most = 0;
+  for (const node of Array.from(root.querySelectorAll(selector)) as HTMLElement[]) {
+    most = Math.max(most, node.offsetWidth);
+  }
+  return Math.ceil(most);
 }
 
 /**

@@ -273,6 +273,19 @@ export interface WeatherDayModel {
   readonly high: string;
   readonly low: string;
   /**
+   * The same two temperatures as numbers, in the unit below, or undefined
+   * where the strip draws an em dash (plan item P5.1).
+   *
+   * The strip has only ever needed the formatted strings. The `range` style
+   * draws a bar from the low to the high on the week's own scale, and the
+   * `colour` style tints each on the temperature scale, and neither can be
+   * worked out of "13°C" without parsing a string this file wrote.
+   */
+  readonly highValue: number | undefined;
+  readonly lowValue: number | undefined;
+  /** The scale those numbers are in — `F` or `C` — when the day said. */
+  readonly tempUnit: 'F' | 'C' | undefined;
+  /**
    * The civil date this covers, or absent when the provider did not say — and
    * absent for a forecast cached by a server older than this field, which is
    * why nothing may assume it. Only the join uses it; the strip still labels
@@ -319,6 +332,8 @@ export interface CurrentWeatherModel {
   readonly source: 'observed' | 'modelled';
   /** Formatted as a day's high is: "54°". */
   readonly temp: string;
+  /** The same reading as a number, in the panel's units, for a style that places it on a scale. */
+  readonly tempValue: number;
   readonly feelsLike: string | undefined;
   readonly condition: string | undefined;
   readonly glyph: GlyphKey | undefined;
@@ -1041,6 +1056,9 @@ export function weatherFrom(panel: unknown, now?: number): {
       // The unit rides on the low so the row reads "84° 69°F" rather than
       // repeating itself five times across the strip.
       low: `${degrees(day['low'])}${unit === '' ? '' : unit}`,
+      highValue: finite(day['high']),
+      lowValue: finite(day['low']),
+      tempUnit: unit === 'F' || unit === 'C' ? unit : undefined,
       // A cached forecast written before this field existed has no date, and a
       // provider can decline to give one. Both mean "cannot be joined", never
       // "join it to whatever is nearest".
@@ -1073,6 +1091,11 @@ export function weatherFrom(panel: unknown, now?: number): {
 /** A temperature as the strip writes one, or an em dash. */
 function degrees(value: unknown): string {
   return typeof value === 'number' && Number.isFinite(value) ? `${Math.round(value)}°` : '—';
+}
+
+/** A finite number of either sign, or undefined — a temperature can be below zero. */
+function finite(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
 /** A non-negative number, or undefined. */
@@ -1122,6 +1145,7 @@ function currentFrom(value: unknown, now: number | undefined): CurrentWeatherMod
     observedAt,
     source,
     temp: degrees(c['temp']),
+    tempValue: c['temp'],
     feelsLike: typeof c['feelsLike'] === 'number' && Number.isFinite(c['feelsLike']) ? degrees(c['feelsLike']) : undefined,
     condition: text(c['condition'], 60),
     glyph: isGlyphKey(c['glyph']) ? c['glyph'] : undefined,

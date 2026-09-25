@@ -819,6 +819,145 @@ body {
   text-align: center;
 }
 
+/*
+ * The `colour` forecast (plan item P5.1): the strip, painted.
+ *
+ * Every rule is scoped under `.wx-colour`, so the strip every other wall draws
+ * is untouched to the pixel — Classic's forecast is the strip, and its
+ * ratchets are the check. On a measured wall the runs take their roles (the
+ * temperature the event's, the low the time's, the name the scaffold's), so a
+ * colour strip is legible at the same angle as the agenda beside it; on an
+ * unmeasured wall each role's fallback is the strip's own rem, so the two draw
+ * the same geometry and differ only in colour and the glyph.
+ *
+ * The glyph is 1.4x the temperature where the strip's is 1.18x: a two-tone sky
+ * is two objects in one mark, and at the strip's size the smaller is a speck of
+ * a second colour. `COLOUR_TIERS` pays for the height.
+ */
+.wx-colour .wx-name { font-size: var(--t-wall-scaffold, 1.25rem); }
+.wx-colour .wx-temp { font-size: var(--t-wall-event, 1.7rem); }
+.wx-colour .wx-temp.lo { font-size: var(--t-wall-time, 1.3rem); }
+.wx-colour .wx-ico {
+  width: calc(var(--t-wall-event, 1.7rem) * 1.4);
+  height: calc(var(--t-wall-event, 1.7rem) * 1.4);
+}
+[data-tier="T1"] .wx-colour .wx-ico {
+  width: calc(var(--t-wall-event, 1.7rem) * 1.1);
+  height: calc(var(--t-wall-event, 1.7rem) * 1.1);
+}
+[data-tier="T3"] .wx-colour .wx-ico {
+  width: calc(var(--t-wall-event, 1.7rem) * 1.8);
+  height: calc(var(--t-wall-event, 1.7rem) * 1.8);
+}
+/*
+ * A temperature's tone, from `weather-scale.ts`. After the strip's `.lo` rules
+ * and at their specificity, so the low keeps its quieter weight and takes its
+ * own colour instead of `--muted`: a tint that stopped at the high would say
+ * half of the range. The tokens are contrast-held against both grounds a
+ * widget sits on (`paletteTokens`), so a tinted number is as legible as the
+ * muted one it replaces.
+ */
+.wx-colour [data-tone="cold"] { color: var(--temp-cold); }
+.wx-colour [data-tone="cool"] { color: var(--temp-cool); }
+.wx-colour [data-tone="warm"] { color: var(--temp-warm); }
+.wx-colour [data-tone="hot"] { color: var(--temp-hot); }
+
+/*
+ * A sky's parts, painted (`glyphs.ts`'s `GLYPH_PARTS`). Keyed on the glyph's
+ * own `gl-parts` class rather than on the widget, so the parts are colours
+ * wherever a two-tone sky is drawn; the svg's own `currentColor` is what any
+ * part the sheet does not name falls back to.
+ */
+.gl-parts .gl-sun,
+.gl-parts .gl-bolt { fill: var(--wx-sun); }
+.gl-parts .gl-cloud,
+.gl-parts .gl-wind { fill: var(--wx-cloud); }
+.gl-parts .gl-rain { fill: var(--wx-rain); }
+.gl-parts .gl-snow { fill: var(--wx-snow); }
+.gl-parts .gl-fog { fill: var(--wx-fog); }
+.gl-parts .gl-storm { fill: var(--wx-storm); }
+
+/*
+ * The `range` forecast (plan item P5.1, "iOS 10-day"): a row per day, with a
+ * bar from the low to the high on the week's own scale.
+ *
+ * Each row is its own grid on one shared template (`--wr-cols`, written by
+ * `renderWeatherRange`) whose widths the tier pass fills in with the widest
+ * name and temperature, so the columns line up down the list and nothing is
+ * cut: a name is never ellipsised, because the table asks for room beside the
+ * widest one rather than budgeting for a short one. Rows are separated by a
+ * rule and space, never a card — the strip's own rule, one direction along.
+ *
+ * Sized by role on a measured wall: the temperatures and the name are the
+ * event role, the rain chance the scaffold's, and the glyph and the bar are
+ * lengths in the row's own `em`, which is the temperature. `line-height` is a
+ * number, for the reason `.wx`'s neighbours give — `normal` is a property of
+ * the face file and moves a row a pixel when a font lands.
+ */
+.wx-range {
+  display: flex;
+  flex-direction: column;
+  padding: var(--s2) 0;
+  flex: 0 0 auto;
+}
+.wr-row {
+  display: grid;
+  grid-template-columns: var(--wr-cols);
+  align-items: center;
+  column-gap: 0.45em;
+  padding: var(--s1) 0;
+  font-size: var(--t-wall-event, 1.7rem);
+  line-height: 1.15;
+  min-height: 1.5em;
+}
+.wr-row + .wr-row { border-top: 1px solid var(--rule); }
+.wr-name {
+  font-size: var(--t-wall-event, 1.5rem);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.wr-ico { width: 1.3em; height: 1.3em; }
+.wr-rain {
+  font-size: var(--t-wall-scaffold, 1.25rem);
+  font-weight: 700;
+  color: var(--wx-rain);
+  text-align: right;
+  white-space: nowrap;
+}
+.wr-temp {
+  font-size: var(--t-wall-event, 1.7rem);
+  font-weight: 600;
+  text-align: right;
+  white-space: nowrap;
+}
+.wr-lo { color: var(--muted); font-weight: 400; }
+/* The track, the day's window on it, and one ramp inside every window. */
+.wr-bar {
+  position: relative;
+  height: 0.3em;
+  border-radius: 0.15em;
+  background: var(--rule);
+}
+.wr-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 0.3em;
+  border-radius: inherit;
+  overflow: hidden;
+}
+.wr-ramp { position: absolute; top: 0; bottom: 0; }
+/* Where it is now, on today's bar: a dot in the wall's own ink. */
+.wr-now {
+  position: absolute;
+  top: 50%;
+  width: 0.55em;
+  height: 0.55em;
+  margin: -0.275em 0 0 -0.275em;
+  border-radius: 50%;
+  background: var(--ink);
+}
+
 /* --- THE HOUSE -------------------------------------------------------- */
 
 /*

@@ -161,6 +161,115 @@ export const WEATHER_TIERS: readonly WidgetTier[] = [
 export const WEATHER_COLUMN_CH = 9;
 
 /**
+ * The `colour` forecast (plan item P5.1): the strip, with each sky painted in
+ * its condition colours and each temperature tinted on the temperature scale.
+ *
+ * **It gives up exactly what the strip gives up, in the strip's order** — the
+ * ladder from the bottom: the low, then the high, then the glyph, and the day's
+ * name last. The plan names this style "today's strip" and states no order of
+ * its own, and a household who picked the colours did not ask for the rows to
+ * go in a different order from the forecast they had.
+ *
+ * **Its own table because its glyph is a different size at every rung.** A
+ * two-tone sky is two objects in one mark — a sun behind a cloud, a bolt under
+ * one — and at the strip's size the smaller of the two is a speck of a second
+ * colour. So the glyph is stated in the temperature's own `em` (1.1, 1.4 and
+ * 1.8 at T1, T2 and T3, `display.css`), and each rung's height is the sum of
+ * what that rung draws, measured off a drawn colour strip at 1080x1920:
+ *
+ *     tier        needs           columns  rungs  what one column says
+ *     T0 Number   4ch x 1.7em     1+       1      the day's name alone
+ *     T1 Pair     6ch x 2.9em     1+       2      name and glyph
+ *     T2 Strip    9ch x 4.3em     1+       3      name, glyph, high
+ *     T3 Full    11ch x 4.7em     1+       4      the whole ladder, glyph at its largest
+ *
+ * The strip's own padding is 0.85em, a name's row 0.86em and the temperature's
+ * row 1.16em; a glyph's row is the glyph, nothing more. So T1 is
+ * 0.85 + 0.86 + 1.1, T2 0.85 + 0.86 + 1.4 + 1.16 and T3 the same with a 1.8em
+ * glyph — **T3 needs more height than T2 here where the strip's does not**,
+ * because this glyph grows with the rung and the strip's T3 budget was set
+ * before it did. `browser-weather-colour` holds the table to the drawing by
+ * asserting the belt never has anything to do: a threshold set too low would
+ * have to hide a row to fit, and that is what it counts.
+ */
+export const COLOUR_TIERS: readonly WidgetTier[] = [
+  { tier: 'T0', minCh: 4, minEm: 1.7, items: 1, rungs: 1 },
+  { tier: 'T1', minCh: 6, minEm: 2.9, items: 1, rungs: 2 },
+  { tier: 'T2', minCh: 9, minEm: 4.3, items: 1, rungs: 3 },
+  { tier: 'T3', minCh: 11, minEm: 4.7, items: 1, rungs: 4 },
+];
+
+/**
+ * The columns of one `range` row, in the order they are **kept** — the bar
+ * first, because a range style that has given up its bar is the strip on its
+ * side. The row is drawn in reading order (name, glyph, rain, low, bar, high);
+ * this is only which of them a narrow box still has room for.
+ */
+export const RANGE_COLUMNS = ['bar', 'low', 'high', 'glyph', 'rain'] as const;
+export type RangeColumn = (typeof RANGE_COLUMNS)[number];
+
+/**
+ * The `range` forecast (plan item P5.1, "iOS 10-day"): one row per day — its
+ * name, its glyph, its rain chance, its low, a bar from the low to the high on
+ * the week's own scale, and its high.
+ *
+ * **Primary role: the temperature** (`.wr-temp`), for the strip's reason: the
+ * numbers are what a forecast is for, and the shortest run is the one that can
+ * see a collapse.
+ *
+ *     tier        needs (beside the name)   days  rungs  what one row says
+ *     T0 Bar      14ch x 1.6em              1+    3      low, bar, high
+ *     T1 Marked   18ch x 1.6em              1+    4      and the glyph
+ *     T2 Full     23ch x 1.6em              1+    5      and the rain chance
+ *     T3 Week     28ch x 5.4em              3+    5      the same, in a box with room for the week
+ *
+ * **The order is the plan's, read per axis: the foot gives up days, the side
+ * gives up the rain chance and then the glyph.** A row is a day, so a box
+ * that loses height loses days from the bottom — `items` is a floor and the
+ * measured capacity is what a taller box buys, the rule every table here
+ * states. What loses *width* first is the rain chance, which is a detail of a
+ * day, then the glyph, which the bar and its two numbers say better; the bar
+ * and its numbers are never given up, because they are the style.
+ *
+ * **The widths are stated beside the day's name rather than including it.**
+ * The name is the provider's own word — "Today", "Wed", "Wednesday", "This
+ * Afternoon" — and it is never cut, so the renderer measures the widest name it
+ * is drawing and asks this table about the room left over. A table that
+ * budgeted for "Wed" would clip "Wednesday"; one that budgeted for "This
+ * Afternoon" would give up the glyph on every Open-Meteo wall.
+ *
+ * Summed in `ch` of the temperature role, whose figures are 1.21ch wide
+ * (`tiers.ts` has the measurement): a temperature is four figures at most
+ * ("-12°"), 4.8ch; the bar's floor 4ch; a gap 1.2ch; the glyph 1.3em, 3.1ch;
+ * the rain chance "100%" in the scaffold role, 3.8ch. T3 is T2 with room for
+ * three rows, which is the House table's shape: at the top of the ladder there
+ * is nothing left to add to a row, so height is the only thing left to buy.
+ */
+export const RANGE_TIERS: readonly WidgetTier[] = [
+  { tier: 'T0', minCh: 14, minEm: 1.6, items: 1, rungs: 3 },
+  { tier: 'T1', minCh: 18, minEm: 1.6, items: 1, rungs: 4 },
+  { tier: 'T2', minCh: 23, minEm: 1.6, items: 1, rungs: 5 },
+  { tier: 'T3', minCh: 28, minEm: 5.4, items: 3, rungs: 5 },
+];
+
+/** The columns a `range` row keeps at this tier. Never fewer than the bar and its two numbers. */
+export function rangeColumnsAt(tier: WidgetTier): readonly RangeColumn[] {
+  return RANGE_COLUMNS.slice(0, Math.max(3, Math.min(RANGE_COLUMNS.length, tier.rungs)));
+}
+
+/**
+ * The forecast's table for each of its designed looks that the wall draws.
+ *
+ * `today` and `playful` are not here: they draw the strip until the sessions
+ * that design them (P5.1's other three), so they read the strip's table.
+ */
+export const WEATHER_STYLE_TIERS: Readonly<Record<string, readonly WidgetTier[]>> = {
+  strip: WEATHER_TIERS,
+  colour: COLOUR_TIERS,
+  range: RANGE_TIERS,
+};
+
+/**
  * The rota badge: one card of rows, per person on a rota today.
  *
  * **Primary role: the shift's own name** (`.shift-badge .what`) — the headline,

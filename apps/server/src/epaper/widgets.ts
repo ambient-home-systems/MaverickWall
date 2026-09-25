@@ -764,10 +764,26 @@ interface EpaperForecastDay {
   readonly low: string;
   /** A key the panel can draw, or `undefined` — a newer server may name one. */
   readonly glyph: GlyphKey | undefined;
+  /*
+   * The `range` look's three extra readings (plan item P5.1), carried **only
+   * when the widget draws that look** — `panelInput` asks for them by look.
+   * A strip does not draw them, so they must not be in what its frame's ETag
+   * hashes (P3.5): a rain chance revised overnight would otherwise refresh
+   * every panel with a strip on it for a number it never shows.
+   */
+  readonly highValue?: number;
+  readonly lowValue?: number;
+  readonly precipChance?: number;
 }
 
-/** Read the weather panel defensively — a module's shape is its own. */
-function forecastDays(panel: unknown): EpaperForecastDay[] {
+/**
+ * Read the weather panel defensively — a module's shape is its own.
+ *
+ * `range` is whether the draw is the `range` look, which reads the numbers as
+ * numbers and the rain chance too; every other look reads the strip's four
+ * strings and nothing else.
+ */
+function forecastDays(panel: unknown, range = false): EpaperForecastDay[] {
   if (panel === null || typeof panel !== 'object') return [];
   const raw = (panel as { days?: unknown }).days;
   if (!Array.isArray(raw)) return [];
@@ -775,8 +791,11 @@ function forecastDays(panel: unknown): EpaperForecastDay[] {
   for (const entry of raw) {
     if (entry === null || typeof entry !== 'object') continue;
     const day = entry as {
-      name?: unknown; high?: unknown; low?: unknown; unit?: unknown; glyph?: unknown;
+      name?: unknown; high?: unknown; low?: unknown; unit?: unknown; glyph?: unknown; precipChance?: unknown;
     };
+    const finite = (value: unknown): number | undefined =>
+      typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+    const chance = finite(day.precipChance);
     if (typeof day.name !== 'string') continue;
     const unit = typeof day.unit === 'string' ? asciiTitle(day.unit) : '';
     const degrees = (value: unknown): string =>
@@ -786,6 +805,9 @@ function forecastDays(panel: unknown): EpaperForecastDay[] {
       high: degrees(day.high),
       low: `${degrees(day.low)}${unit}`,
       glyph: isGlyphKey(day.glyph) ? day.glyph : undefined,
+      ...(range && finite(day.high) !== undefined ? { highValue: finite(day.high) as number } : {}),
+      ...(range && finite(day.low) !== undefined ? { lowValue: finite(day.low) as number } : {}),
+      ...(range && chance !== undefined && chance >= 0 && chance <= 100 ? { precipChance: Math.round(chance) } : {}),
     });
   }
   return out;
@@ -851,6 +873,13 @@ function drawWeather(
   const wanted = config['count'];
   if (typeof wanted === 'number' && Number.isFinite(wanted) && wanted >= 1) {
     days = days.slice(0, Math.trunc(wanted));
+  }
+
+  // The `range` look is its own drawing (plan item P5.1); every other look —
+  // `colour`, `today`, `playful` — is drawn as the strip, below.
+  if (variantOf('weather', config) === 'range') {
+    drawWeatherRange(fb, m, box, days);
+    return;
   }
 
   const ladder = weatherLadder(config);
@@ -995,6 +1024,98 @@ function drawWeather(
     m.body,
   );
   drawLines(fb, m, lines, box, rung, 'left');
+}
+
+/**
+ * The `range` forecast on one bit (plan item P5.1): a row per day, its name,
+ * its glyph, its rain chance, its low, a **black bar** from the low to the high
+ * on the week's own scale, and its high.
+ *
+ * The wall's bar is a ramp of four colours; a panel has one, so the bar is
+ * solid ink over a one-pixel track and the scale is what carries the reading —
+ * where a day's bar sits against the others says as much as its colour did.
+ * No dot for "now": the current reading needs its time on a panel (P3.5), and
+ * a dot has nowhere to write one.
+ *
+ * Gives up what the wall gives up, in the wall's order (`RANGE_TIERS`): days
+ * from the bottom, then the rain chance, then the glyph; the bar and its two
+ * numbers stay. The day's name is never cut, so every column is laid out
+ * beside the widest one drawn. Every size comes from the panel's own ladder —
+ * the body rung for the numbers and the name, the small rung for the rain
+ * chance, the glyph at the forecast's own scale — never from a string, which
+ * is the refresh contract in `render.ts`: a revised forecast moves ink inside
+ * this box and moves nothing else.
+ */
+function drawWeatherRange(fb: Framebuffer, m: EpaperMetrics, box: Box, days: readonly EpaperForecastDay[]): void {
+  const rung = m.body;
+  const small = m.small;
+  const gap = Math.max(4, Math.round(rung.height / 2));
+  const glyphScale = glyphScaleFor(m.bodyGlyph);
+  const glyphW = GLYPH_CELL * glyphScale;
+
+  const values = days.flatMap((day) => [day.lowValue, day.highValue]).filter((v): v is number => v !== undefined);
+  let min = values.length > 0 ? Math.min(...values) : 0;
+  let max = values.length > 0 ? Math.max(...values) : 0;
+  if (min === max) {
+    min -= 1;
+    max += 1;
+  }
+  const num = (value: number | undefined): string => (value === undefined ? '-' : String(Math.round(value)));
+
+  const nameW = Math.max(...days.map((day) => measureText(day.name, { rung })));
+  const tempW = Math.max(...days.flatMap((day) => [num(day.lowValue), num(day.highValue)]).map((t) => measureText(t, { rung })));
+  const hasRain = days.some((day) => day.precipChance !== undefined);
+  const rainW = hasRain ? measureText('100%', { rung: small }) : 0;
+  const minBar = rung.height * 2;
+  const needed = nameW + gap + tempW + gap + minBar + gap + tempW;
+  const withGlyph = box.w >= needed + glyphW + gap;
+  const withRain = hasRain && box.w >= needed + (withGlyph ? glyphW + gap : 0) + rainW + gap;
+
+  // A box too short for one full row still draws its first day in the room
+  // it has (rule nine) — squeezed to the box, never spilling past its foot.
+  const rowH = Math.min(box.h, Math.max(m.widget.listRowH, withGlyph ? glyphHeight(glyphScale) + m.widget.linePad : 0));
+  const rows = Math.max(1, Math.min(days.length, Math.floor(box.h / Math.max(1, rowH))));
+
+  let x = box.x + nameW + gap;
+  const glyphX = x;
+  if (withGlyph) x += glyphW + gap;
+  const rainX = x;
+  if (withRain) x += rainW + gap;
+  const lowX = x;
+  x += tempW + gap;
+  const barX = x;
+  const highX = box.x + box.w - tempW;
+  const barW = Math.max(1, highX - gap - barX);
+  const at = (value: number): number => barX + Math.round(((value - min) / (max - min)) * (barW - 1));
+  const thick = Math.max(2, Math.round(rung.height * 0.35));
+
+  for (let i = 0; i < rows; i++) {
+    const day = days[i] as EpaperForecastDay;
+    const top = box.y + i * rowH;
+    const textY = top + Math.floor((rowH - rung.height) / 2);
+    drawText(fb, box.x, textY, day.name, { rung });
+    if (withGlyph && day.glyph !== undefined && glyphHeight(glyphScale) <= rowH) {
+      drawGlyph(fb, glyphX, top + Math.floor((rowH - glyphHeight(glyphScale)) / 2), day.glyph, glyphScale);
+    }
+    if (withRain && day.precipChance !== undefined) {
+      const words = `${day.precipChance}%`;
+      drawText(fb, rainX + rainW - measureText(words, { rung: small }), top + Math.floor((rowH - small.height) / 2), words, { rung: small });
+    }
+    const low = num(day.lowValue);
+    const high = num(day.highValue);
+    drawText(fb, lowX + tempW - measureText(low, { rung }), textY, low, { rung });
+    drawText(fb, highX + tempW - measureText(high, { rung }), textY, high, { rung });
+    const middle = top + Math.floor(rowH / 2);
+    // The track: a hairline the whole width, so the scale is there to read a
+    // bar against even on a day with nothing to draw on it.
+    fb.hLine(barX, barX + barW - 1, middle);
+    if (day.lowValue !== undefined && day.highValue !== undefined) {
+      const a = at(Math.min(day.lowValue, day.highValue));
+      const b = at(Math.max(day.lowValue, day.highValue));
+      const w = Math.max(thick, b - a + 1);
+      fb.fillRect(Math.min(a, barX + barW - w), middle - Math.floor(thick / 2), w, thick);
+    }
+  }
 }
 
 /**
@@ -1488,7 +1609,7 @@ export function panelInput(type: string, manifest: Manifest, config: Config): Pa
   const panels = manifest.panels;
   switch (type) {
     case 'weather':
-      return { kind: 'weather', days: forecastDays(panels['weather']) };
+      return { kind: 'weather', days: forecastDays(panels['weather'], variantOf('weather', config) === 'range') };
     case 'todo': {
       const entityId = todoListOf(config);
       if (entityId === undefined) return NO_INPUT;

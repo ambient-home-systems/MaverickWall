@@ -13,8 +13,10 @@ import type { Framebuffer } from '../src/epaper/framebuffer.js';
 import {
   INK_KEYS,
   INK_LANE,
+  INK_LOOKS,
   PANEL_HONOURS,
   PANEL_IGNORES,
+  PANEL_LOOKS,
   WIDGET_ROW_KEYS,
   withInk,
   type PanelIgnores,
@@ -507,38 +509,99 @@ describe('a Look, value by value', () => {
   /*
    * `movesInk` asks whether *any* value of a key moves a frame, which proves a
    * key is read and says nothing about which of its values are. For a Look
-   * the values are the whole question (plan item P4.1): the clock draws its
-   * two non-default looks and nothing for anybody else's, and every other
-   * type's looks — added ahead of their drawings — draw that type's default.
-   * So every schema value is rendered on every type and held to exactly that:
-   * a value moves the frame if, and only if, the type honours `variant` and
-   * the value is one of its own looks other than its default.
+   * the values are the whole question (plan items P4.1 and P5.1): the clock
+   * draws its two non-default looks, the forecast draws `range` as black bars
+   * and its other looks as the strip, and every other type's looks — added
+   * ahead of their drawings — draw that type's default. So every schema value
+   * is rendered on every type and held to `PANEL_LOOKS`, which is where that
+   * statement lives: a value moves the frame if, and only if, the table names
+   * it for the type.
    */
   const LOOKS: readonly string[] = PROBES['variant'] as readonly string[];
 
   for (const type of TYPES) {
     it(`draws only its own looks, on ${type}`, () => {
-      const honours = (PANEL_HONOURS[type] ?? []).includes('variant');
-      const own = variantsFor(type);
+      const drawn = PANEL_LOOKS[type] ?? [];
       for (const base of BASES[type] ?? []) {
         // With a title too, the way `movesInk` probes every key.
         for (const start of [base, { ...base, showTitle: true, title: 'Base' }]) {
           const before = frame(type, start);
           for (const value of LOOKS) {
-            const drawsIt = honours && own.includes(value) && value !== own[0];
             const moved = frame(type, { ...start, variant: value }) !== before;
-            expect(moved, `${type} ${JSON.stringify(start)} with variant ${value}`).toBe(drawsIt);
+            expect(moved, `${type} ${JSON.stringify(start)} with variant ${value}`).toBe(drawn.includes(value));
           }
         }
       }
     });
   }
 
+  it('names a type’s drawn looks exactly when it honours the key, and only its own non-default looks', () => {
+    for (const type of TYPES) {
+      const honours = (PANEL_HONOURS[type] ?? []).includes('variant');
+      const drawn = PANEL_LOOKS[type];
+      expect(drawn !== undefined && drawn.length > 0, `${type}: honours ${honours}, PANEL_LOOKS ${JSON.stringify(drawn)}`).toBe(honours);
+      const own = variantsFor(type);
+      for (const value of drawn ?? []) {
+        expect(own, `${type} draws ${value}`).toContain(value);
+        expect(value, `${type}'s default is not a look of its own`).not.toBe(own[0]);
+      }
+    }
+    expect(Object.keys(PANEL_LOOKS).sort()).toEqual(['clock', 'weather']);
+  });
+
+  it('draws a forecast’s range as bars, and its colour as the strip (plan item P5.1)', () => {
+    // The two named in the brief, asked directly rather than through the table.
+    const strip = frame('weather', {});
+    expect(frame('weather', { variant: 'range' })).not.toBe(strip);
+    expect(frame('weather', { variant: 'colour' })).toBe(strip);
+    expect(frame('weather', { variant: 'strip' })).toBe(strip);
+  });
+
   it('probes every value the schema holds', () => {
     expect([...LOOKS].sort()).toEqual([...widgetConfigBody.shape.variant.unwrap().options].sort());
     expect(LOOKS.length).toBe(18);
   });
 });
+
+describe('the Looks the lane offers', () => {
+  /*
+   * `INK_LOOKS` narrows a Look on the ink lane (plan item P5.1): a forecast's
+   * lane offers the strip, `today` and the range, and never a look a panel
+   * would draw as its strip — `colour` there would be a control that moves
+   * nothing. Every narrowed type offers its default, and only its own looks.
+   */
+  it('offers only a type’s own looks, its default among them, on a type whose lane has the key', () => {
+    for (const [type, looks] of Object.entries(INK_LOOKS)) {
+      const own = variantsFor(type);
+      expect(looks, type).toContain(own[0]);
+      for (const look of looks) expect(own, `${type} offers ${look}`).toContain(look);
+      expect(INK_LANE[type] ?? [], `${type} narrows a Look its lane does not offer`).toContain('variant');
+    }
+    expect(INK_LOOKS['weather']).toEqual(['strip', 'today', 'range']);
+  });
+
+  it('offers no look a panel draws as its default, bar the ones owned by a later session', () => {
+    for (const [type, looks] of Object.entries(INK_LOOKS)) {
+      const own = variantsFor(type);
+      for (const look of looks.filter((one) => one !== own[0] && !AWAITING.has(`${type}.${one}`))) {
+        expect(PANEL_LOOKS[type] ?? [], `${type}.${look} is offered and drawn as the default`).toContain(look);
+      }
+    }
+  });
+
+  /*
+   * TODO(S14): the lane offers `today` because the plan says a panel honours
+   * it — a large temperature with its "at HH:MM" stamp — and the session that
+   * designs `today` builds that draw. Until then a panel draws it as the strip,
+   * and this is the assertion that says so; S14 drops `.fails`.
+   */
+  it.fails('draws a forecast’s today as its own look on a panel (TODO(S14))', () => {
+    expect(frame('weather', { variant: 'today' })).not.toBe(frame('weather', {}));
+  });
+});
+
+/** Lane looks a later session will draw: offered now, drawn as the default until then. */
+const AWAITING: ReadonlySet<string> = new Set(['weather.today']);
 
 describe('the lane the editor offers', () => {
   it('offers nothing the renderer would not draw', () => {

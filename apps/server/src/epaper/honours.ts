@@ -77,7 +77,9 @@ export const PANEL_HONOURS: Readonly<Record<string, readonly string[]>> = {
   clock: ['title', 'showTitle', 'align', 'clockFormat', 'showDate', 'variant', STYLE_INSET],
   calendar: ['title', 'showTitle', 'mode', 'cellEvents', 'count', 'calendars', STYLE_INSET],
   shift: ['title', 'showTitle', 'people', 'fields', 'shiftName', 'showHours', STYLE_INSET, WHEN_EMPTY],
-  weather: ['title', 'showTitle', 'count', 'fields', 'showLow', 'showIcon', STYLE_INSET, WHEN_EMPTY],
+  // `variant` since P5.1: `range` is drawn as black bars. The panel honours
+  // the key and falls back per value — `PANEL_LOOKS` says which values.
+  weather: ['title', 'showTitle', 'count', 'fields', 'showLow', 'showIcon', 'variant', STYLE_INSET, WHEN_EMPTY],
   homeassistant: ['title', 'showTitle', 'count', 'fields', 'readings', STYLE_INSET, WHEN_EMPTY],
   external: ['title', 'showTitle', 'count', 'module', STYLE_INSET],
   countdown: ['title', 'showTitle', 'target', STYLE_INSET],
@@ -121,7 +123,9 @@ export const INK_LANE: Readonly<Record<string, readonly string[]>> = {
   clock: ['variant', 'clockFormat', 'showDate', 'align'],
   calendar: ['mode', 'cellEvents', 'count', 'calendars'],
   shift: ['people', 'fields', 'shiftName'],
-  weather: ['count', 'fields'],
+  // The Look, since P5.1 — offered as `INK_LOOKS` narrows it: a panel may
+  // take the range where its wall wears the strip, which is density and shape.
+  weather: ['count', 'fields', 'variant'],
   homeassistant: ['readings', 'fields', 'count'],
   external: ['count'],
   notes: ['align'],
@@ -138,6 +142,41 @@ export const INK_LANE: Readonly<Record<string, readonly string[]>> = {
   // can make a group at all (RFC 014 §5.1's second session): a lane offered
   // on a box no control can select is a control nobody can reach.
   group: [],
+};
+
+/**
+ * The Looks each type's panel draws **as their own**, beyond its default —
+ * a fact about the renderer, derived back out of it by `epaper-ink.test.ts`,
+ * which renders every value on every type and holds this table to which ones
+ * moved the frame (plan item P5.1).
+ *
+ * `PANEL_HONOURS` says a panel *reads* `variant`; this says which values it
+ * draws differently. They are separate because a forecast honours the key and
+ * falls back per value: `range` is drawn as black bars, and `colour`, `today`
+ * and `playful` are drawn as the strip — `colour` because a condition colour
+ * is exactly what one bit does not have, and the other two until the sessions
+ * that design them. A type is here exactly when it honours `variant`.
+ */
+export const PANEL_LOOKS: Readonly<Record<string, readonly string[]>> = {
+  clock: ['stacked', 'analogue'],
+  weather: ['range'],
+};
+
+/**
+ * The Looks the ink lane offers, per type, where that is fewer than the type
+ * has. Absent is every one of them — the clock's three, all drawn on one bit.
+ *
+ * A forecast's lane offers the strip, `today` and `range`: the default, the
+ * look the panel draws as its own, and the one the plan says a panel will
+ * draw (a large temperature stamped with its time, P5.1's `today`). **`today`
+ * is drawn as the strip on a panel until that session**, which is recorded in
+ * `epaper-ink.test.ts` as an expected failure owned by S14 rather than left to
+ * be found — the lane offering it now is the plan's shape, and the renderer is
+ * what has not caught up. `colour` and `playful` are never offered here: one
+ * has no colour to draw and the other's emoji have no one-bit artwork (D3).
+ */
+export const INK_LOOKS: Readonly<Record<string, readonly string[]>> = {
+  weather: ['strip', 'today', 'range'],
 };
 
 /** Every key the ink lane can carry, for the schema and for the merge. */
@@ -219,7 +258,8 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
   },
   /*
    * A widget's Look (plan item P4.1), on every type that has looks but the
-   * clock. The clock's three are drawn on one bit and are in `PANEL_HONOURS`;
+   * clock and the forecast. The clock's three are drawn on one bit and are in
+   * `PANEL_HONOURS`, and so is the forecast's key since P5.1 (`PANEL_LOOKS`);
    * every other type's looks were added to the enum before any of them was
    * designed, and each type's panel draw reads none of them — it draws the
    * type's default, which is also exactly what the wall draws for them until
@@ -228,12 +268,6 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
    * widget's panel draws instead, and `epaper-ink.test.ts` probes every value
    * the schema holds on each type to keep all four true.
    */
-  {
-    key: 'variant',
-    types: ['weather'],
-    label: 'Look',
-    why: 'a panel draws the forecast as its strip, whichever look is chosen.',
-  },
   {
     key: 'variant',
     types: ['countdown'],

@@ -16,6 +16,18 @@
 
 ## Unreleased
 
+**Two new looks for the weather widget: Range and Colour.** Pick one under
+**Look** on the widget's Style tab. **Range** is a row per day — its name, its
+picture, its chance of rain, then a bar from the day's low to its high set
+against the whole week, coloured from cool to warm, with a dot on today's bar
+where the temperature is now. A small box shows fewer days rather than smaller
+ones, and a narrow one gives up the rain chance and then the picture before it
+gives up the bar. **Colour** is the forecast strip you already have with its
+skies painted — grey clouds, blue rain, a yellow sun behind a cloud — and each
+temperature coloured by how warm it is. An e-paper panel draws Range as black
+bars on its own, and draws Colour as the plain strip, since a panel has no
+colours. Nothing changes on a wall until somebody picks one.
+
 **Each wall has a Motion switch.** It is under **Device and time** on the
 wall's settings, beside the wall's size, and it decides whether the styles
 that move — weather that drifts, a countdown that celebrates, both still to

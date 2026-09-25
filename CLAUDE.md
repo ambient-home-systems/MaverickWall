@@ -8518,6 +8518,109 @@ before anybody reaches for that lever.
 same counts as `main`: no test was added or removed, and every change is inside
 tests that already existed.
 
+**Two of P5.1's five weather styles shipped: `range` and `colour`.** Both are
+opt-in Looks, and a wall that picks neither is unchanged to the pixel — Classic
+draws the strip, and its two ratchets were re-measured rather than trusted:
+`wall-density` and `browser-classic-proportions` instrumented to write every
+reading out, run on a clean worktree of `main` and on this branch at the pinned
+hour, and the 24 readings compared as text are identical. No baseline moved. No
+open question (Q1–Q10) touches either style; Q7's rule of thumb is what the
+panel follows.
+
+**`range` is the iOS 10-day look**: a row per day, its name, glyph, rain chance,
+low, a bar from the low to the high on the week's own scale, and high, with a
+dot for the current reading on today's bar. The bar's *position* is relative to
+the week and its **colour is absolute**: every row carries one ramp as wide as
+the whole track, its four `--temp-*` stops placed where 0, 10, 20 and 30 °C (32,
+50, 68 and 86 °F) fall on this week — often outside the track, which a CSS
+gradient accepts — and each day's window cuts out its piece. So one temperature
+is one colour on every row and every week. The arithmetic is
+`apps/display/src/weather-scale.ts`, pure and table-tested, and the scale is the
+whole forecast the widget shows, never only the rows its box has room for,
+because a shorter box redrawing its bars on a different scale would move them
+for no weather reason. The model carries each day's temperatures as numbers now
+(`highValue`, `lowValue`, `tempUnit`, and the current reading's `tempValue`);
+the strip still reads the strings.
+
+**`RANGE_TIERS` states its widths beside the widest name**, which is never cut —
+the provider's word for a day runs from "Wed" to "This Afternoon", and a table
+budgeting for one clips or starves the other. The plan's give-up order is read
+per axis: height gives up days from the bottom (`items` a floor, capacity
+measured off the drawn row), width gives up the rain chance and then the glyph,
+and the bar and its two numbers are never given up. Three faults came out of
+measuring it. The day count charged the box's padding but not the section's, so
+Classic's 1080x1920 forecast drew a third row past its foot and the belt took
+it off; charging *both* paddings then cost 1920x1080 a day that fits, because
+the last row may end inside the section's bottom padding. And a `1.5em` floor on
+the bar pushed the high past the box's edge at a quarter of a 1080px wall — the
+bar column is `minmax(0, 1fr)` now, since the table already promises 4ch of bar
+at every tier and below the floor a short bar beats a cut number.
+
+**`colour` is the strip, painted**: each sky in its `--wx-*` colours and each
+temperature tinted with the nearest stop. Two-tone skies come from
+`GLYPH_PARTS`, **runs of each drawing's own consecutive subpaths**, so
+`GLYPH_PATHS` — the one drawing every renderer and `glyph-parity` read — is not
+touched, and the e-paper cells are not either. Splitting a path moves no pixel
+of the silhouette (every sky subpath is clockwise and none is a counter, so
+`nonzero` unions them in one `<path>` or several); what it decides is paint
+order, and the sun is drawn first so the cloud is in front of it. On a measured
+wall the colour strip takes its roles and on an unmeasured one each role's
+fallback is the strip's own rem, so it is the strip's geometry but for a glyph
+stated in the temperature's `em` (1.1, 1.4, 1.8 by rung) — which is why
+`COLOUR_TIERS` is its own table: the rungs are the strip's, the heights are
+what a glyph that grows with the rung costs, summed off a drawn strip. A first
+draft guessed them 0.5em high and was corrected by that measurement.
+
+**On e-paper, `range` is honoured as black bars and `colour` falls back to the
+strip**, so the panel now honours `variant` per key and falls back per value.
+`variant` joins `PANEL_HONOURS.weather` and the weather ink lane, its
+`PANEL_IGNORES` note is gone, and two tables say the rest: `PANEL_LOOKS` (the
+looks each type's panel draws as its own — the clock's two and `range`), which
+`epaper-ink`'s value-by-value block now reads instead of assuming every own
+look draws, and `INK_LOOKS` (the lane offers the strip, `today` and `range`).
+**`today` is on the lane as the plan specifies and draws the strip on a panel
+until S14 builds it**, recorded as an `it.fails` under `TODO(S14)` beside S09's
+rather than left to be found; the editor shows a wall wearing `colour` or
+`playful` the strip pressed on the lane and says "A panel draws the Colour look
+as its strip." The panel's range frame reads the numbers and the rain chance
+through `panelInput` **only when the look is `range`**, so a strip panel's frame
+input — and its ETag — is exactly what it was (P3.5). No
+`EPAPER_RENDERER_VERSION` bump: the only frames that move are ones whose input
+changes with them.
+
+**Twenty-eight mutations were checked and all are red**, each on a rebuilt
+bundle with its anchor confirmed to have applied: eight on the range renderer,
+five on colour, four on the panel draw, three on the honours tables, three in
+the editor, three on the glyph parts, one each on the tone rule and the model.
+Four were green first and are the useful part. A range tier read off the whole
+box rather than the room beside the name kept every column and quietly shortened
+the bar — nothing measured the bar, and now its length above the floor is
+asserted. `GLYPH_PARTS` with three cloud discs and four drops covers the same
+seven subpaths as four and three, so coverage could not see a disc painted blue;
+each part is now placed where its object is drawn. Two are recorded as genuinely
+equivalent rather than fixed: the today dot's index guard is redundant with its
+date guard on this fixture (removing both goes red), and dropping the glyph term
+from the panel's rain condition changes nothing on an 800x480 panel, where the
+rain column is already wider than the glyph — the inversion that *can* differ
+(the glyph needing the rain's room) goes red. The browser files are
+`browser-weather-range` and `browser-weather-colour`, over the real captured
+London forecast (`browser-weather-looks.ts` re-dates it onto the wall's week and
+re-stamps the current reading, and says so), at 1080x1920 and 1920x1080, on an
+unmeasured wall and a 32" television read from 1.2m: nothing clipped, the belt
+given nothing to do, every figure `tabular-nums` as computed, every run its
+role's size to the px the page resolves, and every colour read off the computed
+`fill` and `color` against the page's own resolution of the token.
+
+**4212 tests passing, 1 skipped and 2 expected failures, over 301 files**:
+calendar 153 over 10 · core 314 over 9 · display 736 over 41 · server 3009 over
+241, measured with `pnpm test` and a real Chromium (`MW_BROWSER_EXECUTABLE`,
+the S01 provisioning note). Against the 4143 over 296 recorded above that is
++69 and +5 files — display +47 in two new files and four touched, server +22 and
+one expected failure in three new files and two touched — which is what this
+diff adds, and agreeing is an observation rather than a method. **Still
+unproven where it counts:** nobody has looked at either style on a kitchen wall,
+and no panel has been photographed drawing a range.
+
 **`browser-editor` stopped paying for a server and a sign-in per test, and
 waits for what it used to guess at.** It was the slowest file in CI's first
 shard, at 87s on the runner. Of its 58s locally, about a third was sleeps and
@@ -8561,13 +8664,16 @@ three runs, and the file's wall time went from 66s to about 38s. **Measured
 locally as CI's shard 1 of 4** (60 files, three workers on four cores): the
 shard went from 133s to 125s, and `browser-editor` inside it from 72.4s to
 46.6s. Its neighbours stayed within about a second. That is the difference
-from the change above: its sleeps were idle time handed to neighbours, and this
-change removes CPU as well as idle time.
+from the fixed-wait change recorded before the weather looks: its sleeps were
+idle time handed to neighbours, and this change removes CPU as well as idle
+time.
 **4144 tests passing, 1 skipped and 1 expected failure, over 296 files**:
 calendar 153 over 10 · core 314 over 9 · display 689 over 39 · server 2988
 over 238. Measured with `pnpm test` and a real Chromium, on a clone whose tags
-had been fetched. Against the 4143 over 296 above, that is one test and no
-file: the probe's own test, in a file that already existed.
+had been fetched, **before `main`'s weather looks were merged in**, so it sits
+beside their 4212 as a count of a different tree. Against the 4143 over 296
+that branch started from, it is one test and no file: the probe's own test, in
+a file that already existed.
 
 ---
 

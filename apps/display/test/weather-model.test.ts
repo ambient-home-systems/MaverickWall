@@ -59,9 +59,18 @@ describe('reading what the server sends', () => {
     expect(friday?.sunrise).toBeUndefined();
   });
 
+  it('carries each day’s temperatures as numbers too, for a style that places them on a scale', () => {
+    // P5.1: the range bar and the colour tint read the numbers; the strip still
+    // reads the strings, which are untouched.
+    const [today] = weatherFrom(panel, NOW).days;
+    expect(today).toMatchObject({ high: '66°', low: '51°F', highValue: 66, lowValue: 51, tempUnit: 'F' });
+    const odd = weatherFrom({ days: [{ name: 'X', high: 'warm', low: -3.5, unit: 'K' }] }, NOW).days[0];
+    expect(odd).toMatchObject({ highValue: undefined, lowValue: -3.5, tempUnit: undefined });
+  });
+
   it('reads the current conditions, formatted the way a day’s temperature is', () => {
     expect(weatherFrom(panel, NOW).current).toEqual({
-      observedAt: OBSERVED, source: 'observed', temp: '54°', feelsLike: '54°', condition: 'Mostly Clear',
+      observedAt: OBSERVED, source: 'observed', temp: '54°', tempValue: 53.6, feelsLike: '54°', condition: 'Mostly Clear',
       glyph: 'mostly-clear', isDay: true, humidity: 71, windSpeed: undefined, windGust: undefined,
       windDir: undefined, uv: undefined,
     });

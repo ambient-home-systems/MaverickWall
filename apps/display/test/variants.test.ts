@@ -112,15 +112,24 @@ describe('which controls a look hides', () => {
 
   it('hides nothing on a look that still draws its type’s default', () => {
     /*
-     * Every non-clock value draws the default until the session that designs
-     * it, so every control on it still does what it did — and taking a
+     * Every non-clock value but the forecast's range still reads every
+     * control its type's default does, so every control on it still does what it did — and taking a
      * working setting off the screen is the other half of the rule that an
      * option which does nothing is worse than one not offered.
      */
     for (const type of TYPES.filter((one) => one !== 'clock')) {
       for (const variant of VARIANTS[type]) {
+        if (type === 'weather' && variant === 'range') continue;
         expect(hiddenByVariant(type, { variant }), `${type}.${variant}`).toEqual([]);
       }
     }
+  });
+
+  it('hides the field ladder on a forecast’s range, which draws designed columns instead (P5.1)', () => {
+    // A range row is the style's own columns and `RANGE_TIERS` decides what a
+    // narrow box gives up, so the ladder would be a control that moves nothing.
+    // The colour look is the strip painted, and keeps every control the strip has.
+    expect(hiddenByVariant('weather', { variant: 'range' })).toEqual(['fields']);
+    expect(hiddenByVariant('weather', { variant: 'colour' })).toEqual([]);
   });
 });
