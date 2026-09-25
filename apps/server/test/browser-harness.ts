@@ -1363,19 +1363,43 @@ interface FirstDrawWindow {
  *
  * Read once the settle is over rather than asked then, because by then every
  * face has loaded either way — the question is whether they had when the wall
- * chose its forms, and a mutation observer is the only thing that is there at
- * that moment. The canvas is what the first *data* draw builds: a fresh context
- * has no stored manifest to draw from, so nothing reaches `#wall .canvas`
- * before the held manifest is released.
+ * chose its forms. The canvas is what the first *data* draw builds: a fresh
+ * context has no stored manifest to draw from, so nothing reaches
+ * `#wall .canvas` before the held manifest is released.
+ *
+ * **Taken before the household's CSS goes on, and that is what the stylesheet
+ * hook is for.** A mutation observer reports after the whole draw, and the
+ * draw that builds the first canvas ends by inserting the household's rules
+ * into `display.css`'s own sheet (`customCss.apply`). Editing that sheet makes
+ * Chromium rebuild its `@font-face` objects, and a rebuilt face reads
+ * `unloaded` until the next style pass asks for it again, from the memory
+ * cache. So on a wall with a household block, an observer alone saw every face
+ * `unloaded` after a draw whose tiers had been measured with every face in.
+ * The first edit to a sheet while a canvas is on the page is therefore the
+ * other moment the reading is taken, whichever comes first: the tiers are
+ * measured inside `renderFreeform`, before that edit, in the same task.
  */
 function recordFirstDrawFonts(): void {
+  let recorded = false;
   const record = (): boolean => {
+    if (recorded) return true;
     if (document.querySelector('#wall .canvas') === null) return false;
     const faces: { family: string; status: string }[] = [];
     document.fonts.forEach((face) => faces.push({ family: face.family, status: face.status }));
     (window as unknown as FirstDrawWindow).__mwFirstDrawFonts = faces;
+    recorded = true;
     return true;
   };
+  for (const method of ['insertRule', 'deleteRule'] as const) {
+    const original = CSSStyleSheet.prototype[method] as (...args: unknown[]) => unknown;
+    (CSSStyleSheet.prototype as unknown as Record<string, unknown>)[method] = function (
+      this: CSSStyleSheet,
+      ...args: unknown[]
+    ): unknown {
+      record();
+      return original.apply(this, args);
+    };
+  }
   const observer = new MutationObserver(() => {
     if (record()) observer.disconnect();
   });
