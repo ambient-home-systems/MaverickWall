@@ -8735,6 +8735,29 @@ does not touch. About two dozen of its tests each build a fresh installation
 and sign in through the form, which is a sign-up and a sign-in, each a
 password hash. That is the next lever.
 
+**On CI the slowest shard fell by about 17 seconds, and that is within this
+page's own noise.** Server shard steps on four runners, two runs each:
+
+| run | shard 1 | shard 2 | shard 3 | shard 4 | end to end |
+|---|---|---|---|---|---|
+| `main` after the weather looks | 159s | 117s | 186s | 125s | 3m59s |
+| `main` after `browser-editor` | 177s | 116s | 139s | 119s | 3m46s |
+| this change | 162s | 104s | 150s | 83s | 3m30s |
+| this change, CLAUDE.md commit | 166s | 101s | 148s | 121s | 3m34s |
+
+The slowest shard averages 164s against 182s, and end to end is about 3m32s
+against 3m53s. The Commands section records three shards varying by 46s from
+one run to the next, so two runs each way is a direction and not a verdict.
+The local full runs on one machine say the same, one run each: the server
+suite took 369.8s against 445.8s for `main`'s count above, and its summed test
+time fell from 1077s to 856s.
+
+**4214 tests passing, 1 skipped and 2 expected failures, over 301 files**:
+calendar 153 over 10 · core 314 over 9 · display 736 over 41 · server 3011
+over 241. Measured with `pnpm test` and a real Chromium, on a clone whose tags
+had been fetched. Against the 4213 above it is one test and no file: the
+font-race test that holds the fonts back, in a file that already existed.
+
 ---
 
 ## Open decisions
