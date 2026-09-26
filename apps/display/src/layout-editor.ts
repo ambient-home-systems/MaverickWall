@@ -351,6 +351,14 @@ function boot(): void {
     readonly thumb: string;
     readonly small: string;
     readonly large: string;
+    /** The category (Q10) and what the picker heads its group with. */
+    readonly category: string;
+    readonly categoryName: string;
+    /** The built-in themes it is drawn for, as the server names them. */
+    readonly themes: readonly string[];
+    /** Bright enough to burn in: the picker says "not for OLED screens". */
+    readonly oled: boolean;
+    readonly focal?: { readonly x: number; readonly y: number };
   }
   let wallpapers: readonly WallpaperChoice[] = [];
   /**
@@ -501,9 +509,11 @@ function boot(): void {
       wallpapers = parsed.wallpapers.filter(
         (one): one is WallpaperChoice =>
           typeof one === 'object' && one !== null &&
-          (['id', 'name', 'color', 'thumb', 'small', 'large'] as const).every(
+          (['id', 'name', 'color', 'thumb', 'small', 'large', 'category', 'categoryName'] as const).every(
             (key) => typeof (one as Record<string, unknown>)[key] === 'string',
           ) &&
+          Array.isArray((one as { themes?: unknown }).themes) &&
+          typeof (one as { oled?: unknown }).oled === 'boolean' &&
           ((one as { tone?: unknown }).tone === 'light' || (one as { tone?: unknown }).tone === 'dark'),
       );
     }
@@ -2664,7 +2674,9 @@ function boot(): void {
   function previewBackground(bg: Background): DrawnBackground | undefined {
     if (bg.type !== 'wallpaper') return bg;
     const found = wallpapers.find((one) => one.id === bg.id);
-    return found === undefined ? undefined : { type: 'wallpaper', id: found.id, small: found.small, large: found.large };
+    return found === undefined
+      ? undefined
+      : { type: 'wallpaper', id: found.id, small: found.small, large: found.large, ...(found.focal ? { focal: found.focal } : {}) };
   }
 
   /**
@@ -3970,6 +3982,70 @@ function boot(): void {
    * calls back with the stored name. Rule three throughout — every image is the
    * household's own, served from the media store, never an external URL.
    */
+  /**
+   * One wallpaper's tile. Its accessible name carries what the picker knows
+   * about it beyond the picture: which theme it is drawn for when that is not
+   * this wall's, the theme it sits best under, and "not for OLED screens" on
+   * a bright one (P6.3) — a static light picture is the burn-in the shadow
+   * rule was written about, and a household with an OLED television is told
+   * on the tile rather than after a year.
+   */
+  function wallpaperTile(one: WallpaperChoice, current: string): HTMLElement {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'le-media-item' + (one.id === current ? ' is-on' : '') + (one.oled ? ' is-bright' : '');
+    button.dataset['wallpaper'] = one.id;
+    button.dataset['category'] = one.category;
+    if (one.oled) button.dataset['oled'] = 'no';
+    button.style.backgroundColor = one.color;
+    button.style.backgroundImage = `url("${ADMIN_WALLPAPER_BASE}${one.thumb}")`;
+    const notes: string[] = [];
+    if (one.tone !== wallTone) notes.push(`drawn for a ${one.tone} theme`);
+    else if (one.themes.length > 0) notes.push(`suits ${one.themes.map(themeLabel).join(', ')}`);
+    if (one.oled) notes.push('not for OLED screens');
+    const label = notes.length === 0 ? one.name : `${one.name} — ${notes.join('; ')}`;
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.setAttribute('aria-pressed', one.id === current ? 'true' : 'false');
+    button.addEventListener('click', () => {
+      record();
+      const chosen: Background = { type: 'wallpaper', id: one.id };
+      state.background = chosen;
+      /*
+       * "Use for both" is the default (P6.4): a household choosing a
+       * picture for their wall almost always means the wall, whichever way
+       * it is hung. Every canvas on the other orientation takes it — the
+       * everyday one and each named layout — because a background belongs
+       * to the orientation and not to the slot, and the save writes it from
+       * whichever canvas is posted.
+       */
+      if (wallpaperForBoth) {
+        const other = state.orientation === 'portrait' ? 'landscape' : 'portrait';
+        for (const slot of [null, ...state.slots]) {
+          const key = canvasKey(other, slot);
+          const canvas = state.stash[key];
+          if (canvas !== undefined) state.stash[key] = { ...canvas, background: { ...chosen } };
+        }
+      }
+      drawBackgroundPanel();
+      renderPreview();
+      markDirty();
+    });
+    return button;
+  }
+
+  /** A built-in theme's name as the picker says it; a key it does not know is said as it is. */
+  function themeLabel(key: string): string {
+    const names: Record<string, string> = {
+      panels: 'Panels',
+      swiss: 'Swiss',
+      household: 'Household',
+      almanac: 'Paper Almanac',
+      blueprint: 'Blueprint',
+    };
+    return names[key] ?? key;
+  }
+
   function wallpaperPicker(current: string): HTMLElement {
     const wrap = document.createElement('div');
     wrap.className = 'le-media le-wallpapers';
@@ -3990,42 +4066,24 @@ function boot(): void {
     const shown = wallpapers.filter(
       (one) => showAllWallpapers || one.tone === wallTone || one.id === current,
     );
+    /*
+     * Grouped by category (Q10), in the catalogue's own order, under a small
+     * heading each — twenty-six tiles at 64px read as a heap without one. A
+     * group with nothing shown in it is not drawn at all, so a dark wall with
+     * "show all" off never sees "Paper and textures" over an empty row.
+     */
+    const groups = new Map<string, WallpaperChoice[]>();
     for (const one of shown) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'le-media-item' + (one.id === current ? ' is-on' : '');
-      button.dataset['wallpaper'] = one.id;
-      button.style.backgroundColor = one.color;
-      button.style.backgroundImage = `url("${ADMIN_WALLPAPER_BASE}${one.thumb}")`;
-      const label = one.tone === wallTone ? one.name : `${one.name} — drawn for a ${one.tone} theme`;
-      button.title = label;
-      button.setAttribute('aria-label', label);
-      button.setAttribute('aria-pressed', one.id === current ? 'true' : 'false');
-      button.addEventListener('click', () => {
-        record();
-        const chosen: Background = { type: 'wallpaper', id: one.id };
-        state.background = chosen;
-        /*
-         * "Use for both" is the default (P6.4): a household choosing a
-         * picture for their wall almost always means the wall, whichever way
-         * it is hung. Every canvas on the other orientation takes it — the
-         * everyday one and each named layout — because a background belongs
-         * to the orientation and not to the slot, and the save writes it from
-         * whichever canvas is posted.
-         */
-        if (wallpaperForBoth) {
-          const other = state.orientation === 'portrait' ? 'landscape' : 'portrait';
-          for (const slot of [null, ...state.slots]) {
-            const key = canvasKey(other, slot);
-            const canvas = state.stash[key];
-            if (canvas !== undefined) state.stash[key] = { ...canvas, background: { ...chosen } };
-          }
-        }
-        drawBackgroundPanel();
-        renderPreview();
-        markDirty();
-      });
-      grid.appendChild(button);
+      const list = groups.get(one.category);
+      if (list === undefined) groups.set(one.category, [one]);
+      else list.push(one);
+    }
+    for (const [, list] of groups) {
+      const head = document.createElement('p');
+      head.className = 'le-media-head';
+      head.textContent = list[0]?.categoryName ?? '';
+      grid.appendChild(head);
+      for (const one of list) grid.appendChild(wallpaperTile(one, current));
     }
     if (wallpapers.length === 0) {
       const note = document.createElement('p');
