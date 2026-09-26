@@ -8390,29 +8390,36 @@ twenty-four lines — and the two sets are identical as text; no baseline moved.
 calendars" while the wall's week honours it, which is the same divergence one
 view along and outside this item.
 
-**The first CI run went red on this diff, and correctly.** `epaper-ink`'s
+**The first two CI runs went red on this diff, and correctly.** `epaper-ink`'s
 "draws nothing else for calendar" probes every unhonoured key on the month
 grid, the dearest frame the file draws, and the four new keys took that one
 body from about 2.7s to 3.2s in isolation and past its 5s timeout on a CI
 runner beside the browser suite — the file's own recorded failure, for the
-style lane, arriving again. The same cure: the month's looks are asked in
-bodies of their own, and the body is back to `main`'s own 2.5–2.9s, measured
-on a clean worktree of `main` beside it. That is also a reading worth having:
-the body was already within a factor of two of its timeout on `main`.
+style lane, arriving again. Moving the month's looks into bodies of their own
+brought it back to `main`'s own 2.5–2.9s, measured on a clean worktree of
+`main` beside it, **and the second run timed out anyway**: a body at half its
+limit on an idle laptop is a body one busy shard from red, on `main` too. So
+the calendar's two heaviest bodies are split further — "draws nothing else" in
+thirds by schema position, "draws none of them" in halves — and every one is
+under 1.3s in isolation; taking `count` out of `PANEL_HONOURS.calendar` still
+turns a part red, so the split did not blind it. The second run also read
+`browser-weather-today`'s glow phase at 328ms against a 300ms tolerance, a file
+this diff does not touch; it passed 3 of 3 alone and on the first and third
+runs, and is recorded here rather than chased.
 
-**4746 tests passing and 1 skipped, over 332 files**: calendar 153 over 10 ·
-core 314 over 9 · display 873 over 49 · server 3406 over 264. Measured with
+**4779 tests passing and 1 skipped, over 332 files**: calendar 153 over 10 ·
+core 314 over 9 · display 873 over 49 · server 3439 over 264. Measured with
 `pnpm test` and a real Chromium (`MW_BROWSER_EXECUTABLE`, for the revision
 mismatch S01 recorded) on a clone whose tags had been fetched. Against the 4678
-over 327 recorded above, that is +68 and +5: on the display two new files of
+over 327 recorded above, that is +101 and +5: on the display two new files of
 12 tests plus two rows `motion.test.ts` generates for the two new modules in
 `main.ts`'s import graph; on the server three new files of 27 tests
 (`calendar-filter-parity`, `epaper-month-filter`, `browser-calendar-looks`)
 and four in `widget-style.test.ts`, which is +31 where the first reading said
 +32 — one test more than this diff explains, which is the paragraph above's
 own warning arriving once more and the reason the number here is the reading.
-The split above adds two bodies per widget type, eleven types, and the second
-full run read 3406: +22, which agrees.
+The splits above add five bodies per widget type over eleven types, and the
+last full run read 3439: +55 on the first reading, which agrees.
 **Still unproven where it counts:** nobody has looked at a planner month on a
 kitchen wall or picked a look on a real phone.
 
