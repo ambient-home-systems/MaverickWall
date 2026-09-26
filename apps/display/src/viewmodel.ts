@@ -7,6 +7,7 @@ import type {
   ManifestShift,
 } from './manifest.js';
 import { isGlyphKey, type GlyphKey } from './glyphs.js';
+import { markInitial } from './shift-style.js';
 import { styleTokensOf } from './widget-style.js';
 import { NO_ONE_SHOTS, type OneShotMemory } from './motion.js';
 export type { ManifestShift };
@@ -136,6 +137,13 @@ export interface PersonModel {
 
 export interface ShiftModel {
   readonly personName: string;
+  /**
+   * One character of the name, for the mark that tells two people's chips
+   * apart in the agenda's date column ("A · Days", "B · Nights"). Resolved here
+   * rather than in the renderer, and by the same `markInitial` the month cell's
+   * marks use, so one person has one initial on every view.
+   */
+  readonly personInitial: string;
   readonly personAvatarUrl: string | null;
   readonly personColor: string;
   readonly label: string;
@@ -216,6 +224,23 @@ export interface HorizonEvent {
   readonly time: string;
 }
 
+/**
+ * One person's shift on one horizon day, as much of it as a month cell or a
+ * week column head needs to mark: the colour (a theme token, or an explicit
+ * per-type colour that overrides it), the shift's short code, its full name
+ * for the legend, and whose it is by one initial.
+ */
+export interface HorizonShift {
+  readonly token: string;
+  /** An explicit per-type colour, or undefined to use the token. */
+  readonly color: string | undefined;
+  readonly code: string;
+  /** The full name, for the legend that sits under the grid. */
+  readonly label: string;
+  /** The person's initial, so two people's marks can be told apart. */
+  readonly initial: string;
+}
+
 export interface HorizonCell {
   readonly date: CivilDate;
   readonly weekday: string;
@@ -236,19 +261,21 @@ export interface HorizonCell {
   readonly isPast: boolean;
   readonly inMonth: boolean;
   /**
-   * The colour token for the day.
+   * Everyone's shift on this day, in the household's own order — empty when no
+   * rota resolved for the day at all, which is a different fact from a rest
+   * day and looks different.
    *
-   * Every shift tints its cell, working or not: the horizon is the *shape* of
-   * the rotation, and a rest day is part of that shape. Undefined means no
-   * rota resolved for that day at all, which is a different fact and looks
-   * different.
+   * Every shift marks its cell, working or not: the horizon is the *shape* of
+   * the rotation, and a rest day is part of that shape. **A list, and that is
+   * the correction (plan item P5.4).** This was one token, one colour and one
+   * code — `day.shifts[0]` — so a two-worker household's month grid tinted
+   * every day in whoever sorted first and no setting could say otherwise,
+   * while the badge on the same wall drew both people. The renderer decides
+   * how several are shown (segments of the rule, one dot each, initials in the
+   * label); the model's job is only never to lose the second person on the
+   * way to it.
    */
-  readonly shiftToken: string | undefined;
-  /** An explicit per-type colour for this cell, or undefined to use the token. */
-  readonly shiftColor: string | undefined;
-  readonly shiftCode: string | undefined;
-  /** The full name, for the legend that sits under the grid. */
-  readonly shiftLabel: string | undefined;
+  readonly shifts: readonly HorizonShift[];
   readonly eventCount: number;
   /**
    * A few of the day's events, for the `pills` and `week` calendar modes. Capped
@@ -1500,6 +1527,7 @@ function markToday(
 function toShift(shift: ManifestShift): ShiftModel {
   return {
     personName: shift.personName,
+    personInitial: markInitial(shift.personName),
     personAvatarUrl: shift.personAvatarUrl ?? null,
     personColor: shift.personColor,
     label: shift.label,
@@ -1666,8 +1694,14 @@ export function buildModel(options: BuildOptions): DisplayModel {
   for (let offset = 0; offset < horizonWeeks * 7; offset++) {
     const date = addDays(start, offset);
     const day = byDate.get(date);
-    // The first shift of the day, whether or not it is a working one.
-    const shift = day?.shifts[0];
+    // Every shift of the day, working or not, in the server's order.
+    const shifts: HorizonShift[] = (day?.shifts ?? []).map((shift) => ({
+      token: shift.colorToken,
+      color: shift.color,
+      code: shift.shortCode,
+      label: shift.label,
+      initial: markInitial(shift.personName),
+    }));
     /*
      * The grid's own events, which are not always the day's.
      *
@@ -1689,10 +1723,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
       isToday: date === today,
       isPast: date < today,
       inMonth: date.slice(0, 7) === todayMonth,
-      shiftToken: shift?.colorToken,
-      shiftColor: shift?.color,
-      shiftCode: shift?.shortCode,
-      shiftLabel: shift?.label,
+      shifts,
       eventCount: events.length,
       /*
        * Enough for the densest cell any style draws, and the *renderer* does

@@ -141,8 +141,17 @@ import { canvasPanelInputs, renderFreeformEpaper, type PlacedEpaperWidget } from
  * typed `items` whatever the config said. A widget with no `list` is
  * byte-identical to 8, which `epaper-todo-widget.test.ts` pins; only a panel
  * with a list-backed widget on it moves.
+ *
+ * 10: a calendar widget draws the rota (plan item P5.4). Each month cell
+ * carries the shift's short code beside its day number — one per person, by
+ * initial for two — and a week strip carries them after the day's letter and
+ * number, whichever of the wall's four colour looks the widget wears, because
+ * three of them are colour and the code is what one bit can say. On by the
+ * absence of `showShifts` on a month, exactly as on the wall; off by it on a
+ * week (Q2). A panel with a calendar widget and a household on a rota moves;
+ * one with no rota, and the built-in layout, are byte-identical to 9.
  */
-export const EPAPER_RENDERER_VERSION = 9;
+export const EPAPER_RENDERER_VERSION = 10;
 
 /** Fallback panel size when a screen has no geometry — a Seeed 7.5". */
 export const DEFAULT_PANEL_WIDTH = 800;

@@ -5,6 +5,7 @@ import type {
   DisplayModel,
   EventModel,
   HorizonCell,
+  HorizonShift,
   InterruptModel,
   TodayShiftModel,
   TodoItemModel,
@@ -52,6 +53,7 @@ import {
   type ShiftWidgetView,
 } from './widget-options.js';
 import { calendarView } from './widget-views.js';
+import { shiftDotCount, shiftLabelForms, shiftStyle, shiftsShown, type ShiftStyle } from './shift-style.js';
 import { densitySteps, monthSpans } from './month-spans.js';
 import {
   TYPE_SPECIMEN,
@@ -171,6 +173,116 @@ function paintShift(node: HTMLElement, token: string | undefined, color?: string
   node.style.setProperty('--sc', `var(${token}, var(--s-straight))`);
   node.style.setProperty('--sc-tint', `var(${token}-tint, var(--panel))`);
   node.classList.add('has-shift');
+}
+
+/**
+ * The shift's hue alone, for a mark that carries its colour and no wash: a
+ * segment of the rule, a code in the label, a dot, a second person's chip.
+ * The same `--sc` `paintShift` sets, so a mark and the cell it sits in agree
+ * about what a shift's colour is.
+ */
+function paintHue(node: HTMLElement, shift: { readonly token: string; readonly color: string | undefined }): void {
+  node.style.setProperty('--sc', shift.color ?? `var(${shift.token}, var(--s-straight))`);
+}
+
+/**
+ * What a host draws for one person's rota when it has one of its own: the
+ * month cell's coloured top border (`border`), a strip laid along the head
+ * (`strip`), or nothing beyond the wash (`none`, the compact grid's tint).
+ */
+type RuleHost = 'border' | 'strip' | 'none';
+
+/**
+ * The rota's marks on one day, in the look the household chose (plan item
+ * P5.4).
+ *
+ * `box` is the element the wash and the rule belong to — a month cell, a week
+ * column's head — and `line` is the date line the label or the dots sit in,
+ * beside the numeral, so that neither costs an event its row: "nothing that
+ * annotates an event costs it a row" (CLAUDE.md), which this project has paid
+ * for twice with a hairline and a bar. The line's height is the numeral's, and
+ * a label at the scaffold role or a dot at half of it sits inside it.
+ *
+ * **One person in the default look draws exactly what every wall has drawn**:
+ * `paintShift` and nothing else, so a wall on defaults is untouched to the
+ * byte. Everything beyond that is drawn only where a household chose a look or
+ * has a second person on the rota — segments of the rule, one per person, the
+ * wash from the first; initials in the label; one dot each, to three.
+ *
+ * Several people used to be one: the cell read `shifts[0]` and Ben's nights
+ * were nowhere on a month that drew Amy's days in every square, while the badge
+ * beside it drew both. The model carries everyone now and this is where they
+ * are all drawn.
+ */
+function markRota(
+  box: HTMLElement,
+  line: HTMLElement | undefined,
+  shifts: readonly HorizonShift[],
+  style: ShiftStyle,
+  host: RuleHost,
+): void {
+  const first = shifts[0];
+  if (first === undefined) return;
+  if (style === 'tint' || style === 'edge') {
+    if (style === 'tint') paintShift(box, first.token, first.color);
+    /*
+     * The rule. A host with a border of its own colours it for one person,
+     * which is the month cell's existing tint and edge; several people, or a
+     * host with no border, take a strip of segments laid along the top instead.
+     * The strip sits where the border was: the host zeroes its border and
+     * pads by the same amount (`.has-rule`), so nothing under it moves and the
+     * cell's own `overflow: hidden` — which clips at the padding box and
+     * would clip a strip drawn into the border area — never sees it.
+     */
+    const segments = shifts.length > 1 || (style === 'edge' ? host !== 'border' : host === 'strip');
+    if (!segments) {
+      if (style === 'edge') {
+        paintHue(box, first);
+        box.classList.add('has-shift-edge');
+      }
+      return;
+    }
+    const rule = el('div', 'hz-shifts');
+    for (const shift of shifts) {
+      const segment = el('span', 'hz-shiftseg');
+      paintHue(segment, shift);
+      rule.appendChild(segment);
+    }
+    box.classList.add('has-rule');
+    box.appendChild(rule);
+    return;
+  }
+  if (line === undefined) return;
+  if (style === 'label') {
+    /*
+     * Every form the label may take, longest first, each a run of codes in
+     * their own shift's colour; `fitShiftLabels` keeps the first that fits the
+     * room the numeral leaves and hides the rest, once the line has a width.
+     * Drawn whole or not at all — a code cut in half is a different code.
+     */
+    const label = el('span', 'hz-shiftlabel');
+    const forms = shiftLabelForms(shifts, '\u00b7');
+    forms.forEach((form, index) => {
+      const node = el('span', 'hz-shiftform');
+      node.setAttribute('data-form', String(index));
+      form.forEach((word, at) => {
+        const code = el('span', 'hz-shiftcode', word);
+        const shift = shifts[at];
+        if (shift !== undefined) paintHue(code, shift);
+        node.appendChild(code);
+      });
+      label.appendChild(node);
+    });
+    line.appendChild(label);
+    return;
+  }
+  const dots = el('span', 'hz-shiftdots');
+  for (let index = 0; index < shiftDotCount(shifts); index++) {
+    const dot = el('i', 'hz-shiftdot');
+    paintHue(dot, shifts[index] as HorizonShift);
+    dots.appendChild(dot);
+  }
+  line.appendChild(dots);
 }
 
 /** The shift's `HH:MM` window as one line, or undefined when it has no times. */
@@ -1047,8 +1159,9 @@ function renderHouseTiles(model: DisplayModel, config?: unknown, draw: TileDraw 
 
 function renderDayRow(day: DayModel, showWeather = false, showShifts = true): HTMLElement {
   const row = el('div', day.isToday ? 'day-row is-today' : 'day-row');
-  const shift = showShifts ? day.shifts[0] : undefined;
-  paintShift(row, shift?.colorToken, shift?.color);
+  const shifts = showShifts ? day.shifts : [];
+  const first = shifts[0];
+  paintShift(row, first?.colorToken, first?.color);
 
   const when = el('div', 'dr-when');
   when.appendChild(el('div', 'dr-dow', day.weekday));
@@ -1066,8 +1179,23 @@ function renderDayRow(day: DayModel, showWeather = false, showShifts = true): HT
     wx.appendChild(el('span', 'dr-wx-low', day.weather.low));
     when.appendChild(wx);
   }
-  if (shift !== undefined) {
-    when.appendChild(el('div', 'dr-shift', shift.label));
+  /*
+   * One chip per person, each in its own shift's colour, with its hours under
+   * it. This read `shifts[0]` — the same fault as the month cell's — so a
+   * two-worker household's agenda named whoever sorted first on every day and
+   * the second person was nowhere on the list. One person draws the chip it
+   * always drew; two or more are told apart by initial ("A · Days", "B ·
+   * Nights"), the way the month's label tells them apart, because two chips
+   * reading "Days" and "Nights" say what is worked and not by whom.
+   */
+  for (const shift of shifts) {
+    const chip = el(
+      'div',
+      'dr-shift',
+      shifts.length > 1 ? `${shift.personInitial} \u00b7 ${shift.label}` : shift.label,
+    );
+    if (shifts.length > 1) paintHue(chip, { token: shift.colorToken, color: shift.color });
+    when.appendChild(chip);
     const window = shiftWindow(shift);
     if (window !== undefined) when.appendChild(el('div', 'dr-when', window));
   }
@@ -1196,8 +1324,15 @@ interface CellSpans {
 
 function renderCell(
   cell: HorizonCell,
-  style: CellStyle = 'text',
-  showShifts = true,
+  style: CellStyle,
+  /**
+   * The rota's look, or undefined when the widget's switch is off. **No
+   * default**, deliberately: a default is substituted for an explicit
+   * `undefined`, so `rota = 'tint'` here read a switched-off rota as the tint
+   * — measured in the editor's preview, thirty washed cells under a legend
+   * that had already gone. The caller resolves the absence; this only draws.
+   */
+  rota: ShiftStyle | undefined,
   spans: CellSpans = { lanes: 0, drawn: [], index: -1 },
 ): HTMLElement {
   const classes = ['hz-cell'];
@@ -1206,7 +1341,6 @@ function renderCell(
   if (!cell.inMonth) classes.push('outside');
 
   const node = el('div', classes.join(' '));
-  if (showShifts) paintShift(node, cell.shiftToken, cell.shiftColor);
   /*
    * The numeral and the density mark share one line, and that is measured
    * rather than chosen.
@@ -1225,6 +1359,10 @@ function renderCell(
    */
   const head = el('div', 'hz-top');
   head.appendChild(el('div', 'hz-num', cell.dayNumber));
+  // The rota, in the household's look: the cell's wash and border, or a label
+  // or dots on the numeral's own line, before the density mark takes the rest
+  // of it. `rota` is undefined when the widget's switch is off.
+  if (rota !== undefined) markRota(node, head, cell.shifts, rota, 'border');
   node.appendChild(head);
 
   /*
@@ -1408,11 +1546,12 @@ function renderHorizon(
   opts: {
     readonly cells?: CellStyle;
     readonly weekNumbers?: boolean;
-    readonly shifts?: boolean;
+    /** The rota's look, or undefined when the widget's switch is off. */
+    readonly rota?: ShiftStyle | undefined;
   } = {},
 ): HTMLElement {
   const style: CellStyle = opts.cells ?? 'text';
-  const showShifts = opts.shifts !== false;
+  const rota = 'rota' in opts ? opts.rota : 'tint';
   const variant =
     style === 'pills'
       ? 'horizon horizon-pills'
@@ -1491,7 +1630,7 @@ function renderHorizon(
     const weekSpans = spans?.[weekIndex];
     week.forEach((cell, column) => {
       grid.appendChild(
-        renderCell(cell, style, showShifts, {
+        renderCell(cell, style, rota, {
           lanes: weekSpans?.lanes[column] ?? 0,
           drawn: weekSpans?.drawn[column] ?? [],
           index: cellIndex,
@@ -1545,7 +1684,7 @@ function renderHorizon(
 
   // The key goes with the colours it explains. A legend under a grid with no
   // rota tints is a key to nothing.
-  const legend = showShifts ? legendFor(model) : undefined;
+  const legend = rota !== undefined ? legendFor(model) : undefined;
   if (legend !== undefined) horizon.appendChild(legend);
   return horizon;
 }
@@ -1565,9 +1704,9 @@ function legendFor(model: DisplayModel): HTMLElement | undefined {
   const seen = new Map<string, string>();
   for (const week of model.horizon) {
     for (const cell of week) {
-      if (cell.shiftToken !== undefined && cell.shiftLabel !== undefined) {
-        seen.set(cell.shiftToken, cell.shiftLabel);
-      }
+      // Everyone's, so a second person's colour on a segment or a dot is a
+      // colour the key under the grid explains.
+      for (const shift of cell.shifts) seen.set(shift.token, shift.label);
     }
   }
   if (seen.size === 0) return undefined;
@@ -2397,9 +2536,15 @@ const AGENDA_COUNT_DEFAULT = 12;
 function renderCalendarWidget(model: DisplayModel, config: unknown): HTMLElement {
   const c = widgetConfig(config);
   const { view, density } = calendarView(config);
-  // Absence means on: the rota's colours predate this option (see the schema).
-  // Read before the dispatch, because every style below consults it.
-  const showShifts = c['showShifts'] !== false;
+  /*
+   * Whether this view draws the rota and in which look, resolved once by
+   * `shift-style.ts` for every view here and for the panel: absence means on
+   * for the month and the list, whose colours predate the switch, and off for
+   * the week, which never drew a rota until it was asked to (Q2). The week
+   * renderers read the same two functions themselves.
+   */
+  const rota = shiftsShown(config, view) ? shiftStyle(config) : undefined;
+  const showShifts = rota !== undefined;
   if (view === 'week') {
     return density === 'compact' ? renderSkyWeek(model, config) : renderWeekColumns(model, config);
   }
@@ -2426,7 +2571,7 @@ function renderCalendarWidget(model: DisplayModel, config: unknown): HTMLElement
               ? 'dots'
               : 'text',
       weekNumbers: c['showWeekNumbers'] === true,
-      shifts: showShifts,
+      rota,
     });
   }
 
@@ -2480,6 +2625,14 @@ function renderWeekColumns(model: DisplayModel, config: unknown): HTMLElement {
 
   const week = model.horizon[0] ?? [];
   const section = el('section', 'weekcols');
+  /*
+   * The rota in the column head, only when the household said so (Q2): a week
+   * wall hanging before this drew none and stores no `showShifts`, so the
+   * absence stays off here where the month reads it as on. The wash and the
+   * rule take the head; the label and the dots share the number's line.
+   */
+  const rota = shiftsShown(config, 'week') ? shiftStyle(config) : undefined;
+  if (rota === 'tint' || rota === 'edge') section.classList.add('rota-rule');
   // One number for the whole strip, because a week column view *is* one week.
   const number = week[0]?.weekNumber;
   if (widgetConfig(config)['showWeekNumbers'] === true && number !== undefined) {
@@ -2490,7 +2643,17 @@ function renderWeekColumns(model: DisplayModel, config: unknown): HTMLElement {
     const col = el('div', `wc-col${cell.isToday ? ' is-today' : ''}${cell.isPast ? ' dim' : ''}`);
     const head = el('div', 'wc-head');
     head.appendChild(el('span', 'wc-wd', cell.weekday));
-    head.appendChild(el('span', 'wc-num', cell.dayNumber));
+    if (rota === 'label' || rota === 'dot') {
+      // The number's own line, so a label or a dot sits beside it rather than
+      // under it — a line that costs the column nothing it did not already spend.
+      const line = el('div', 'wc-line');
+      line.appendChild(el('span', 'wc-num', cell.dayNumber));
+      head.appendChild(line);
+      markRota(head, line, cell.shifts, rota, 'strip');
+    } else {
+      head.appendChild(el('span', 'wc-num', cell.dayNumber));
+      if (rota !== undefined) markRota(head, undefined, cell.shifts, rota, 'strip');
+    }
     col.appendChild(head);
     for (const ev of cell.events.filter((e) => keep(e.sourceId))) {
       const pill = el('div', ev.allDay ? 'wc-ev allday' : 'wc-ev', ev.title);
@@ -3655,11 +3818,107 @@ function tierOneGrid(grid: HTMLElement): CalendarTier {
   }
 
   const spanned = tierSpans(grid, tier, chPx);
+  fitShiftLabels(cells.map((cell) => cell.querySelector('.hz-top') as HTMLElement | null), 'hz-num');
 
   for (const cell of cells) {
     tierOneCell(cell, tier, names, lines, spanned.get(cell.getAttribute('data-cell') ?? '') ?? 0);
   }
   return tier;
+}
+
+/**
+ * Which form each rota label takes, decided once per grid from the room the
+ * numeral leaves on its line (plan item P5.4).
+ *
+ * `markRota` draws every form a label may take — "A·D B·N", then "D N" — and
+ * this keeps the longest that fits **every** line in the grid and hides the
+ * rest, so two people read the same way in every square rather than one cell
+ * saying "A·D B·N" beside another saying "D N" on a sub-pixel. Whole or not at
+ * all: a label none of whose forms fit is hidden, because "A·D B" is a
+ * different string from "A·D B·N", which is the rule the grid's own titles keep.
+ *
+ * The room is the line's inner width less what shares it: the widest numeral
+ * the grid can draw ("30", probed in the numeral's own class, so a "1" and a
+ * "24" decide the same form) and every other fixed thing on the line, with the
+ * line's gap between each. The density mark is deliberately not counted — it
+ * shrinks (`flex: 0 1 auto`), and a mark squeezed says the same about every
+ * day, where a label cut says something else.
+ *
+ * Grouped by section, so two calendars of different widths on one wall each
+ * decide for themselves. A drawing decision, never a saved one: the canvas
+ * holds `shiftStyle: 'label'` and nothing else.
+ */
+function fitShiftLabels(lines: readonly (HTMLElement | null)[], numeral: string): void {
+  const groups = new Map<Element, HTMLElement[]>();
+  for (const line of lines) {
+    if (line === null || line.querySelector('.hz-shiftlabel') === null) continue;
+    const section = line.closest('section') ?? line;
+    const list = groups.get(section) ?? [];
+    list.push(line);
+    groups.set(section, list);
+  }
+  groups.forEach((group) => {
+    const first = group[0] as HTMLElement;
+    const probe = document.createElement('div');
+    probe.className = numeral;
+    probe.textContent = '30';
+    probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;left:0;top:0';
+    first.appendChild(probe);
+    /*
+     * The widest numeral any line carries: "30" as probed, or a drawn one that
+     * is wider still — today's, on the compact grid, which wears a padded
+     * disc. Measured, the probe alone called a label fitting that ran four
+     * pixels past today's line and was clipped there, whole on every other
+     * cell and cut on the one somebody walks over to read.
+     */
+    let numeralPx = probe.offsetWidth;
+    probe.remove();
+    for (const line of group) {
+      const drawn = line.querySelector(`.${numeral}`) as HTMLElement | null;
+      if (drawn !== null) numeralPx = Math.max(numeralPx, drawn.offsetWidth);
+    }
+
+    let room = Number.POSITIVE_INFINITY;
+    let forms = 0;
+    for (const line of group) {
+      const style = getComputedStyle(line);
+      const gap = parseFloat(style.columnGap) || 0;
+      let fixed = 0;
+      let count = 0;
+      for (let index = 0; index < line.children.length; index++) {
+        const child = line.children[index] as HTMLElement;
+        if (child.classList.contains('hz-mark')) continue;
+        count += 1;
+        if (child.classList.contains('hz-shiftlabel')) {
+          forms = Math.max(forms, child.children.length);
+          continue;
+        }
+        fixed += child.classList.contains(numeral) ? numeralPx : child.offsetWidth;
+      }
+      const inner = line.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      room = Math.min(room, inner - fixed - gap * Math.max(0, count - 1));
+    }
+
+    let chosen = -1;
+    for (let form = 0; form < forms && chosen < 0; form++) {
+      let widest = 0;
+      for (const line of group) {
+        const label = line.querySelector('.hz-shiftlabel') as HTMLElement;
+        const node = (label.children[Math.min(form, label.children.length - 1)] ?? null) as HTMLElement | null;
+        if (node !== null) widest = Math.max(widest, node.offsetWidth);
+      }
+      if (widest <= room + 0.5) chosen = form;
+    }
+    for (const line of group) {
+      const label = line.querySelector('.hz-shiftlabel') as HTMLElement;
+      const last = label.children.length - 1;
+      const keep = chosen < 0 ? -1 : Math.min(chosen, last);
+      for (let index = 0; index < label.children.length; index++) {
+        (label.children[index] as HTMLElement).style.display = index === keep ? '' : 'none';
+      }
+      label.setAttribute('data-form', String(keep));
+    }
+  });
 }
 
 /**
@@ -4336,6 +4595,18 @@ export function renderFreeform(
   }
 
   /*
+   * The rota labels on every line the month grid's own pass does not reach —
+   * the week heads and the compact grids — once the week fallback has decided
+   * which of them is still a week. Same rule as the month's: the longest form
+   * that fits every line in the section, or none.
+   */
+  const linesOf = (selector: string): (HTMLElement | null)[] =>
+    Array.prototype.slice.call(root.querySelectorAll(selector)) as HTMLElement[];
+  fitShiftLabels(linesOf('.wc-line'), 'wc-num');
+  fitShiftLabels(linesOf('.sk-head'), 'sk-num');
+  fitShiftLabels(linesOf('.sk-top'), 'sk-mnum');
+
+  /*
    * Then any agenda with no room for a time column stacks it above the title.
    *
    * Before the tier below rather than after, which is the opposite order from
@@ -4578,7 +4849,10 @@ function skyCalendars(config: unknown): (sourceId: string) => boolean {
 function renderSkyWeek(model: DisplayModel, config: unknown): HTMLElement {
   const keep = skyCalendars(config);
   const week = model.horizon[0] ?? [];
+  // Only when asked (Q2) — see `renderWeekColumns`.
+  const rota = shiftsShown(config, 'week') ? shiftStyle(config) : undefined;
   const section = el('section', 'sky skyweek');
+  if (rota === 'tint' || rota === 'edge') section.classList.add('rota-rule');
   const grid = el('div', 'sk-grid');
   for (const cell of week) {
     const classes = ['sk-col'];
@@ -4589,6 +4863,9 @@ function renderSkyWeek(model: DisplayModel, config: unknown): HTMLElement {
     const head = el('div', 'sk-head');
     head.appendChild(el('span', 'sk-wd', cell.weekday));
     head.appendChild(el('span', 'sk-num', cell.dayNumber));
+    // The head is already one line — weekday and number, baseline-aligned —
+    // so a label or a dot joins it and the rule lies along its top.
+    if (rota !== undefined) markRota(head, head, cell.shifts, rota, 'strip');
     col.appendChild(head);
 
     const body = el('div', 'sk-body');
@@ -4612,7 +4889,8 @@ function renderSkyWeek(model: DisplayModel, config: unknown): HTMLElement {
 
 function renderSkyMonth(model: DisplayModel, config: unknown): HTMLElement {
   const keep = skyCalendars(config);
-  const showShifts = widgetConfig(config)['showShifts'] !== false;
+  // Absence means on here, as on the comfortable month (`shiftsShown`).
+  const rota = shiftsShown(config, 'month') ? shiftStyle(config) : undefined;
   const section = el('section', 'sky skymonth');
   const grid = el('div', 'sk-mgrid');
 
@@ -4634,8 +4912,22 @@ function renderSkyMonth(model: DisplayModel, config: unknown): HTMLElement {
       if (cell.isPast) classes.push('dim');
       if (!cell.inMonth) classes.push('outside');
       const node = el('div', classes.join(' '));
-      if (showShifts) paintShift(node, cell.shiftToken, cell.shiftColor);
-      node.appendChild(el('div', 'sk-mnum', cell.dayNumber));
+      /*
+       * The compact cell's tint is its fill alone — no top rule, because the
+       * hairlines are the structure here — so one person in the default look
+       * draws exactly the cell it always drew (`'none'`). A label or dots need
+       * the numeral on a line of its own to sit beside, so only those two looks
+       * wrap it; the tint keeps the bare numeral a hanging compact wall has.
+       */
+      if (rota === 'label' || rota === 'dot') {
+        const line = el('div', 'sk-top');
+        line.appendChild(el('div', 'sk-mnum', cell.dayNumber));
+        markRota(node, line, cell.shifts, rota, 'none');
+        node.appendChild(line);
+      } else {
+        if (rota !== undefined) markRota(node, undefined, cell.shifts, rota, 'none');
+        node.appendChild(el('div', 'sk-mnum', cell.dayNumber));
+      }
 
       const events = cell.events.filter((e) => keep(e.sourceId));
       if (events.length > 0) {

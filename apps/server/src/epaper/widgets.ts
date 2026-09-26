@@ -64,6 +64,7 @@ import {
   type WeatherField,
 } from './ladder.js';
 import { calendarView } from './calendar-view.js';
+import { shiftsShown } from './shift-style.js';
 import { variantOf } from './variants.js';
 import { withInk } from './honours.js';
 import { childCells, groupChildren, topLevelWidgets } from './group-cells.js';
@@ -1928,6 +1929,7 @@ function drawCalendarWidget(
   model: EpaperModel,
   m: EpaperMetrics,
   config: Config,
+  log?: RegionLog,
 ): void {
   /*
    * The view, resolved by the transcription of the wall's own reading — never
@@ -1942,7 +1944,15 @@ function drawCalendarWidget(
    * drawing exactly what it drew before the split.
    */
   const { view } = calendarView(config);
-  if (view === 'week') return drawWeekBox(fb, model, m, box);
+  /*
+   * Whether the rota is drawn, read by the wall's own function (plan item
+   * P5.4): on the month the absence of `showShifts` means on, on the week it
+   * means off (Q2), and the panel must answer exactly as the wall it follows.
+   * How it is drawn is the panel's own: the shift's code beside the day
+   * number, whichever of the four colour looks the wall wears — three of them
+   * are colour, which is `PANEL_IGNORES`'s sentence beside `shiftStyle`.
+   */
+  if (view === 'week') return drawWeekBox(fb, model, m, box, { shifts: shiftsShown(config, 'week') });
   if (view === 'month') {
     /*
      * `text`, `swiss` and `pills` all draw names here, and that is not a
@@ -1962,7 +1972,14 @@ function drawCalendarWidget(
      * that answers no.
      */
     const cellEvents = str(config, 'cellEvents');
-    return drawMonthBox(fb, model, m, box, { pills: cellEvents !== 'dots' });
+    return drawMonthBox(
+      fb,
+      model,
+      m,
+      box,
+      { pills: cellEvents !== 'dots', shifts: shiftsShown(config, 'month') },
+      log,
+    );
   }
 
   const calendars = strings(config, 'calendars');
@@ -2318,12 +2335,19 @@ function drawWidget(
   input: PanelInput,
   m: EpaperMetrics,
   config: Config,
+  /**
+   * The canvas's region log, when the caller keeps one. Only the calendar
+   * records inside its box today — its cells and the rectangles its rota codes
+   * take (plan item P5.4), which is what lets a test hold those to the refresh
+   * contract on a household's own canvas rather than only on the built-in one.
+   */
+  log?: RegionLog,
 ): void {
   switch (type) {
     case 'clock':
       return drawClock(fb, m, box, model, config);
     case 'calendar':
-      return drawCalendarWidget(fb, box, model, m, config);
+      return drawCalendarWidget(fb, box, model, m, config, log);
     case 'shift':
       return drawShift(fb, m, box, model, config);
     case 'countdown':
@@ -2457,7 +2481,7 @@ export function renderFreeformEpaper(
     const inner = drawFrame(fb, m, box, config);
     recordRegion(regions, `widget-inner:${position}`, inner);
     if (widget.type !== 'group') {
-      drawWidget(fb, widget.type, inner, model, panelInput(widget.type, manifest, config), m, config);
+      drawWidget(fb, widget.type, inner, model, panelInput(widget.type, manifest, config), m, config, regions);
       return;
     }
     const members = widget.id === undefined ? [] : (children.get(widget.id) ?? []);
@@ -2471,7 +2495,7 @@ export function renderFreeformEpaper(
       const childConfig = withInk(child.config);
       const childInner = drawFrame(fb, m, childBox, childConfig);
       recordRegion(regions, `child-inner:${position}:${index}`, childInner);
-      drawWidget(fb, child.type, childInner, model, panelInput(child.type, manifest, childConfig), m, childConfig);
+      drawWidget(fb, child.type, childInner, model, panelInput(child.type, manifest, childConfig), m, childConfig, regions);
     });
   });
   return fb;

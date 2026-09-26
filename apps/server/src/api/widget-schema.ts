@@ -103,6 +103,18 @@ const widgetConfigFields = z
      * value ever stored is `false`.
      */
     showShifts: z.boolean().optional(),
+    /*
+     * How the rota is drawn where it is shown (plan item P5.4): the cell's
+     * `tint` and rule, the shift's short code as a `label` beside the date, an
+     * `edge` rule alone, or a `dot` per person. **Absent means `tint`**, the
+     * look every wall has drawn since the rota existed, so a canvas saved
+     * before this key existed sends a byte-identical config and draws exactly
+     * as it did. Resolved once for both renderers by `shiftStyle` in
+     * `apps/display/src/shift-style.ts` and its transcription in
+     * `epaper/shift-style.ts`; the panel draws the code whichever look is
+     * chosen, since three of the four are colour.
+     */
+    shiftStyle: z.enum(['tint', 'label', 'edge', 'dot']).optional(),
     showTimes: z.boolean().optional(),
     showLocations: z.boolean().optional(),
     /*
@@ -428,6 +440,7 @@ export const inkOverrideBody = widgetConfigFields
     readings: true,
     shiftName: true,
     showDate: true,
+    showShifts: true,
     unitWords: true,
     variant: true,
   })

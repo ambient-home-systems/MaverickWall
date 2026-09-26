@@ -75,7 +75,10 @@ const WHEN_EMPTY = 'whenEmpty';
 
 export const PANEL_HONOURS: Readonly<Record<string, readonly string[]>> = {
   clock: ['title', 'showTitle', 'align', 'clockFormat', 'showDate', 'variant', STYLE_INSET],
-  calendar: ['title', 'showTitle', 'mode', 'cellEvents', 'count', 'calendars', STYLE_INSET],
+  // `showShifts` since plan item P5.4: the rota's short code beside the day
+  // number, in one bit, whichever look the wall wears — so the switch moves
+  // ink and the look does not (`PANEL_IGNORES` carries `shiftStyle`).
+  calendar: ['title', 'showTitle', 'mode', 'cellEvents', 'count', 'calendars', 'showShifts', STYLE_INSET],
   shift: ['title', 'showTitle', 'people', 'fields', 'shiftName', 'showHours', STYLE_INSET, WHEN_EMPTY],
   // `variant` since P5.1: `range` is drawn as black bars. The panel honours
   // the key and falls back per value — `PANEL_LOOKS` says which values.
@@ -131,7 +134,10 @@ export const INK_LANE: Readonly<Record<string, readonly string[]>> = {
   // wall it follows: a face reads at a glance from a doorway where a small
   // panel's digits do not.
   clock: ['variant', 'clockFormat', 'showDate', 'align'],
-  calendar: ['mode', 'cellEvents', 'count', 'calendars'],
+  // `showShifts`: whether the panel draws the rota's codes is how much it says,
+  // and a following panel may say less than its wall or more than one whose
+  // week view keeps them off. The look is the wall's alone.
+  calendar: ['mode', 'cellEvents', 'count', 'calendars', 'showShifts'],
   shift: ['people', 'fields', 'shiftName'],
   // The Look, since P5.1 — offered as `INK_LOOKS` narrows it: a panel may
   // take the range where its wall wears the strip, which is density and shape.
@@ -279,10 +285,18 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
     label: 'Run position',
     why: "the panel's model does not carry which day of a run it is.",
   },
+  /*
+   * The rota's look (plan item P5.4). A panel draws the rota as the shift's
+   * short code beside the day number — the `label` look — whichever of the
+   * four the wall wears, because the other three are a wash, a coloured rule
+   * and a coloured dot, and one bit has none of them. `showShifts` itself is
+   * honoured: it is what puts the code there or takes it away.
+   */
   {
-    key: 'showShifts',
-    label: 'Shift colours',
-    why: 'the colours are the point, and there are none.',
+    key: 'shiftStyle',
+    types: ['calendar'],
+    label: 'Shift style',
+    why: 'a panel draws the rota as the shift’s short code beside the date, whichever look is chosen.',
   },
   /*
    * The `playful` forecast's advice line (plan item P5.1). A panel draws that
