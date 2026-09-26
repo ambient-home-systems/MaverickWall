@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.71.0
+
 **Background has its own button beside Layout in the wall editor.** Choose a
 colour, picture or wallpaper for the layout on screen without opening the
 layout sizing menu. The background shortcuts under Wall settings → Look open
