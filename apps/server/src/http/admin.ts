@@ -353,7 +353,7 @@ function wallThemeColours(db: SqliteDatabase, ref: string): Readonly<Record<stri
 
 /**
  * The Widget ground control (plan item P6.3): None, Soft or Solid, on the
- * wall's Layout settings beside the room between widgets.
+ * wall's Look settings beside the other widget defaults.
  *
  * **One segment is always checked**, and on a wall nobody has asked it is the
  * one the wall is drawing — Soft if either canvas has a wallpaper, None
@@ -5135,12 +5135,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             selected: String(screen.layoutGutter ?? GUTTER_DEFAULT_STEP),
             options: GUTTER_LABELS.map((label, step) => ({ value: String(step), label })),
           }) +
-          widgetGroundControl(screen) +
           scheduleRows(screen.id),
       );
-    const look =
+    const backgroundAndDefaults =
       wsetGroup(
-        'Layout backgrounds',
+        'Backgrounds',
         `<p class="hint">The theme sets the wall’s base colours. These are the everyday layouts; a timed layout can have its own background. Wallpaper offers an option to apply it to both orientations.</p>` +
         `<div class="rows">` +
         (['portrait', 'landscape'] as const).map((orientation) => {
@@ -5152,7 +5151,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             background.type === 'gradient' ? 'Gradient' : 'Uploaded image';
           return `<button type="button" class="arow" data-open-background="${orientation}">` +
             `<span class="arow-text">Everyday ${orientation} background` +
-            `<small>${description} · edit in Layout</small></span>` +
+            `<small>${description} · open background picker</small></span>` +
             `<span class="srow-chev" aria-hidden="true">${icon('chev')}</span></button>`;
         }).join('') +
         `</div>`,
@@ -5167,8 +5166,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
        */
       wsetGroup('Wall widget defaults',
         `<p class="hint">These override the shared theme on this wall. A widget’s own style can override them again.</p>` +
-        styleLaneFields(screen)) +
-      wsetGroup(
+        widgetGroundControl(screen) +
+        styleLaneFields(screen));
+    const themeLook = wsetGroup(
         'Theme',
         `<p class="hint">Choose a shared colour and type design for this wall. ` +
         `<a class="link" href="admin/themes">Browse or edit shared themes</a>; ` +
@@ -5247,6 +5247,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `</div></div></div>` +
           `</div>`,
       );
+    const look = themeLook + backgroundAndDefaults;
 
     // --- Content defaults -------------------------------------------------
     const content =
@@ -5540,7 +5541,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `</nav>` +
       `<div class="wset-panels">` +
       `<form method="post" action="${action}" class="wall-settings" data-settings>` +
-      wsetPanel('design', 'Design', 'This wall’s layout, spacing and timed layouts. The Layout editor is where you move widgets and edit backgrounds.', design, true) +
+      wsetPanel('design', 'Design', 'This wall’s layout, spacing and timed layouts. Arrange widgets in the Layout editor.', design, true) +
       wsetPanel('look', 'Look', 'The theme is shared; the choice, layout backgrounds and overrides here belong to this wall.', look, false) +
       wsetPanel('content', 'Content defaults', 'How much the calendars on this wall show. Each one follows the household until you turn that off.', content, false) +
       wsetPanel('device', 'Device and time', 'What this wall is called, how it is hung, how large it is, and the clock it keeps.', device, false) +

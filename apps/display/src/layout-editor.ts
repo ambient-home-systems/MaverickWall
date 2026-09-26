@@ -629,6 +629,7 @@ function boot(): void {
   // Whether the anchored Layers / Canvas popovers are open. UI-only; not saved.
   let layersOpen = false;
   let canvasOpen = false;
+  let backgroundOpen = false;
   // The wall this canvas belongs to, as a URL segment for the per-display admin
   // routes the toolbar links to (the gallery and the reset action).
   const detailSeg = state.screen === null ? 'default' : encodeURIComponent(state.screen);
@@ -1249,11 +1250,7 @@ function boot(): void {
   resetButton.textContent = 'Reset layout…';
   resetForm.appendChild(resetButton);
 
-  /**
-   * Canvas settings: the shape being arranged, whether dragging snaps, and what
-   * is behind the widgets — plus the reset, which is a fact about this canvas
-   * and is destructive, so it is the last thing in a panel you had to open.
-   */
+  /** Layout controls concern the canvas shape, grid and named layouts. */
   const canvasButton = document.createElement('button');
   canvasButton.type = 'button';
   canvasButton.className = 'le-tool-btn';
@@ -1311,9 +1308,6 @@ function boot(): void {
       slotRow.className = 'le-pop-row le-pop-slots';
       slotRow.append(newSlotButton, removeSlotButton);
       canvasPopover.append(slotSep, slotRow);
-      const sep2 = document.createElement('div');
-      sep2.className = 'le-pop-sep';
-      canvasPopover.append(sep2, backgroundPanel);
     }
     // The reset, on a panel only. On a wall the page's overflow menu carries
     // "Reset layout…" already, and one destructive action offered twice on one
@@ -1325,6 +1319,29 @@ function boot(): void {
       canvasPopover.appendChild(actions);
     }
   }
+
+  // Background is a visual choice on the active canvas. Give it its own
+  // entrance instead of burying the wallpaper grid beneath layout sizing and
+  // snap controls. The panel remains shared by both orientations and slots.
+  const backgroundButton = document.createElement('button');
+  backgroundButton.type = 'button';
+  backgroundButton.className = 'le-tool-btn le-background-btn';
+  backgroundButton.textContent = 'Background';
+  backgroundButton.setAttribute('aria-haspopup', 'dialog');
+  backgroundButton.setAttribute('aria-expanded', 'false');
+  const backgroundPopover = document.createElement('div');
+  backgroundPopover.className = 'le-canvas-pop le-background-pop';
+  backgroundPopover.id = 'le-background-picker';
+  backgroundPopover.setAttribute('role', 'dialog');
+  backgroundPopover.setAttribute('aria-label', 'Background');
+  backgroundButton.setAttribute('aria-controls', backgroundPopover.id);
+  backgroundPopover.hidden = true;
+  const backgroundTitle = document.createElement('div');
+  backgroundTitle.className = 'le-pop-title';
+  backgroundTitle.textContent = 'Background';
+  const backgroundContext = document.createElement('div');
+  backgroundContext.className = 'le-pop-sub';
+  backgroundPopover.append(backgroundTitle, backgroundContext, backgroundPanel);
 
   // Layers: a toggle that opens an anchored popover (built below). Anchored to
   // the tools row, never <body>, so it cannot float over the settings pane.
@@ -1357,14 +1374,32 @@ function boot(): void {
     layersPopover.hidden = !open;
     layersButton.classList.toggle('is-on', open);
     layersButton.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (open) setCanvasOpen(false);
+    if (open) { setCanvasOpen(false); setBackgroundOpen(false); }
   };
   const setCanvasOpen = (open: boolean): void => {
     canvasOpen = open;
     canvasPopover.hidden = !open;
     canvasButton.classList.toggle('is-on', open);
     canvasButton.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (open) setLayersOpen(false);
+    if (open) { setLayersOpen(false); setBackgroundOpen(false); }
+  };
+  const setBackgroundOpen = (open: boolean): void => {
+    backgroundOpen = open;
+    backgroundPopover.hidden = !open;
+    backgroundButton.classList.toggle('is-on', open);
+    backgroundButton.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) {
+      setLayersOpen(false);
+      setCanvasOpen(false);
+      // A phone may wrap this button onto a new toolbar row. Keep the wide
+      // wallpaper grid within the viewport without detaching its top edge
+      // from the button that opened it.
+      backgroundPopover.style.transform = '';
+      const box = backgroundPopover.getBoundingClientRect();
+      const shift = box.left < 8 ? 8 - box.left :
+        box.right > window.innerWidth - 8 ? window.innerWidth - 8 - box.right : 0;
+      if (shift !== 0) backgroundPopover.style.transform = `translateX(${shift}px)`;
+    }
   };
   layersButton.addEventListener('click', (event) => {
     event.stopPropagation();
@@ -1374,12 +1409,16 @@ function boot(): void {
     event.stopPropagation();
     setCanvasOpen(!canvasOpen);
   });
+  backgroundButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    setBackgroundOpen(!backgroundOpen);
+  });
   window.addEventListener('mw:open-background', (event) => {
     if (epaperHost) return;
     const orientation = (event as CustomEvent<{ orientation?: string }>).detail?.orientation;
     if (orientation !== 'portrait' && orientation !== 'landscape') return;
     switchCanvas(orientation, null);
-    setCanvasOpen(true);
+    setBackgroundOpen(true);
     backgroundPanel.querySelector<HTMLSelectElement>('select')?.focus();
   });
   // Click outside a popover (and off its button) closes it; so does Escape,
@@ -1388,6 +1427,7 @@ function boot(): void {
     const target = event.target as Node;
     if (layersOpen && !layersPopover.contains(target) && target !== layersButton) setLayersOpen(false);
     if (canvasOpen && !canvasPopover.contains(target) && target !== canvasButton) setCanvasOpen(false);
+    if (backgroundOpen && !backgroundPopover.contains(target) && target !== backgroundButton) setBackgroundOpen(false);
   });
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') return;
@@ -1399,6 +1439,11 @@ function boot(): void {
     if (canvasOpen) {
       setCanvasOpen(false);
       canvasButton.focus();
+      return;
+    }
+    if (backgroundOpen) {
+      setBackgroundOpen(false);
+      backgroundButton.focus();
       return;
     }
     // With nothing else to close, Escape clears the selection (RFC 014 §5.1)
@@ -1434,6 +1479,7 @@ function boot(): void {
     undoButton,
     anchor(layersButton, layersPopover),
     anchor(canvasButton, canvasPopover),
+    ...(epaperHost ? [] : [anchor(backgroundButton, backgroundPopover)]),
     // Last, because they come and go: a button that appears in the middle of
     // a row moves every control after it, and these appear on a selection.
     groupButton,
@@ -2706,9 +2752,10 @@ function boot(): void {
    */
   function drawBackgroundPanel(): void {
     backgroundPanel.textContent = '';
+    backgroundContext.textContent = `${state.orientation === 'portrait' ? 'Portrait' : 'Landscape'} · ${state.slot ?? 'Everyday'} layout. Each layout can have its own background.`;
     const kick = document.createElement('span');
     kick.className = 'le-bg-label';
-    kick.textContent = 'Background';
+    kick.textContent = 'Type';
     backgroundPanel.appendChild(kick);
 
     const kind = state.background?.type ?? 'none';
@@ -4131,7 +4178,7 @@ function boot(): void {
       return label;
     };
     wrap.appendChild(
-      toggle('Use for both portrait and landscape', wallpaperForBoth, (on) => {
+      toggle('Use for both orientations, including timed layouts', wallpaperForBoth, (on) => {
         wallpaperForBoth = on;
       }),
     );
@@ -4149,7 +4196,7 @@ function boot(): void {
         warning.textContent =
           `This wall's theme is ${wallTone}, and its text is drawn to be read on a ${wallTone} ground. ` +
           `Over a ${otherTone} picture some of it may be hard to read — choose a Solid widget ground ` +
-          `in the wall's settings, or a ${otherTone} theme.`;
+          `in Wall settings → Look, or a ${otherTone} theme.`;
         wrap.appendChild(warning);
       }
     }

@@ -1413,7 +1413,7 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
    * popover is open" passes just as happily either way.
    */
   it(
-    'opens the Layers and Layout popovers under their own buttons',
+    'opens the Layers, Layout and Background popovers under their own buttons',
     async () => {
       const wall = await newWall();
       const context = await editorContext(wall);
@@ -1423,7 +1423,8 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
 
         for (const [button, popover] of [
           ['.le-layers-btn', '.le-layers-pop'],
-          ['.le-tool-btn:not(:disabled)', '.le-canvas-pop'],
+          ['.le-tool-btn:has-text("Layout")', '.le-canvas-pop:not(.le-background-pop)'],
+          ['.le-background-btn', '.le-background-pop'],
         ] as const) {
           await page.click(button);
           await settle(page);
