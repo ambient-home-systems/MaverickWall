@@ -98,7 +98,16 @@ import {
 } from './omission.js';
 import { inspectorView } from './inspector.js';
 import { previewReadingKeys } from './widget-options.js';
-import { celebrates, countdownEmoji, countdownWords } from './countdown.js';
+import {
+  OCCASIONS,
+  OCCASION_LABELS,
+  START_AFTER_TARGET,
+  celebrates,
+  countdownEmoji,
+  countdownOccasion,
+  countdownWords,
+  daysUntil,
+} from './countdown.js';
 import { EMOJI_KEYS, emojiNode } from './emoji.js';
 import { TIER_NAMES, type TierName } from './tiers.js';
 import { PALETTE, SWATCH, describeWidget, describeWidgetIn, labelFor } from './widget-labels.js';
@@ -3732,6 +3741,61 @@ function boot(): void {
     );
     dateField.appendChild(date);
     configPanel.appendChild(dateField);
+
+    /*
+     * The occasion an `occasion` countdown is dressed for, and the date a
+     * `progress` bar counts from (P5.2) — each shown only on its own look
+     * (`VARIANT_HIDES`). Neither is offered on the ink lane: a panel draws the
+     * occasion as the number, and the start date is the countdown's identity
+     * the way its target is, so a panel following a wall draws the wall's.
+     *
+     * "Something else" is written as an absence, the default every other
+     * control here keeps; a start date on or after the target is said to be
+     * wrong beside the field, in the sentence the save would refuse it with.
+     */
+    const occasionField = cfgField('Occasion', 'occasion');
+    const occasion = document.createElement('select');
+    for (const value of OCCASIONS) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = OCCASION_LABELS[value];
+      occasion.appendChild(option);
+    }
+    occasion.value = countdownOccasion(cfg);
+    occasion.addEventListener('change', () =>
+      setConfig(widget, 'occasion', occasion.value === 'custom' ? undefined : occasion.value),
+    );
+    occasionField.appendChild(occasion);
+    configPanel.appendChild(occasionField);
+
+    const fromField = cfgField('Counting from', 'from');
+    const from = document.createElement('input');
+    from.type = 'date';
+    from.value = typeof cfg['from'] === 'string' ? (cfg['from'] as string) : '';
+    fromField.appendChild(from);
+    configPanel.appendChild(fromField);
+    const fromHint = document.createElement('p');
+    fromHint.dataset['cfgKey'] = 'from';
+    configPanel.appendChild(fromHint);
+    // Re-said in place on every change to either date: a write does not
+    // rebuild the inspector, so a hint drawn once would go on saying whatever
+    // was true when the widget was selected.
+    const sayFrom = (): void => {
+      const refused = /^\d{4}-\d{2}-\d{2}$/.test(from.value) && /^\d{4}-\d{2}-\d{2}$/.test(date.value) &&
+        !(daysUntil(from.value, date.value) > 0);
+      fromHint.className = refused ? 'hint le-cfg-refused' : 'hint';
+      fromHint.textContent = refused
+        ? START_AFTER_TARGET
+        : 'The bar runs from this date to the one above, and fills a little each day.';
+      if (refused) fromHint.setAttribute('role', 'alert');
+      else fromHint.removeAttribute('role');
+    };
+    sayFrom();
+    from.addEventListener('change', () => {
+      setConfig(widget, 'from', /^\d{4}-\d{2}-\d{2}$/.test(from.value) ? from.value : undefined);
+      sayFrom();
+    });
+    date.addEventListener('change', sayFrom);
 
     /*
      * The three the plan added (P5.2), each absent by default. The words are

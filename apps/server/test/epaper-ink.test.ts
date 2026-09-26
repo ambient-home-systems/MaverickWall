@@ -222,6 +222,28 @@ const BASES: Readonly<Record<string, readonly Record<string, unknown>[]>> = {
   group: [{ layout: 'row' }, { layout: 'grid' }],
 };
 
+/**
+ * Starting configs for one key alone, beside its type's `BASES`.
+ *
+ * A key that means something on one look only needs a base wearing that look,
+ * or a probe from the others would "prove" it is ignored. They are per key
+ * rather than added to `BASES`, and that is measured rather than tidy: two
+ * more countdown bases made every countdown key render from four configs
+ * instead of two, and "draws none of them, on countdown" went from 0.5s here
+ * to 5.4s on a CI runner and timed out — this file's own history, a fourth
+ * time. Per key, only the keys that need a base pay for it.
+ *
+ *  - `from` moves ink only on the progress bar (P5.2).
+ *  - `occasion` is probed on the one look that reads it on the wall, and is
+ *    proved to move no ink there, which is what `PANEL_IGNORES` says of it.
+ */
+const KEY_BASES: Readonly<Record<string, Readonly<Record<string, readonly Record<string, unknown>[]>>>> = {
+  countdown: {
+    from: [{ target: '2026-12-25', variant: 'progress', from: '2026-08-01' }],
+    occasion: [{ target: '2026-12-25', variant: 'occasion', occasion: 'christmas' }],
+  },
+};
+
 /** Values that would visibly change a widget that reads the key at all. */
 const PROBES: Readonly<Record<string, readonly unknown[]>> = {
   title: ['A different title'],
@@ -283,6 +305,9 @@ const PROBES: Readonly<Record<string, readonly unknown[]>> = {
   unitWords: ['sleeps'],
   emoji: ['christmas-tree', 'party-popper'],
   celebrate: [false],
+  // …and the second half's: which occasion, and where a bar counts from.
+  occasion: ['birthday', 'new-year'],
+  from: ['2026-06-01'],
   module: ['weather'],
   image: [`${'b'.repeat(64)}.png`],
   text: ['Different words entirely'],
@@ -338,7 +363,7 @@ function withKey(start: Record<string, unknown>, key: string, value: unknown): R
 /** Does setting this key change what the panel draws for this widget type? */
 function movesInk(type: string, key: string): boolean {
   const values = PROBES[key] ?? [];
-  for (const base of BASES[type] ?? []) {
+  for (const base of [...(BASES[type] ?? []), ...(KEY_BASES[type]?.[key] ?? [])]) {
     for (const start of [base, { ...base, showTitle: true, title: 'Base' }]) {
       const before = frame(type, start);
       for (const value of values) {
@@ -556,7 +581,8 @@ describe('a Look, value by value', () => {
         expect(value, `${type}'s default is not a look of its own`).not.toBe(own[0]);
       }
     }
-    // The countdown joined in P5.2, with the page and the ticket as still frames.
+    // The countdown joined in P5.2, with the page, the ticket, the bar and the
+    // month as still frames.
     expect(Object.keys(PANEL_LOOKS).sort()).toEqual(['clock', 'countdown', 'weather']);
   });
 
@@ -589,7 +615,7 @@ describe('the Looks the lane offers', () => {
       expect(INK_LANE[type] ?? [], `${type} narrows a Look its lane does not offer`).toContain('variant');
     }
     expect(INK_LOOKS['weather']).toEqual(['strip', 'today', 'range']);
-    expect(INK_LOOKS['countdown']).toEqual(['number', 'page', 'ticket']);
+    expect(INK_LOOKS['countdown']).toEqual(['number', 'page', 'ticket', 'progress', 'month']);
   });
 
   it('offers no look a panel draws as its default, bar the ones owned by a later session', () => {

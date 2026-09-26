@@ -82,9 +82,10 @@ export const PANEL_HONOURS: Readonly<Record<string, readonly string[]>> = {
   weather: ['title', 'showTitle', 'count', 'fields', 'showLow', 'showIcon', 'variant', STYLE_INSET, WHEN_EMPTY],
   homeassistant: ['title', 'showTitle', 'count', 'fields', 'readings', STYLE_INSET, WHEN_EMPTY],
   external: ['title', 'showTitle', 'count', 'module', STYLE_INSET],
-  // `variant` and `unitWords` since P5.2: `page` and `ticket` are drawn as
-  // still frames, and "sleeps" is words. `PANEL_LOOKS` says which looks.
-  countdown: ['title', 'showTitle', 'target', 'variant', 'unitWords', STYLE_INSET],
+  // `variant` and `unitWords` since P5.2: `page`, `ticket`, `progress` and
+  // `month` are drawn as still frames, and "sleeps" is words. `PANEL_LOOKS`
+  // says which looks. `from` is the start a progress bar counts from.
+  countdown: ['title', 'showTitle', 'target', 'variant', 'unitWords', 'from', STYLE_INSET],
   notes: ['title', 'showTitle', 'align', 'text', STYLE_INSET],
   // `list` and `showDone` are read the way the wall reads them (RFC 012 §6.3):
   // a list absent means the typed items, present means that list's rows.
@@ -168,9 +169,10 @@ export const INK_LANE: Readonly<Record<string, readonly string[]>> = {
 export const PANEL_LOOKS: Readonly<Record<string, readonly string[]>> = {
   clock: ['stacked', 'analogue'],
   weather: ['range', 'today'],
-  // The page and the ticket as still frames (P5.2). `occasion`, `progress`
-  // and `month` are the item's second half and draw the number until then.
-  countdown: ['page', 'ticket'],
+  // The page, the ticket, the progress bar and the mini month as still frames
+  // (P5.2). `occasion` is drawn as the number: its colours, motif and scene
+  // are three things one still bit has none of.
+  countdown: ['page', 'ticket', 'progress', 'month'],
 };
 
 /**
@@ -185,11 +187,11 @@ export const PANEL_LOOKS: Readonly<Record<string, readonly string[]>> = {
  */
 export const INK_LOOKS: Readonly<Record<string, readonly string[]>> = {
   weather: ['strip', 'today', 'range'],
-  // The three a panel draws (P5.2). The other three are offered when they
-  // are drawn — `progress` and `month` are one bit by design, and `occasion`
-  // falls back to the number on a panel for good, its motif being colour and
-  // motion the panel has neither of.
-  countdown: ['number', 'page', 'ticket'],
+  // The five a panel draws (P5.2). `occasion` is never offered: it falls
+  // back to the number on a panel for good, its motif being colour and motion
+  // the panel has neither of, so choosing it on the lane would be a control
+  // that moves nothing.
+  countdown: ['number', 'page', 'ticket', 'progress', 'month'],
 };
 
 /** Every key the ink lane can carry, for the schema and for the merge. */
@@ -319,6 +321,17 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
     key: 'celebrate',
     label: 'Celebrate on the day',
     why: 'a panel is always still, so it says “Today!” and throws no confetti.',
+  },
+  /*
+   * The `occasion` look's occasion (plan item P5.2). A panel draws that look
+   * as the number — its accent pair, its motif and its scene are colour,
+   * artwork and motion — so which occasion it is dressed for moves no ink,
+   * and `epaper-ink.test.ts` proves it by setting it on an occasion base.
+   */
+  {
+    key: 'occasion',
+    label: 'Occasion',
+    why: 'a panel draws the occasion as the plain number: its colours, picture and moving scene are the wall’s alone.',
   },
   { key: 'showTimes', label: 'Event times', why: 'the panel draws the title alone in a cell.' },
   {

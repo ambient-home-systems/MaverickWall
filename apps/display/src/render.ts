@@ -65,9 +65,8 @@ import {
   type CalendarTier,
 } from './tiers.js';
 import {
+  COUNTDOWN_PARTS,
   COUNTDOWN_TIERS,
-  PAGE_PARTS,
-  TICKET_PARTS,
   PLAYFUL_COLUMN_CH,
   TODAY_LEDE_FLOOR_EM,
   TODAY_RUNGS,
@@ -2657,10 +2656,13 @@ function tierWeather(
 const COUNTDOWN_PRIMARY: Readonly<Record<string, { readonly cls: string; readonly host: string }>> = {
   page: { cls: 'cdp-label', host: '.cd-page' },
   ticket: { cls: 'cdt-dest', host: '.cd-ticket' },
+  occasion: { cls: 'cdo-label', host: '.cd-occasion' },
+  progress: { cls: 'cdg-label', host: '.cd-progress' },
+  month: { cls: 'cdm-label', host: '.cd-month' },
 };
 
 /**
- * A countdown's `page` or `ticket` look: which of its parts the box affords
+ * A countdown in any look but `number`: which of its parts the box affords
  * (plan item P5.2).
  *
  * The parts are drawn in full by `renderCountdown` and the tier takes off
@@ -2676,7 +2678,8 @@ function tierCountdown(entry: TieredWidget): void {
   const look = variantOf('countdown', entry.widget.config);
   const table = COUNTDOWN_TIERS[look];
   const primary = COUNTDOWN_PRIMARY[look];
-  if (table === undefined || primary === undefined) {
+  const parts = COUNTDOWN_PARTS[look];
+  if (table === undefined || primary === undefined || parts === undefined) {
     beltGenericRows(entry);
     return;
   }
@@ -2686,7 +2689,6 @@ function tierCountdown(entry: TieredWidget): void {
   const { chPx, emPx } = typeMetrics(host, primary.cls);
   if (!(chPx > 0) || !(emPx > 0)) return;
   const tier = widgetTierFor(table, inner.w, inner.h, chPx, emPx);
-  const parts: readonly string[] = look === 'page' ? PAGE_PARTS : TICKET_PARTS;
   const kept = partsAt(parts, tier);
   for (const node of [...entry.body.querySelectorAll<HTMLElement>('[data-part]')]) {
     if (!kept.includes(node.dataset['part'] ?? '')) node.remove();

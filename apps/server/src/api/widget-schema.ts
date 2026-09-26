@@ -295,6 +295,28 @@ const widgetConfigFields = z
     unitWords: z.enum(['days', 'sleeps']).optional(),
     emoji: z.enum(EMOJI_KEYS).optional(),
     celebrate: z.boolean().optional(),
+    /*
+     * Countdown, the item's second half (P5.2):
+     *
+     *  - `occasion` dresses the `occasion` look for Christmas, a birthday,
+     *    Halloween, a holiday, the end of term, New Year, or something else.
+     *    Absent is `custom` — the theme's own accent and the household's own
+     *    picture — which is the wall's reading and the panel's (where the look
+     *    is drawn as the number anyway).
+     *  - `from` is the start date a `progress` bar counts its days gone from.
+     *    **Refused, never coerced, when it is not before `target`**: a bar from
+     *    a start after its own end has no honest length, and quietly swapping
+     *    the two or clamping one to the other would draw a number the household
+     *    did not choose. The check is on the whole config rather than here,
+     *    because it is a fact about two fields (`startBeforeTarget`).
+     */
+    occasion: z
+      .enum(['christmas', 'birthday', 'halloween', 'vacation', 'schools-out', 'new-year', 'custom'])
+      .optional(),
+    from: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'A countdown start date has to be YYYY-MM-DD.')
+      .optional(),
     // External module widget — which registered module's panel to draw (its id).
     module: z.string().max(64).optional(),
     // Image widget — a stored image's own name (RFC 005 Phase 3b). Served from
@@ -418,7 +440,33 @@ const laneConfigFields = widgetConfigFields.extend({
  * The style lane stays: a note standing in for a forecast is still a box on
  * this wall, and may be dressed like one.
  */
-export const whenEmptyConfigBody = laneConfigFields.omit({ ink: true }).strict();
+/**
+ * The sentence a countdown's start date on or after its target is refused
+ * with (plan item P5.2) — written for somebody choosing two dates, and the
+ * editor says it beside the field before the save is tried
+ * (`START_AFTER_TARGET` in the display's `countdown.ts`, the same words).
+ */
+export const START_AFTER_TARGET = 'The start date has to be before the date it counts down to.';
+
+/**
+ * A countdown's start date comes before its target, or the config is refused
+ * with a sentence (plan item P5.2). Only when both are set: a start with no
+ * target yet is a household halfway through filling the form in, and the wall
+ * already says "Set a date" for that.
+ *
+ * Compared as civil dates, which as `YYYY-MM-DD` strings sort as they read.
+ * On the whole config rather than on `from`, because a field cannot see its
+ * neighbour; attached to each schema that is *parsed* rather than to the
+ * fields they are built from, since zod refuses to extend or pick from an
+ * object that carries a refinement.
+ */
+function startBeforeTarget(config: { from?: string | undefined; target?: string | undefined }, ctx: z.RefinementCtx): void {
+  if (config.from === undefined || config.target === undefined) return;
+  if (config.from < config.target) return;
+  ctx.addIssue({ code: 'custom', path: ['from'], message: START_AFTER_TARGET });
+}
+
+export const whenEmptyConfigBody = laneConfigFields.omit({ ink: true }).strict().superRefine(startBeforeTarget);
 
 export const whenEmptyBody = z
   .object({ type: z.enum(WIDGET_TYPES), config: whenEmptyConfigBody.optional() })
@@ -426,7 +474,8 @@ export const whenEmptyBody = z
 
 export const widgetConfigBody = laneConfigFields
   .extend({ whenEmpty: whenEmptyBody.optional() })
-  .strict();
+  .strict()
+  .superRefine(startBeforeTarget);
 
 /**
  * A canvas background (RFC 005 Phases 3 and 3b): a solid colour, a two-stop

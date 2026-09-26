@@ -201,14 +201,16 @@ describe('what a panel draws of the new keys', () => {
     }
   });
 
-  it('draws the page and the ticket as looks of their own, and the second half as the number', () => {
-    const base = { target: '2026-10-05', title: 'Christmas' };
+  it('draws the page, the ticket, the bar and the month as looks of their own, and the occasion as the number', () => {
+    const base = { target: '2026-10-05', title: 'Christmas', from: '2026-09-01' };
     const number = frame(base, whole);
-    expect(frame({ ...base, variant: 'page' }, whole)).not.toBe(number);
-    expect(frame({ ...base, variant: 'ticket' }, whole)).not.toBe(number);
-    expect(frame({ ...base, variant: 'page' }, whole)).not.toBe(frame({ ...base, variant: 'ticket' }, whole));
-    for (const later of ['occasion', 'progress', 'month']) {
-      expect(frame({ ...base, variant: later }, whole), later).toBe(number);
+    const own = ['page', 'ticket', 'progress', 'month'].map((variant) => frame({ ...base, variant }, whole));
+    for (const drawn of own) expect(drawn).not.toBe(number);
+    expect(new Set(own).size, 'two looks drew one frame').toBe(own.length);
+    // The occasion is colour, a picture and a moving scene — three things one
+    // still bit has none of — so it is the number, whichever occasion.
+    for (const occasion of ['christmas', 'new-year', 'custom']) {
+      expect(frame({ ...base, variant: 'occasion', occasion }, whole), occasion).toBe(number);
     }
   });
 });
@@ -335,6 +337,224 @@ describe('the page and the ticket, read back out of the frame', () => {
       expect(ink.bottom, `${variant} spilled`).toBeLessThanOrEqual(box.bottom);
       expect(bits(short, which), `${variant} drew nothing`).toContain('1');
       expect(bits(short, which)).not.toBe(bits(tall, which));
+    }
+  });
+});
+
+/*
+ * The item's second half on one bit (P5.2): the progress bar and the mini
+ * month, read back out of the frame. The occasion is the number on a panel and
+ * is held to that above.
+ */
+describe('the progress bar and the mini month, read back out of the frame', () => {
+  const whole = CASES['800x480 whole']!;
+  const tall: Case = { panel: { width: 800, height: 480 }, box: { x: 0, y: 0, w: 0.5, h: 1 } };
+
+  /** The model for a day `days` after the fixture's, from the same manifest shape. */
+  function modelAt(days: number, weekStart?: 'monday'): { manifest: Manifest; model: ReturnType<typeof buildEpaperModel> } {
+    const base = manifest() as unknown as Record<string, unknown>;
+    const shifted = {
+      ...base,
+      generatedAt: AT + days * 86_400_000,
+      display: { ...(base['display'] as object), ...(weekStart === undefined ? {} : { weekStart }) },
+    } as unknown as Manifest;
+    return { manifest: shifted, model: buildEpaperModel(shifted) };
+  }
+
+  function renderOn(at: { manifest: Manifest; model: ReturnType<typeof buildEpaperModel> }, config: Record<string, unknown>, which: Case): Framebuffer {
+    const widget: PlacedEpaperWidget = { type: 'countdown', ...which.box, z: 0, config };
+    return renderFreeformEpaper(at.model, at.manifest, [widget], which.panel);
+  }
+
+  /** Rows lit across at least 95% of the widget: the frame's own two edges, and a bar's. */
+  function solidRows(fb: Framebuffer, which: Case): number[] {
+    const box = placed(which);
+    const rows: number[] = [];
+    for (let y = box.top; y <= box.bottom; y++) {
+      if (litCount(fb, y, box.left, box.right) >= (box.right - box.left + 1) * 0.95) rows.push(y);
+    }
+    return rows;
+  }
+
+  /** The bar: its edge rows, and how much of its inside is filled on its middle row. */
+  function barOf(fb: Framebuffer, which: Case): { top: number; bottom: number; filled: number; inner: number } {
+    const box = placed(which);
+    const solid = solidRows(fb, which).filter((y) => y !== box.top && y !== box.bottom);
+    expect(solid.length, 'no bar outline drawn').toBeGreaterThanOrEqual(2);
+    const top = solid[0]!;
+    const bottom = solid[solid.length - 1]!;
+    const middle = Math.floor((top + bottom) / 2);
+    // Take off the frame's two edges and the bar's two: what is left is the fill.
+    const lit = litCount(fb, middle, box.left, box.right) - 4;
+    // The bar is the frame's inner box; its inside is four pixels narrower.
+    let left = box.left + 1;
+    while (!fb.get(left, top)) left += 1;
+    let right = box.right - 1;
+    while (!fb.get(right, top)) right -= 1;
+    return { top, bottom, filled: lit, inner: right - left + 1 - 4 };
+  }
+
+  it('keeps every lit pixel inside its box, on every kind of day, for both looks', () => {
+    for (const [name, which] of Object.entries(CASES)) {
+      const box = placed(which);
+      for (const target of ['2026-10-05', '2026-09-23', '2026-09-20', '2027-09-23']) {
+        for (const config of [
+          { variant: 'progress', target, from: '2026-09-01', title: 'Summer holiday' },
+          { variant: 'progress', target, title: 'Summer holiday' },
+          { variant: 'month', target, title: 'Summer holiday' },
+        ]) {
+          const ink = inkBounds(render(config, which), which);
+          const where = `${name} ${JSON.stringify(config)}`;
+          expect(ink.left, where).toBeGreaterThanOrEqual(box.left);
+          expect(ink.top, where).toBeGreaterThanOrEqual(box.top);
+          expect(ink.right, where).toBeLessThanOrEqual(box.right);
+          expect(ink.bottom, where).toBeLessThanOrEqual(box.bottom);
+        }
+      }
+    }
+  });
+
+  it('fills the bar as far as the days gone, measured off the frame', () => {
+    // Today is 23 September: ten days of twenty gone, then five of twenty.
+    for (const [from, target, fraction] of [
+      ['2026-09-13', '2026-10-03', 0.5],
+      ['2026-09-18', '2026-10-08', 0.25],
+      ['2026-09-01', '2026-09-20', 1],
+    ] as const) {
+      const bar = barOf(render({ variant: 'progress', from, target, title: 'Holiday' }, whole), whole);
+      expect(Math.abs(bar.filled - bar.inner * fraction), `${from} to ${target}: ${bar.filled} of ${bar.inner}`).toBeLessThanOrEqual(1);
+    }
+    // Before the start the bar is drawn and empty.
+    const empty = barOf(render({ variant: 'progress', from: '2026-09-30', target: '2026-10-30', title: 'Holiday' }, whole), whole);
+    expect(empty.filled).toBe(0);
+  });
+
+  it('draws no bar at all with no start date, and says so instead', () => {
+    const without = render({ variant: 'progress', target: '2026-10-05', title: 'Holiday' }, whole);
+    const box = placed(whole);
+    expect(solidRows(without, whole), 'a bar outline with nothing to measure it from').toEqual([box.top, box.bottom]);
+    expect(bits(without, whole)).not.toBe(bits(render({ variant: 'progress', target: '2026-10-05', title: 'Holiday', from: '2026-09-01' }, whole), whole));
+  });
+
+  it('keeps the bar where it was from one day to the next, so only the ink inside it moves', () => {
+    const config = { variant: 'progress', from: '2026-09-13', target: '2026-10-03', title: 'Holiday' };
+    const today = barOf(renderOn(modelAt(0), config, whole), whole);
+    const tomorrow = barOf(renderOn(modelAt(1), config, whole), whole);
+    expect([tomorrow.top, tomorrow.bottom, tomorrow.inner]).toEqual([today.top, today.bottom, today.inner]);
+    expect(tomorrow.filled, 'the bar did not grow').toBeGreaterThan(today.filled);
+  });
+
+  it('rings the target: moving it a day moves the ring a square along its week, and nothing else in the grid', () => {
+    const a = render({ variant: 'month', target: '2026-09-28', title: 'Holiday' }, tall);
+    const b = render({ variant: 'month', target: '2026-09-29', title: 'Holiday' }, tall);
+    const box = placed(tall);
+    const rows = new Map<number, { onlyA: number[]; onlyB: number[] }>();
+    for (let y = box.top; y <= box.bottom; y++) {
+      for (let x = box.left; x <= box.right; x++) {
+        if (a.get(x, y) === b.get(x, y)) continue;
+        const row = rows.get(y) ?? { onlyA: [], onlyB: [] };
+        (a.get(x, y) ? row.onlyA : row.onlyB).push(x);
+        rows.set(y, row);
+      }
+    }
+    // Two bands of difference: the count ("5 DAYS" against "6 DAYS") at the
+    // top, and one grid row, where the ring left 28 and went round 29. A 5 and
+    // a 6 differ at their tops and bottoms and agree between, so rows a few
+    // pixels apart are one band.
+    const ys = [...rows.keys()].sort((p, q) => p - q);
+    const bands: number[][] = [];
+    for (const y of ys) {
+      const last = bands[bands.length - 1];
+      if (last !== undefined && y - (last[last.length - 1] ?? y) <= 6) last.push(y);
+      else bands.push([y]);
+    }
+    expect(bands, `the difference is not the count and one grid row: ${JSON.stringify(bands.map((b) => [b[0], b[b.length - 1]]))}`).toHaveLength(2);
+    const ring = bands[1]!;
+    expect(ring.length, 'the ring’s band is taller than a square').toBeLessThanOrEqual(30);
+    const onlyA = ring.flatMap((y) => rows.get(y)!.onlyA);
+    const onlyB = ring.flatMap((y) => rows.get(y)!.onlyB);
+    expect(onlyA.length, 'no ring round the 28th').toBeGreaterThan(8);
+    expect(onlyB.length, 'no ring round the 29th').toBeGreaterThan(8);
+    const mean = (xs: number[]): number => xs.reduce((sum, x) => sum + x, 0) / xs.length;
+    expect(mean(onlyA), 'the 28th is not left of the 29th').toBeLessThan(mean(onlyB));
+  });
+
+  /** The rows two frames differ on, in bands of rows a few pixels apart, each with what only one side has. */
+  function differenceBands(a: Framebuffer, b: Framebuffer, which: Case): { rows: number[]; onlyA: number[]; onlyB: number[] }[] {
+    const box = placed(which);
+    const bands: { rows: number[]; onlyA: number[]; onlyB: number[] }[] = [];
+    for (let y = box.top; y <= box.bottom; y++) {
+      const onlyA: number[] = [];
+      const onlyB: number[] = [];
+      for (let x = box.left; x <= box.right; x++) {
+        if (a.get(x, y) && !b.get(x, y)) onlyA.push(x);
+        if (b.get(x, y) && !a.get(x, y)) onlyB.push(x);
+      }
+      if (onlyA.length + onlyB.length === 0) continue;
+      const last = bands[bands.length - 1];
+      if (last !== undefined && y - (last.rows[last.rows.length - 1] ?? y) <= 6) {
+        last.rows.push(y);
+        last.onlyA.push(...onlyA);
+        last.onlyB.push(...onlyB);
+      } else bands.push({ rows: [y], onlyA, onlyB });
+    }
+    return bands;
+  }
+
+  it('underlines today, and the mark moves a square when the day does', () => {
+    const config = { variant: 'month', target: '2026-09-30', title: 'Holiday' };
+    const bands = differenceBands(renderOn(modelAt(0), config, tall), renderOn(modelAt(1), config, tall), tall);
+    // The count (7 days, then 6) and one thin line in the grid, lifted from
+    // under the 23rd and drawn under the 24th — the ring on the 30th stays.
+    expect(bands.map((band) => [band.rows[0], band.rows[band.rows.length - 1]]), 'not the count and one line').toHaveLength(2);
+    const mark = bands[1]!;
+    expect(mark.rows.length, 'more than a line moved in the grid').toBeLessThanOrEqual(2);
+    expect(mark.onlyA.length, 'nothing under the 23rd').toBeGreaterThan(0);
+    expect(mark.onlyB.length, 'nothing under the 24th').toBeGreaterThan(0);
+    const mean = (xs: number[]): number => xs.reduce((sum, x) => sum + x, 0) / xs.length;
+    expect(mean(mark.onlyA), 'the 23rd is not left of the 24th').toBeLessThan(mean(mark.onlyB));
+  });
+
+  it('lays the month out from the household’s own first day of the week', () => {
+    // Where the ring goes round the 30th, read as what differs from a ring
+    // round the 29th: a Wednesday, the third column from a Monday and the
+    // fourth from a Sunday. The heads alone would make the two frames differ,
+    // so it is the ring's column that is asked, not the frame.
+    const ringAt = (weekStart?: 'monday'): number => {
+      const at = modelAt(0, weekStart);
+      const bands = differenceBands(
+        renderOn(at, { variant: 'month', target: '2026-09-30', title: 'Holiday' }, tall),
+        renderOn(at, { variant: 'month', target: '2026-09-29', title: 'Holiday' }, tall),
+        tall,
+      );
+      const ring = bands[bands.length - 1]!.onlyA;
+      return ring.reduce((sum, x) => sum + x, 0) / ring.length;
+    };
+    const box = placed(tall);
+    const column = (box.right - box.left) / 7;
+    expect(ringAt('monday') - ringAt(), 'the 30th is not a column further left from a Monday').toBeCloseTo(-column, -1);
+  });
+
+  it('gives up the bar before the count, in a box with room for the count alone', () => {
+    const line: Case = { panel: { width: 800, height: 480 }, box: { x: 0, y: 0, w: 0.5, h: 0.06 } };
+    const box = placed(line);
+    const fb = render({ variant: 'progress', target: '2026-10-05', from: '2026-09-01', title: 'Christmas' }, line);
+    expect(solidRows(fb, line), 'a bar drawn in a box with no room for it').toEqual([box.top, box.bottom]);
+    expect(bits(fb, line)).toContain('1');
+    expect(inkBounds(fb, line).bottom).toBeLessThanOrEqual(box.bottom);
+  });
+
+  it('gives up parts in a short box rather than spilling, and keeps the count', () => {
+    const short: Case = { panel: { width: 800, height: 480 }, box: { x: 0, y: 0, w: 0.5, h: 0.12 } };
+    const box = placed(short);
+    for (const config of [
+      { variant: 'progress', target: '2026-10-05', from: '2026-09-01', title: 'Christmas' },
+      { variant: 'month', target: '2026-10-05', title: 'Christmas' },
+    ]) {
+      const fb = render(config, short);
+      expect(inkBounds(fb, short).bottom, `${config.variant} spilled`).toBeLessThanOrEqual(box.bottom);
+      expect(bits(fb, short), `${config.variant} drew nothing`).toContain('1');
+      expect(bits(fb, short)).not.toBe(bits(render(config, { ...short, box: { ...short.box, h: 0.9 } }), short));
     }
   });
 });

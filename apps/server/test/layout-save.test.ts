@@ -12,6 +12,7 @@ import { createKeyring } from '../src/secrets/keyring.js';
 import { createFetcher } from '../src/net/fetcher.js';
 import { issueDisplayToken } from '../src/auth/tokens.js';
 import { haReadingHandle } from '../src/api/manifest.js';
+import { START_AFTER_TARGET } from '../src/api/widget-schema.js';
 
 /**
  * Saving a free-form layout from the editor.
@@ -671,5 +672,77 @@ describe('a countdown’s words, picture and celebration (plan item P5.2)', () =
     expect((await h.saveLayout(countdown({ ink: { unitWords: 'sleeps' } }))).status).toBe(200);
     expect((await h.saveLayout(countdown({ ink: { emoji: 'christmas-tree' } }))).status).toBe(400);
     expect((await h.saveLayout(countdown({ ink: { celebrate: false } }))).status).toBe(400);
+  });
+});
+
+describe('a countdown’s occasion and start date (plan item P5.2, the second half)', () => {
+  const countdown = (config: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
+    mode: 'freeform',
+    aspect: 0.5625,
+    widgets: [
+      { id: 'c', type: 'countdown', x: 0, y: 0, w: 0.5, h: 0.2, z: 0, config: { target: '2026-12-25', ...config }, ...extra },
+    ],
+  });
+
+  it('keeps both through the save and into the manifest a screen polls', async () => {
+    const h = await harness();
+    for (const config of [
+      { variant: 'occasion', occasion: 'schools-out' },
+      { variant: 'progress', from: '2026-09-01' },
+      // The day before is a start; a start with no target yet is somebody
+      // halfway through the form, and the wall already says "Set a date".
+      { variant: 'progress', from: '2026-12-24' },
+    ]) {
+      expect((await h.saveLayout(countdown(config))).status, JSON.stringify(config)).toBe(200);
+      const layout = await h.manifestLayout();
+      expect((layout.widgets[0] as unknown as { config: Record<string, unknown> }).config).toEqual({
+        target: '2026-12-25',
+        ...config,
+      });
+    }
+    const alone = { mode: 'freeform', aspect: 0.5625, widgets: [{ id: 'c', type: 'countdown', x: 0, y: 0, w: 0.5, h: 0.2, z: 0, config: { from: '2026-09-01' } }] };
+    expect((await h.saveLayout(alone)).status).toBe(200);
+  });
+
+  it('refuses a start date on or after the target with a sentence, rather than swapping or clamping it', async () => {
+    // A sentence for somebody choosing two dates, not a field path.
+    expect(START_AFTER_TARGET).toBe('The start date has to be before the date it counts down to.');
+    const h = await harness();
+    for (const from of ['2026-12-25', '2026-12-26', '2027-03-01']) {
+      const res = await h.saveLayout(countdown({ variant: 'progress', from }));
+      expect(res.status, from).toBe(400);
+      const body = (await res.json()) as { ok: boolean; message: string };
+      expect(body.message, from).toBe(START_AFTER_TARGET);
+    }
+    // The same rule holds a fallback, which is a countdown in the same box.
+    const fallback = await h.saveLayout({
+      mode: 'freeform',
+      aspect: 0.5625,
+      widgets: [
+        {
+          id: 'w',
+          type: 'weather',
+          x: 0, y: 0, w: 0.5, h: 0.2, z: 0,
+          config: { whenEmpty: { type: 'countdown', config: { target: '2026-12-25', from: '2026-12-31' } } },
+        },
+      ],
+    });
+    expect(fallback.status).toBe(400);
+    expect(((await fallback.json()) as { message: string }).message).toBe(START_AFTER_TARGET);
+    // …and nothing was written by any of them: the last good canvas stands.
+    expect((await h.manifestLayout()).widgets).toEqual([]);
+  });
+
+  it('refuses an occasion it does not know and a start that is not a date, and neither on the ink lane', async () => {
+    const h = await harness();
+    expect((await h.saveLayout(countdown({ occasion: 'easter' }))).status).toBe(400);
+    expect((await h.saveLayout(countdown({ occasion: '' }))).status).toBe(400);
+    expect((await h.saveLayout(countdown({ from: '1 September' }))).status).toBe(400);
+    expect((await h.saveLayout(countdown({ from: 20260901 }))).status).toBe(400);
+    // The occasion is colour a panel does not draw, and the start date is the
+    // countdown's identity the way its target is: a panel draws the wall's.
+    expect((await h.saveLayout(countdown({ ink: { occasion: 'christmas' } }))).status).toBe(400);
+    expect((await h.saveLayout(countdown({ ink: { from: '2026-09-01' } }))).status).toBe(400);
+    expect((await h.saveLayout(countdown({ ink: { variant: 'progress' } }))).status).toBe(200);
   });
 });

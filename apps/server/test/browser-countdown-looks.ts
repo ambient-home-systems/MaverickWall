@@ -145,7 +145,7 @@ export async function readCountdownBox(page: Page, widgetId: string): Promise<{
     const clipped: string[] = [];
     const numerals: { text: string; variant: string }[] = [];
     for (const node of Array.from(box.querySelectorAll<HTMLElement>('div, span, img'))) {
-      if (node.closest('.cd-confetti, .cdp-leaf, .cdt-flap-old') !== null) continue;
+      if (node.closest('.cd-confetti, .cdp-leaf, .cdt-flap-old, .cdo-scene') !== null) continue;
       if (getComputedStyle(node).display === 'none') continue;
       const r = node.getBoundingClientRect();
       if (r.width === 0 && r.height === 0) continue;

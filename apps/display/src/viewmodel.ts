@@ -412,6 +412,13 @@ export interface DisplayModel {
    * item P5.1), and "14" on a wall whose clock says "2:00 pm" is two clocks.
    */
   readonly hour12: boolean;
+  /**
+   * Which day the household's week starts on — the month grid's own column
+   * order, carried for the one other draw that lays out a month: a
+   * countdown's mini month (plan item P5.2), whose Monday has to sit in the
+   * same column as the calendar's beside it.
+   */
+  readonly weekStart: 'sunday' | 'monday';
   readonly theme: string;
   readonly todayLabel: string;
   readonly clock: string;
@@ -1699,6 +1706,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
   return {
     timezone,
     hour12,
+    weekStart,
     theme: manifest.theme.active,
     todayLabel: `${weekday} ${dayNumber} ${month}`,
     clock: localTime(now, timezone, hour12),

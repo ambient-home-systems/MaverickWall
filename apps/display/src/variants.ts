@@ -166,7 +166,17 @@ export const VARIANT_HIDES: {
     colour: ['advice'],
     playful: [],
   },
-  countdown: { number: [], page: [], ticket: [], occasion: [], progress: [], month: [] },
+  // The occasion picker is `occasion`'s alone and the start date is
+  // `progress`'s alone (P5.2): on any other look each is a control that moves
+  // nothing, so it is not offered.
+  countdown: {
+    number: ['occasion', 'from'],
+    page: ['occasion', 'from'],
+    ticket: ['occasion', 'from'],
+    occasion: ['from'],
+    progress: ['occasion'],
+    month: ['occasion', 'from'],
+  },
   homeassistant: { list: [], tile: [] },
   calendar: { '': [], planner: [], bold: [] },
 };

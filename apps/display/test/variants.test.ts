@@ -116,13 +116,25 @@ describe('which controls a look hides', () => {
      * default does, so every control on it still does what it did — and
      * taking a working setting off the screen is the other half of the rule
      * that an option which does nothing is worse than one not offered. The
-     * forecast's five are all designed now (P5.1) and are stated below.
+     * forecast's five are all designed now (P5.1), and so are the countdown's
+     * six (P5.2); both are stated below.
      */
-    for (const type of TYPES.filter((one) => one !== 'clock' && one !== 'weather')) {
+    for (const type of TYPES.filter((one) => one !== 'clock' && one !== 'weather' && one !== 'countdown')) {
       for (const variant of VARIANTS[type]) {
         expect(hiddenByVariant(type, { variant }), `${type}.${variant}`).toEqual([]);
       }
     }
+  });
+
+  it('hides the occasion picker off `occasion` and the start date off `progress` (P5.2)', () => {
+    // Each is read by one look alone, so on every other look it is a control
+    // that moves nothing. Every other countdown control is read by all six.
+    expect(hiddenByVariant('countdown', {})).toEqual(['occasion', 'from']);
+    for (const variant of ['number', 'page', 'ticket', 'month']) {
+      expect(hiddenByVariant('countdown', { variant }), variant).toEqual(['occasion', 'from']);
+    }
+    expect(hiddenByVariant('countdown', { variant: 'occasion' })).toEqual(['from']);
+    expect(hiddenByVariant('countdown', { variant: 'progress' })).toEqual(['occasion']);
   });
 
   it('hides on each forecast look exactly the controls it does not read (P5.1)', () => {

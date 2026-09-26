@@ -121,4 +121,115 @@ export function previousDigits(days: number, width: number): string[] {
   return padded.split('');
 }
 
+/** The occasions an `occasion` countdown is dressed for (plan item P5.2). */
+export const OCCASIONS = ['christmas', 'birthday', 'halloween', 'vacation', 'schools-out', 'new-year', 'custom'] as const;
+export type Occasion = (typeof OCCASIONS)[number];
+
+/**
+ * Which occasion. **Absent is `custom`** — the theme's own accent and the
+ * household's own picture — and so is a value from a newer server this
+ * bundle does not know, which is the side to be wrong on: a Christmas tree on
+ * a countdown to somebody's wedding is worse than no tree at all.
+ */
+export function countdownOccasion(config: unknown): Occasion {
+  const value = configOf(config)['occasion'];
+  return typeof value === 'string' && (OCCASIONS as readonly string[]).includes(value) ? (value as Occasion) : 'custom';
+}
+
+/**
+ * The start date a `progress` countdown counts its days gone from, or
+ * undefined for one not set, not a civil date, or **not before the target**.
+ *
+ * The schema refuses a start on or after the target with a sentence, so a
+ * stored config never holds one; this refuses it again for a config from a
+ * server older or newer than this bundle, because a bar from a start after its
+ * own end has no honest fraction to draw — and a bar that drew one anyway
+ * would be a number made up on the one screen a household trusts.
+ */
+export function countdownFrom(config: unknown): string | undefined {
+  const own = configOf(config);
+  const from = own['from'];
+  const target = countdownTarget(config);
+  if (typeof from !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(from) || target === undefined) return undefined;
+  return daysUntil(from, target) > 0 ? from : undefined;
+}
+
+/** How far through a countdown's run the household is (plan item P5.2). */
+export interface CountdownProgress {
+  /** Whole days from the start to the target: the bar's length. */
+  readonly total: number;
+  /** Whole days gone, from the start to today, held between none and all of them. */
+  readonly gone: number;
+  /** `gone / total`, between 0 and 1. */
+  readonly fraction: number;
+  /** The fraction as a whole percentage, 100 only on the day or after it. */
+  readonly percent: number;
+}
+
+/**
+ * The days gone from `from` to `today`, out of `from` to `target` — all civil
+ * dates — or undefined for a start that is not before its target.
+ *
+ * **Floored, never rounded**, so a bar one day short of its end reads 99% and
+ * never 100%: "100%" on the day before is the countdown claiming a day that
+ * has not come. Before the start the bar is empty; after the target it is
+ * full and stays full, as the count says "3 days ago".
+ */
+export function countdownProgress(today: string, from: string, target: string): CountdownProgress | undefined {
+  const total = daysUntil(from, target);
+  if (!(total > 0)) return undefined;
+  const gone = Math.max(0, Math.min(total, daysUntil(from, today)));
+  return { total, gone, fraction: gone / total, percent: Math.floor((gone * 100) / total) };
+}
+
+/** The line under a progress bar: "21% of the way". */
+export function percentWords(progress: CountdownProgress): string {
+  return `${progress.percent}% of the way`;
+}
+
+/** One square of a mini month: the day of the month, or null for a square before the first or after the last. */
+export type MonthSquare = number | null;
+
+/** A target's month, laid out in weeks in the household's order. */
+export interface MiniMonth {
+  readonly year: number;
+  /** 1 to 12. */
+  readonly month: number;
+  /** Rows of exactly seven squares. */
+  readonly weeks: readonly (readonly MonthSquare[])[];
+}
+
+/**
+ * The month a countdown's target falls in, as rows of seven, starting on the
+ * household's own first day of the week — the calendar's own rule, so a mini
+ * month and the month grid beside it put Monday in the same column.
+ *
+ * Read at UTC noon, `daysUntil`'s arithmetic, so no zone can slide the first
+ * of the month into the wrong column. Four to six rows: how many is a fact
+ * about the target's month and never about the events, so the grid's shape
+ * changes only when the household changes the date.
+ */
+export function miniMonth(target: string, weekStart: 'sunday' | 'monday'): MiniMonth {
+  const year = Number(target.slice(0, 4));
+  const month = Number(target.slice(5, 7));
+  const first = new Date(Date.UTC(year, month - 1, 1, 12)).getUTCDay();
+  const length = new Date(Date.UTC(year, month, 0, 12)).getUTCDate();
+  const lead = weekStart === 'monday' ? (first + 6) % 7 : first;
+  const squares: MonthSquare[] = [];
+  for (let i = 0; i < lead; i++) squares.push(null);
+  for (let day = 1; day <= length; day++) squares.push(day);
+  while (squares.length % 7 !== 0) squares.push(null);
+  const weeks: MonthSquare[][] = [];
+  for (let at = 0; at < squares.length; at += 7) weeks.push(squares.slice(at, at + 7));
+  return { year, month, weeks };
+}
+
+/**
+ * The day of the month today is, if today is in the target's own month — the
+ * one day a mini month can mark as today — or undefined.
+ */
+export function todayInMonth(today: string, target: string): number | undefined {
+  return today.slice(0, 7) === target.slice(0, 7) ? Number(today.slice(8, 10)) : undefined;
+}
+
 /* countdown-words:end */

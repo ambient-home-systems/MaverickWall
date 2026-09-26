@@ -3395,6 +3395,264 @@ body {
 }
 
 /*
+ * The occasion (plan item P5.2): the number dressed for the day — the count in
+ * the first of an accent pair, its unit in the second, the occasion's motif
+ * over them and a scene behind. The pair is two of the palette's readable
+ * tokens (`OCCASION_LOOKS`), so both are legible on every theme by the
+ * palette's own derivation; `--oc-a`/`--oc-b` are written on the section.
+ *
+ * The roles are the page's: the label the lede, the unit the scaffold, and
+ * the count the clock's role capped by the box — its height less the unit, or
+ * its width shared across its characters.
+ */
+.cd-occasion { position: relative; gap: var(--s1); }
+.cd-occasion > .cdo-head, .cd-occasion > .cdo-label { position: relative; }
+/* The motif beside the count and its unit, as tall as the two together. */
+.cdo-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s3);
+  max-width: 100%;
+}
+.cdo-count { display: flex; flex-direction: column; align-items: center; min-width: 0; }
+.cdo-motif { flex: 0 0 auto; line-height: 0; }
+.cdo-motif-img { height: calc(var(--t-wall-lede, var(--t-event)) * 2.4); width: auto; }
+.cdo-num {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 700;
+  font-size: min(
+    var(--t-wall-clock, calc(var(--t-event) * 1.8)),
+    calc(var(--buh) * 100 - var(--s4) - var(--t-wall-lede, var(--t-event)) * 1.2),
+    calc(var(--buw) * 110 / var(--cd-chars, 2))
+  );
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--oc-a, var(--ink));
+}
+.cdo-unit {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 600;
+  font-size: var(--t-wall-scaffold, 1.3rem);
+  letter-spacing: var(--ls-scaffold);
+  text-transform: uppercase;
+  line-height: 1.15;
+  white-space: nowrap;
+  color: var(--oc-b, var(--muted));
+}
+.cdo-label {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 600;
+  font-size: var(--t-wall-lede, var(--t-event));
+  line-height: 1.15;
+  color: var(--ink);
+  text-align: center;
+  overflow-wrap: break-word;
+}
+/*
+ * The scene: a clipped layer behind the words, hidden from a screen reader.
+ * Every piece rests where `SCENE_SPOTS` puts it, faint, so the still frame is
+ * a picture of the same weather; what moves it is the scoped block below.
+ */
+.cdo-scene {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.cdo-fx { position: absolute; }
+.cdo-flake {
+  width: var(--s2);
+  height: var(--s2);
+  border-radius: 50%;
+  background: var(--wx-snow, var(--oc-b, var(--muted)));
+  opacity: 0.7;
+}
+.cdo-balloon, .cdo-leaf, .cdo-sparkle {
+  height: calc(var(--t-wall-lede, var(--t-event)) * 0.9);
+  width: auto;
+  opacity: 0.5;
+}
+.cdo-sparkle { opacity: 0.3; }
+.cdo-sun {
+  top: 6%;
+  right: 6%;
+  height: calc(var(--t-wall-lede, var(--t-event)) * 1.3);
+  width: auto;
+  opacity: 0.55;
+}
+/* Water: a row of humps twice the box wide, so moving it half its width is
+   one whole wave. In the rain's blue whatever the pair is: water is water. */
+.cdo-wave {
+  left: 0;
+  bottom: 0;
+  width: 200%;
+  height: calc(var(--buh, 1vh) * 6);
+  background-image: radial-gradient(50% 100% at 50% 100%, var(--wx-rain, var(--oc-a, var(--muted))) 96%, transparent 100%);
+  background-size: 12.5% 100%;
+  background-repeat: repeat-x;
+  opacity: 0.35;
+}
+.cdo-wave-2 { bottom: calc(var(--buh, 1vh) * 3); opacity: 0.2; }
+/* A paper plane: a dart, cut from one square. */
+.cdo-plane {
+  width: calc(var(--t-wall-lede, var(--t-event)) * 1.1);
+  height: calc(var(--t-wall-lede, var(--t-event)) * 0.55);
+  background: var(--oc-b, var(--muted));
+  clip-path: polygon(0 0, 100% 50%, 0 100%, 26% 50%);
+  opacity: 0.5;
+}
+/* A spark rests where it lands, so the still frame is three bursts going off. */
+.cdo-spark {
+  width: var(--s1);
+  height: var(--s1);
+  border-radius: 50%;
+  background: var(--oc-a, var(--accent));
+  opacity: 0.7;
+  transform: translate(calc(var(--dx, 0) * var(--s4) * 1.6), calc(var(--dy, 0) * var(--s4) * 1.6));
+}
+.cdo-spark-b { background: var(--oc-b, var(--accent)); }
+
+/*
+ * The progress bar (plan item P5.2): the label, the count, a bar of the days
+ * gone since the start date, and the percentage. The fill's length is written
+ * inline; what grows it at midnight is the scoped block below, and only
+ * `transform` moves.
+ */
+.cd-progress { gap: var(--s2); align-items: stretch; }
+.cdg-label {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 600;
+  font-size: var(--t-wall-lede, var(--t-event));
+  line-height: 1.15;
+  color: var(--ink);
+  text-align: center;
+  overflow-wrap: break-word;
+}
+.cdg-count, .cdm-count {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: var(--s2);
+  white-space: nowrap;
+}
+.cdg-num {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 700;
+  font-size: min(
+    var(--t-wall-clock, calc(var(--t-event) * 1.8)),
+    calc(var(--buh) * 100 - var(--s4) - var(--t-wall-lede, var(--t-event)) * 0.2),
+    calc(var(--buw) * 110 / var(--cd-chars, 2))
+  );
+  line-height: 1;
+  color: var(--ink);
+}
+.cdg-unit, .cdm-unit, .cdg-pct {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 600;
+  font-size: var(--t-wall-scaffold, 1.3rem);
+  letter-spacing: var(--ls-scaffold);
+  text-transform: uppercase;
+  line-height: 1.15;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.cdg-pct { text-align: center; }
+.cdg-bar {
+  height: calc(var(--t-wall-lede, var(--t-event)) * 0.5);
+  overflow: hidden;
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: calc(var(--t-wall-lede, var(--t-event)) * 0.25);
+}
+.cdg-fill {
+  height: 100%;
+  background: var(--accent);
+  transform-origin: 0 50%;
+}
+.cdg-empty {
+  font-family: var(--f-sans);
+  font-size: var(--t-wall-scaffold, 1.3rem);
+  line-height: 1.15;
+  color: var(--muted);
+  text-align: center;
+}
+
+/*
+ * The mini month (plan item P5.2): the count, the target's month with the
+ * target circled and today marked, and the label. The ring and the mark are
+ * painted rather than bordered, so neither moves a square.
+ */
+.cd-month { gap: var(--s2); }
+.cdm-num {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 700;
+  font-size: min(
+    calc(var(--t-wall-lede, var(--t-event)) * 1.4),
+    calc(var(--buh) * 100 - var(--s4)),
+    calc(var(--buw) * 110 / var(--cd-chars, 2))
+  );
+  line-height: 1;
+  color: var(--ink);
+}
+.cdm-cal {
+  width: 100%;
+  max-width: calc(var(--t-wall-scaffold, 1.3rem) * 18);
+}
+.cdm-title {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 700;
+  font-size: var(--t-wall-scaffold, 1.3rem);
+  letter-spacing: var(--ls-scaffold);
+  text-transform: uppercase;
+  line-height: 1.15;
+  color: var(--muted);
+  text-align: center;
+  white-space: nowrap;
+  margin-bottom: var(--s1);
+}
+.cdm-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  font-size: var(--t-wall-scaffold, 1.3rem);
+  line-height: 1.7;
+  text-align: center;
+}
+.cdm-head {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 700;
+  color: var(--muted);
+}
+.cdm-day { color: var(--ink-scaffold, var(--muted)); }
+.cdm-day.is-target, .cdm-day.is-today { color: var(--ink); font-weight: 700; }
+.cdm-day.is-target {
+  background-image: radial-gradient(circle closest-side, transparent calc(100% - 0.16em), var(--accent) calc(100% - 0.14em), var(--accent) calc(100% - 0.02em), transparent 100%);
+}
+.cdm-day.is-today {
+  background-image: linear-gradient(var(--ink), var(--ink));
+  background-repeat: no-repeat;
+  background-position: 50% 86%;
+  background-size: 1.1em 0.1em;
+}
+.cdm-day.is-target.is-today {
+  background-image:
+    radial-gradient(circle closest-side, transparent calc(100% - 0.16em), var(--accent) calc(100% - 0.14em), var(--accent) calc(100% - 0.02em), transparent 100%),
+    linear-gradient(var(--ink), var(--ink));
+  background-repeat: no-repeat;
+  background-position: 50% 50%, 50% 86%;
+  background-size: 100% 100%, 1.1em 0.1em;
+}
+.cdm-label {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 600;
+  font-size: var(--t-wall-lede, var(--t-event));
+  line-height: 1.15;
+  color: var(--ink);
+  text-align: center;
+  overflow-wrap: break-word;
+}
+
+/*
  * The day's confetti: pieces thrown from above the box. Transparent until the
  * scoped block below moves them, so a still wall draws none.
  */
@@ -3730,6 +3988,94 @@ body {
   .canvas[data-motion="on"] .cdt-flap-old.fx-playing {
     animation-name: cd-flap-fall;
     animation-timing-function: ease-in;
+    animation-fill-mode: backwards;
+  }
+  /*
+   * A countdown's occasion (plan item P5.2): each scene is a loop locked to
+   * the wall clock by `motion.ts` (`sceneLayer` in `countdown-looks.ts`), so a
+   * rebuilt scene carries on where it was. `--x`/`--y` are where a piece
+   * rests, in percent of the box, and `--buw`/`--buh` one percent of it — so a
+   * flake resting a third of the way down falls from above the box to below
+   * it, and its still frame is where it rests.
+   */
+  @keyframes cd-oc-fall {
+    0% { transform: translate(0, calc(var(--buh, 1vh) * (-14 - var(--y, 0)))) rotate(0deg); }
+    50% { transform: translate(var(--s3), calc(var(--buh, 1vh) * (43 - var(--y, 0)))) rotate(180deg); }
+    100% { transform: translate(0, calc(var(--buh, 1vh) * (100 - var(--y, 0)))) rotate(360deg); }
+  }
+  @keyframes cd-oc-rise {
+    0% { transform: translate(0, calc(var(--buh, 1vh) * (100 - var(--y, 0)))); }
+    50% { transform: translate(calc(var(--s3) * -1), calc(var(--buh, 1vh) * (41 - var(--y, 0)))); }
+    100% { transform: translate(0, calc(var(--buh, 1vh) * (-18 - var(--y, 0)))); }
+  }
+  @keyframes cd-oc-glide {
+    0% { transform: translate(calc(var(--buw, 1vw) * (-14 - var(--x, 0))), 0); }
+    100% { transform: translate(calc(var(--buw, 1vw) * (100 - var(--x, 0))), calc(var(--buh, 1vh) * -10)); }
+  }
+  @keyframes cd-oc-wave {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+  @keyframes cd-oc-glow {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 0.7; }
+  }
+  @keyframes cd-oc-twinkle {
+    0%, 100% { opacity: 0.1; }
+    50% { opacity: 0.6; }
+  }
+  @keyframes cd-oc-burst {
+    0% { opacity: 0; transform: translate(0, 0); }
+    10% { opacity: 0.9; }
+    100% {
+      opacity: 0;
+      transform: translate(calc(var(--dx, 0) * var(--s4) * 1.6), calc(var(--dy, 0) * var(--s4) * 1.6 + var(--s3)));
+    }
+  }
+  .canvas[data-motion="on"] .cdo-flake,
+  .canvas[data-motion="on"] .cdo-leaf {
+    animation-name: cd-oc-fall;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+  }
+  .canvas[data-motion="on"] .cdo-balloon {
+    animation-name: cd-oc-rise;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+  }
+  .canvas[data-motion="on"] .cdo-plane {
+    animation-name: cd-oc-glide;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+  }
+  .canvas[data-motion="on"] .cdo-wave {
+    animation-name: cd-oc-wave;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+  }
+  .canvas[data-motion="on"] .cdo-sun {
+    animation-name: cd-oc-glow;
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
+  }
+  .canvas[data-motion="on"] .cdo-sparkle {
+    animation-name: cd-oc-twinkle;
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
+  }
+  .canvas[data-motion="on"] .cdo-spark {
+    animation-name: cd-oc-burst;
+    animation-timing-function: ease-out;
+    animation-iteration-count: infinite;
+  }
+  /* A progress bar, once, the day it grows: from yesterday's length to today's. */
+  @keyframes cd-fill-grow {
+    from { transform: scaleX(var(--cdg-was, 0)); }
+    to { transform: none; }
+  }
+  .canvas[data-motion="on"] .cdg-fill.fx-playing {
+    animation-name: cd-fill-grow;
+    animation-timing-function: ease-out;
     animation-fill-mode: backwards;
   }
 
