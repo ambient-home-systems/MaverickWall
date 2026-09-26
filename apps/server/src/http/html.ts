@@ -1578,6 +1578,11 @@ pre.code{background:var(--mw-surface-2);
      them. 64vh keeps the bar clear on the 1000px-tall screens the editor is
      measured at. */
   max-height:64vh;overflow-y:auto}
+/* The Background row is a visual choice — a household is picking a picture,
+ * not a setting — so once it holds the wallpaper grid the popover widens to
+ * give the tiles room for a name under each one, rather than the 340px this
+ * panel is otherwise sized for (a select and a couple of number inputs). */
+.le-canvas-pop:has(.le-wallpapers){width:min(440px,92vw)}
 .le-canvas-pop[hidden]{display:none}
 .le-pop-title{
   font:var(--mw-t-h3);
@@ -1801,6 +1806,20 @@ pre.code{background:var(--mw-surface-2);
 .le-media-item.is-bright{position:relative;overflow:hidden}
 .le-media-item.is-bright::after{content:'not for OLED';position:absolute;left:0;right:0;bottom:0;
   padding:var(--mw-s-1) 0;font-size:var(--mw-t-label-sm-size);line-height:1;color:#fff;background:rgba(0,0,0,.55)}
+/* Every other picker here is a bare swatch a household already knows by sight
+ * (their own uploaded photo, a colour they just chose) — a wallpaper is
+ * neither, so its tile carries the picture's name rather than a tooltip
+ * nobody hovers on a touchscreen. Bigger cards, in their own grid, scoped so
+ * the uploaded-image picker above keeps its plain thumbnails. */
+.le-wallpapers .le-media-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));
+  gap:var(--mw-s-3)}
+.le-wallpapers .le-media-item{width:100%;height:auto;aspect-ratio:1;display:flex;align-items:flex-end;
+  position:relative;overflow:hidden}
+.le-wallpapers .le-media-item.is-bright::after{bottom:auto;top:0}
+.le-media-name{display:block;width:100%;padding:var(--mw-s-1) var(--mw-s-2);
+  font-size:var(--mw-t-label-xs-size);line-height:1.2;color:#fff;text-align:left;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  background:linear-gradient(to top,rgba(0,0,0,.72),rgba(0,0,0,0))}
 .le-media-upload{display:inline-flex;align-items:center;gap:var(--mw-s-2);font-size:var(--mw-t-label-size);color:var(--muted)}
 .le-media-upload input{font-size:var(--mw-t-label-sm-size)}
 .le-media-status{font-family:var(--mono);font-size:var(--mw-t-label-sm-size);color:var(--mw-ink-muted)}
