@@ -1351,7 +1351,12 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
             'Following a wall draws that layout in black & white — move a box there ' +
             'and this panel moves with it. Each widget can say less on ink without changing the wall. ' +
             'A panel follows the wall’s everyday layout only: a layout the wall shows at certain hours ' +
-            'never reaches a panel, which may sleep through the hour.',
+            'never reaches a panel, which may sleep through the hour. ' +
+            // Plan item P6.4: the panel's renderer reads no background of any
+            // kind (nothing under `epaper/` does), and a wallpaper is where a
+            // household following a wall would otherwise go looking for one.
+            'A panel draws no background or wallpaper: one bit has no room for a picture behind the widgets, ' +
+            'so a wallpaper on the wall it follows stays on that wall.',
         }) +
         `<button class="secondary" type="submit">Use this</button></form>`,
     );

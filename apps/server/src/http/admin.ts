@@ -146,6 +146,7 @@ import { stagedKeyPath, stagedPath } from '../db/restore.js';
 import type { SqliteDatabase } from '../db/open.js';
 import { ago, presence, presenceDot } from './presence.js';
 import { canvasGutterStep, GUTTER_DEFAULT_STEP, GUTTER_LABELS } from '../gutter.js';
+import { isWidgetGround, themeTone, WALLPAPERS, WIDGET_GROUNDS } from '../wallpapers.js';
 import { confirmDestroyPage, dirtyForm, downloadForm, errorBlock, escapeHtml, feedCredentialFields, icon,
   networkAccessDisclosure, networkAccessSuggestion, page, saveRow, segControl,
   selectField, selectRow, switchRow, textField, type NavModule } from './html.js';
@@ -344,6 +345,45 @@ function wallThemeColours(db: SqliteDatabase, ref: string): Readonly<Record<stri
 }
 
 /**
+ * The Widget ground control (plan item P6.3): None, Soft or Solid, on the
+ * wall's Layout settings beside the room between widgets.
+ *
+ * **One segment is always checked**, and on a wall nobody has asked it is the
+ * one the wall is drawing — Soft if either canvas has a wallpaper, None
+ * otherwise — which is `widgetGroundFor`'s default read off the stored rows.
+ * `widget_ground_shown` says which that was, so the handler can tell a segment
+ * the household moved from one it left alone, and the default goes on
+ * following the background until somebody chooses.
+ */
+function widgetGroundControl(screen: {
+  readonly widgetGround: string | null;
+  readonly layoutBackground: string | null;
+  readonly layoutLandscapeBackground: string | null;
+}): string {
+  const wallpapered = [screen.layoutBackground, screen.layoutLandscapeBackground].some(
+    (raw) => parseBackground(raw)?.type === 'wallpaper',
+  );
+  const shown = isWidgetGround(screen.widgetGround) ? screen.widgetGround : wallpapered ? 'soft' : 'none';
+  const labels: Readonly<Record<(typeof WIDGET_GROUNDS)[number], string>> = {
+    none: 'None',
+    soft: 'Soft',
+    solid: 'Solid',
+  };
+  return (
+    segControl({
+      label: 'Widget ground',
+      name: 'widget_ground',
+      hint:
+        'What each widget sits on over a picture. Soft lets the wallpaper show through a little; ' +
+        'Solid is the theme’s own card colour; None puts the text straight on the picture. ' +
+        'Until you choose, a wall with a wallpaper uses Soft and any other wall uses None.',
+      selected: shown,
+      options: WIDGET_GROUNDS.map((value) => ({ value, label: labels[value] })),
+    }) + `<input type="hidden" name="widget_ground_shown" value="${shown}">`
+  );
+}
+
+/**
  * The style lane's tokens as form fields — a token is not a field name a
  * browser is happy with. Colours first, then the two faces, in the lane's own
  * order (`STYLE_LANE_TOKENS`).
@@ -449,6 +489,16 @@ const screenBody = z.object({
    */
   motion: checkbox(),
   motion_shown: optionalText(1),
+  /*
+   * What each widget draws behind itself (plan item P6.3). `widget_ground_shown`
+   * is the segment the control was drawn with, and the handler writes the
+   * column only when the posted one differs — the `motion_shown` rule above,
+   * for the same reason: an unchosen wall's default follows its background,
+   * and a segment drawn checked on the strength of that default must not
+   * freeze it the first time somebody saves a timezone.
+   */
+  widget_ground: optionalText(8),
+  widget_ground_shown: optionalText(8),
   ...Object.fromEntries(
     Array.from({ length: MAX_SCHEDULE_ROWS }, (_, i) => i + 1).flatMap((n) => [
       [`schedule_slot_${n}`, optionalText(24)],
@@ -539,8 +589,9 @@ const layoutBody = z.object({
   // A wall is a few widgets, not a dashboard, and a child names a group on
   // this same list (RFC 014 §5.1) — `placedWidgetsBody` carries both rules.
   widgets: placedWidgetsBody,
-  // The canvas background (RFC 005 Phase 3): a solid colour or a gradient, or
-  // null for none. Absent is treated as null so an older editor still saves.
+  // The canvas background, of four kinds — a solid colour, a gradient, an
+  // uploaded image or a bundled wallpaper (RFC 005 Phase 3, plan item P6.1) —
+  // or null for none. Absent is treated as null so an older editor still saves.
   background: backgroundSchema.nullable().optional(),
   // Which named canvas this save is (RFC 014 §5.2). Absent is the default
   // canvas, so an editor that predates slots still writes the one it knows.
@@ -759,6 +810,13 @@ const displayBody = z
 
 const HHMM_SHAPE = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 
+/** A template's background as the wall would draw it, as a spreadable key. */
+function previewBackgroundOf(background: unknown): { readonly background: unknown } | undefined {
+  if (background === undefined) return undefined;
+  const drawn = parseBackground(JSON.stringify(background));
+  return drawn === undefined ? undefined : { background: drawn };
+}
+
 /**
  * What `template-gallery.js` needs to draw a wall template's preview.
  *
@@ -785,7 +843,10 @@ function wallTemplatePreviews(
     // orphaned at fractions of a box the card never placed.
     widgets: templatePreviewWidgets(t.portrait),
     ...(t.theme !== undefined ? { theme: t.theme } : {}),
-    ...(t.portrait.background !== undefined ? { background: t.portrait.background } : {}),
+    // Through `parseBackground`, as the wall reads it: a wallpaper leaves
+    // resolved to its files (plan item P6.1), and one the catalogue does not
+    // name is no background — the card draws the theme, as the wall would.
+    ...(previewBackgroundOf(t.portrait.background) ?? {}),
   }));
 }
 
@@ -3051,6 +3112,22 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       motion = shaped.value.motion ? 1 : 0;
     }
 
+    /*
+     * The widget ground (plan item P6.3), written only when it was moved. A
+     * value outside the three is a refusal rather than a clamp — reachable
+     * only by hand, since every segment the form offers is one of them — and
+     * a posted segment equal to the one drawn hands the column back as it was,
+     * so null stays null and the wall goes on choosing Soft over a wallpaper.
+     */
+    let widgetGround: string | null = stored?.widgetGround ?? null;
+    const groundSaid = (shaped.value.widget_ground ?? '').trim();
+    if (groundSaid !== '') {
+      if (!isWidgetGround(groundSaid)) {
+        return c.html(displayDetailPage(id, 'Choose what goes behind each widget.', c), 400);
+      }
+      if (groundSaid !== (shaped.value.widget_ground_shown ?? '').trim()) widgetGround = groundSaid;
+    }
+
     // Density overrides: empty follows the household default, a number is
     // range-checked here beside the theme and zone checks.
     const density = (
@@ -3115,6 +3192,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         layoutGutter,
         layoutStyle,
         motion,
+        widgetGround,
       })
     ) {
       return c.redirect('/admin/walls', 302);
@@ -5050,6 +5128,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             selected: String(screen.layoutGutter ?? GUTTER_DEFAULT_STEP),
             options: GUTTER_LABELS.map((label, step) => ({ value: String(step), label })),
           }) +
+          widgetGroundControl(screen) +
           scheduleRows(screen.id),
       ) +
       /*
@@ -5691,6 +5770,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
      */
     const owner = activeScreens().find((s) => s.id === ownerId) ?? null;
     const ownerKey = owner?.id ?? null;
+    // The colours the wall's theme gives it: a custom theme's own tokens, or
+    // the built-in's transcription — for the picker's tone and the card default.
+    const ownerColours = wallThemeColours(deps.db, owner?.theme ?? FALLBACK_THEME);
 
     const mode = owner?.layoutMode ?? household.layoutMode;
     const canvasFor = (orientation: 'portrait' | 'landscape'): {
@@ -5814,6 +5896,17 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // server's allowlist, so the inspector cannot offer a face the schema
       // would refuse.
       fonts: FONTS,
+      /*
+       * The bundled wallpapers (plan items P6.1 and P6.4), for the background
+       * panel's picker — the catalogue itself, so the editor cannot offer an
+       * id the schema would refuse and resolves a choice into the same files
+       * the wall will draw. Beside it the tone of the theme this wall wears,
+       * which the picker filters by (P6.3), and that theme's own `--panel`,
+       * which a Card background and a solid canvas background start from.
+       */
+      wallpapers: WALLPAPERS,
+      wallTone: themeTone(ownerColours['--bg'] ?? ''),
+      themePanel: ownerColours['--panel'],
       // Which widgets the wall will leave out, and what to do about it. The
       // editor keeps the box — it has to be grabbable — and flags it. Keyed by
       // box, over both canvases, and beside it the facts to keep the flags

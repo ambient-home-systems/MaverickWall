@@ -27,6 +27,10 @@ const CONTENT_TYPES: Readonly<Record<string, string>> = {
   '.map': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  // The bundled wallpapers (plan item P6.1). JPEG rather than WebP, because
+  // old kitchen iPads cannot show WebP; both spellings of the extension.
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
   '.woff2': 'font/woff2',
   '.json': 'application/json; charset=utf-8',
   '.webmanifest': 'application/manifest+json',
@@ -122,6 +126,23 @@ export function defaultEmojiDir(): string {
   if (configured !== undefined && configured !== '') return configured;
   // apps/server/dist/http/static.js → apps/server/assets/emoji
   return new URL('../../assets/emoji', import.meta.url).pathname;
+}
+
+/**
+ * Where the bundled wallpapers are (plan item P6.1).
+ *
+ * `WALLPAPERS_DIR` first, for the image, for the reason `FONTS_DIR` and
+ * `EMOJI_DIR` exist: `pnpm deploy` flattens the server package, so the
+ * repo-relative fallback below resolves nowhere in a flattened tree. The
+ * fallback is `apps/server/assets/wallpapers`, for a checkout run in
+ * development. Rule three: the pictures ship in the image and are served
+ * same-origin from this directory.
+ */
+export function defaultWallpapersDir(): string {
+  const configured = globalThis.process?.env?.['WALLPAPERS_DIR'];
+  if (configured !== undefined && configured !== '') return configured;
+  // apps/server/dist/http/static.js → apps/server/assets/wallpapers
+  return new URL('../../assets/wallpapers', import.meta.url).pathname;
 }
 
 export function createStaticFiles(directory: string): StaticFiles {

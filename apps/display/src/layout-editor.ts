@@ -17,6 +17,7 @@
  */
 
 import { renderFreeform } from './render.js';
+import { ADMIN_WALLPAPER_BASE } from './wallpaper.js';
 import { buildModel, type DisplayModel } from './viewmodel.js';
 import { applyTheme, themeTokens } from './theme.js';
 import {
@@ -32,7 +33,7 @@ import {
 import { renderContrast } from './contrast-guidance.js';
 import { PREVIEW_ROOT_CLASS, layoutPreviewRoot, previewStylesheet } from './preview-css.js';
 import { createCustomCssSheet, customCssBlocks, type CustomCssSheet } from './custom-css.js';
-import type { Manifest } from './manifest.js';
+import type { Manifest, CanvasBackground as DrawnBackground } from './manifest.js';
 import {
   CALENDAR_DENSITIES,
   WIDGET_VIEWS,
@@ -256,6 +257,9 @@ function boot(): void {
       return { type: 'gradient', from: b['from'], to: b['to'], angle: typeof b['angle'] === 'number' ? b['angle'] : 180 };
     }
     if (b['type'] === 'image' && typeof b['image'] === 'string') return { type: 'image', image: b['image'] };
+    // The id alone: that is what the editor posts, and the preview resolves it
+    // against the catalogue below (plan item P6.1).
+    if (b['type'] === 'wallpaper' && typeof b['id'] === 'string') return { type: 'wallpaper', id: b['id'] };
     return undefined;
   };
   const canvasFrom = (raw: RawCanvas | undefined, fallbackAspect: number): Canvas => {
@@ -333,6 +337,40 @@ function boot(): void {
    */
   let fonts: readonly { readonly label: string; readonly stack: string }[] = [];
   /**
+   * The bundled wallpapers (plan items P6.1 and P6.4), as the server's
+   * catalogue lists them, for the background panel's picker and to resolve a
+   * chosen id into the files the preview draws. Served rather than
+   * transcribed: the catalogue is the server's, and an id this editor offered
+   * that the schema refused would be a control that does nothing.
+   */
+  interface WallpaperChoice {
+    readonly id: string;
+    readonly name: string;
+    readonly tone: 'light' | 'dark';
+    readonly color: string;
+    readonly thumb: string;
+    readonly small: string;
+    readonly large: string;
+  }
+  let wallpapers: readonly WallpaperChoice[] = [];
+  /**
+   * The tone of the theme this wall wears (P6.3), which the picker filters by:
+   * a light picture under a dark theme's light ink is the case nothing on the
+   * wall measures.
+   */
+  let wallTone: 'light' | 'dark' = 'dark';
+  /**
+   * The theme's own `--panel`, as a hex: what a Card background and a solid
+   * canvas background start from when switched on. It was `#111820` whatever
+   * the theme, which on Household or Almanac is a near-black card on cream —
+   * a default nobody could have chosen for that wall.
+   */
+  let themePanel = '#1B212A';
+  /** Whether the picker offers the wallpapers drawn for the other tone. */
+  let showAllWallpapers = false;
+  /** Whether choosing a wallpaper applies it to both orientations (P6.4). */
+  let wallpaperForBoth = true;
+  /**
    * Which widgets have "Inherit the wall's theme" switched off *this session*
    * without having written anything yet.
    *
@@ -378,6 +416,9 @@ function boot(): void {
       readonly omission?: unknown;
       readonly todoLists?: unknown;
       readonly fonts?: unknown;
+      readonly wallpapers?: unknown;
+      readonly wallTone?: unknown;
+      readonly themePanel?: unknown;
     };
     const r = parsed.report;
     if (r !== undefined && typeof r.w === 'number' && typeof r.h === 'number' && r.w > 0 && r.h > 0) {
@@ -455,6 +496,20 @@ function boot(): void {
           typeof (one as { label?: unknown }).label === 'string' &&
           typeof (one as { stack?: unknown }).stack === 'string',
       );
+    }
+    if (Array.isArray(parsed.wallpapers)) {
+      wallpapers = parsed.wallpapers.filter(
+        (one): one is WallpaperChoice =>
+          typeof one === 'object' && one !== null &&
+          (['id', 'name', 'color', 'thumb', 'small', 'large'] as const).every(
+            (key) => typeof (one as Record<string, unknown>)[key] === 'string',
+          ) &&
+          ((one as { tone?: unknown }).tone === 'light' || (one as { tone?: unknown }).tone === 'dark'),
+      );
+    }
+    if (parsed.wallTone === 'light' || parsed.wallTone === 'dark') wallTone = parsed.wallTone;
+    if (typeof parsed.themePanel === 'string' && /^#[0-9a-fA-F]{6}$/.test(parsed.themePanel)) {
+      themePanel = parsed.themePanel;
     }
     // Start on portrait; landscape waits in the stash (RFC 005). 9:16 and 16:9
     // are the per-orientation defaults when a canvas has no aspect yet.
@@ -785,8 +840,9 @@ function boot(): void {
     : 'Nothing is placed yet — add a widget above. Until you do, the wall ' +
       'shows a short note in place of a layout rather than going blank.';
 
-  // The canvas background control (RFC 005 Phases 3 and 3b): none, a solid
-  // colour, a gradient, or an uploaded image. Per canvas, so it swaps with the
+  // The canvas background control: none, or one of four kinds — a solid
+  // colour, a gradient, an uploaded image (RFC 005 Phases 3 and 3b) or a
+  // bundled wallpaper (plan item P6.4). Per canvas, so it swaps with the
   // orientation like the widgets do.
   const backgroundPanel = document.createElement('div');
   backgroundPanel.className = 'le-bg';
@@ -1691,11 +1747,12 @@ function boot(): void {
     // their box, so they are indifferent to the shadow root having no root
     // font-size of its own.
     const drawn = previewWidgets();
+    const drawnBackground = state.background === undefined ? undefined : previewBackground(state.background);
     renderFreeform(previewWall, model, {
       aspect: state.aspect,
       widgets: drawn,
-      ...(state.background !== undefined ? { background: state.background } : {}),
-    }, EDITOR_MEDIA_BASE);
+      ...(drawnBackground !== undefined ? { background: drawnBackground } : {}),
+    }, EDITOR_MEDIA_BASE, { wallpaperBase: ADMIN_WALLPAPER_BASE });
     // Then the household's CSS, for the boxes on this canvas that carry one.
     previewCss?.apply(
       customCssBlocks(
@@ -2598,8 +2655,21 @@ function boot(): void {
   }
 
   /**
-   * The canvas background control: none, a solid colour, a two-stop gradient, or
-   * an uploaded image.
+   * The background as the preview draws it: a wallpaper resolved against the
+   * catalogue into the files the wall would choose between, the others as they
+   * are. A wallpaper with no choice yet, or an id the catalogue does not name,
+   * is no background — the theme's ground, which is what the wall draws for
+   * an id the server does not know (plan item P6.1).
+   */
+  function previewBackground(bg: Background): DrawnBackground | undefined {
+    if (bg.type !== 'wallpaper') return bg;
+    const found = wallpapers.find((one) => one.id === bg.id);
+    return found === undefined ? undefined : { type: 'wallpaper', id: found.id, small: found.small, large: found.large };
+  }
+
+  /**
+   * The canvas background control, of four kinds: none, a solid colour, a
+   * two-stop gradient, an uploaded image, or a bundled wallpaper.
    * A property of the active canvas, so it is redrawn on an orientation switch.
    */
   function drawBackgroundPanel(): void {
@@ -2613,6 +2683,7 @@ function boot(): void {
     const select = document.createElement('select');
     for (const [value, label] of [
       ['none', 'None'], ['solid', 'Solid colour'], ['gradient', 'Gradient'], ['image', 'Image'],
+      ['wallpaper', 'Wallpaper'],
     ] as const) {
       const opt = document.createElement('option');
       opt.value = value;
@@ -2622,12 +2693,18 @@ function boot(): void {
     }
     select.addEventListener('change', () => {
       record();
-      if (select.value === 'solid') state.background = { type: 'solid', color: '#111820' };
+      // The theme's own `--panel`: the colour the canvas already draws, so a
+      // solid background starts as the wall it is on rather than as a dark
+      // slate on every theme (P6.3).
+      if (select.value === 'solid') state.background = { type: 'solid', color: themePanel };
       else if (select.value === 'gradient') {
         state.background = { type: 'gradient', from: '#0B0E11', to: '#242D38', angle: 180 };
       } else if (select.value === 'image') {
         // Empty until a picture is chosen; saved as "no background" until then.
         state.background = { type: 'image', image: '' };
+      } else if (select.value === 'wallpaper') {
+        // Empty until one is chosen, like an image: saved as "no background".
+        state.background = { type: 'wallpaper', id: '' };
       } else state.background = undefined;
       drawBackgroundPanel();
       renderPreview();
@@ -2638,7 +2715,7 @@ function boot(): void {
     const colour = (value: string, onChange: (v: string) => void): HTMLInputElement => {
       const input = document.createElement('input');
       input.type = 'color';
-      input.value = /^#[0-9a-fA-F]{6}$/.test(value) ? value : '#111820';
+      input.value = /^#[0-9a-fA-F]{6}$/.test(value) ? value : themePanel;
       input.addEventListener('change', () => {
         record();
         onChange(input.value);
@@ -2649,7 +2726,9 @@ function boot(): void {
     };
 
     const bg = state.background;
-    if (bg?.type === 'image') {
+    if (bg?.type === 'wallpaper') {
+      backgroundPanel.appendChild(wallpaperPicker(bg.id));
+    } else if (bg?.type === 'image') {
       backgroundPanel.appendChild(
         mediaPicker(bg.image === '' ? undefined : bg.image, (name) => {
           record();
@@ -3891,6 +3970,107 @@ function boot(): void {
    * calls back with the stored name. Rule three throughout — every image is the
    * household's own, served from the media store, never an external URL.
    */
+  function wallpaperPicker(current: string): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'le-media le-wallpapers';
+    const grid = document.createElement('div');
+    grid.className = 'le-media-grid';
+    grid.setAttribute('role', 'group');
+    grid.setAttribute('aria-label', 'Wallpapers');
+
+    /*
+     * Filtered by tone to match the wall's theme (P6.3), because a wallpaper
+     * is authored for its theme the way a template's background is (RFC 015
+     * §3.6): every contrast this wall promises is measured against the
+     * theme's flat ground. The rest are one switch away, behind a sentence
+     * that says what they cost, and the chosen one is always shown even when
+     * it is the other tone — a picker that hides what is on the wall reads as
+     * "nothing is chosen".
+     */
+    const shown = wallpapers.filter(
+      (one) => showAllWallpapers || one.tone === wallTone || one.id === current,
+    );
+    for (const one of shown) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'le-media-item' + (one.id === current ? ' is-on' : '');
+      button.dataset['wallpaper'] = one.id;
+      button.style.backgroundColor = one.color;
+      button.style.backgroundImage = `url("${ADMIN_WALLPAPER_BASE}${one.thumb}")`;
+      const label = one.tone === wallTone ? one.name : `${one.name} — drawn for a ${one.tone} theme`;
+      button.title = label;
+      button.setAttribute('aria-label', label);
+      button.setAttribute('aria-pressed', one.id === current ? 'true' : 'false');
+      button.addEventListener('click', () => {
+        record();
+        const chosen: Background = { type: 'wallpaper', id: one.id };
+        state.background = chosen;
+        /*
+         * "Use for both" is the default (P6.4): a household choosing a
+         * picture for their wall almost always means the wall, whichever way
+         * it is hung. Every canvas on the other orientation takes it — the
+         * everyday one and each named layout — because a background belongs
+         * to the orientation and not to the slot, and the save writes it from
+         * whichever canvas is posted.
+         */
+        if (wallpaperForBoth) {
+          const other = state.orientation === 'portrait' ? 'landscape' : 'portrait';
+          for (const slot of [null, ...state.slots]) {
+            const key = canvasKey(other, slot);
+            const canvas = state.stash[key];
+            if (canvas !== undefined) state.stash[key] = { ...canvas, background: { ...chosen } };
+          }
+        }
+        drawBackgroundPanel();
+        renderPreview();
+        markDirty();
+      });
+      grid.appendChild(button);
+    }
+    if (wallpapers.length === 0) {
+      const note = document.createElement('p');
+      note.className = 'hint';
+      note.textContent = 'No wallpapers are installed.';
+      grid.appendChild(note);
+    }
+    wrap.appendChild(grid);
+
+    const toggle = (text: string, checked: boolean, onChange: (on: boolean) => void): HTMLElement => {
+      const label = document.createElement('label');
+      label.className = 'le-media-upload';
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = checked;
+      box.addEventListener('change', () => onChange(box.checked));
+      label.append(box, document.createTextNode(text));
+      return label;
+    };
+    wrap.appendChild(
+      toggle('Use for both portrait and landscape', wallpaperForBoth, (on) => {
+        wallpaperForBoth = on;
+      }),
+    );
+    const otherTone = wallTone === 'dark' ? 'light' : 'dark';
+    if (wallpapers.some((one) => one.tone === otherTone)) {
+      wrap.appendChild(
+        toggle(`Show wallpapers drawn for a ${otherTone} theme`, showAllWallpapers, (on) => {
+          showAllWallpapers = on;
+          drawBackgroundPanel();
+        }),
+      );
+      if (showAllWallpapers) {
+        const warning = document.createElement('p');
+        warning.className = 'hint';
+        warning.textContent =
+          `This wall's theme is ${wallTone}, and its text is drawn to be read on a ${wallTone} ground. ` +
+          `Over a ${otherTone} picture some of it may be hard to read — choose a Solid widget ground ` +
+          `in the wall's settings, or a ${otherTone} theme.`;
+        wrap.appendChild(warning);
+      }
+    }
+    return wrap;
+  }
+
   function mediaPicker(current: string | undefined, onPick: (name: string) => void): HTMLElement {
     const wrap = document.createElement('div');
     wrap.className = 'le-media';
@@ -4218,7 +4398,7 @@ function boot(): void {
         'Fills the widget’s box behind what it draws, and lets its corners be rounded.',
         hasBg,
         (checked) => {
-          setConfig(widget, 'background', checked ? '#111820' : undefined);
+          setConfig(widget, 'background', checked ? themePanel : undefined);
           if (!checked) setConfig(widget, 'opacity', undefined);
           renderConfigPanel();
         },
@@ -4230,7 +4410,7 @@ function boot(): void {
       color.type = 'color';
       color.value = /^#[0-9a-fA-F]{6}$/.test(String(cfg['background']))
         ? String(cfg['background'])
-        : '#111820';
+        : themePanel;
       color.addEventListener('change', () => setConfig(widget, 'background', color.value));
       colorField.appendChild(color);
       configPanel.appendChild(colorField);
