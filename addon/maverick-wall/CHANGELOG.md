@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.70.0
+
 **A wall's settings split "Appearance" into Design and Look, and each wall on
 the Walls list now says what it looks like.** Design holds the starting-layout
 gallery, spacing and any timed layouts; **Look** is new, and holds the wall's
