@@ -16,6 +16,27 @@
 
 ## Unreleased
 
+**Timed layouts are easy to find now.** Wall settings → Layouts explains what
+a timed layout is and has a **Make a timed layout** button that opens the
+layout editor and starts one; the ⋮ menu offers the same. While a timed layout
+is on screen, a line under the toolbar says when it shows, or that it has no
+hours yet and so never shows, with a link to set them. **New layout** and
+**Remove layout** now sit beside the layout tabs, and a name the wall can't use
+is asked for again with the reason instead of being ignored.
+
+**Wall settings read more clearly.** Design is now **Layouts**, Content
+defaults is **Calendar amounts** (with the same labels as System), and Alerts
+and interaction is **Touch controls**, which now correctly says all three
+switches start off. The timed-layout rules show the ones you have plus one
+blank, not four empty rows. Several hints are shorter and no longer describe
+settings that are hidden.
+
+**In the layout editor, "Layout — Portrait 9:16" is now "Size & grid",** so
+"Layout" no longer means four different things on one screen, and the toolbar
+fits on one row on a desktop. Reset layout and Unpair wall are now only in
+Wall settings → Advanced, below the everyday actions. The ⋮ menu links there
+rather than offering them a second time.
+
 ## 0.71.0
 
 **Background has its own button beside Layout in the wall editor.** Choose a

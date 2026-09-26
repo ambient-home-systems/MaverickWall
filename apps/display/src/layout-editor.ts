@@ -405,6 +405,15 @@ function boot(): void {
    */
   const notDrawnSeed = new Map<string, string>();
   let omissionFacts: OmissionFacts | undefined;
+  /**
+   * The timed layouts as the server last saved them, and the hours each one
+   * shows (RFC 014 §5.2). Read-only here — the rules are edited in Wall
+   * settings › Layouts — and used for one thing: telling the household,
+   * beside the tabs, whether the layout on screen will ever be drawn. A
+   * layout with no rule never is, and nothing on this screen used to say so.
+   */
+  const savedSlots = new Set<string>();
+  const scheduleRules: { readonly slot: string; readonly from: string; readonly to: string }[] = [];
 
   let state: LayoutState;
   try {
@@ -415,6 +424,7 @@ function boot(): void {
       readonly portrait?: RawCanvas;
       readonly landscape?: RawCanvas;
       readonly slots?: unknown;
+      readonly schedule?: unknown;
       readonly maxSlots?: unknown;
       readonly calendars?: unknown;
       readonly readings?: unknown;
@@ -542,6 +552,7 @@ function boot(): void {
         const named = entry as { slot?: unknown; portrait?: RawCanvas; landscape?: RawCanvas };
         if (typeof named.slot !== 'string' || !SLOT_NAME.test(named.slot) || slots.includes(named.slot)) continue;
         slots.push(named.slot);
+        savedSlots.add(named.slot);
         const p = canvasFrom(named.portrait, portrait.aspect);
         const l = canvasFrom(named.landscape, landscape.aspect);
         stash[canvasKey('portrait', named.slot)] = {
@@ -552,6 +563,14 @@ function boot(): void {
           aspect: landscape.aspect, widgets: l.widgets,
           ...(landscape.background !== undefined ? { background: landscape.background } : {}),
         };
+      }
+    }
+    if (Array.isArray(parsed.schedule)) {
+      for (const entry of parsed.schedule) {
+        const rule = entry as { slot?: unknown; from?: unknown; to?: unknown };
+        if (typeof rule.slot === 'string' && typeof rule.from === 'string' && typeof rule.to === 'string') {
+          scheduleRules.push({ slot: rule.slot, from: rule.from, to: rule.to });
+        }
       }
     }
     state = {
@@ -923,9 +942,17 @@ function boot(): void {
    * household makes one: measured, a second segment beside the orientation
    * buttons wrapped the toolbar onto a third row on a 390px phone and took the
    * canvas from 455px to 388px — under the half-screen floor RFC 009 Phase 5
-   * measured it up to. So New and Remove live in the Layout popover, where the
-   * canvas's own settings already are, and the tabs cost the toolbar nothing
-   * until there is a second layout to choose between.
+   * measured it up to. So the tabs cost the toolbar nothing until there is a
+   * second layout to choose between.
+   *
+   * **The first one is made from Wall settings › Layouts or the ⋮ menu**,
+   * both of which hand the page's `data-new-layout` to this editor. It used
+   * to be made from a New button inside the toolbar popover also called
+   * "Layout", which is where nobody looked: the word meant the page's tab, that
+   * popover, the canvas's shape and a named layout, all on one screen. Once
+   * there is a tab row, New and Remove sit in it, beside what they act on,
+   * and a note under the toolbar says whether the layout on screen has hours
+   * — a timed layout with no rule is never drawn, and nothing said so.
    */
   const slotBar = document.createElement('div');
   slotBar.className = 'le-slots';
@@ -937,13 +964,13 @@ function boot(): void {
   const slotKeyOf = (tab: HTMLButtonElement): string | undefined => tab.dataset['slot'];
   const newSlotButton = document.createElement('button');
   newSlotButton.type = 'button';
-  newSlotButton.className = 'le-add';
-  newSlotButton.textContent = 'New layout';
-  newSlotButton.title = 'Start another layout from this one, to show at certain hours';
+  newSlotButton.className = 'le-tool-btn';
+  newSlotButton.textContent = '+ New layout';
+  newSlotButton.title = 'Start another timed layout from the one you are arranging';
   newSlotButton.addEventListener('click', () => newSlotFromCurrent());
   const removeSlotButton = document.createElement('button');
   removeSlotButton.type = 'button';
-  removeSlotButton.className = 'le-add';
+  removeSlotButton.className = 'le-tool-btn';
   removeSlotButton.textContent = 'Remove layout';
   removeSlotButton.addEventListener('click', () => {
     void removeCurrentSlot();
@@ -974,12 +1001,54 @@ function boot(): void {
     slotBar.hidden = epaperHost || state.slots.length === 0;
     removeSlotButton.hidden = state.slot === null;
     newSlotButton.hidden = state.slots.length >= state.maxSlots;
-    newSlotButton.title =
-      state.slots.length >= state.maxSlots
-        ? `A wall can hold ${state.maxSlots} extra layouts`
-        : 'Start another layout from this one, to show at certain hours';
+    drawSlotNote();
   }
-  slotBar.append(slotGroup);
+
+  /*
+   * When the layout on screen is drawn, in one line under the toolbar, with
+   * the way to change it. Only for a timed layout: the everyday one is what
+   * the wall draws outside every rule, and saying so on every wall would be a
+   * row of type on a phone for a fact nobody asked about.
+   */
+  const slotNote = document.createElement('p');
+  slotNote.className = 'le-slot-note';
+  slotNote.hidden = true;
+  function drawSlotNote(): void {
+    const slot = state.slot;
+    slotNote.textContent = '';
+    slotNote.hidden = epaperHost || slot === null;
+    if (slot === null || epaperHost) return;
+    const hoursLink = (label: string): HTMLButtonElement => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn-text le-slot-hours';
+      button.textContent = label;
+      button.addEventListener('click', () => {
+        window.dispatchEvent(new CustomEvent('mw:open-settings', { detail: { category: 'design' } }));
+      });
+      return button;
+    };
+    const name = document.createElement('b');
+    name.textContent = slot;
+    if (!savedSlots.has(slot)) {
+      slotNote.append(
+        'New timed layout ', name, '. It starts as a copy of your everyday layout. ',
+        'Change it, press Save wall, then choose the hours it shows in Wall settings › Layouts.',
+      );
+      return;
+    }
+    const rules = scheduleRules.filter((rule) => rule.slot === slot);
+    if (rules.length === 0) {
+      slotNote.append(name, ' has no hours yet, so the wall never shows it. ', hoursLink('Set its hours'));
+      return;
+    }
+    slotNote.append(
+      name,
+      ` shows ${rules.map((rule) => `${rule.from}–${rule.to}`).join(' and ')} every day; the everyday layout shows the rest of the time. `,
+      hoursLink('Change its hours'),
+    );
+  }
+  slotBar.append(slotGroup, newSlotButton, removeSlotButton);
   drawSlotTabs();
 
   // A panel has one orientation and one ratio, both facts about the hardware.
@@ -1000,7 +1069,7 @@ function boot(): void {
 
   const aspectSelect = document.createElement('select');
   aspectSelect.className = 'le-aspect';
-  aspectSelect.setAttribute('aria-label', 'Layout size');
+  aspectSelect.setAttribute('aria-label', 'Shape');
   for (const a of ASPECTS) {
     const opt = document.createElement('option');
     opt.value = String(a.value);
@@ -1250,19 +1319,22 @@ function boot(): void {
   resetButton.textContent = 'Reset layout…';
   resetForm.appendChild(resetButton);
 
-  /** Layout controls concern the canvas shape, grid and named layouts. */
+  /*
+   * The shape being arranged and the snap grid — named for what it holds.
+   *
+   * It was "Layout — Portrait 9:16", on a page whose tab is Layout, over a
+   * popover titled Layout that also made and removed named layouts: one word
+   * for four things. It also carried the shape a second time, beside the
+   * preview header that already states it, and the extra width pushed
+   * Background onto a row of its own at 1440px. The shape stays in the
+   * accessible name, where a screen reader has no header beside it.
+   */
   const canvasButton = document.createElement('button');
   canvasButton.type = 'button';
-  canvasButton.className = 'le-tool-btn';
+  canvasButton.className = 'le-tool-btn le-size-btn';
   canvasButton.setAttribute('aria-haspopup', 'true');
   canvasButton.setAttribute('aria-expanded', 'false');
-  canvasButton.appendChild(document.createTextNode('Layout'));
-  // The shape, as its own node rather than part of the label: on a phone the
-  // row has to fit and the popover states it anyway, so the stylesheet hides
-  // this and the button keeps its name.
-  const canvasNote = document.createElement('span');
-  canvasNote.className = 'le-tool-note';
-  canvasButton.appendChild(canvasNote);
+  canvasButton.textContent = 'Size & grid';
 
   const canvasPopover = document.createElement('div');
   canvasPopover.className = 'le-canvas-pop';
@@ -1270,7 +1342,7 @@ function boot(): void {
   {
     const title = document.createElement('div');
     title.className = 'le-pop-title';
-    title.textContent = 'Layout';
+    title.textContent = 'Size and grid';
     const sub = document.createElement('div');
     sub.className = 'le-pop-sub';
     sub.textContent = epaperHost
@@ -1281,7 +1353,7 @@ function boot(): void {
       const sizeRow = document.createElement('div');
       sizeRow.className = 'le-pop-row';
       const sizeLabel = document.createElement('span');
-      sizeLabel.textContent = 'Layout size';
+      sizeLabel.textContent = 'Shape';
       sizeRow.append(sizeLabel, aspectSelect);
       canvasPopover.appendChild(sizeRow);
       if (report !== undefined) {
@@ -1298,17 +1370,6 @@ function boot(): void {
     snapRow.className = 'le-pop-row';
     snapRow.appendChild(snapToggle);
     canvasPopover.appendChild(snapRow);
-    if (!epaperHost) {
-      // Another layout for certain hours (RFC 014 §5.2): started from this
-      // one, or the one on screen removed. Here rather than in the toolbar,
-      // which has no row to spare on a phone — see `slotBar`.
-      const slotSep = document.createElement('div');
-      slotSep.className = 'le-pop-sep';
-      const slotRow = document.createElement('div');
-      slotRow.className = 'le-pop-row le-pop-slots';
-      slotRow.append(newSlotButton, removeSlotButton);
-      canvasPopover.append(slotSep, slotRow);
-    }
     // The reset, on a panel only. On a wall the page's overflow menu carries
     // "Reset layout…" already, and one destructive action offered twice on one
     // screen is one of them somebody presses by accident.
@@ -1413,6 +1474,12 @@ function boot(): void {
     event.stopPropagation();
     setBackgroundOpen(!backgroundOpen);
   });
+  // Wall settings › Layouts and the ⋮ menu ask for a timed layout this way,
+  // having already put the editor on screen.
+  window.addEventListener('mw:new-layout', () => {
+    if (epaperHost) return;
+    newSlotFromCurrent();
+  });
   window.addEventListener('mw:open-background', (event) => {
     if (epaperHost) return;
     const orientation = (event as CustomEvent<{ orientation?: string }>).detail?.orientation;
@@ -1504,10 +1571,9 @@ function boot(): void {
   }
 
   function updateCanvasLabel(): void {
-    canvasNote.textContent = `\u2014 ${canvasSizeLabel()}`;
-    canvasButton.setAttribute('aria-label', `Layout \u2014 ${canvasSizeLabel()}`);
+    canvasButton.setAttribute('aria-label', `Size and grid \u2014 ${canvasSizeLabel()}`);
     const dims = document.querySelector<HTMLElement>('[data-preview-dims]');
-    if (dims !== null) dims.textContent = `${canvasSizeLabel()} · updates within a minute`;
+    if (dims !== null) dims.textContent = `${canvasSizeLabel()} · the wall updates within a minute of Save`;
   }
 
   /**
@@ -1703,6 +1769,7 @@ function boot(): void {
     clearSelection(true);
   });
 
+  toolbar.appendChild(slotNote);
   mount.append(toolbar, stage, hint, modal);
   if (inspectorInline) mount.appendChild(inspectorHost);
 
@@ -6289,14 +6356,33 @@ function boot(): void {
    * one there" and the editor shows as empty so it can be filled in turn.
    */
   function newSlotFromCurrent(): void {
-    if (state.slots.length >= state.maxSlots) return;
-    const typed = window.prompt(
-      'Name for the new layout — a short word, like morning or evening:',
-      '',
-    );
-    if (typed === null) return;
-    const slot = typed.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24);
-    if (!SLOT_NAME.test(slot) || state.slots.includes(slot)) return;
+    if (state.slots.length >= state.maxSlots) {
+      window.alert(`A wall can hold ${state.maxSlots} timed layouts. Remove one to make another.`);
+      return;
+    }
+    /*
+     * Asked again with the reason, rather than dropped: a name that slugged
+     * to nothing or matched a layout already here used to return in silence,
+     * which from the outside is a button that does nothing.
+     */
+    let question =
+      'Name the new timed layout — a short word such as morning or evening. ' +
+      'It starts as a copy of the layout you are arranging.';
+    let slot = '';
+    for (;;) {
+      const typed = window.prompt(question, '');
+      if (typed === null) return;
+      slot = typed.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24);
+      if (!SLOT_NAME.test(slot)) {
+        question = 'Use letters or numbers — morning, school-run or evening, say. Name the new timed layout:';
+      } else if (slot === 'everyday') {
+        question = 'Everyday is the name of this wall’s main layout. Choose another name:';
+      } else if (state.slots.includes(slot)) {
+        question = `This wall already has a layout called ${slot}. Choose another name:`;
+      } else {
+        break;
+      }
+    }
     // Fresh ids, and a child re-linked to its group's fresh id (RFC 014
     // §5.1) — copied as-is it would name a group on the layout it came from.
     const minted = new Map(state.widgets.map((widget) => [widget.id, randomId()]));

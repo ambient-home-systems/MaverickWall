@@ -1406,12 +1406,12 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
   /**
    * Each toolbar popover opens under the button that opened it.
    *
-   * Layout and Layers align their right edges with their buttons. Background
+   * Size & grid and Layers align their right edges with their buttons. Background
    * is wider than the editor column, so it may shift to stay on screen, but
    * the button must still sit above its horizontal span.
    */
   it(
-    'opens the Layers, Layout and Background popovers under their own buttons',
+    'opens the Layers, Size & grid and Background popovers under their own buttons',
     async () => {
       const wall = await newWall();
       const context = await editorContext(wall);
@@ -1421,7 +1421,7 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
 
         for (const [button, popover] of [
           ['.le-layers-btn', '.le-layers-pop'],
-          ['.le-tool-btn[aria-label^="Layout"]', '.le-canvas-pop:not(.le-background-pop)'],
+          ['.le-size-btn', '.le-canvas-pop:not(.le-background-pop)'],
           ['.le-background-btn', '.le-background-pop'],
         ] as const) {
           await page.click(button);

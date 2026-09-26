@@ -8423,6 +8423,60 @@ last full run read 3439: +55 on the first reading, which agrees.
 **Still unproven where it counts:** nobody has looked at a planner month on a
 kitchen wall or picked a look on a real phone.
 
+**A wall's settings and its layout toolbar were reviewed as a household reads
+them, and the one hidden feature on the page now explains itself.** Timed
+layouts (RFC 014 §5.2) were reachable only by knowing to open a toolbar
+popover called "Layout" and press New there. Settings › Design told the
+household to do exactly that, and on that screen "Layout" also named the
+page's tab, the settings group and the canvas's shape. The settings tab now
+shows three numbered steps and a **Make a timed layout** button. That button
+and a new ⋮ item both hand `data-new-layout` to the editor, so there is still
+one New flow. Once a timed layout exists, New and Remove sit beside its tabs.
+A note under the toolbar says when the timed layout on screen shows, or that
+it has no rule and so is never drawn, with a link to the rules. The editor
+reads the saved schedule for this and edits none of it. A name that slugs to
+nothing, collides, or is `everyday` is asked for again with the reason. It
+used to return silently, so the button looked broken. The rules show the
+stored ones and one blank row, not all four. The handler already read a
+missing row as no rule, so the form shape did not change.
+
+**The six categories kept their keys and changed their words.** Design is
+**Layouts**, Content defaults is **Calendar amounts**, and Alerts and
+interaction is **Touch controls**. The keys are stored per browser and named
+by tests. Calendar amounts takes System's three labels, so a number and the
+default it follows read as one thing on both screens, and the handler's error
+messages use the same words. The touch lead said "Both are off" over three
+switches, and the gutter hint said "Normal is what this wall draws today",
+which stops being true after one click. Both are fixed. The toolbar button
+"Layout — Portrait 9:16" is now **Size & grid**. It repeated the shape the
+preview header already states, and that width pushed Background onto a second
+row at 1440px. Reset layout and Unpair wall were on the page twice, in the ⋮
+menu and in Advanced, one tab apart. They are now only at the foot of
+Advanced, under their own heading, and the ⋮ menu links there instead. One
+real layout fault was found by looking: an `.arow` sitting directly in a
+`.rows` list cleared the divider `.rows>*+*` gives it, because both selectors
+are (0,1,0) and `.arow` comes later.
+
+**The phone toolbar was measured, not assumed.** "Size & grid" is 27px wider
+than the old label on a phone. With it, the tools row at 390px became 370px
+of buttons in 350px, wrapped, and the canvas fell to 404px, under the suite's
+440px floor. Taking one spacing step off each side of the tool buttons below
+560px brings the row back to one line and the canvas back to 444px. At 360,
+375 and 390px it now measures 404, 404 and 444px, the same as a clean worktree
+of `main`. Three mutations were checked and all three are red: every rule row
+drawn again, Unpair put back in the ⋮ menu, and the name prompt returning on a
+bad name.
+
+**4785 tests passing and 1 skipped, over 332 files**: calendar 153 over 10 ·
+core 314 over 9 · display 873 over 49 · server 3445 over 264. Measured with
+`pnpm test` and a real Chromium (`MW_BROWSER_EXECUTABLE`). The one red in that
+run was this change's own, `admin-design-drift` refusing a `font-size:inherit`
+on the note's link. It now uses the scale token, and that file, the other two
+style suites and `browser-editor-slots` were re-run green on the fixed tree.
+That is +6 against the 4779 recorded above. This change adds three tests, in
+`wall-editor.test.ts`, so the other three arrived with work merged since that
+figure. That was measured, not worked out from the diffs.
+
 ---
 
 ## Open decisions

@@ -152,7 +152,7 @@ describe('a named canvas in the editor', () => {
       expect(await page.locator('.le-background-pop').isVisible()).toBe(true);
       expect(await page.locator('.le-canvas-pop:not(.le-background-pop)').isVisible()).toBe(false);
       expect(await page.locator('.le-bg select').evaluate((element) => document.activeElement === element)).toBe(true);
-      await page.locator('.le-tool-btn:has-text("Layout")').click();
+      await page.locator('.le-size-btn').click();
       expect(await page.locator('.le-background-pop').isVisible()).toBe(false);
       expect(await page.locator('.le-canvas-pop:not(.le-background-pop)').isVisible()).toBe(true);
       expect(await page.locator('.le-canvas-pop:not(.le-background-pop) .le-bg').count()).toBe(0);
@@ -256,12 +256,29 @@ describe('a named canvas in the editor', () => {
         const everyday = await boxes(page);
 
         // A wall with no named layout draws no slot tabs at all — the toolbar
-        // has no row to spare on a phone — so the way in is the Layout popover.
+        // has no row to spare on a phone — so the way in is Wall settings ›
+        // Layouts, which says what a timed layout is and hands its button to
+        // the editor. It used to be a New button inside a toolbar popover also
+        // called "Layout", which nothing on the settings side could reach.
         expect(await page.locator('.le-slots').isVisible()).toBe(false);
-        page.once('dialog', (dialog) => void dialog.accept('School Run'));
-        await page.click('.le-bar-main button:has-text("Layout")');
-        await page.click('.le-pop-slots button:has-text("New layout")');
-        await page.waitForTimeout(250);
+        await page.locator('[data-mode="settings"]').click();
+        await page.locator('[data-wset="design"]').click();
+        expect(await page.locator('#wset-design .wset-steps').isVisible()).toBe(true);
+        // A name that slugs to nothing is asked for again with the reason,
+        // rather than dropped in silence — which from outside is a button
+        // that does nothing.
+        const answers = ['!!!', 'School Run'];
+        const asked: string[] = [];
+        page.on('dialog', (dialog) => {
+          asked.push(dialog.message());
+          void dialog.accept(answers.shift());
+        });
+        await page.click('#wset-design [data-new-layout]');
+        await expect.poll(() => asked.length).toBe(2);
+        expect(asked[1]).toContain('Use letters or numbers');
+        page.removeAllListeners('dialog');
+        // The button put the editor on screen before it asked.
+        expect(await page.locator('[data-mode="layout"]').getAttribute('aria-selected')).toBe('true');
         // Named as a key, shown as typed-and-slugged, and selected.
         await expect.poll(() => slotTab(page, 'school-run').count()).toBe(1);
         expect(await slotTab(page, 'school-run').getAttribute('aria-selected')).toBe('true');
@@ -271,6 +288,8 @@ describe('a named canvas in the editor', () => {
         expect(copied.map((b) => [b.x, b.y])).toEqual(everyday.map((b) => [b.x, b.y]));
         expect(copied.map((b) => b.id).filter((one) => everyday.some((b) => b.id === one))).toEqual([]);
         expect(await saveEnabled(page), 'a new layout is unsaved work and the bar says nothing').toBe(true);
+        // And the editor says what happens next, under the tabs.
+        expect(await page.locator('.le-slot-note').textContent()).toContain('press Save wall, then choose the hours');
 
         await Promise.all([
           page.waitForNavigation({ timeout: 20_000 }),
@@ -286,14 +305,22 @@ describe('a named canvas in the editor', () => {
         // And the settings pane now offers a rule for it.
         expect(await page.locator('select[name="schedule_slot_1"] option[value="school-run"]').count()).toBe(1);
 
-        // Remove it: confirmed, gone from the server, gone from the bar.
+        // Saved with no rule, the note says the wall will never show it, and
+        // its link lands on the rows that fix that.
         await slotTab(page, 'school-run').click();
         await page.waitForTimeout(250);
+        expect(await page.locator('.le-slot-note').textContent()).toContain('has no hours yet, so the wall never shows it');
+        await page.click('.le-slot-hours');
+        expect(await page.locator('[data-mode="settings"]').getAttribute('aria-selected')).toBe('true');
+        expect(await page.locator('#wset-design').isVisible()).toBe(true);
+        await page.locator('[data-mode="layout"]').click();
+
+        // Remove it from beside its own tab: confirmed, gone from the server,
+        // gone from the bar.
         page.once('dialog', (dialog) => void dialog.accept());
-        await page.click('.le-bar-main button:has-text("Layout")');
         await Promise.all([
           page.waitForNavigation({ timeout: 20_000 }).catch(() => undefined),
-          page.click('.le-pop-slots button:has-text("Remove layout")'),
+          page.click('.le-slots button:has-text("Remove layout")'),
         ]);
         await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
         expect(readLayoutSlots(wall.db, id)).toEqual([]);

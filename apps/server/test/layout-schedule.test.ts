@@ -303,10 +303,15 @@ describe('through the real app', () => {
       { slot: 'evening', from: '20:00', to: '23:00' },
       { slot: 'morning', from: '06:30', to: '08:30' },
     ]);
-    // The settings page draws the rules back, offering every slot on each.
+    // The settings page draws the rules back, offering every slot on each —
+    // and one blank rule after them rather than every row the bound allows:
+    // empty "Rule 3, Rule 4" rows on a wall with one morning layout were the
+    // clutter, and a row the body does not carry is read as no rule anyway.
     const html = await (await wall.call(`/admin/walls/${screenId}`)).text();
     expect(html).toContain('20:00–23:00: evening');
-    expect(html).toContain('name="schedule_slot_4"');
+    expect(html).toContain('name="schedule_slot_3"');
+    expect(html).toContain('Add a rule');
+    expect(html).not.toContain('name="schedule_slot_4"');
   });
 
   it('leaves the schedule alone for a page that never drew the rows', async () => {

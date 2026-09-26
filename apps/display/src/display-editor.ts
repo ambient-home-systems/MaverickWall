@@ -157,6 +157,44 @@ function boot(): void {
     });
   }
 
+  /*
+   * A timed layout is made in the editor, however it is asked for.
+   *
+   * Wall settings › Layouts and the ⋮ menu both offer it, and it used to be
+   * one sentence — "on the Layout tab, press New layout" — pointing at a
+   * button two taps deep inside a toolbar popover also called Layout. These
+   * buttons do the steps instead: show the editor, then let it run its own
+   * New flow, so there is one way a layout is made. The hand-off waits a frame
+   * so the editor is on screen before its name prompt is.
+   */
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-new-layout]')) {
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      button.closest('details')?.removeAttribute('open');
+      selectMode('layout');
+      window.requestAnimationFrame(() => {
+        window.setTimeout(() => window.dispatchEvent(new CustomEvent('mw:new-layout')), 0);
+      });
+    });
+  }
+
+  // And the way back: a note in the editor ("no hours yet — set them") and
+  // the ⋮ menu's "Reset or unpair…" open a settings category by name.
+  const openSettings = (category: string | undefined): void => {
+    if (category === undefined || !catTabs.some((tab) => catOf(tab) === category)) return;
+    selectMode('settings');
+    selectCategory(category, true, true);
+  };
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-open-settings]')) {
+    button.addEventListener('click', () => {
+      button.closest('details')?.removeAttribute('open');
+      openSettings(button.dataset['openSettings']);
+    });
+  }
+  window.addEventListener('mw:open-settings', (event) => {
+    openSettings((event as CustomEvent<{ category?: string }>).detail?.category);
+  });
+
   // ---- progressive disclosure -------------------------------------------
 
   /*

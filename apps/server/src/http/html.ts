@@ -1434,9 +1434,6 @@ pre.code{background:var(--mw-surface-2);
  * pixels above — 124px of an 844px phone before the canvas began.
  * position:relative so the popovers anchor to their buttons. */
 .le-bar-main{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:var(--mw-s-2)}
-/* The canvas's shape, on the Layout button. Hidden on a phone (below), where
- * the row has to fit and the popover states it anyway. */
-.le-tool-note{color:var(--mw-ink-2)}
 .le-orient{flex:0 0 auto}
 /* The named layouts (RFC 014 §5.2): the tablist in the orientation buttons'
  * own anatomy, then New and Remove beside it. */
@@ -1445,6 +1442,13 @@ pre.code{background:var(--mw-surface-2);
  * still wrapped the toolbar onto a third row on a phone — measured at 404px
  * of canvas where 455 is the floor. */
 .le-slots[hidden]{display:none}
+/* When the timed layout on screen is drawn, and the way to change it: one
+ * line under the toolbar, only while a timed layout is the one on screen. */
+.le-slot-note{margin:0;font-size:var(--mw-t-label-sm-size);line-height:1.5;color:var(--mw-ink-2)}
+.le-slot-note[hidden]{display:none}
+.le-slot-note b{color:var(--ink)}
+.le-slot-note .le-slot-hours{height:auto;min-height:0;margin:0;padding:0;
+  font-size:var(--mw-t-label-sm-size);vertical-align:baseline}
 /* Toolbar tools are compact outlined buttons — the shared anatomy at 32px
  * density, targets stretched back to 48px. */
 .le-tool-link,.le-tool-btn,.le-layers-btn{position:relative;margin:0;height:32px;
@@ -2394,10 +2398,19 @@ pre.code{background:var(--mw-surface-2);
  * that wraps on a phone. The labels are the field's own kicker rather than
  * the form's block label, whose margin would stack three rows of it. */
 .sched-row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--mw-s-2)}
+/* listRow is written for an open list and carries no side padding; inside the
+ * bordered .rows surface its title and fields sat flush against the border. */
+.sched-rows>.mw-row{padding:var(--mw-s-3) var(--mw-s-4)}
 .sched-field{display:flex;flex-direction:column;gap:var(--mw-s-1);margin:0}
 .sched-field>span{font-size:var(--mw-t-label-size);font-weight:var(--mw-t-label-weight);color:var(--mw-ink-2)}
 .sched-field input,.sched-field select{margin:0;width:auto}
 .wset-group:first-of-type{margin-top:var(--mw-s-4)}
+/* The three steps a wall with no timed layout is shown in place of the
+ * schedule rows: a real list rather than a sentence pointing at a control. */
+.wset-steps{margin:0 0 var(--mw-s-3);padding-left:var(--mw-s-5);
+  font-size:var(--mw-t-label-size);line-height:1.55;color:var(--muted)}
+.wset-steps li+li{margin-top:var(--mw-s-1)}
+.wset-steps b{color:var(--ink)}
 .wset-group>.kick{margin:0 0 var(--mw-s-2)}
 /* The theme picker inside the wall's settings sheet: the same .themegrid of
  * .themecard labels the creation page and Themes draw, so the choice has one
@@ -2455,6 +2468,11 @@ pre.code{background:var(--mw-surface-2);
 .arow.is-danger{color:var(--mw-danger)}
 .arow.is-danger small{color:var(--mw-danger);opacity:.8}
 .arow-text{flex:1;min-width:0}
+/* .arow clears its border to reset a <button>, which also cleared the divider
+ * .rows>*+* gives every row after the first — so a link or button row sitting
+ * directly in a list (Custom CSS under the pairing link, the two background
+ * rows) ran into the row above it. Put back at a specificity that wins. */
+.rows>*+.arow{border-top:1px solid var(--ruleSoft)}
 .rows form{margin:0}
 /* A read-only fact (the pairing id), not a control. */
 .frow{display:flex;align-items:center;justify-content:space-between;gap:var(--mw-s-3);
@@ -2543,9 +2561,15 @@ pre.code{background:var(--mw-surface-2);
    * above; sizeCanvas spends what they free on the canvas itself.
    *
    * The preview caption is 31px naming the thing directly beneath it, and the
-   * shape it repeats is on the Layout button. */
+   * shape it repeats is in the Size & grid popover. */
   .prev-head{display:none}
-  .le-tool-note{display:none}
+  /* The tools row — Undo, Layers, Size & grid, Background — has to stay one
+   * row on a 390px phone or the canvas drops under its 440px floor: measured,
+   * 370px of buttons in a 350px row took the canvas to 404px. A step off each
+   * side's padding buys it back without shortening a label to something
+   * nobody would look under for snap-to-grid; the 48px pointer target is the
+   * ::after, which does not move. */
+  .le-tool-btn,.le-layers-btn,.le-add{padding:0 var(--mw-s-3)}
   /* Four number fields across a 358px sheet is four unusable fields. */
   .le-box-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   /* A long value takes the line under its label rather than being clipped to
