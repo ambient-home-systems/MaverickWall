@@ -1406,11 +1406,9 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
   /**
    * Each toolbar popover opens under the button that opened it.
    *
-   * They used to anchor to a tools row whose first item was that button, so
-   * `left: 0` landed under it by luck. In one row the buttons are at the end,
-   * and a popover anchored to the row opens flush with the far edge — a panel
-   * with no visible relationship to what was pressed. Measured, because "the
-   * popover is open" passes just as happily either way.
+   * Layout and Layers align their right edges with their buttons. Background
+   * is wider than the editor column, so it may shift to stay on screen, but
+   * the button must still sit above its horizontal span.
    */
   it(
     'opens the Layers, Layout and Background popovers under their own buttons',
@@ -1444,12 +1442,16 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
             [button, popover],
           );
           expect(seen, `${popover} did not open`).not.toBeNull();
-          expect(
-            Math.abs((seen?.popoverRight ?? 0) - (seen?.buttonRight ?? 0)),
-            `${popover} opened ${(seen?.popoverLeft ?? 0)}px from the left while its ` +
-              `button ends at ${seen?.buttonRight ?? 0}px — it is anchored to the row, ` +
-              'not to the control that opened it',
-          ).toBeLessThanOrEqual(2);
+          if (popover === '.le-background-pop') {
+            expect(seen?.buttonRight ?? 0).toBeGreaterThanOrEqual(seen?.popoverLeft ?? 0);
+            expect(seen?.buttonRight ?? 0).toBeLessThanOrEqual(seen?.popoverRight ?? 0);
+            expect(seen?.popoverRight ?? Infinity).toBeLessThanOrEqual(seen?.width ?? 0);
+          } else {
+            expect(
+              Math.abs((seen?.popoverRight ?? 0) - (seen?.buttonRight ?? 0)),
+              `${popover} is detached from the button that opened it`,
+            ).toBeLessThanOrEqual(2);
+          }
           expect(seen?.below, `${popover} does not hang below its button`).toBe(true);
           expect(seen?.popoverLeft ?? -1).toBeGreaterThanOrEqual(0);
           await page.click(button);
