@@ -231,12 +231,20 @@ describe('the wall editor is two modes, not one page', () => {
 });
 
 describe('wall settings are categories, and every field kept its name', () => {
-  it('offers five categories, each a tab over its own panel', async () => {
+  it('identifies a wall’s design on the Walls list without rendering a preview', async () => {
+    const h = await ready();
+    h.pairScreen('identified', 'Kitchen');
+    const html = await (await h.call('/admin/walls')).text();
+    expect(html).toContain('Kitchen');
+    expect(html).toContain('Theme: Panels');
+  });
+
+  it('offers six categories, each a tab over its own panel', async () => {
     const h = await ready();
     h.pairScreen('s5', 'Kitchen');
     const html = await (await h.call('/admin/walls/s5')).text();
 
-    for (const key of ['appearance', 'content', 'device', 'alerts', 'advanced']) {
+    for (const key of ['design', 'look', 'content', 'device', 'alerts', 'advanced']) {
       expect(html, key).toContain(`data-wset="${key}"`);
       expect(html, key).toContain(`data-wset-panel="${key}"`);
     }
@@ -287,22 +295,29 @@ describe('wall settings are categories, and every field kept its name', () => {
    * layout is the first thing done to a new wall and the commonest thing done
    * to an old one, where Advanced is for the infrequent and the destructive.
    *
-   * Asserted in both directions. "It is in Appearance" alone stays green if a
+   * Asserted in both directions. "It is in Design" alone stays green if a
    * second copy is left behind in Advanced, which is the shape a move gets
-   * wrong; the page's own overflow menu keeps its "Start from a template…"
+   * wrong; the page's own overflow menu keeps its "Choose a starter design…"
    * item and always has, so the thing that must be gone is named by panel.
    */
-  it('offers the template gallery in Appearance rather than under Advanced', async () => {
+  it('offers starter designs in Design and canvas backgrounds in Look', async () => {
     const h = await ready();
     h.pairScreen('s6b', 'Kitchen');
     const html = await (await h.call('/admin/walls/s6b')).text();
-    const appearance = html.slice(
-      html.indexOf('data-wset-panel="appearance"'),
+    const design = html.slice(
+      html.indexOf('data-wset-panel="design"'),
+      html.indexOf('data-wset-panel="look"'),
+    );
+    const look = html.slice(
+      html.indexOf('data-wset-panel="look"'),
       html.indexOf('data-wset-panel="content"'),
     );
     const advanced = html.slice(html.indexOf('data-wset-panel="advanced"'));
-    expect(appearance).toContain('admin/displays/s6b/gallery');
-    expect(appearance).toContain('Start from a template');
+    expect(design).toContain('admin/displays/s6b/gallery');
+    expect(design).toContain('Choose a starter design');
+    expect(look).toContain('data-open-background="portrait"');
+    expect(look).toContain('data-open-background="landscape"');
+    expect(look).toContain('This wall’s theme');
     expect(advanced).not.toContain('gallery');
   });
 
@@ -458,7 +473,7 @@ describe('saving a wall', () => {
     const h = await ready();
     h.pairScreen('sa', 'Kitchen');
 
-    // Exactly what the page posts with Appearance, Device and Alerts touched
+    // Exactly what the page posts with Look, Device and Alerts touched
     // and the three densities left on the household default — the inheritance
     // switch disables those inputs, so they are absent rather than empty.
     const res = await h.postForm('/admin/screens/sa', {

@@ -77,7 +77,7 @@ describe('the wall’s default style lane', () => {
   it('starts as no lane, and the settings page offers the theme’s own colours behind the switch', async () => {
     expect(stored()).toBeNull();
     const html = await (await wall.call(`/admin/walls/${screenId}`)).text();
-    expect(html).toContain('Colours and type');
+    expect(html).toContain('Wall widget defaults');
     expect(html).toContain('name="style_inherit"');
     expect(html).toContain('checked');
     // Seeded from the theme the wall wears, and disabled while inheriting, so

@@ -63,15 +63,15 @@ const themeCardsReady = (page: Page): Promise<unknown> =>
 /**
  * Open a wall's Wall settings pane.
  *
- * The wall's own page is two panes behind a segmented tablist — Layout, which
- * it opens on, and Wall settings — so the theme cards are in the document and
- * inside a `hidden` section until this is pressed. Worth doing through the
- * control rather than by unhiding the section: whether the pane can be reached
- * at all is half of "the choice has one appearance wherever it is taken".
+ * The wall's own page opens on Layout. The theme cards sit in Wall settings,
+ * under Look. Use both controls so the test also verifies that a person can
+ * reach them through the page's navigation.
  */
 async function openWallSettings(page: Page): Promise<void> {
   await page.locator('[data-mode="settings"]').click();
   await page.waitForSelector('[data-mode-panel="settings"]:not([hidden])');
+  await page.locator('[data-wset="look"]').click();
+  await page.waitForSelector('[data-wset-panel="look"]:not([hidden])');
 }
 
 /** The one save bar the wall's page has — the editor's, which saves the canvas
@@ -263,6 +263,14 @@ describe('creating a wall', () => {
           expect((await themeState(page)).filter((one) => one.checked).map((one) => one.value)).toEqual([
             'panels',
           ]);
+          expect(await page.locator('[data-template-effect]').textContent()).toContain(
+            'Your chosen theme will be used instead; the design’s background remains.',
+          );
+          const preview = page.locator('.tpl-thumb[data-tpl="sky-week"]');
+          await preview.scrollIntoViewIfNeeded();
+          await expect.poll(() => preview.evaluate(
+            (thumb) => thumb.shadowRoot?.querySelector('[data-theme]')?.getAttribute('data-theme'),
+          )).toBe('panels');
           await Promise.all([
             page.waitForURL(/\/admin\/walls\/[^/]+\/pair/, { timeout: 20_000 }),
             page.locator('.addbar button[type="submit"]').click(),
@@ -414,7 +422,7 @@ describe('a wall that already exists', () => {
          * a hidden input is one `tabindex="-1"` away from being unreachable
          * while every measurement of it still passes.
          */
-        await page.locator('[data-mode="settings"]').focus();
+        await page.locator('[data-wset="look"]').focus();
         let hops = 0;
         let onCard = false;
         while (hops < 40 && !onCard) {

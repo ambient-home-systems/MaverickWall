@@ -69,11 +69,13 @@ interface TemplatePreview {
   readonly builtin?: boolean;
   /** The template's designed theme and background, previewed on the card. */
   readonly theme?: string;
+  readonly themeLabel?: string;
   readonly background?: CanvasBackground;
 }
 interface GalleryData {
   readonly owner: string | null;
   readonly templates: readonly TemplatePreview[];
+  readonly customThemes?: Readonly<Record<string, { readonly tokens?: Readonly<Record<string, string>>; readonly shape: string }>>;
   /**
    * An e-paper panel's preview endpoint, present only on a panel's gallery.
    *
@@ -126,7 +128,7 @@ interface GalleryData {
  * It does nothing at all on a page that has one of the two fields and not the
  * other, which is every other page this script runs on.
  */
-function wireThemeSuggestion(templates: readonly TemplatePreview[]): void {
+function wireThemeSuggestion(templates: readonly TemplatePreview[], onChange: () => void): void {
   const themes = Array.from(document.querySelectorAll<HTMLInputElement>('input[name="theme"]'));
   const layouts = Array.from(document.querySelectorAll<HTMLInputElement>('input[name="template"]'));
   if (themes.length === 0 || layouts.length === 0) return;
@@ -161,9 +163,18 @@ function wireThemeSuggestion(templates: readonly TemplatePreview[]): void {
       slot.textContent = suggested ? `Suggested for ${name}` : '';
       slot.hidden = !suggested;
     });
+    const effect = document.querySelector<HTMLElement>('[data-template-effect]');
+    const selectedTheme = themes.find((one) => one.checked)?.value;
+    if (effect !== null) {
+      effect.textContent = selectedTheme !== undefined && theme !== undefined && selectedTheme !== theme
+        ? `${name ?? 'This design'} is previewed in ${template?.themeLabel ?? theme}. Your chosen theme will be used instead; the design’s background remains. Check readability on the wall after adding it.`
+        : '';
+    }
   };
 
-  for (const radio of layouts) radio.addEventListener('change', mark);
+  const changed = (): void => { mark(); onChange(); };
+  for (const radio of layouts) radio.addEventListener('change', changed);
+  for (const radio of themes) radio.addEventListener('change', changed);
   mark();
 }
 
@@ -185,6 +196,8 @@ function boot(): void {
     data = {
       owner: typeof parsed.owner === 'string' ? parsed.owner : null,
       templates: Array.isArray(parsed.templates) ? parsed.templates : [],
+      ...(parsed.customThemes !== null && typeof parsed.customThemes === 'object'
+        ? { customThemes: parsed.customThemes } : {}),
       ...(typeof parsed.panelPreview === 'string' ? { panelPreview: parsed.panelPreview } : {}),
       ...(Array.isArray(parsed.panelFields) ? { panelFields: parsed.panelFields } : {}),
     };
@@ -197,7 +210,8 @@ function boot(): void {
   // Before the panel branch returns, because it is the same page's other field
   // rather than anything to do with previews — and a panel has no theme, so on
   // a panel's form there are no theme cards and this is a no-op.
-  wireThemeSuggestion(data.templates);
+  let refreshPreview = (): void => {};
+  wireThemeSuggestion(data.templates, () => refreshPreview());
 
   /*
    * A panel's cards: one real frame each, from the renderer the device runs.
@@ -348,9 +362,21 @@ function boot(): void {
        */
       layoutPreviewRoot(wall, { width: rect.width, height: rect.height }, rect.width / rect.height);
       shadow.append(style, wall);
-      // The template's own theme, so the card shows the look applying it gives —
-      // not the household's current theme (RFC 005 3c).
-      applyTheme(wall, template.theme ?? manifest.theme.active);
+      // On creation, only the chosen card shows the chosen wall theme. Other
+      // cards remain the designs as authored; the canvas background stays in
+      // the preview so a mismatch is visible before the wall is created.
+      const chosenTheme = (): string | undefined => {
+        const selectedDesign = document.querySelector<HTMLInputElement>('input[name="template"]:checked');
+        const selectedTheme = document.querySelector<HTMLInputElement>('input[name="theme"]:checked');
+        return selectedDesign?.value === template.id ? selectedTheme?.value : undefined;
+      };
+      const paintTheme = (): void => {
+        const ref = chosenTheme() ?? template.theme ?? manifest.theme.active;
+        const custom = data.customThemes?.[ref];
+        applyTheme(wall, ref, custom?.tokens, custom?.shape);
+      };
+      paintTheme();
+      thumbThemes.set(thumb, paintTheme);
 
       // On the admin page, so any image reads media behind the session.
       renderFreeform(wall, model, {
@@ -364,6 +390,8 @@ function boot(): void {
     };
 
     const thumbs = Array.from(document.querySelectorAll<HTMLElement>('.tpl-thumb[data-tpl]'));
+    const thumbThemes = new Map<HTMLElement, () => void>();
+    refreshPreview = (): void => { for (const paint of thumbThemes.values()) paint(); };
     if (typeof IntersectionObserver === 'function') {
       const observer = new IntersectionObserver((entries) => {
         for (const entry of entries) {

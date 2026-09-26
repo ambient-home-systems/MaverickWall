@@ -1316,6 +1316,11 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
         : followed === undefined || followed === null
           ? 'builtin'
           : `follow:${followed}`;
+    const sourceSummary = currentSource === 'own'
+      ? 'Own layout · arrange widgets on this panel'
+      : currentSource === 'builtin'
+        ? 'Built-in view · ready without arranging widgets'
+        : `Following ${followedName} · everyday layout only`;
     const sourceOption = (value: string, label: string): string =>
       `<option value="${escapeHtml(value)}"${value === currentSource ? ' selected' : ''}>${escapeHtml(label)}</option>`;
     // No section-level help text: the one thing worth explaining is a
@@ -1325,6 +1330,8 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
     const sourceForm = section(
       'What this panel draws',
       undefined,
+      `<p class="hint"><b>Currently:</b> ${escapeHtml(sourceSummary)}. ` +
+      `This panel draws in black and white; themes, wallpaper and timed layouts on a wall it follows do not transfer.</p>` +
       /*
        * The submit sits on its own line under the field, not beside it in a
        * `.row`.
@@ -1342,9 +1349,9 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
           label: 'Layout',
           name: 'source',
           optionsHtml:
-            sourceOption('builtin', 'Its built-in layout') +
-            sourceOption('own', 'Its own layout') +
-            walls.map((w) => sourceOption(`follow:${w.id}`, `${w.name}'s layout`)).join(''),
+            sourceOption('builtin', 'Built-in view — ready to use') +
+            sourceOption('own', 'Own layout — arrange it here') +
+            walls.map((w) => sourceOption(`follow:${w.id}`, `Follow ${w.name} — everyday layout`)).join(''),
           hint:
             // Escaped by `fieldWrap`, so the ampersand is written plainly here:
             // an `&amp;` in a hint reaches the page as a literal `&amp;`.
@@ -1358,7 +1365,7 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
             'A panel draws no background or wallpaper: one bit has no room for a picture behind the widgets, ' +
             'so a wallpaper on the wall it follows stays on that wall.',
         }) +
-        `<button class="secondary" type="submit">Use this</button></form>`,
+        `<button class="secondary" type="submit">Change what panel shows</button></form>`,
     );
 
     /*

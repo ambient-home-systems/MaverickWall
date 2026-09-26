@@ -624,7 +624,7 @@ import { displaysPage, registerWallsRoutes } from './admin-walls.js';
 import { cssAdvancedRow, registerCssRoutes } from './admin-css.js';
 import { offeredTimezones } from './setup.js';
 import { selfHref } from './self.js';
-import { CUSTOM_PREFIX, FALLBACK_THEME, FONTS, isValidThemeRef, readTheme, readThemes } from '../api/themes.js';
+import { CUSTOM_PREFIX, FALLBACK_THEME, FONTS, isValidThemeRef, readTheme, readThemes, resolveTheme } from '../api/themes.js';
 import { builtinThemeTokens } from '../api/builtin-themes.js';
 import {
   STYLE_INSET_MAX,
@@ -849,7 +849,7 @@ function wallTemplatePreviews(
     // card draws a group exactly as the wall will rather than three boxes
     // orphaned at fractions of a box the card never placed.
     widgets: templatePreviewWidgets(t.portrait),
-    ...(t.theme !== undefined ? { theme: t.theme } : {}),
+    ...(t.theme !== undefined ? { theme: t.theme, themeLabel: themeName(t.theme) } : {}),
     // Through `parseBackground`, as the wall reads it: a wallpaper leaves
     // resolved to its files (plan item P6.1), and one the catalogue does not
     // name is no background — the card draws the theme, as the wall would.
@@ -5088,7 +5088,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     // chosen, because it is a fact about the room and not about the hardware.
     const sizeChosen = [...WALL_SIZE_PRESETS.map((one) => one.key), WALL_SIZE_CUSTOM].join(' ');
 
-    // --- Appearance ------------------------------------------------------
+    // --- Design and Look -------------------------------------------------
     //
     // The template gallery leads this panel rather than sitting under Advanced.
     // Picking a starting layout is the first thing done to a new wall and the
@@ -5100,13 +5100,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     // It is a link rather than a form, which is why it can live inside the
     // settings form this panel sits in — the reason Reset and Unpair beside it
     // in Advanced cannot move with it.
-    const appearance =
+    const design =
       wsetGroup(
         'Layout',
         `<div class="rows">` +
           `<a class="arow" href="admin/displays/${encodeURIComponent(screen.id)}/gallery">` +
-          `<span class="arow-text">Start from a template` +
-          `<small>Replace this wall's layout with one we ship, or copy another wall's.</small></span>` +
+          `<span class="arow-text">Choose a starter design` +
+          `<small>Replace both layouts and backgrounds; a design may also change this wall’s theme. You can copy another wall here too.</small></span>` +
           `<span class="srow-chev" aria-hidden="true">${icon('chev')}</span></a>` +
           `</div>` +
           /*
@@ -5137,6 +5137,25 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           }) +
           widgetGroundControl(screen) +
           scheduleRows(screen.id),
+      );
+    const look =
+      wsetGroup(
+        'Layout backgrounds',
+        `<p class="hint">The theme sets the wall’s base colours. These are the everyday layouts; a timed layout can have its own background. Wallpaper offers an option to apply it to both orientations.</p>` +
+        `<div class="rows">` +
+        (['portrait', 'landscape'] as const).map((orientation) => {
+          const background = parseBackground(orientation === 'portrait'
+            ? screen.layoutBackground : screen.layoutLandscapeBackground);
+          const description = background === undefined ? 'Theme background' :
+            background.type === 'wallpaper' ? 'Wallpaper' :
+            background.type === 'solid' ? 'Solid colour' :
+            background.type === 'gradient' ? 'Gradient' : 'Uploaded image';
+          return `<button type="button" class="arow" data-open-background="${orientation}">` +
+            `<span class="arow-text">Everyday ${orientation} background` +
+            `<small>${description} · edit in Layout</small></span>` +
+            `<span class="srow-chev" aria-hidden="true">${icon('chev')}</span></button>`;
+        }).join('') +
+        `</div>`,
       ) +
       /*
        * The colours, faces, weight, tracking and inset every widget on this
@@ -5146,9 +5165,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
        * so nothing posts; off, they show the theme's own values, and the
        * handler keeps only what differs from them.
        */
-      wsetGroup('Colours and type', styleLaneFields(screen)) +
+      wsetGroup('Wall widget defaults',
+        `<p class="hint">These override the shared theme on this wall. A widget’s own style can override them again.</p>` +
+        styleLaneFields(screen)) +
       wsetGroup(
         'Theme',
+        `<p class="hint">Choose a shared colour and type design for this wall. ` +
+        `<a class="link" href="admin/themes">Browse or edit shared themes</a>; ` +
+        `editing one there changes every wall that uses it.</p>` +
         /*
          * The same cards the creation page and Themes draw, and that is the
          * whole of RFC 015 §3.5: one decision with one appearance wherever it
@@ -5168,7 +5192,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
          * this wall can draw.
          */
         `<fieldset class="wset-themes">` +
-        `<legend class="field-label">Theme</legend>` +
+        `<legend class="field-label">This wall’s theme</legend>` +
         themeCards(displayThemeRef(screen.theme ?? ''), readThemes(deps.db)) +
         `</fieldset>` +
         `<div class="rows">` +
@@ -5483,7 +5507,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<small>Shows a fresh link and code. The current one stops working` +
       `${screen.lastSeenAt === null ? '' : ', and this wall drops off until the new one is opened on it'}.</small></span>` +
       `<span class="srow-chev" aria-hidden="true">${icon('chev')}</span></button></form>` +
-      // "Start from a template" used to sit here and now leads Appearance: it is
+      // The starter-design gallery lives under Design: it is
       // neither infrequent nor destructive, which is what this category is for.
       `<form method="post" action="admin/displays/${id}/reset-layout" ` +
       `data-confirm="Reset both the portrait and landscape layouts of ${escapeHtml(screen.name)} ` +
@@ -5496,7 +5520,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<small>This wall stops receiving updates until it is paired again.</small></span></button></form>` +
       // The wall's own CSS (RFC 014 §7) is a page of its own — a field per
       // widget and a live preview do not fit a category — and it is here rather
-      // than under Appearance because it is the last option, not the first.
+      // than under Look because it is the last option, not the first.
       cssAdvancedRow(screen.id) +
       `<div class="frow"><span>Wall id</span><code>${escapeHtml(screen.id)}</code></div>` +
       `</div>`;
@@ -5504,7 +5528,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     return (
       `<div class="wset" data-wset-root>` +
       `<nav class="wset-nav" role="tablist" aria-orientation="vertical" aria-label="Wall settings">` +
-      wsetRow('appearance', 'Appearance', 'Template, theme and daylight', true) +
+      wsetRow('design', 'Design', 'Templates, spacing and timed layouts', true) +
+      wsetRow('look', 'Look', 'Theme, backgrounds and type', false) +
       wsetRow('content', 'Content defaults', 'How much the calendars show', false) +
       wsetRow('device', 'Device and time', 'Name, mounting, size, timezone', false) +
       // Names both switches: the section holds one about alerts and one about
@@ -5515,7 +5540,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `</nav>` +
       `<div class="wset-panels">` +
       `<form method="post" action="${action}" class="wall-settings" data-settings>` +
-      wsetPanel('appearance', 'Appearance', 'The layout this wall starts from and how it looks. Both are this wall’s own — nothing here is shared with another wall.', appearance, true) +
+      wsetPanel('design', 'Design', 'This wall’s layout, spacing and timed layouts. The Layout editor is where you move widgets and edit backgrounds.', design, true) +
+      wsetPanel('look', 'Look', 'The theme is shared; the choice, layout backgrounds and overrides here belong to this wall.', look, false) +
       wsetPanel('content', 'Content defaults', 'How much the calendars on this wall show. Each one follows the household until you turn that off.', content, false) +
       wsetPanel('device', 'Device and time', 'What this wall is called, how it is hung, how large it is, and the clock it keeps.', device, false) +
       // Both switches, not just the alert one — this panel is now where every
@@ -5686,6 +5712,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
          * strictly more than the select said.
          */
         templateCards(template) +
+        `<p class="field-hint">A starter design includes portrait and landscape layouts and may include backgrounds. ` +
+        `The selected picture updates to the theme you choose below; that theme wins on the new wall. ` +
+        `If you choose another theme, check that its text reads clearly over the design’s background.</p>` +
         /*
          * A theme, with nothing preselected (RFC 015 §3.1, phase 2). A wall
          * cannot exist without one and there is no household default to fall
@@ -5696,9 +5725,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
          * refusal, like every other field on this form.
          */
         `<fieldset class="tplpick-field">` +
-        `<legend class="field-label">Theme</legend>` +
+        `<legend class="field-label">Theme for this wall</legend>` +
         themeCards(said('theme'), readThemes(deps.db)) +
         `</fieldset>` +
+        `<p class="field-hint" data-template-effect role="status"></p>` +
         `<p class="field-hint">A wall keeps the theme you pick here until you change it ` +
         `on the wall’s own page.</p>` +
         /*
@@ -5717,7 +5747,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `<div class="addbar"><button type="submit">Add wall</button></div>` +
         `</form>` +
         `<div id="template-gallery" data-json="${escapeHtml(
-          JSON.stringify({ owner: null, templates: wallTemplatePreviews(TEMPLATES) }),
+          JSON.stringify({
+            owner: null,
+            templates: wallTemplatePreviews(TEMPLATES),
+            customThemes: Object.fromEntries(readThemes(deps.db).map((theme) => [
+              `custom:${theme.id}`, resolveTheme(deps.db, `custom:${theme.id}`),
+            ])),
+          }),
         )}"></div>` +
         `<script type="module" src="assets/template-gallery.js"></script>`,
     });
@@ -5960,7 +5996,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `data-confirm="${escapeHtml(regenerateWarning(owner.name, owner.lastSeenAt !== null))}">` +
           `<button class="ovf-item${owner.lastSeenAt === null ? '' : ' is-danger'}" type="submit">` +
           `New pairing link…</button></form>`) +
-      `<a class="ovf-item" href="admin/displays/${ownerParam}/gallery">Start from a template…</a>` +
+      `<a class="ovf-item" href="admin/displays/${ownerParam}/gallery">Choose a starter design…</a>` +
       `<div class="ovf-sep"></div>` +
       `<form method="post" action="admin/displays/${ownerParam}/reset-layout" ` +
       `data-confirm="Reset both the portrait and landscape layouts of ${escapeHtml(
@@ -6136,17 +6172,19 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<div class="tpl-body">` +
       `<div class="tpl-name">${escapeHtml(t.name)}</div>` +
       `<div class="tpl-blurb">${escapeHtml(t.blurb)}</div>` +
-      // No theme line on a panel: it has no theme, and a card advertising one
-      // would be a control that does nothing.
-      (t.theme !== undefined && panel === undefined
-        ? `<div class="hint-1">Looks best in ` +
-          `<b style="color:var(--accent)">${escapeHtml(themeName(t.theme))}</b> ` +
-          `— change it after.</div>`
-        : '') +
+      (panel === undefined
+        ? `<div class="hint-1">Replaces both layouts and backgrounds. ` +
+          (t.theme === undefined
+            ? `Keeps this wall’s theme.`
+            : `Changes this wall’s theme to <b>${escapeHtml(themeName(t.theme))}</b>.`) +
+          `</div>`
+        : `<div class="hint-1">Replaces this panel’s own layout and switches its source to Own layout.</div>`) +
       `<form method="post" action="admin/displays/${ownerParam}/apply-template" ` +
-      `data-confirm="Replace ${escapeHtml(ownerName)}'s current layout with ${escapeHtml(t.name)}?">` +
+      `data-confirm="Replace ${escapeHtml(ownerName)}'s layouts and backgrounds with ${escapeHtml(t.name)}?` +
+      (t.theme === undefined || panel !== undefined ? '' : ` Its theme will change to ${escapeHtml(themeName(t.theme))}.`) +
+      `">` +
       `<input type="hidden" name="templateId" value="${escapeHtml(t.id)}">` +
-      `<button class="btn-sm" type="submit">Use this layout</button></form>` +
+      `<button class="btn-sm" type="submit">Use this design</button></form>` +
       `</div></article>`;
 
     const group = (label: string, cat: 'home' | 'office'): string => {
@@ -6155,13 +6193,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     };
 
     /*
-     * What this display may copy a layout from.
-     *
-     * A wall may copy any other display's; a panel may copy only another
-     * panel's. That is the split's rule rather than a separate one — a wall's
-     * arrangement is authored in colour on a canvas of its own aspect, and
-     * putting it on one bit is what `follow` is for, where the two stay in step
-     * instead of forking on the first edit.
+     * What this display may copy a layout from. Both sides of the picker and
+     * POST agree: walls copy walls, panels copy panels. Following a wall is a
+     * separate, live source choice for a panel.
      */
     /*
      * Other real displays, and nothing else. The Default wall used to lead this
@@ -6169,13 +6203,16 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
      * and it is retired.
      */
     const others = activeScreens()
-      .filter((s) => s.id !== owner && (panel === undefined || s.kind === 'epaper'))
+      .filter((s) => s.id !== owner && s.kind === (panel === undefined ? 'browser' : 'epaper'))
       .map((s) => ({ id: s.id, name: s.name }));
     const copyFrom = others.length === 0
       ? ''
       : `<div class="tpl-copy"><div class="tpl-cat">Or copy another ${panel === undefined ? 'wall' : 'panel'}'s layout</div>` +
+        `<p class="hint">Copies both layouts and their backgrounds once. Later changes to the other ` +
+        `${panel === undefined ? 'wall' : 'panel'} do not carry over.` +
+        (panel === undefined ? ` This wall keeps its theme.` : '') + `</p>` +
         `<form method="post" action="admin/displays/${ownerParam}/copy-from" ` +
-        `data-confirm="Replace ${escapeHtml(ownerName)}'s current layout with a copy?"><div class="row">` +
+        `data-confirm="Replace ${escapeHtml(ownerName)}'s layouts and backgrounds with a copy?"><div class="row">` +
         selectField({
           label: 'From',
           name: 'sourceOwner',
@@ -6222,11 +6259,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       modules: navModules(deps.db),
       title: `Templates — ${ownerName} — Maverick Wall`,
       nav: 'walls',
-      heading: 'Start from a template',
+      heading: 'Choose a starter design',
       intro:
         panel === undefined
-          ? `Pick a starting layout for ${ownerName}. You can move, remove and add to it afterwards.`
-          : `Pick a starting layout for ${ownerName}. Each card is the real ${panel.panelWidth ?? 800}×` +
+          ? `Pick a design for ${ownerName}. This replaces both orientations and their backgrounds; some designs also change its theme. You can rearrange widgets afterwards.`
+          : `Pick a design for ${ownerName}. Each card is the real ${panel.panelWidth ?? 800}×` +
             `${panel.panelHeight ?? 480} frame this panel would draw. You can move, remove and add to ` +
             `it afterwards, and Reset layout puts the built-in view back.`,
       body:

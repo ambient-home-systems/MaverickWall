@@ -75,9 +75,9 @@ configure first, no account to create anywhere else, no key to paste.
   warning it can light a screen that has gone dark.
 - **Arrange the wall yourself.** Drag the calendar, a clock, the forecast, a
   shift badge, Home Assistant readings, notes, a to-do list, a countdown or a
-  photograph anywhere on the canvas — or start from a template and move things
-  around. Portrait and landscape are arranged separately, and a screen either
-  follows the household's arrangement or keeps its own.
+  photograph anywhere in the layout — or start from a design and move things
+  around. Each browser wall owns its portrait and landscape layouts and its
+  theme. [How Walls, designs and themes fit together](docs/walls.md).
 - **eInk panels.** A wifi or battery e-paper panel can show the same wall in
   black and white. The server draws the frame, so the device only has to
   receive a picture — an ESPHome panel fetches it, a Home Assistant tag is sent
@@ -93,7 +93,8 @@ configure first, no account to create anywhere else, no key to paste.
 - **It keeps drawing when the server does not.** The last good calendar is kept
   on the device and painted before the first request is even sent, labelled
   with how old it is. A power cut is a few seconds, not a blank rectangle.
-- **Four themes**, with a light one scheduled for daylight hours.
+- **Five built-in themes** and custom themes, chosen per browser wall. You can
+  schedule a different theme for daytime hours.
 
 ## Install
 

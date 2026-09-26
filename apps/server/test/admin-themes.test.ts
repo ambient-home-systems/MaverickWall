@@ -262,10 +262,10 @@ describe('the theme builder', () => {
      * back out of it — the whole claim is that the text is unchanged and only
      * the element differs.
      */
-    const at = html.indexOf(`href="admin/walls/${id}"`);
+    const at = html.indexOf(`href="admin/walls/${id}#look"`);
     expect(at, 'the usage tag does not open the wall it names').toBeGreaterThan(-1);
     const anchor = html.slice(html.lastIndexOf('<a ', at), html.indexOf('</a>', at) + 4);
-    expect(anchor).toBe(`<a class="tag" href="admin/walls/${id}">Kitchen</a>`);
+    expect(anchor).toBe(`<a class="tag" href="admin/walls/${id}#look">Kitchen</a>`);
     // Relative, for the single `<base>` that carries links through ingress: an
     // absolute path lands a sidebar household in Home Assistant's own UI.
     expect(anchor).not.toContain('href="/admin');
