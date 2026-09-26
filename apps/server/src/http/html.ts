@@ -1435,13 +1435,44 @@ pre.code{background:var(--mw-surface-2);
  * position:relative so the popovers anchor to their buttons. */
 .le-bar-main{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:var(--mw-s-2)}
 .le-orient{flex:0 0 auto}
-/* The named layouts (RFC 014 §5.2): the tablist in the orientation buttons'
- * own anatomy, then New and Remove beside it. */
-.le-slots{display:inline-flex;flex-wrap:wrap;align-items:center;gap:var(--mw-s-2)}
-/* An author display rule beats the hidden attribute, and an empty tablist
- * still wrapped the toolbar onto a third row on a phone — measured at 404px
- * of canvas where 455 is the floor. */
-.le-slots[hidden]{display:none}
+/* The Layouts menu (RFC 014 §5.2): which layout is being arranged, when each
+ * one shows, and the hours of the one on screen. The button names the layout
+ * on screen; a long name is cut rather than pushing the toolbar onto another
+ * row. The menu opens from the button's left edge, because the button sits
+ * at the start of the toolbar where a right-aligned panel would run off. */
+.le-layouts-name{display:inline-block;max-width:14ch;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.le-layouts-pop{left:0;right:auto}
+.le-layouts-list{display:flex;flex-direction:column;gap:var(--mw-s-1)}
+.le-layout-row{display:flex;flex-direction:column;align-items:flex-start;gap:var(--mw-s-1);
+  width:100%;height:auto;min-height:48px;margin:0;padding:var(--mw-s-2) var(--mw-s-3);
+  background:transparent;color:var(--mw-ink);border:1px solid transparent;
+  text-align:left;white-space:normal;cursor:pointer}
+.le-layout-row.is-on,.le-layout-row.is-on:hover{background:var(--mw-accent-soft);
+  color:var(--mw-accent-soft-ink)}
+.le-layout-name{font-weight:var(--mw-t-label-weight)}
+.le-layout-when{font-size:var(--mw-t-label-sm-size);font-weight:400;
+  letter-spacing:0;color:var(--mw-ink-2)}
+.le-layout-row.is-on .le-layout-when{color:inherit}
+.le-hours{margin-top:var(--mw-s-3);padding-top:var(--mw-s-3);border-top:1px solid var(--ruleSoft)}
+.le-hours-title{margin-bottom:var(--mw-s-2);font-size:var(--mw-t-label-size);
+  font-weight:var(--mw-t-label-weight);color:var(--mw-ink)}
+.le-hours-row{display:flex;align-items:flex-end;gap:var(--mw-s-2);margin-bottom:var(--mw-s-2)}
+.le-hours-field{display:flex;flex-direction:column;gap:var(--mw-s-1);min-width:0;margin:0;
+  font-size:var(--mw-t-label-sm-size);color:var(--mw-ink-2)}
+.le-hours-row .le-hours-field{flex:1}
+.le-hours-field input{width:100%;margin:0}
+.le-hours-drop{flex:0 0 auto;width:40px;padding:0;margin:0;background:transparent;
+  color:var(--mw-ink-2);border-color:var(--mw-ink-3);cursor:pointer}
+.le-hours-more{margin:0 0 var(--mw-s-2);height:32px}
+.le-hours-hint{margin:0 0 var(--mw-s-2);font-size:var(--mw-t-label-sm-size);line-height:1.5;
+  color:var(--mw-ink-2)}
+.le-hours-error{margin:0 0 var(--mw-s-2);font-size:var(--mw-t-label-sm-size);line-height:1.5;
+  color:var(--mw-danger)}
+.le-hours-hint[hidden],.le-hours-error[hidden]{display:none}
+.le-new-layout{display:flex;flex-direction:column;gap:var(--mw-s-2);width:100%}
+.le-new-layout .le-hours-hint,.le-new-layout .le-hours-error{margin:0}
+.le-new-buttons{display:flex;gap:var(--mw-s-2)}
 /* When the timed layout on screen is drawn, and the way to change it: one
  * line under the toolbar, only while a timed layout is the one on screen. */
 .le-slot-note{margin:0;font-size:var(--mw-t-label-sm-size);line-height:1.5;color:var(--mw-ink-2)}
@@ -2394,19 +2425,13 @@ pre.code{background:var(--mw-surface-2);
 .wset-back{display:none}
 .wset-lead{margin:0 0 var(--mw-s-4);font-size:var(--mw-t-label-size);line-height:1.55;color:var(--muted)}
 .wset-group{position:relative;margin:var(--mw-s-5) 0 0}
-/* A schedule rule (RFC 014 §5.2): from, until and which layout, on one row
- * that wraps on a phone. The labels are the field's own kicker rather than
- * the form's block label, whose margin would stack three rows of it. */
-.sched-row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--mw-s-2)}
 /* listRow is written for an open list and carries no side padding; inside the
  * bordered .rows surface its title and fields sat flush against the border. */
 .sched-rows>.mw-row{padding:var(--mw-s-3) var(--mw-s-4)}
-.sched-field{display:flex;flex-direction:column;gap:var(--mw-s-1);margin:0}
-.sched-field>span{font-size:var(--mw-t-label-size);font-weight:var(--mw-t-label-weight);color:var(--mw-ink-2)}
-.sched-field input,.sched-field select{margin:0;width:auto}
 .wset-group:first-of-type{margin-top:var(--mw-s-4)}
 /* The three steps a wall with no timed layout is shown in place of the
- * schedule rows: a real list rather than a sentence pointing at a control. */
+ * summary of its layouts: a real list rather than a sentence pointing at a
+ * control. */
 .wset-steps{margin:0 0 var(--mw-s-3);padding-left:var(--mw-s-5);
   font-size:var(--mw-t-label-size);line-height:1.55;color:var(--muted)}
 .wset-steps li+li{margin-top:var(--mw-s-1)}
@@ -2570,6 +2595,17 @@ pre.code{background:var(--mw-surface-2);
    * nobody would look under for snap-to-grid; the 48px pointer target is the
    * ::after, which does not move. */
   .le-tool-btn,.le-layers-btn,.le-add{padding:0 var(--mw-s-3)}
+  /* And the Layouts button beside Portrait and Landscape took the width the
+   * first row had spare, which pushed Background onto a third row and the
+   * canvas back to 404px. Measured, three things buy it back: the
+   * orientation segments at one step of side padding (written against
+   * .le-orient, because the toggle is also a .seg and .seg button outranks
+   * the button's own class), "+ Add" without its second word (the accessible
+   * name keeps it), and a timed layout's name cut shorter here than on a wide
+   * screen. */
+  .le-orient .le-orient-btn{padding:0 var(--mw-s-2)}
+  .le-add-word{display:none}
+  .le-layouts-name{max-width:8ch}
   /* Four number fields across a 358px sheet is four unusable fields. */
   .le-box-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   /* A long value takes the line under its label rather than being clipped to
@@ -2693,13 +2729,13 @@ pre.code{background:var(--mw-surface-2);
  * which is a state layer nobody can see.) Grouped in one place so the next
  * control that clears its background joins a list rather than re-finding this
  * bug; test/admin-button-states.test.ts fails if one goes missing. */
-.ic:hover,.insp-tab:hover,.wset-back:hover{background:color-mix(in srgb,
+.ic:hover,.insp-tab:hover,.wset-back:hover,.le-layout-row:hover,.le-hours-drop:hover{background:color-mix(in srgb,
   var(--mw-ink) var(--mw-wash-hover),transparent)}
 .ic:active,.signout:active,.fieldhelp:active,
 .insp-tab:active,.insp-close:active,.insp-remove:active,
 .wset-navrow:active,.wset-back:active,.ovf-item:active,.arow:active,
 .le-add:active,.le-tool-btn:active,.le-layers-btn:active,.le-modal-close:active,
-.hep-chip:active,.hep-pill-x:active,
+.hep-chip:active,.hep-pill-x:active,.le-layout-row:active,.le-hours-drop:active,
 .le-tool-link:active{background:color-mix(in srgb,
   var(--mw-ink) var(--mw-wash-press),transparent)}
 /* The one with a ground of its own: its layer goes over that, not over

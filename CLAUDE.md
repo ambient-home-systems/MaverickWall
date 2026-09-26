@@ -7235,6 +7235,14 @@ on the server, `canvas-schedule.ts` in the bundle — held character-identical b
 test, and the bundle's copy is held to `daytimeActive` at every minute of the
 day.
 
+> **The paragraph that follows describes the slot tabs and the schedule rows
+> in Wall settings, and both are history.** The layouts and their hours are
+> one menu now, under the button naming the layout on screen ("Everyday ▾"),
+> and the settings group only lists what is saved — see the Layouts menu
+> paragraphs at the end of this section. The stash keyed on `(orientation,
+> slot)`, per-canvas dirtiness, fresh ids on New and the measurement of the
+> boundary are all unchanged.
+
 **The editor is one mechanism rather than a second one, and the verification is
 the boundary rather than the rule.** The slot tabs beside the orientation
 buttons are `wireTabs`, the same roving tabindex the inspector and the ink lane
@@ -8424,21 +8432,44 @@ last full run read 3439: +55 on the first reading, which agrees.
 kitchen wall or picked a look on a real phone.
 
 **A wall's settings and its layout toolbar were reviewed as a household reads
-them, and the one hidden feature on the page now explains itself.** Timed
-layouts (RFC 014 §5.2) were reachable only by knowing to open a toolbar
-popover called "Layout" and press New there. Settings › Design told the
-household to do exactly that, and on that screen "Layout" also named the
-page's tab, the settings group and the canvas's shape. The settings tab now
-shows three numbered steps and a **Make a timed layout** button. That button
-and a new ⋮ item both hand `data-new-layout` to the editor, so there is still
-one New flow. Once a timed layout exists, New and Remove sit beside its tabs.
-A note under the toolbar says when the timed layout on screen shows, or that
-it has no rule and so is never drawn, with a link to the rules. The editor
-reads the saved schedule for this and edits none of it. A name that slugs to
-nothing, collides, or is `everyday` is asked for again with the reason. It
-used to return silently, so the button looked broken. The rules show the
-stored ones and one blank row, not all four. The handler already read a
-missing row as no rule, so the form shape did not change.
+them, and the one hidden feature on the page is now one menu.** Timed layouts
+(RFC 014 §5.2) were reachable only by knowing to open a toolbar popover called
+"Layout" and press New there, and their hours were rows of a from, an until
+and a layout picked from a list in Wall settings, a tab away from the layout
+they decided. A household made a layout, saved, went to the other tab, found
+the row and chose the times, and a timed layout with no hours, which the wall
+never draws, was the common result. Now the first button in the toolbar names
+the layout on screen ("Everyday ▾") and opens a menu listing every layout with
+a line saying when it shows. The timed layout on screen has its hours under
+the list, with "+ Add another time". A new layout is named in the menu, and the
+one on screen is removed there. Where two layouts' windows overlap, the menu
+says from when and which one the wall draws, which is the first rule written,
+the wall's own answer. The button is always there on a browser wall, because
+its menu is where the first timed layout is made. It is absent on a panel,
+which draws one layout.
+
+**The hours are unsaved work like a moved box, and what that means is a pure
+module.** `layout-hours.ts` in the display answers what counts as unsaved (a
+row with no times is somewhere to type and never counts; one time typed
+does), what each layout's line says, what the save refuses before it posts,
+and where two windows first overlap, walked back so a night window reports
+22:00 and not midnight. Save posts the canvases first and then the hours, to a
+new JSON endpoint, `POST /admin/layout/schedule`, because the server refuses
+hours for a layout it does not yet hold and a new layout's first save is its
+canvas. The endpoint takes the schedule whole in written order, through a Zod
+shape (two real times, different, at most `MAX_SCHEDULE_ROWS`), and refuses a
+rule naming a layout the wall does not hold, a panel, and a stranger's id. A
+half-typed row is refused by name before anything is posted, and the menu is
+opened on it on the next task, because the save runs inside a click and the
+document's click would close it again. Wall settings › Layouts lists the saved
+layouts in the menu's own words and has two buttons, `data-new-layout` and
+`data-open-layouts`, which put the editor on screen and open the menu. The
+form handler still reads the old rows, for a page rendered before this.
+Two faults were found by building it. Choosing a layout redraws the menu, so
+the click's target had left the page by the time it reached the document, and
+"a click outside the menu" closed it. The menu stops its own clicks now. On a
+phone the naming field landed under the save bar, so the menu drops the hours
+while a name is being typed.
 
 **The six categories kept their keys and changed their words.** Design is
 **Layouts**, Content defaults is **Calendar amounts**, and Alerts and
@@ -8457,25 +8488,43 @@ real layout fault was found by looking: an `.arow` sitting directly in a
 `.rows` list cleared the divider `.rows>*+*` gives it, because both selectors
 are (0,1,0) and `.arow` comes later.
 
-**The phone toolbar was measured, not assumed.** "Size & grid" is 27px wider
-than the old label on a phone. With it, the tools row at 390px became 370px
+**The phone toolbar was measured, not assumed, twice.** "Size & grid" is 27px
+wider than the old label on a phone, and the tools row at 390px became 370px
 of buttons in 350px, wrapped, and the canvas fell to 404px, under the suite's
 440px floor. Taking one spacing step off each side of the tool buttons below
-560px brings the row back to one line and the canvas back to 444px. At 360,
-375 and 390px it now measures 404, 404 and 444px, the same as a clean worktree
-of `main`. Three mutations were checked and all three are red: every rule row
-drawn again, Unpair put back in the ⋮ menu, and the name prompt returning on a
-bad name.
+560px brought it back. Then "Everyday ▾" took the first row's spare width and
+pushed Background onto a third row, 404px again. Three things below 560px buy
+it back, measured: the orientation segments at one step of side padding
+(written against `.le-orient`, because the toggle is also a `.seg` and
+`.seg button` outranks the button's own class, so the first attempt changed
+nothing), "+ Add widget" drawn as "+ Add" with the accessible name kept whole,
+and a layout's name cut at 8ch. At 360, 375 and 390px the canvas measures 404,
+404 and 444px, the same as `main`, and the first row ends 12px inside the bar.
+On a desktop the button wraps Background onto a second row at 1440px, and the
+canvas is identical to the pixel with and without the button at 1024, 1280,
+1440, 1600 and 1920, because the desktop budget is the viewport and not the
+toolbar. Nine mutations were checked and all nine are red: every rule row
+drawn again in settings, Unpair put back in the ⋮ menu, the save's pre-check
+removed, the hours left out of the dirty flag, the menu's own click let
+through, the hours never posted, the server's held-layout check removed, a
+blank row counted as unsaved, and the phone compaction removed.
 
-**4785 tests passing and 1 skipped, over 332 files**: calendar 153 over 10 ·
-core 314 over 9 · display 873 over 49 · server 3445 over 264. Measured with
-`pnpm test` and a real Chromium (`MW_BROWSER_EXECUTABLE`). The one red in that
-run was this change's own, `admin-design-drift` refusing a `font-size:inherit`
-on the note's link. It now uses the scale token, and that file, the other two
-style suites and `browser-editor-slots` were re-run green on the fixed tree.
-That is +6 against the 4779 recorded above. This change adds three tests, in
-`wall-editor.test.ts`, so the other three arrived with work merged since that
-figure. That was measured, not worked out from the diffs.
+**4801 tests passing, 1 skipped and 4 red, over 333 files**: calendar 153
+over 10 · core 314 over 9 · display 890 over 50 · server 3444 over 264 with 4
+red. Measured with `pnpm test` and a real Chromium (`MW_BROWSER_EXECUTABLE`).
+Against the 4785 recorded before this change, 20 tests were added: 17 in
+`layout-hours.test.ts`, 1 in `layout-schedule.test.ts` and 2 in
+`browser-editor-slots.test.ts`. That is 4805, of which the four red are
+`browser-calendar-looks` and `browser-calendar-shift-styles`, two each, and
+they are **red on a clean worktree of `main` at the same hour**, so they are
+not this change's. Both need a month cell with nobody on the rota, and the
+only such cells were the grid's leading days before the manifest's window,
+which exist on five weekdays in seven. The run was at 00:30 on a Sunday in
+London, where the week starts, so there were none. That is the week-numbers
+fault above, one assertion along. Ending Amy's rota a fortnight out in those
+two fixtures turns both files green on the same date; it is proposed on the
+pull request rather than made here, because the fixtures are not this
+change's.
 
 ---
 

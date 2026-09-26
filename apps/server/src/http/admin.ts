@@ -613,6 +613,32 @@ const removeSlotBody = z.object({
   slot: z.string().regex(SLOT_NAME),
 });
 
+/**
+ * A wall's hours, whole, as JSON from the editor's Layouts menu (RFC 014
+ * §5.2): which timed layout shows between which two times, in the order they
+ * were written, because where two overlap the first one wins. The shape of a
+ * rule is the boundary — a real time, twice, and different, since a window of
+ * no length would never switch — and whether the wall holds the layout a rule
+ * names is asked in the handler, which can see the rows.
+ */
+const layoutScheduleBody = z
+  .object({
+    screen: z.string().min(1).max(64),
+    rules: z
+      .array(
+        z
+          .object({
+            slot: z.string().regex(SLOT_NAME, 'A layout name is a short word: letters, digits and dashes.'),
+            from: z.string().refine(isHhmm, 'Use HH:MM for the time a layout starts showing.'),
+            to: z.string().refine(isHhmm, 'Use HH:MM for the time a layout stops showing.'),
+          })
+          .strict()
+          .refine((rule) => rule.from !== rule.to, 'A layout that starts and ends at the same time would never show.'),
+      )
+      .max(MAX_SCHEDULE_ROWS, `A wall holds ${MAX_SCHEDULE_ROWS} sets of hours.`),
+  })
+  .strict();
+
 import { registerHaRoutes } from './admin-ha.js';
 import { registerAlertRoutes } from './admin-alerts.js';
 import { registerModuleRoutes } from './admin-modules.js';
@@ -3047,10 +3073,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     }
 
     /*
-     * When to draw which named layout (RFC 014 §5.2).
+     * When to draw which named layout (RFC 014 §5.2), from a page rendered
+     * before the hours moved into the editor's Layouts menu, which saves them
+     * through `/admin/layout/schedule` instead. No page this server renders
+     * posts these rows now; one cached from before still can, and its hours
+     * are still worth keeping rather than refusing.
      *
      * Absent marker is **what this wall already has**, the style lane's rule
-     * one group up. Otherwise the rows are the schedule, whole: a row with
+     * one group up — which is what every current page posts. Otherwise the rows are the schedule, whole: a row with
      * nothing chosen is not a row; a layout chosen with one time and not the
      * other is half a thought, refused with the interrupt window's own
      * sentence rather than honoured as a window nobody can see; a window of
@@ -3570,6 +3600,50 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       return c.json({ ok: false, message: 'That wall is no longer there.' }, 404);
     }
     deleteLayoutSlot(deps.db, owner, shaped.value.slot);
+    return c.json({ ok: true });
+  });
+
+  /**
+   * A wall's hours, from the editor's Layouts menu (RFC 014 §5.2). JSON like
+   * the canvas save, and posted by the same Save after it, so a layout made
+   * and given hours in one sitting is on the server before its hours are.
+   *
+   * Replaced whole, for `replaceLayoutSchedule`'s reason: what the menu posts
+   * *is* the schedule. A rule naming a layout the wall does not hold is
+   * refused rather than stored — a window pointing at nothing would draw the
+   * everyday layout anyway, and a row nobody can see is worse than a sentence.
+   * A panel holds no timed layouts, so it holds no hours either.
+   */
+  app.post('/admin/layout/schedule', async (c: Context) => {
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ ok: false, message: 'That was not readable as JSON.' }, 400);
+    }
+    const shaped = parse(layoutScheduleBody, raw);
+    if (!shaped.ok) return c.json({ ok: false, message: shaped.message }, 400);
+    const owner = resolveOwner(shaped.value.screen);
+    if (owner === undefined) {
+      return c.json({ ok: false, message: 'That wall is no longer there.' }, 404);
+    }
+    if (isEpaperOwner(owner)) {
+      return c.json({ ok: false, message: 'A panel draws one layout, so it has no hours to set.' }, 400);
+    }
+    const held = readLayoutSlots(deps.db, owner);
+    const missing = shaped.value.rules.find((rule) => !held.includes(rule.slot));
+    if (missing !== undefined) {
+      return c.json(
+        {
+          ok: false,
+          message:
+            `There is no “${missing.slot}” layout on this wall to show. ` +
+            'Give it at least one widget, or reload the page if it was removed in another window.',
+        },
+        400,
+      );
+    }
+    replaceLayoutSchedule(deps.db, owner, shaped.value.rules);
     return c.json({ ok: true });
   });
 
@@ -4846,30 +4920,22 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   }
 
   /**
-   * When to draw which named layout (RFC 014 §5.2): one `listRow` per rule,
-   * *from – to – which layout*, inside the settings form's one Save.
+   * Timed layouts (RFC 014 §5.2): what this wall has saved, and the way into
+   * the editor's Layouts menu, where they are made and given their hours.
    *
-   * The rows exist only once the wall holds a second layout, because a
-   * schedule with nothing to choose between is a control that does nothing.
-   * **A wall with one layout gets the steps and the button that starts them**,
-   * rather than a sentence pointing at a control: "on the Layout tab, press
-   * New layout" sent a household to a tab where that button was two taps deep
-   * inside a popover also called Layout — the word meant four things on one
-   * screen. `data-new-layout` is the whole mechanism: the page chrome switches
-   * to the editor and the editor runs its own New flow, so there is one way a
-   * layout is made however it is reached.
-   *
-   * `schedule_form` is the marker the handler reads the rows by, and it is
-   * posted only with the rows, so a page that never drew them leaves the
-   * schedule alone. The rows drawn are the stored rules and **one** blank one,
-   * rather than all `MAX_SCHEDULE_ROWS` every time: three empty "Rule 3, Rule
-   * 4" rows on a wall with one morning layout were the clutter, and the
-   * handler already reads a row the body does not carry as no rule — which is
-   * also what lets a household clear one by emptying it.
+   * The hours used to be edited here, as rows of a from, an until and a
+   * layout picked out of a list — a tab away from the layout they decided.
+   * A household made a layout in the editor, saved, came back here, found the
+   * row and chose the times, and a timed layout with no hours, which the wall
+   * never draws, was the common result. They are set in the editor now, from
+   * the menu under the layout's own name above the wall, beside the
+   * arrangement they are the hours of. This group says what is saved, and
+   * says it in the menu's own words, and its buttons open that menu:
+   * `data-new-layout` names a new layout there, `data-open-layouts` just
+   * opens it. The handler still reads the old rows if a page rendered before
+   * this posts them.
    */
-  function scheduleRows(screenId: string): string {
-    const option = (value: string, label: string, selected: boolean): string =>
-      `<option value="${escapeHtml(value)}"${selected ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+  function timedLayouts(screenId: string): string {
     const slots = readLayoutSlots(deps.db, screenId);
     const intro =
       `<p class="hint">Show a different layout at certain hours — a school-morning ` +
@@ -4882,54 +4948,36 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         intro +
         `<ol class="wset-steps">` +
         `<li><b>Make a timed layout.</b> It starts as a copy of this wall’s everyday layout.</li>` +
-        `<li>Change it in the layout editor, then press <b>Save wall</b>.</li>` +
-        `<li>Come back here and choose the hours it shows.</li>` +
+        `<li>Arrange the copy.</li>` +
+        `<li>Choose its hours in the menu under its name, above the wall, then press <b>Save wall</b>.</li>` +
         `</ol>` +
         `<p>${makeButton('Make a timed layout')}</p>`
       );
     }
     const stored = readLayoutSchedule(deps.db, screenId);
-    const drawn = Math.min(MAX_SCHEDULE_ROWS, stored.length + 1);
-    const rows: string[] = [];
-    for (let n = 1; n <= drawn; n += 1) {
-      const row = stored[n - 1];
-      const chosen = row?.slot ?? '';
-      const control =
-        `<span class="sched-row">` +
-        `<label class="sched-field"><span>From</span>` +
-        `<input type="time" name="schedule_from_${n}" value="${escapeHtml(row?.from ?? '')}"></label>` +
-        `<label class="sched-field"><span>Until</span>` +
-        `<input type="time" name="schedule_to_${n}" value="${escapeHtml(row?.to ?? '')}"></label>` +
-        `<label class="sched-field"><span>Show</span>` +
-        `<select name="schedule_slot_${n}">` +
-        option('', row === undefined ? 'Choose a layout' : 'Remove this rule', chosen === '') +
-        slots.map((slot) => option(slot, slot, chosen === slot)).join('') +
-        `</select></label>` +
-        `</span>`;
-      rows.push(
-        listRow('', {
-          title: row === undefined ? (stored.length === 0 ? 'First rule' : 'Add a rule') : `Rule ${n}`,
-          detail: row === undefined ? 'Between two times, show one of your timed layouts.' : `${row.from}–${row.to}: ${row.slot}`,
-        }, control),
-      );
-    }
-    const unscheduled = slots.filter((slot) => !stored.some((row) => row.slot === slot));
+    const hoursOf = (slot: string): string[] =>
+      stored.filter((rule) => rule.slot === slot).map((rule) => `${rule.from}–${rule.to}`);
+    const rows = [
+      listRow('', {
+        title: 'Everyday',
+        detail: stored.length === 0 ? 'Shown all day' : 'Shown the rest of the time',
+      }),
+      ...slots.map((slot) => {
+        const hours = hoursOf(slot);
+        return listRow('', {
+          title: slot,
+          detail: hours.length === 0 ? 'No hours yet, so never shown' : `Shown ${hours.join(' and ')}`,
+        });
+      }),
+    ];
     return (
       intro +
-      `<p class="hint">Your timed layouts: <b>${slots.map(escapeHtml).join('</b>, <b>')}</b>. ` +
-      `Each has its own tab beside <b>Everyday</b> in the layout editor.` +
-      (unscheduled.length === 0
-        ? ''
-        : ` <b>${unscheduled.map(escapeHtml).join('</b>, <b>')}</b> ` +
-          `${unscheduled.length === 1 ? 'has' : 'have'} no hours yet, so the wall never shows ` +
-          `${unscheduled.length === 1 ? 'it' : 'them'} — give ${unscheduled.length === 1 ? 'it' : 'them'} a rule below.`) +
-      `</p>` +
-      `<input type="hidden" name="schedule_form" value="1">` +
       `<div class="rows sched-rows">${rows.join('')}</div>` +
-      `<p class="hint">Outside every rule the wall shows its everyday layout. A rule ` +
-      `may run past midnight — from 21:00 until 06:00 is the whole night. Where ` +
-      `two rules overlap, the first one wins.</p>` +
-      (slots.length < MAX_LAYOUT_SLOTS ? `<p>${makeButton('Make another timed layout')}</p>` : '')
+      `<p class="hint">As saved. Hours are set in the layout editor, in the menu under the layout’s name above the wall.</p>` +
+      `<p>` +
+      `<button type="button" class="btn-sm secondary" data-open-layouts>Change layouts and hours</button>` +
+      (slots.length < MAX_LAYOUT_SLOTS ? ` ${makeButton('Make another timed layout')}` : '') +
+      `</p>`
     );
   }
 
@@ -5173,7 +5221,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             options: GUTTER_LABELS.map((label, step) => ({ value: String(step), label })),
           }),
       ) +
-      wsetGroup('Timed layouts', scheduleRows(screen.id));
+      wsetGroup('Timed layouts', timedLayouts(screen.id));
     const backgroundAndDefaults =
       wsetGroup(
         'Backgrounds',
@@ -5592,7 +5640,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `</nav>` +
       `<div class="wset-panels">` +
       `<form method="post" action="${action}" class="wall-settings" data-settings>` +
-      wsetPanel('design', 'Layouts', 'Where this wall’s layouts start, the room around each widget, and which layout shows at which hours. To move widgets, use Layout at the top of this page.', design, true) +
+      wsetPanel('design', 'Layouts', 'Where this wall’s layouts start, the room around each widget, and the timed layouts it holds. Widgets are moved, and timed layouts given their hours, under Layout at the top of this page.', design, true) +
       wsetPanel('look', 'Look', 'This wall’s theme, what sits behind its widgets, and the style every widget starts from.', look, false) +
       wsetPanel('content', 'Calendar amounts', 'How much a Calendar widget on this wall shows. Each number follows the household until you turn that off.', content, false) +
       wsetPanel('device', 'Device and time', 'What this wall is called, how it is hung, how large it is, and the clock it keeps.', device, false) +
@@ -5953,6 +6001,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       slots,
       schedule: readLayoutSchedule(deps.db, ownerKey),
       maxSlots: MAX_LAYOUT_SLOTS,
+      maxRules: MAX_SCHEDULE_ROWS,
       // Everything the config panel needs to offer a choice: the calendars that
       // exist (id + name), and the watched Home Assistant readings (id, the
       // name the wall draws, and the handle the panel keys it by). Read here

@@ -279,15 +279,22 @@ describe('a timed layout says how to make one, and whether it ever shows', () =>
     expect(html.match(/data-new-layout/g)?.length).toBe(2);
   });
 
-  it('names a timed layout with no hours as one the wall never shows, and draws one blank rule', async () => {
+  /*
+   * With a timed layout, the group says what is saved in the editor menu's
+   * words and opens that menu — it draws no rows to edit, because the hours
+   * are changed beside the layout they belong to, not a tab away from it.
+   */
+  it('names a timed layout with no hours as one the wall never shows, and opens the menu to fix it', async () => {
     const h = await ready();
     h.pairScreen('t2', 'Kitchen');
     await addSlot(h, 't2', 'morning');
     const design = designOf(await (await h.call('/admin/walls/t2')).text());
-    expect(design).toContain('<b>morning</b> has no hours yet, so the wall never shows it');
-    expect(design).toContain('First rule');
-    expect(design).toContain('name="schedule_slot_1"');
-    expect(design).not.toContain('name="schedule_slot_2"');
+    expect(design).toContain('<b>morning</b>');
+    expect(design).toContain('No hours yet, so never shown');
+    expect(design).toContain('<b>Everyday</b>');
+    expect(design).toContain('Shown all day');
+    expect(design).toContain('data-open-layouts');
+    expect(design).not.toContain('name="schedule_');
     expect(design).toContain('Make another timed layout');
     expect(design).not.toContain('wset-steps');
   });
