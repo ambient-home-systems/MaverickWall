@@ -489,15 +489,26 @@ describe('what a panel honours, checked against the panel', () => {
      */
     const honoured = new Set(PANEL_HONOURS[type] ?? []);
     const unhonoured = SCHEMA_KEYS.filter((key) => !honoured.has(key));
-    it(`draws nothing else for ${type}`, () => {
-      for (const key of unhonoured.filter(
-        (key) => !key.startsWith('style.') && !ASKED_BY_VALUE.has(key) && !MONTH_LOOKS.has(key),
-      )) {
-        expect(movesInk(type, key), `${type}.${key} moves ink but is not in PANEL_HONOURS`).toBe(
-          false,
-        );
-      }
-    });
+    /*
+     * In thirds, by position in the schema. The month grid is the dearest
+     * frame this file draws and the calendar walks every unhonoured key over
+     * three bases; one body measured 2.5–2.9s in isolation on `main` itself,
+     * and 5s on a loaded CI runner is a factor of two away. A third of that is
+     * the same cure the style lane and the month's looks already take, applied
+     * once to what is left rather than once per key somebody adds next.
+     */
+    const plain = unhonoured.filter(
+      (key) => !key.startsWith('style.') && !ASKED_BY_VALUE.has(key) && !MONTH_LOOKS.has(key),
+    );
+    for (let part = 0; part < 3; part++) {
+      it(`draws nothing else for ${type} (part ${part + 1} of 3)`, () => {
+        for (const key of plain.filter((_, index) => index % 3 === part)) {
+          expect(movesInk(type, key), `${type}.${key} moves ink but is not in PANEL_HONOURS`).toBe(
+            false,
+          );
+        }
+      });
+    }
 
     it(`draws nothing else from the month's looks for ${type}`, () => {
       for (const key of unhonoured.filter((key) => MONTH_LOOKS.has(key))) {
@@ -546,20 +557,25 @@ describe('what a panel cannot honour, and says so', () => {
    * reason.
    */
   for (const type of TYPES) {
-    it(`draws none of them, on ${type}`, () => {
-      /*
-       * The sentence in the editor is "set on the wall, not drawn here" — so if
-       * one of these did move ink, a household would be told a setting is
-       * ignored while watching it work.
-       */
-      for (const entry of PANEL_IGNORES.filter(
-        (one) => isAbout(one, type) && !ASKED_BY_VALUE.has(one.key) && !MONTH_LOOKS.has(one.key),
-      )) {
-        expect(movesInk(type, entry.key), `${type}.${entry.key} is ignored but moves ink`).toBe(
-          false,
-        );
-      }
-    });
+    /*
+     * The sentence in the editor is "set on the wall, not drawn here" — so if
+     * one of these did move ink, a household would be told a setting is
+     * ignored while watching it work. In halves, for the reason the "draws
+     * nothing else" bodies above are in thirds: the calendar's one body was
+     * 2.2s in isolation.
+     */
+    const ignored = PANEL_IGNORES.filter(
+      (one) => isAbout(one, type) && !ASKED_BY_VALUE.has(one.key) && !MONTH_LOOKS.has(one.key),
+    );
+    for (let part = 0; part < 2; part++) {
+      it(`draws none of them, on ${type} (part ${part + 1} of 2)`, () => {
+        for (const entry of ignored.filter((_, index) => index % 2 === part)) {
+          expect(movesInk(type, entry.key), `${type}.${entry.key} is ignored but moves ink`).toBe(
+            false,
+          );
+        }
+      });
+    }
 
     it(`draws none of the month's looks it ignores, on ${type}`, () => {
       for (const entry of PANEL_IGNORES.filter((one) => isAbout(one, type) && MONTH_LOOKS.has(one.key))) {
