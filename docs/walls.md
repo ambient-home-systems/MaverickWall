@@ -7,14 +7,15 @@ wall** to start with a tablet, monitor or television, or with an e-paper panel.
 ## Browser walls
 
 Open a wall and use **Layout** to move widgets. Portrait and landscape have
-separate layouts. The Layout menu also holds the background behind the widgets:
-the wall's theme colour, a solid colour, gradient, uploaded image or wallpaper.
+separate layouts. Use the **Background** button beside **Layout** to choose
+the wall's theme colour, a solid colour, gradient, uploaded image or wallpaper
+for the layout currently on screen.
 You can create another layout for certain hours and schedule it under **Wall
 settings → Design**. That timed layout can have its own background.
 
-Use **Wall settings → Look** for the wall's theme, daytime theme, default widget
-styling and a link to each everyday background. A background link opens the
-corresponding layout's existing editor. Choosing a wallpaper offers an option
+Use **Wall settings → Look** for the wall's theme, daytime theme, widget ground,
+default widget styling and a link to each everyday background. A background
+link opens its layout's Background picker. Choosing a wallpaper offers an option
 to apply it across both orientations. A widget's individual style can override
 the wall's widget defaults, which in turn override the shared theme.
 

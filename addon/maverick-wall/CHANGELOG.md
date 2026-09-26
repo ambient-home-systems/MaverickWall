@@ -16,6 +16,12 @@
 
 ## Unreleased
 
+**Background has its own button beside Layout in the wall editor.** Choose a
+colour, picture or wallpaper for the layout on screen without opening the
+layout sizing menu. The background shortcuts under Wall settings → Look open
+the same picker for the everyday portrait or landscape layout. Look now puts
+the theme first and keeps Widget ground beside the other widget defaults.
+
 ## 0.70.0
 
 **A wall's settings split "Appearance" into Design and Look, and each wall on

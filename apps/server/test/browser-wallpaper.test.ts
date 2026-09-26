@@ -470,7 +470,7 @@ describe('the picker', () => {
         await wall.signIn(page);
         await page.goto(`${wall.base}/admin/walls/${encodeURIComponent(screenId)}`, { waitUntil: 'load' });
         await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
-        await page.click('.le-bar-main button:has-text("Layout")');
+        await page.click('.le-background-btn');
         await page.selectOption('.le-bg select', 'wallpaper');
 
         const offered = (): Promise<string[]> =>
@@ -560,7 +560,7 @@ describe('a light theme in the editor', () => {
         await page.goto(`${wall.base}/admin/walls/${encodeURIComponent(screenId)}`, { waitUntil: 'load' });
         await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
 
-        await page.click('.le-bar-main button:has-text("Layout")');
+        await page.click('.le-background-btn');
         await page.selectOption('.le-bg select', 'wallpaper');
         const offered = await page.$$eval('.le-wallpapers [data-wallpaper]', (tiles) =>
           tiles.map((t) => (t as HTMLElement).dataset['wallpaper'] ?? ''),

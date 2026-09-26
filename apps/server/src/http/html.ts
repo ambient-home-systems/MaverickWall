@@ -1428,11 +1428,11 @@ pre.code{background:var(--mw-surface-2);
  * the settings pane; the row inside is what they actually anchor to. */
 .le-toolbar{position:relative;display:flex;flex-direction:column;align-items:stretch;
   gap:var(--mw-s-3);margin:0 0 var(--mw-s-3)}
-/* One row (RFC 009 Phase 5): which canvas, add a widget, undo, the layers
- * list, and the canvas's own settings behind one button. It was two rows and
+/* One toolbar (RFC 009 Phase 5): which canvas, add a widget, undo, layers,
+ * layout and background controls. It was two separate tool rows and
  * four clusters, two of whose items duplicated the page overflow menu a few
  * pixels above — 124px of an 844px phone before the canvas began.
- * position:relative so the Layers and Layout popovers anchor to the row. */
+ * position:relative so the popovers anchor to their buttons. */
 .le-bar-main{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:var(--mw-s-2)}
 /* The canvas's shape, on the Layout button. Hidden on a phone (below), where
  * the row has to fit and the popover states it anyway. */
@@ -1460,7 +1460,7 @@ pre.code{background:var(--mw-surface-2);
   left:50%;top:50%;width:max(100%,48px);height:48px;transform:translate(-50%,-50%)}
 .le-tool-link:hover,.le-tool-btn:hover,.le-layers-btn:hover{background:color-mix(in srgb,
   var(--mw-accent) var(--mw-wash-hover),transparent)}
-.le-layers-btn.is-on{background:var(--mw-accent-soft);
+.le-layers-btn.is-on,.le-tool-btn.is-on{background:var(--mw-accent-soft);
   color:var(--mw-accent-soft-ink);border-color:transparent}
 /* Nothing to undo reads as nothing to undo. A disabled control that is
  * pixel-identical to a live one is worse than no control: .saverow shipped
@@ -1564,10 +1564,8 @@ pre.code{background:var(--mw-surface-2);
 .le-modal-item:hover{background:color-mix(in srgb,
   var(--mw-ink) var(--mw-wash-hover),
   var(--mw-surface-3))}
-/* Canvas settings: size, match screen, snap and the canvas background, behind
- * one button. They are real choices, and they are not everyday ones — a row of
- * outlined buttons for each gave a canvas control the same weight as "add a
- * widget", which is the whole complaint the redesign answers. */
+/* Layout settings and the background picker have separate entrances. Both
+ * panels scroll within the viewport so a wallpaper list stays reachable. */
 .le-canvas-pop{position:absolute;top:calc(100% + 6px);right:0;width:min(340px,92vw);z-index:30;
   padding:var(--mw-s-4) var(--mw-s-4) var(--mw-s-4);background:var(--mw-surface);
   border-radius:var(--mw-r-1);
@@ -1578,11 +1576,9 @@ pre.code{background:var(--mw-surface-2);
      them. 64vh keeps the bar clear on the 1000px-tall screens the editor is
      measured at. */
   max-height:64vh;overflow-y:auto}
-/* The Background row is a visual choice — a household is picking a picture,
- * not a setting — so once it holds the wallpaper grid the popover widens to
- * give the tiles room for a name under each one, rather than the 340px this
- * panel is otherwise sized for (a select and a couple of number inputs). */
-.le-canvas-pop:has(.le-wallpapers){width:min(440px,92vw)}
+/* The Background picker gives wallpaper tiles room for their names; Layout
+ * stays narrow because it only holds sizing and placement controls. */
+.le-background-pop{width:min(440px,92vw)}
 .le-canvas-pop[hidden]{display:none}
 .le-pop-title{
   font:var(--mw-t-h3);
@@ -1780,7 +1776,7 @@ pre.code{background:var(--mw-surface-2);
 .le-handle::before{content:"";position:absolute;inset:-16px -2px -2px -16px}
 /* The canvas background control — none, or one of four kinds: solid / gradient /
    image / wallpaper, per canvas. The wallpaper picker reuses the image picker's grid. */
-.le-bg{display:flex;flex-wrap:wrap;align-items:center;gap:var(--mw-s-3);margin:var(--mw-s-3) 0 0}
+.le-bg{display:flex;flex-wrap:wrap;align-items:center;gap:var(--mw-s-3)}
 .le-bg-label{
   font:var(--mw-t-label-sm);
   letter-spacing:var(--mw-t-label-sm-tracking);

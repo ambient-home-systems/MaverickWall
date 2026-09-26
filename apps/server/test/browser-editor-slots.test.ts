@@ -111,6 +111,28 @@ async function seedMorning(wall: Installation, id: string): Promise<void> {
 }
 
 describe('a named canvas in the editor', () => {
+  it('keeps the standalone Background picker on screen on a phone', async () => {
+    const wall = await fresh();
+    const id = await wall.pairWall('Phone wall');
+    applyTemplate(wall.db, id, CLASSIC_TEMPLATE);
+    const context = await (await browser()).newContext({ viewport: { width: 390, height: 844 } });
+    try {
+      const page = await context.newPage();
+      await openEditor(wall, page, id);
+      await page.locator('.le-background-btn').click();
+      const bounds = await page.locator('.le-background-pop').boundingBox();
+      expect(bounds).not.toBeNull();
+      expect(bounds!.x).toBeGreaterThanOrEqual(0);
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+      expect(await page.locator('.le-background-pop .le-pop-sub').textContent()).toContain('Portrait · Everyday');
+      await page.keyboard.press('Escape');
+      expect(await page.locator('.le-background-pop').isVisible()).toBe(false);
+      expect(await page.locator('.le-background-btn').evaluate((button) => document.activeElement === button)).toBe(true);
+    } finally {
+      await context.close();
+    }
+  }, SLOW);
+
   it('opens the everyday background from Look, even after editing a timed layout', async () => {
     const wall = await fresh();
     const id = await wall.pairWall('Editor wall');
@@ -127,8 +149,13 @@ describe('a named canvas in the editor', () => {
       expect(await page.locator('[data-mode="layout"]').getAttribute('aria-selected')).toBe('true');
       expect(await page.locator('.le-orient-btn:has-text("Landscape")').getAttribute('aria-pressed')).toBe('true');
       expect(await slotTab(page, 'Everyday').getAttribute('aria-selected')).toBe('true');
-      expect(await page.locator('.le-canvas-pop').isVisible()).toBe(true);
+      expect(await page.locator('.le-background-pop').isVisible()).toBe(true);
+      expect(await page.locator('.le-canvas-pop:not(.le-background-pop)').isVisible()).toBe(false);
       expect(await page.locator('.le-bg select').evaluate((element) => document.activeElement === element)).toBe(true);
+      await page.locator('.le-tool-btn:has-text("Layout")').click();
+      expect(await page.locator('.le-background-pop').isVisible()).toBe(false);
+      expect(await page.locator('.le-canvas-pop:not(.le-background-pop)').isVisible()).toBe(true);
+      expect(await page.locator('.le-canvas-pop:not(.le-background-pop) .le-bg').count()).toBe(0);
     } finally {
       await context.close();
     }
