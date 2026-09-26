@@ -26,7 +26,18 @@ export type CanvasBackground =
   | { readonly type: 'solid'; readonly color: string }
   | { readonly type: 'gradient'; readonly from: string; readonly to: string; readonly angle: number }
   | { readonly type: 'image'; readonly image: string }
-  | { readonly type: 'wallpaper'; readonly id: string; readonly small: string; readonly large: string };
+  | {
+      readonly type: 'wallpaper';
+      readonly id: string;
+      readonly small: string;
+      readonly large: string;
+      /**
+       * Where the picture's interest is, in percent of the master, for
+       * `background-position` (plan item P6.2). Absent is the centre. Read
+       * defensively in `wallpaper.ts`: a stored copy may carry any shape.
+       */
+      readonly focal?: { readonly x: number; readonly y: number };
+    };
 
 export interface ManifestEvent {
   readonly id: string;

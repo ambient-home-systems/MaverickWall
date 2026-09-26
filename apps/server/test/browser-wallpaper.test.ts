@@ -13,7 +13,9 @@ import {
   shutDownBrowser,
   type Installation,
 } from './browser-harness.js';
-import { wallpaperById } from '../src/wallpapers.js';
+import { WALLPAPERS, WALLPAPER_CATEGORY_NAMES, notForOled, wallpaperById } from '../src/wallpapers.js';
+
+const ids = (tone: 'light' | 'dark'): string[] => WALLPAPERS.filter((w) => w.tone === tone).map((w) => w.id).sort();
 
 /**
  * A wallpaper on a real wall (plan items P6.1, P6.3 and P6.4), measured.
@@ -163,6 +165,8 @@ interface Drawn {
   /** The declaration as written, before the browser resolves it against anything. */
   readonly inline: string;
   readonly size: string;
+  /** The computed `background-position`: the wallpaper's focal point, or the centre. */
+  readonly position: string;
   readonly canvasColor: string;
   readonly ground: string | null;
   readonly panel: string;
@@ -213,6 +217,7 @@ function readWall(page: Page): Promise<Drawn> {
       image: style.backgroundImage,
       inline: canvas.style.backgroundImage,
       size: style.backgroundSize,
+      position: style.backgroundPosition,
       canvasColor: style.backgroundColor,
       ground: canvas.getAttribute('data-ground'),
       panel,
@@ -373,6 +378,7 @@ describe('a wallpaper through the fifteen-second rebuild', () => {
           'the tick did not rebuild the canvas, so this measured nothing',
         ).toBeUndefined();
         expect(after.image).toBe(first.image);
+        expect(first.position, 'Dusk names no focal point, so it is drawn from the centre').toBe('50% 50%');
         expect(await requests(), 'a redraw asked the network for the wallpaper again').toBe(before);
       } finally {
         await close();
@@ -392,6 +398,10 @@ describe('a wallpaper on a smaller canvas', () => {
       try {
         const drawn = await readWall(page);
         expect(drawn.image).toContain(`/assets/wallpapers/${hills?.small}`);
+        // Hills names a focal point a little below the middle (P6.2), and it is
+        // the canvas's position; a wallpaper naming none draws from the centre.
+        expect(hills?.focal).toEqual({ x: 50, y: 58 });
+        expect(drawn.position).toBe('50% 58%');
       } finally {
         await close();
       }
@@ -465,8 +475,17 @@ describe('the picker', () => {
 
         const offered = (): Promise<string[]> =>
           page.$$eval('.le-wallpapers [data-wallpaper]', (tiles) => tiles.map((t) => (t as HTMLElement).dataset['wallpaper'] ?? ''));
-        // Panels is dark, so the dark ones, and not the light one.
-        expect((await offered()).sort()).toEqual(['dusk', 'hills']);
+        // Panels is dark, so every dark one and no light one.
+        expect((await offered()).sort()).toEqual(ids('dark'));
+        // Grouped under a heading per category (Q10), in the catalogue's order,
+        // and no heading over an empty group.
+        const heads = await page.$$eval('.le-wallpapers .le-media-head', (nodes) => nodes.map((n) => n.textContent));
+        const darkCategories = [...new Set(WALLPAPERS.filter((w) => w.tone === 'dark').map((w) => w.category))];
+        expect(heads).toEqual(darkCategories.map((c) => WALLPAPER_CATEGORY_NAMES[c]));
+        // No dark wallpaper is bright enough to warn about, and every tile
+        // names the theme it suits.
+        expect(await page.$$eval('.le-wallpapers [data-oled]', (n) => n.length)).toBe(0);
+        expect(await page.getAttribute('.le-wallpapers [data-wallpaper="hills"]', 'aria-label')).toBe('Hills — suits Panels, Swiss');
         // Every thumbnail is written relative — so it resolves under the
         // admin's <base>, which under ingress carries the add-on's prefix — and
         // answers. The harness has no prefix, so an absolute path would resolve
@@ -484,8 +503,21 @@ describe('the picker', () => {
         }
 
         await page.click('.le-wallpapers label:has-text("Show wallpapers drawn for a light theme")');
-        expect((await offered()).sort()).toEqual(['dusk', 'hills', 'paper']);
+        expect((await offered()).sort()).toEqual([...ids('dark'), ...ids('light')].sort());
         expect(await page.locator('.le-wallpapers p.hint').textContent()).toContain('may be hard to read');
+        // A light wallpaper shown to a dark wall says which theme it was drawn
+        // for, and — every one of them being bright — that it is not for an
+        // OLED screen: as data, in its name, and drawn on the tile (P6.3).
+        const bright = WALLPAPERS.filter(notForOled).map((w) => w.id).sort();
+        expect(bright).toEqual(ids('light'));
+        expect((await page.$$eval('.le-wallpapers [data-oled="no"]', (n) => n.map((t) => (t as HTMLElement).dataset['wallpaper']))).sort()).toEqual(bright);
+        expect(await page.getAttribute('.le-wallpapers [data-wallpaper="paper"]', 'aria-label')).toBe('Paper — drawn for a light theme; not for OLED screens');
+        const caption = await page.$eval('.le-wallpapers [data-wallpaper="paper"]', (t) => {
+          const after = getComputedStyle(t, '::after');
+          return { content: after.content, height: parseFloat(after.height) };
+        });
+        expect(caption.content).toBe('"not for OLED"');
+        expect(caption.height).toBeGreaterThan(8);
 
         await page.click('.le-wallpapers [data-wallpaper="hills"]');
         expect(await page.getAttribute('.le-wallpapers [data-wallpaper="hills"]', 'aria-pressed')).toBe('true');
@@ -533,7 +565,10 @@ describe('a light theme in the editor', () => {
         const offered = await page.$$eval('.le-wallpapers [data-wallpaper]', (tiles) =>
           tiles.map((t) => (t as HTMLElement).dataset['wallpaper'] ?? ''),
         );
-        expect(offered, 'Household is light, so the light wallpaper and not the dark ones').toEqual(['paper']);
+        expect(offered.sort(), 'Household is light, so every light wallpaper and no dark one').toEqual(ids('light'));
+        expect(await page.getAttribute('.le-wallpapers [data-wallpaper="paper"]', 'aria-label')).toBe(
+          'Paper — suits Household, Paper Almanac, Blueprint; not for OLED screens',
+        );
         await page.selectOption('.le-bg select', 'none');
         await page.keyboard.press('Escape');
 

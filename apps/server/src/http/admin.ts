@@ -146,7 +146,14 @@ import { stagedKeyPath, stagedPath } from '../db/restore.js';
 import type { SqliteDatabase } from '../db/open.js';
 import { ago, presence, presenceDot } from './presence.js';
 import { canvasGutterStep, GUTTER_DEFAULT_STEP, GUTTER_LABELS } from '../gutter.js';
-import { isWidgetGround, themeTone, WALLPAPERS, WIDGET_GROUNDS } from '../wallpapers.js';
+import {
+  isWidgetGround,
+  notForOled,
+  themeTone,
+  WALLPAPER_CATEGORY_NAMES,
+  WALLPAPERS,
+  WIDGET_GROUNDS,
+} from '../wallpapers.js';
 import { confirmDestroyPage, dirtyForm, downloadForm, errorBlock, escapeHtml, feedCredentialFields, icon,
   networkAccessDisclosure, networkAccessSuggestion, page, saveRow, segControl,
   selectField, selectRow, switchRow, textField, type NavModule } from './html.js';
@@ -5904,7 +5911,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
        * which the picker filters by (P6.3), and that theme's own `--panel`,
        * which a Card background and a solid canvas background start from.
        */
-      wallpapers: WALLPAPERS,
+      wallpapers: WALLPAPERS.map((w) => ({
+        ...w,
+        // What the picker says of it, decided here so the threshold and the
+        // category's words have one owner (P6.2, P6.3).
+        categoryName: WALLPAPER_CATEGORY_NAMES[w.category],
+        oled: notForOled(w),
+      })),
       wallTone: themeTone(ownerColours['--bg'] ?? ''),
       themePanel: ownerColours['--panel'],
       // Which widgets the wall will leave out, and what to do about it. The
