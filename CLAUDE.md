@@ -9153,6 +9153,18 @@ both were the test's fault:
 - No box in the file was short enough to force the bar out. A box with room
   for the count alone now has to draw no bar.
 
+**CI found one thing the local run could not, and it was a cost rather than
+a fault.** The panel needs a progress base to see `from` move ink and an
+occasion base to see `occasion` move none, and the first draft added both to
+the countdown's `BASES` — so every countdown key rendered from four configs
+instead of two. `epaper-ink`'s "draws none of them, on countdown" took 0.5s
+here and 5.4s on a CI shard, and timed out; "draws nothing else" beside it
+took 4.6s. It is this file's fourth brush with the 5s limit, and the answer
+is the one it gave before: not a longer timeout, but less work. The two bases
+are per key now (`KEY_BASES`), so only `from` and `occasion` pay for them, and
+both countdown bodies are back to half. The three table mutations were run
+again against the narrower bases, and all three are red.
+
 The number, the page and the ticket are untouched, and so is Classic, which
 has no countdown: `wall-density` and `browser-classic-proportions` pass with
 every baseline where it was. **Still unproven where it counts:** nobody has

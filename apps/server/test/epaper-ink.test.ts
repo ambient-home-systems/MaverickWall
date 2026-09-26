@@ -207,18 +207,8 @@ const BASES: Readonly<Record<string, readonly Record<string, unknown>[]>> = {
    * countdown's `celebrate` does anything and the time its picture sits beside
    * "Today!" — so a base that never reaches it would "prove" both are ignored
    * by never giving them a chance. The model's today is 22 August.
-   *
-   * And a progress bar and an occasion (the item's second half): `from` moves
-   * ink only on the bar, so a base that never draws one would "prove" it is
-   * ignored, and `occasion` is proved to move none on the one look that reads
-   * it on the wall — which is what `PANEL_IGNORES` says of it.
    */
-  countdown: [
-    { target: '2026-12-25' },
-    { target: '2026-08-22' },
-    { target: '2026-12-25', variant: 'progress', from: '2026-08-01' },
-    { target: '2026-12-25', variant: 'occasion', occasion: 'christmas' },
-  ],
+  countdown: [{ target: '2026-12-25' }, { target: '2026-08-22' }],
   notes: [{ text: 'Hello there wall' }],
   // Both sources: `showDone` can only move ink on a list-backed widget, and
   // `list` is proved from the typed base by switching it to the list.
@@ -230,6 +220,28 @@ const BASES: Readonly<Record<string, readonly Record<string, unknown>[]>> = {
   // Both a row and a grid, because `columns` can only move ink on a grid —
   // probed from a row alone it would have "proved" the key is not honoured.
   group: [{ layout: 'row' }, { layout: 'grid' }],
+};
+
+/**
+ * Starting configs for one key alone, beside its type's `BASES`.
+ *
+ * A key that means something on one look only needs a base wearing that look,
+ * or a probe from the others would "prove" it is ignored. They are per key
+ * rather than added to `BASES`, and that is measured rather than tidy: two
+ * more countdown bases made every countdown key render from four configs
+ * instead of two, and "draws none of them, on countdown" went from 0.5s here
+ * to 5.4s on a CI runner and timed out — this file's own history, a fourth
+ * time. Per key, only the keys that need a base pay for it.
+ *
+ *  - `from` moves ink only on the progress bar (P5.2).
+ *  - `occasion` is probed on the one look that reads it on the wall, and is
+ *    proved to move no ink there, which is what `PANEL_IGNORES` says of it.
+ */
+const KEY_BASES: Readonly<Record<string, Readonly<Record<string, readonly Record<string, unknown>[]>>>> = {
+  countdown: {
+    from: [{ target: '2026-12-25', variant: 'progress', from: '2026-08-01' }],
+    occasion: [{ target: '2026-12-25', variant: 'occasion', occasion: 'christmas' }],
+  },
 };
 
 /** Values that would visibly change a widget that reads the key at all. */
@@ -351,7 +363,7 @@ function withKey(start: Record<string, unknown>, key: string, value: unknown): R
 /** Does setting this key change what the panel draws for this widget type? */
 function movesInk(type: string, key: string): boolean {
   const values = PROBES[key] ?? [];
-  for (const base of BASES[type] ?? []) {
+  for (const base of [...(BASES[type] ?? []), ...(KEY_BASES[type]?.[key] ?? [])]) {
     for (const start of [base, { ...base, showTitle: true, title: 'Base' }]) {
       const before = frame(type, start);
       for (const value of values) {
@@ -545,11 +557,7 @@ describe('a Look, value by value', () => {
   for (const type of TYPES) {
     it(`draws only its own looks, on ${type}`, () => {
       const drawn = PANEL_LOOKS[type] ?? [];
-      for (const withLook of BASES[type] ?? []) {
-        // From the base with its own Look taken off, so the frame compared
-        // against is the type's default: a countdown's progress base carries
-        // one, because `from` moves ink only on the bar (P5.2).
-        const { variant: _look, ...base } = withLook;
+      for (const base of BASES[type] ?? []) {
         // With a title too, the way `movesInk` probes every key.
         for (const start of [base, { ...base, showTitle: true, title: 'Base' }]) {
           const before = frame(type, start);
