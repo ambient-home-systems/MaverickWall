@@ -3,6 +3,7 @@ import {
   SMALL_WALLPAPER_EDGE,
   WALLPAPER_FILE,
   wallpaperFile,
+  wallpaperPosition,
   widgetGroundFor,
 } from '../src/wallpaper.js';
 
@@ -74,5 +75,16 @@ describe('widgetGroundFor', () => {
     expect(widgetGroundFor('soft', undefined)).toBe('soft');
     expect(widgetGroundFor('opaque', DUSK)).toBe('soft');
     expect(widgetGroundFor(3, undefined)).toBe('none');
+  });
+});
+
+describe('wallpaperPosition', () => {
+  it('is the focal point in percent, and the centre for none or for anything that is not one', () => {
+    expect(wallpaperPosition({ focal: { x: 50, y: 58 } })).toBe('50% 58%');
+    expect(wallpaperPosition({})).toBe('center');
+    // A stored copy of the manifest may carry any shape.
+    for (const bad of [null, 'centre', { x: 50 }, { x: '50', y: '58' }, { x: 120, y: 50 }, { x: -1, y: 50 }, { x: Number.NaN, y: 50 }]) {
+      expect(wallpaperPosition({ focal: bad }), JSON.stringify(bad)).toBe('center');
+    }
   });
 });

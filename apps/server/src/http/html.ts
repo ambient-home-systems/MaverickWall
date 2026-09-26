@@ -1571,7 +1571,13 @@ pre.code{background:var(--mw-surface-2);
 .le-canvas-pop{position:absolute;top:calc(100% + 6px);right:0;width:min(340px,92vw);z-index:30;
   padding:var(--mw-s-4) var(--mw-s-4) var(--mw-s-4);background:var(--mw-surface);
   border-radius:var(--mw-r-1);
-  box-shadow:var(--mw-shadow-1)}
+  box-shadow:var(--mw-shadow-1);
+  /* Bounded and scrolling inside itself: with twenty-six wallpaper tiles in
+     it (P6.2) the panel outgrows a laptop's viewport, and a panel that runs
+     under the fixed save bar puts its last controls where nothing can press
+     them. 64vh keeps the bar clear on the 1000px-tall screens the editor is
+     measured at. */
+  max-height:64vh;overflow-y:auto}
 .le-canvas-pop[hidden]{display:none}
 .le-pop-title{
   font:var(--mw-t-h3);
@@ -1789,6 +1795,12 @@ pre.code{background:var(--mw-surface-2);
   border:2px solid var(--rule);background-size:cover;background-position:center}
 .le-media-item:hover{border-color:var(--faint)}
 .le-media-item.is-on{border-color:var(--accent)}
+/* The wallpaper picker (P6.2): a heading per category takes a whole row of the
+   grid, and a bright picture carries its OLED caution on the tile itself. */
+.le-media-head{flex-basis:100%;margin:var(--mw-s-2) 0 0;font-size:var(--mw-t-label-sm-size);color:var(--muted)}
+.le-media-item.is-bright{position:relative;overflow:hidden}
+.le-media-item.is-bright::after{content:'not for OLED';position:absolute;left:0;right:0;bottom:0;
+  padding:var(--mw-s-1) 0;font-size:var(--mw-t-label-sm-size);line-height:1;color:#fff;background:rgba(0,0,0,.55)}
 .le-media-upload{display:inline-flex;align-items:center;gap:var(--mw-s-2);font-size:var(--mw-t-label-size);color:var(--muted)}
 .le-media-upload input{font-size:var(--mw-t-label-sm-size)}
 .le-media-status{font-family:var(--mono);font-size:var(--mw-t-label-sm-size);color:var(--mw-ink-muted)}

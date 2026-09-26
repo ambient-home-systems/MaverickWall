@@ -96,3 +96,21 @@ export function widgetGroundFor(stored: unknown, background: CanvasBackground | 
   if (stored === 'none' || stored === 'soft' || stored === 'solid') return stored;
   return background?.type === 'wallpaper' ? 'soft' : 'none';
 }
+
+/**
+ * The canvas's `background-position` for a wallpaper: its focal point, or the
+ * centre (plan item P6.2).
+ *
+ * Every master is square and composed with nothing near its edges, so `cover`
+ * crops it to either orientation without a focal point at all; one only
+ * nudges which band a wall looks at — a horizon a little below the middle.
+ * Read defensively, because a stored copy of the manifest may carry any
+ * shape: anything but two finite numbers inside 0..100 is the centre.
+ */
+export function wallpaperPosition(background: { readonly focal?: unknown }): string {
+  const focal = background.focal;
+  if (typeof focal !== 'object' || focal === null) return 'center';
+  const { x, y } = focal as { x?: unknown; y?: unknown };
+  const ok = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100;
+  return ok(x) && ok(y) ? `${x}% ${y}%` : 'center';
+}

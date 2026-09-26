@@ -27,7 +27,7 @@ import { MOTION_FIXTURE_TYPE, renderMotionFixture } from './motion-fixture.js';
 import { renderCountdown } from './countdown-looks.js';
 import { variantOf } from './variants.js';
 import { boxRect, gutterStepFor } from './gutter.js';
-import { WALLPAPER_BASE, wallpaperFile, widgetGroundFor, type WidgetGround } from './wallpaper.js';
+import { WALLPAPER_BASE, wallpaperFile, wallpaperPosition, widgetGroundFor, type WidgetGround } from './wallpaper.js';
 import { childCells, groupChildren, topLevelWidgets } from './group-cells.js';
 import { applyStyleTokens, styleTokensOf } from './widget-style.js';
 import { inkOn, shiftTint } from './theme.js';
@@ -3494,7 +3494,7 @@ function applyWallpaper(
   canvas.dataset['wallpaper'] = background.id;
   canvas.style.backgroundImage = `url("${base}${file}")`;
   canvas.style.backgroundSize = 'cover';
-  canvas.style.backgroundPosition = 'center';
+  canvas.style.backgroundPosition = wallpaperPosition(background);
   canvas.style.backgroundRepeat = 'no-repeat';
 }
 

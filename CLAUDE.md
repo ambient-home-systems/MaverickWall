@@ -8180,6 +8180,73 @@ for `house-tiles.ts`, which is now in `main.ts`'s import graph. On the server,
 letter: `browser-widget-style` lists the lane's segments, and the lane now has
 a fourth.
 
+**The set of twenty-six wallpapers replaces S22's three placeholders (plan
+items P6.2 and P6.3, Q4 and Q10 at their proposed defaults).**
+`scripts/wallpapers/generate.mjs` is the generator: a seeded PRNG, a drawing
+per wallpaper as parametric SVG on a 1000-unit square, rasterised by the
+bundled Chromium at 320, 1600 and 2880 pixels and saved as JPEG, and it
+writes the catalogue the server reads — `wallpaper-catalogue.ts`, marked
+generated — with each picture's mean colour and luminance **measured off the
+raster** rather than typed. Seven categories at the plan's counts, with one
+light gradient fewer because the plan's own list sums to twenty-seven under a
+total that says twenty-six: fourteen dark and twelve light, which is "lean
+dark". Every master is composed with nothing near its edges, and four
+(Hills, Dunes, Dusk sky, Winter) name a focal point a little below the middle
+that travels in the manifest — spread, never `focal: undefined`, so a
+wallpaper without one sends the document it always sent — and becomes the
+canvas's `background-position`. The picker groups its tiles under a heading
+per category, names the themes a wallpaper suits, and marks every light one
+"not for OLED screens", on the tile and in its accessible name, from a
+luminance threshold the server owns. The whole set is 7.3 MB; the budget
+test pins the directory under 15 MB and over 5 MB, the floor because a set
+that compressed to nothing would be gradients with nothing for a decoder to
+do.
+
+**The gate is `browser-wallpaper-contrast.test.ts`, and it decided the set.**
+Every shipped file — the 2880 one a television fetches and the 1600 one a
+tablet does — is decoded in Chromium, cut into a 40x40 grid of blocks about
+the size of a date numeral, and its lightest and darkest blocks found; the
+Soft ground (`--panel` at 0.86) is composited over each in sRGB, as the
+browser composites it, and the `--ink` and `--ink-scaffold` of *every*
+built-in theme of the wallpaper's tone are held to 4.5:1 against both.
+Chromium because it is the only JPEG decoder this repository has, and the
+shipped bytes because a catalogue number that survived a regeneration would
+be last week's picture. The scaffold ink is what binds, and by how little
+is worth knowing: Almanac's `--ink-scaffold` clears its own `--bg` at 4.56:1,
+so under a white card at 0.86 the darkest block of a light wallpaper has to
+stay above about sRGB 200 — the first Dunes drew its lowest ridge at
+`#CBB79C` and read **4.48:1**, and is lighter for it. On Panels the
+mechanism runs the other way: `--panel` is lighter than `--bg`, so a dark
+wallpaper's lightest block has to stay under about sRGB 150, which is why the
+Bauhaus shapes and the Summer sun are drawn at half opacity. The decode of
+the largest file is timed in the same test and printed: 40ms warm for the
+546 KB Charted, on this container. **Six mutations were checked and all six
+are red**: the darker Dunes regenerated (4.48:1, and the regeneration is
+byte-deterministic — restoring the colours brought the same hashes back), a
+catalogue luminance not the file's, the focal point never applied (the unit
+test and the wall's computed position both), `parseBackground` dropping it,
+the picker's OLED mark removed, and the Layout popover's height unbounded —
+found rather than reasoned: with twenty-six tiles in it the panel ran under
+the fixed save bar, and the "show the other tone" switch could not be
+pressed at 1440x1000 until it scrolled inside itself. Looked at, which is
+the check this project counts: all fifty-two renders of the shipped Classic
+wall, each wallpaper at 1080x1920 and 1920x1080, on Panels for the dark ones
+and Household for the light. What they show is worth one sentence — Classic
+tiles its canvas, so through the Soft ground a wallpaper reads as a texture
+under the widgets rather than a picture between them, and a household who
+wants the picture chooses None or an airier gutter. **4593 tests passing and 1 skipped, over 320 files**: calendar 153
+over 10 · core 314 over 9 · display 832 over 45 · server 3294 over 256.
+Measured with `pnpm test` and a real Chromium (`MW_BROWSER_EXECUTABLE`) on a
+clone whose tags had been fetched. Against S22's 4562 over 319, that is +31
+and +1: the contrast gate's 27, three more in `wallpapers.test.ts` and one
+in the display's `wallpaper.test.ts`. The first full run read one red that
+was the working tree rather than the code — `addon-repository`'s "no tracked
+zero-byte files" stats every tracked path, and the placeholder JPEGs were
+deleted on disk with their deletions not yet staged; staged, the file is
+green. Recorded because it reads as a wallpaper fault and is not one.
+**Still unproven where it counts:** nobody has looked at a wallpaper on a
+kitchen wall or an OLED television, and the decode figure is this container's.
+
 ---
 
 ## Open decisions

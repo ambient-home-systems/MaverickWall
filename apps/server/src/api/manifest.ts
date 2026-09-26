@@ -715,7 +715,14 @@ export type CanvasBackground =
   | { readonly type: 'solid'; readonly color: string }
   | { readonly type: 'gradient'; readonly from: string; readonly to: string; readonly angle: number }
   | { readonly type: 'image'; readonly image: string }
-  | { readonly type: 'wallpaper'; readonly id: string; readonly small: string; readonly large: string };
+  | {
+      readonly type: 'wallpaper';
+      readonly id: string;
+      readonly small: string;
+      readonly large: string;
+      /** Where the picture's interest is, in percent; absent is the centre (P6.2). */
+      readonly focal?: { readonly x: number; readonly y: number };
+    };
 
 const HEX6 = /^#[0-9a-fA-F]{6}$/;
 const STORED_IMAGE = /^[a-f0-9]{64}\.(png|jpg|gif|webp)$/;
@@ -763,7 +770,15 @@ export function parseBackground(raw: string | null | undefined): CanvasBackgroun
   if (bg['type'] === 'wallpaper' && typeof bg['id'] === 'string') {
     const wallpaper = wallpaperById(bg['id']);
     if (wallpaper !== undefined) {
-      return { type: 'wallpaper', id: wallpaper.id, small: wallpaper.small, large: wallpaper.large };
+      return {
+        type: 'wallpaper',
+        id: wallpaper.id,
+        small: wallpaper.small,
+        large: wallpaper.large,
+        // Spread, never `focal: undefined`: a wallpaper with no focal point sends
+        // the document it always sent, so no stored ETag churns.
+        ...(wallpaper.focal === undefined ? {} : { focal: { x: wallpaper.focal.x, y: wallpaper.focal.y } }),
+      };
     }
   }
   return undefined;
