@@ -367,11 +367,50 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
     label: 'When it changed',
     why: 'a panel shows one picture for up to an hour, so “5 min ago” would be wrong within the minute.',
   },
+  /*
+   * `showTimes` is accepted and read by nothing, on the wall as here (plan
+   * item P5.4, part 6): no control writes it and the schema keeps it only so a
+   * stored config carrying it is not refused. `showLocations` is the wall
+   * agenda's now — a place after the title where it fits on the title's last
+   * line — and a panel's agenda row is one line of time and title, with no
+   * room to put one.
+   */
   { key: 'showTimes', label: 'Event times', why: 'the panel draws the title alone in a cell.' },
   {
     key: 'showLocations',
     label: 'Event locations',
-    why: 'the panel draws the title alone in a cell.',
+    why: 'a panel’s agenda row is one line, a time and a title, with no room for the place.',
+  },
+  /*
+   * The comfortable month's four looks (plan item P5.4, part 4). A panel's
+   * month is its own drawing in one bit: today is the filled cell and the
+   * weeks are the grid's own lines, the box's header already names the month,
+   * and an event's calendar is a colour the panel does not have. None of the
+   * four moves ink, and `epaper-ink.test.ts` proves each by setting it.
+   */
+  {
+    key: 'todayStyle',
+    types: ['calendar'],
+    label: 'Today',
+    why: 'a panel marks today by filling its cell, whichever look is chosen.',
+  },
+  {
+    key: 'monthHeading',
+    types: ['calendar'],
+    label: 'Month heading',
+    why: 'a panel draws the grid alone, without a heading above it.',
+  },
+  {
+    key: 'eventMark',
+    types: ['calendar'],
+    label: 'Event marks',
+    why: 'a calendar’s mark is its colour, and a panel has one colour.',
+  },
+  {
+    key: 'gridLines',
+    types: ['calendar'],
+    label: 'Week rules',
+    why: 'a panel draws every cell’s own outline, whichever rules are chosen.',
   },
   {
     key: 'showWeather',

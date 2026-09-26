@@ -27,11 +27,12 @@ import { lockLoop } from './motion.js';
 import { MOTION_FIXTURE_TYPE, renderMotionFixture } from './motion-fixture.js';
 import { renderCountdown } from './countdown-looks.js';
 import { variantOf } from './variants.js';
+import { monthLookClasses, monthLooks, treatmentLooks, type MonthLooks } from './calendar-looks.js';
 import { boxRect, gutterStepFor } from './gutter.js';
 import { WALLPAPER_BASE, wallpaperFile, wallpaperPosition, widgetGroundFor, type WidgetGround } from './wallpaper.js';
 import { childCells, groupChildren, topLevelWidgets } from './group-cells.js';
 import { applyStyleTokens, styleTokensOf } from './widget-style.js';
-import { inkOn, shiftTint } from './theme.js';
+import { inkOn, readableHue, shiftTint } from './theme.js';
 import {
   HOUSE_ROLES,
   SHIFT_ROLES,
@@ -54,6 +55,7 @@ import {
 } from './widget-options.js';
 import { calendarView } from './widget-views.js';
 import { shiftDotCount, shiftLabelForms, shiftStyle, shiftsShown, type ShiftStyle } from './shift-style.js';
+import { calendarsOf, keepCalendars } from './calendar-filter.js';
 import { densitySteps, monthSpans } from './month-spans.js';
 import {
   TYPE_SPECIMEN,
@@ -1157,7 +1159,7 @@ function renderHouseTiles(model: DisplayModel, config?: unknown, draw: TileDraw 
 
 /* --------------------------------------------------------------- NEXT ---- */
 
-function renderDayRow(day: DayModel, showWeather = false, showShifts = true): HTMLElement {
+function renderDayRow(day: DayModel, showWeather = false, showShifts = true, showLocations = false): HTMLElement {
   const row = el('div', day.isToday ? 'day-row is-today' : 'day-row');
   const shifts = showShifts ? day.shifts : [];
   const first = shifts[0];
@@ -1265,6 +1267,16 @@ function renderDayRow(day: DayModel, showWeather = false, showShifts = true): HT
       const title = el('div', 'dr-ev-title');
       title.appendChild(ownerMark(event, 'dr-ev-mark'));
       title.appendChild(document.createTextNode(event.title));
+      /*
+       * Where it is, when the household asked (plan item P5.4, part 6): after
+       * the title, in the quiet ink, a rung smaller. Drawn here and kept only
+       * where it fits on the title's last line — `fitLocations` takes it away
+       * from any entry it would give a line — so a place never costs an event
+       * its row, and it is whole or absent, never cut.
+       */
+      if (showLocations && event.location !== undefined && event.location.trim() !== '') {
+        title.appendChild(el('span', 'dr-ev-loc', `\u00b7 ${event.location.trim()}`));
+      }
       entry.appendChild(title);
       if (event.span !== undefined) {
         entry.appendChild(el('div', 'dr-ev-span', event.span));
@@ -1548,9 +1560,24 @@ function renderHorizon(
     readonly weekNumbers?: boolean;
     /** The rota's look, or undefined when the widget's switch is off. */
     readonly rota?: ShiftStyle | undefined;
+    /** The calendars kept, by source id; empty or absent is every one. */
+    readonly calendars?: readonly string[];
+    /** Today, the heading, the event mark and the rules (`calendar-looks.ts`). */
+    readonly looks?: MonthLooks;
   } = {},
 ): HTMLElement {
   const style: CellStyle = opts.cells ?? 'text';
+  const looks = opts.looks ?? treatmentLooks(style);
+  /*
+   * Only the calendars the widget keeps (plan item P5.4, part 5), taken off
+   * every cell before anything is counted, spanned or drawn — so a bar, a name,
+   * the density mark and a "+N" all describe the same month. The panel applies
+   * the same reading at the same seam (`calendar-filter.ts`, transcribed); an
+   * empty selection hands back the very cells the grid has always drawn.
+   */
+  const kept = opts.calendars ?? [];
+  const horizonWeeks =
+    kept.length === 0 ? model.horizon : model.horizon.map((week) => week.map((cell) => keepCalendars(cell, kept)));
   const rota = 'rota' in opts ? opts.rota : 'tint';
   const variant =
     style === 'pills'
@@ -1561,16 +1588,21 @@ function renderHorizon(
           ? 'horizon horizon-text'
           : 'horizon';
   const horizon = el('section', variant);
+  // Each look that is not the treatment's own, as a class the stylesheet
+  // draws; a month on its own looks carries none (`calendar-looks.ts`).
+  for (const name of monthLookClasses(looks, style)) horizon.classList.add(name);
   /*
-   * The month, oversized, in the top-left corner.
+   * The month, in the top-left corner.
    *
-   * Swiss only, and the asymmetry is the point: a centred title over a
-   * symmetrical grid is the arrangement this style exists to argue against. It
-   * is drawn before the grid so it is also the first thing a screen reader and
-   * the DOM order agree on.
+   * The Swiss month's own, oversized, and the asymmetry is the point: a centred
+   * title over a symmetrical grid is the arrangement that style exists to argue
+   * against. Any month may ask for it now, large or as a label, and a Swiss one
+   * may hide it (plan item P5.4) — the absence is still the Swiss month's large
+   * heading and no heading anywhere else. It is drawn before the grid so it is
+   * also the first thing a screen reader and the DOM order agree on.
    */
-  if (style === 'swiss' && model.horizonMonth !== undefined) {
-    horizon.appendChild(el('h1', 'hz-title', model.horizonMonth));
+  if (looks.heading !== 'hidden' && model.horizonMonth !== undefined) {
+    horizon.appendChild(el('h1', looks.heading === 'small' ? 'hz-title is-small' : 'hz-title', model.horizonMonth));
   }
   /*
    * Week numbers get a column of their own rather than a corner of the first
@@ -1581,14 +1613,14 @@ function renderHorizon(
    */
   const weekNumbers =
     opts.weekNumbers === true &&
-    model.horizon.length > 0 &&
-    model.horizon.every((week) => week[0]?.weekNumber !== undefined);
+    horizonWeeks.length > 0 &&
+    horizonWeeks.every((week) => week[0]?.weekNumber !== undefined);
   const grid = el('div', weekNumbers ? 'hz-grid has-weeks' : 'hz-grid');
   // The weekday headers come from the first week's own cells rather than a fixed
   // Mon–Sun array: that follows the household's week-start (Sunday or Monday)
   // with no second source of truth, and localises for free since each cell
   // already carries its short weekday name.
-  const headerWeek = model.horizon[0] ?? [];
+  const headerWeek = horizonWeeks[0] ?? [];
   // The corner above the numbers stays empty: "WK" over a column of numbers is
   // a heading nobody needs and a word competing with the weekdays beside it.
   if (weekNumbers) grid.appendChild(el('div', 'hz-head'));
@@ -1615,7 +1647,7 @@ function renderHorizon(
    */
   const spans =
     style === 'text' || style === 'swiss'
-      ? monthSpans(model.horizon.map((week) => week.map((cell) => cell.events)))
+      ? monthSpans(horizonWeeks.map((week) => week.map((cell) => cell.events)))
       : undefined;
   /*
    * Which grid column the week's first day is in, 1-based, because a span bar
@@ -1625,8 +1657,24 @@ function renderHorizon(
    */
   const firstDayColumn = weekNumbers ? 2 : 1;
   let cellIndex = 0;
-  model.horizon.forEach((week, weekIndex) => {
+  horizonWeeks.forEach((week, weekIndex) => {
     if (weekNumbers) grid.appendChild(el('div', 'hz-wk', String(week[0]?.weekNumber ?? '')));
+    /*
+     * A rule above the week, when a flat-text month asks for one (plan item
+     * P5.4). The Swiss month draws its week rule as each cell's own top
+     * border, and that is untouched; the flat-text cells are separated by a
+     * gutter and have no rule to colour, so this one is a grid item of its
+     * own across the whole row — **absolutely positioned**, like a span bar,
+     * so it keeps its grid area and takes no track, no gap and no row from
+     * anything. A rule that cost a name would be the hairline this wall has
+     * already paid for twice.
+     */
+    if (style === 'text' && looks.rules === 'week') {
+      const rule = el('div', 'hz-weekrule');
+      rule.style.gridRow = String(weekIndex + 2);
+      rule.style.gridColumn = '1 / -1';
+      grid.appendChild(rule);
+    }
     const weekSpans = spans?.[weekIndex];
     week.forEach((cell, column) => {
       grid.appendChild(
@@ -2005,7 +2053,7 @@ export function renderWidget(
     case 'clock':
       return renderClockWidget(model, config);
     case 'calendar':
-      return renderCalendarWidget(model, config);
+      return calendarWidget(model, config);
     case 'weather':
       return renderWeather(model, config);
     case 'homeassistant':
@@ -2533,6 +2581,19 @@ function contentWithTitle(body: HTMLElement, config: unknown): HTMLElement {
  */
 const AGENDA_COUNT_DEFAULT = 12;
 
+function calendarWidget(model: DisplayModel, config: unknown): HTMLElement {
+  const section = renderCalendarWidget(model, config);
+  /*
+   * The calendar's look (plan item P5.4): `planner` and `bold` are colours and
+   * faces the server resolved into the box's style tokens, and a few shapes
+   * the stylesheet keys on this class — the numerals' face and weight, and the
+   * rules. On every view, because the numerals and the rules are every view's.
+   */
+  const look = variantOf('calendar', config);
+  if (look !== '') section.classList.add(`cal-${look}`);
+  return section;
+}
+
 function renderCalendarWidget(model: DisplayModel, config: unknown): HTMLElement {
   const c = widgetConfig(config);
   const { view, density } = calendarView(config);
@@ -2561,17 +2622,20 @@ function renderCalendarWidget(model: DisplayModel, config: unknown): HTMLElement
      * things on two screens.
      */
     const cellEvents = c['cellEvents'];
+    const cells: CellStyle =
+      cellEvents === 'pills'
+        ? 'pills'
+        : cellEvents === 'swiss'
+          ? 'swiss'
+          : cellEvents === 'dots'
+            ? 'dots'
+            : 'text';
     return renderHorizon(model, {
-      cells:
-        cellEvents === 'pills'
-          ? 'pills'
-          : cellEvents === 'swiss'
-            ? 'swiss'
-            : cellEvents === 'dots'
-              ? 'dots'
-              : 'text',
+      cells,
       weekNumbers: c['showWeekNumbers'] === true,
       rota,
+      calendars: calendarsOf(config),
+      looks: monthLooks(config, cells),
     });
   }
 
@@ -2584,6 +2648,7 @@ function renderCalendarWidget(model: DisplayModel, config: unknown): HTMLElement
       ? Math.min(50, Math.trunc(c['count']))
       : AGENDA_COUNT_DEFAULT;
   const showWeather = c['showWeather'] === true;
+  const showLocations = c['showLocations'] === true;
   const source = [model.today, ...model.next].filter(
     (day): day is DayModel => day !== undefined,
   );
@@ -2601,7 +2666,7 @@ function renderCalendarWidget(model: DisplayModel, config: unknown): HTMLElement
     budget -= events.length;
     any = any || events.length > 0;
     section.appendChild(
-      renderDayRow({ ...day, events, hiddenEventCount: 0 }, showWeather, showShifts),
+      renderDayRow({ ...day, events, hiddenEventCount: 0 }, showWeather, showShifts, showLocations),
     );
   }
   if (!any) section.appendChild(el('div', 'dr-empty', 'Nothing coming up.'));
@@ -3771,9 +3836,42 @@ export function applyMonthTier(root: HTMLElement): readonly CalendarTier[] {
   const grids = root.querySelectorAll('.horizon-text .hz-grid, .horizon-swiss .hz-grid');
   const resolved: CalendarTier[] = [];
   for (let index = 0; index < grids.length; index++) {
-    resolved.push(tierOneGrid(grids[index] as HTMLElement));
+    const grid = grids[index] as HTMLElement;
+    if (grid.closest('.mark-text') !== null) paintEventText(grid);
+    resolved.push(tierOneGrid(grid));
   }
   return resolved;
+}
+
+/**
+ * The words of each timed event in its calendar's own colour, made legible
+ * (plan item P5.4, the `text` event mark).
+ *
+ * A calendar's hue is a colour a household chose in a colour input, so there
+ * is no promise it reads as *text* on the theme's ground — the reason
+ * `paintOwnerColour` hands every coloured ground an ink of its own. This is the
+ * same care the other way round: the hue is mixed toward the theme's ink until
+ * it clears 4.5:1 on both grounds a calendar can sit on, `--bg` and `--panel`
+ * (`readableHue` in `theme.ts`, the designed styles' own loop). Taken here,
+ * after the grid is in the document, because the grounds are whatever the
+ * theme, the daylight switch and the widget's style lane resolved on *this*
+ * box, and a detached node has none of them. Paint only: no size, no row.
+ */
+function paintEventText(grid: HTMLElement): void {
+  const style = getComputedStyle(grid);
+  const bg = style.getPropertyValue('--bg').trim();
+  const panel = style.getPropertyValue('--panel').trim() || bg;
+  const ink = style.getPropertyValue('--ink').trim();
+  const rows = grid.querySelectorAll('.hz-row:not(.allday)');
+  for (let index = 0; index < rows.length; index++) {
+    const row = rows[index] as HTMLElement;
+    // The colour rides on the row's dot, which this mark hides rather than
+    // removes, so the default markup is the markup every look is built from.
+    const dot = row.querySelector('.hz-rowdot') as HTMLElement | null;
+    const hue = dot === null ? '' : dot.style.getPropertyValue('--pc').trim();
+    if (hue === '') continue;
+    row.style.setProperty('--pc-text', readableHue(hue, bg, panel, ink));
+  }
 }
 
 function tierOneGrid(grid: HTMLElement): CalendarTier {
@@ -4589,7 +4687,7 @@ export function renderFreeform(
     if (weekColumnsFit(box.clientWidth, rem)) continue;
     box.classList.remove('fw-fill');
     box.textContent = '';
-    const agenda = renderCalendarWidget(model, { ...widgetConfig(widget.config), mode: 'list' });
+    const agenda = calendarWidget(model, { ...widgetConfig(widget.config), mode: 'list' });
     box.appendChild(contentWithTitle(agenda, widget.config));
     agendas.push({ section: agenda, box, widget });
   }
@@ -4716,6 +4814,7 @@ function retierAgenda(
    * measurement the belt below takes, deliberately — two opinions about "does
    * this fit" is how the old day trim came to measure the wrong element.
    */
+  fitLocations(entry.section);
   const afford = agendaEventsAt(box, entry.section, promote);
   box.setAttribute('data-tier', afford.tier.tier);
   redrawAgenda(entry, model, config, Math.min(asked, afford.rows));
@@ -4736,10 +4835,38 @@ function redrawAgenda(
   count: number,
 ): void {
   if (count === drawnEventCount(entry.section)) return;
-  const rebuilt = renderCalendarWidget(model, { ...config, mode: 'list', count });
+  const rebuilt = calendarWidget(model, { ...config, mode: 'list', count });
   if (entry.section.classList.contains('narrow')) rebuilt.classList.add('narrow');
   entry.section.replaceWith(rebuilt);
   entry.section = rebuilt;
+  fitLocations(rebuilt);
+}
+
+/**
+ * Keep each event's place only where it costs the event nothing.
+ *
+ * A location is drawn after the title, and a title wraps: a place that pushes
+ * the words onto another line has bought itself a row out of the agenda's
+ * budget, and the rule on this wall is that nothing annotating an event may.
+ * So each one is measured both ways — the title with its place, and without —
+ * and kept only where the two are the same height. Whole or not at all, like a
+ * month cell's name: a place cut in half is a different place.
+ *
+ * Run before the agenda asks how many events its box affords, and again on
+ * every redraw, so the count is always taken of the rows that will be drawn.
+ */
+function fitLocations(section: HTMLElement): void {
+  const places = section.querySelectorAll('.dr-ev-loc');
+  for (let index = 0; index < places.length; index++) {
+    const place = places[index] as HTMLElement;
+    const title = place.parentElement;
+    if (title === null) continue;
+    place.style.display = '';
+    const withPlace = title.getBoundingClientRect().height;
+    place.style.display = 'none';
+    const without = title.getBoundingClientRect().height;
+    if (withPlace <= without + 0.5) place.style.display = '';
+  }
 }
 
 /**

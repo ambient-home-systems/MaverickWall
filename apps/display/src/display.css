@@ -1504,6 +1504,19 @@ body {
 .next.narrow .dr-ev-time { text-align: left; }
 .next.narrow .dr-ev-span { grid-column: 1; }
 .dr-ev.allday .dr-ev-title { font-weight: 600; grid-column: 1 / -1; }
+/*
+ * An event's place, after its title (plan item P5.4, part 6): the scaffold
+ * role in the quiet ink, so the name stays what is read and the place what
+ * labels it. Inline, at a smaller size and the title's own unitless leading,
+ * so on a line the title already has it sits inside that line's box; where it
+ * would start a line of its own, `fitLocations` does not draw it.
+ */
+.dr-ev-loc {
+  font-family: var(--f-sans); font-weight: 400;
+  font-size: var(--t-wall-scaffold, 1.15rem);
+  color: var(--ink-quiet);
+  margin-left: 0.4em;
+}
 
 /* "Day 2 of 4". Under the title, in the title's column, so it reads as part
    of the event rather than as another event. */
@@ -2325,6 +2338,120 @@ body {
 
 /* The week-number column follows the grid's own left alignment. */
 .horizon-swiss .hz-wk { justify-content: flex-start; align-items: flex-start; padding-top: 0.7rem; }
+
+/* ------------------------------------------- MONTH LOOKS (P5.4) ---------- */
+/*
+ * Today, the heading, the event mark and the rules, each a look a household
+ * may pick for the comfortable month (plan item P5.4, part 4). A class lands
+ * on the grid's section only when the look is not its treatment's own
+ * (`calendar-looks.ts`), so none of this matches a month on its own looks and
+ * a hanging wall draws exactly what it drew.
+ *
+ * **Nothing here costs an event its row, and each rule says why.** Today's
+ * marks are paint — an outline, a colour, a ground behind the numeral with
+ * horizontal padding only, inside a line whose height is the numeral's own.
+ * The bar is narrower than the dot and its gap together, and coloured text has
+ * no mark at all, so a row keeps every pixel it had. The week rule is an
+ * absolutely positioned grid item, or a colour on a border a Swiss cell
+ * already carries. `browser-calendar-looks.test.ts` holds every look to the
+ * same names as the treatment's own, at two wall sizes.
+ */
+
+/* Today: the ring (the flat-text month's), the numeral (the Swiss month's) or
+   the numeral knocked out of an accent disc (the compact month's). */
+.horizon.today-numeral .hz-cell.is-today,
+.horizon.today-fill .hz-cell.is-today { outline: none; }
+.horizon.today-numeral .hz-cell.is-today .hz-num { color: var(--accent); }
+.horizon.today-fill .hz-cell.is-today .hz-num {
+  background: var(--accent); color: var(--bg);
+  border-radius: 0.2rem; padding: 0 0.28rem;
+}
+/*
+ * A ring on the Swiss month is drawn *outside* the cell, into the column
+ * gutter and the padding of the week above. Inset, as the flat-text month
+ * draws it, it would lie over the first letters of every row: a Swiss cell has
+ * no left padding, because its column gutter is its structure — and a name
+ * drawn under the marker for today reads as a broken renderer.
+ */
+.horizon-swiss.today-ring .hz-cell.is-today { outline: 0.2rem solid var(--ink); outline-offset: 0.12rem; }
+.horizon-swiss.today-ring .hz-cell.is-today .hz-num { color: var(--muted); }
+
+/* The heading as a label: the weekday heads' own register, one line. */
+.hz-title.is-small {
+  font-family: var(--f-sans); font-stretch: 100%;
+  font-size: var(--t-micro);
+  font-size: var(--t-wall-label, max(var(--t-micro), var(--t-floor)));
+  line-height: 1.15;
+  letter-spacing: var(--ls-scaffold); text-transform: uppercase;
+  color: var(--ink-scaffold);
+  margin: 0 0 0.45rem;
+}
+
+/*
+ * A timed event's calendar as a bar down the row's edge — the all-day row's
+ * own grammar, at its width. 0.22rem and a 0.24rem gap against the dot's
+ * 0.42rem and 0.28rem: the words get width back, never lose it.
+ */
+.horizon.mark-bar .hz-row:not(.allday) { gap: 0.24rem; }
+.horizon.mark-bar .hz-rowdot {
+  width: 0.22rem; height: auto; align-self: stretch;
+  border-radius: 0; margin-top: 0;
+}
+/*
+ * …or as the colour of its words, with no mark at all. `--pc-text` is the
+ * calendar's hue made legible on this box's grounds (`paintEventText`); the
+ * event ink is the fallback until it is written. Past days too: the colour
+ * is the only thing left saying whose event it is.
+ */
+.horizon.mark-text .hz-rowdot { display: none; }
+.horizon.mark-text .hz-row:not(.allday) .hz-rowtext { color: var(--pc-text, var(--ink-event)); }
+
+/*
+ * A rule above each week on the flat-text month, centred in the gap between
+ * rows. Out of flow — an absolutely positioned grid item like a span bar — so
+ * it takes no track and no gap. `--hz-rowgap` restates the grid's own gap for
+ * the one rule that has to sit inside it.
+ */
+.horizon-text .hz-grid {
+  --hz-rowgap: min(0.35rem, 0.45cqw);
+}
+.hz-weekrule {
+  position: absolute; left: 0; right: 0;
+  top: calc(var(--hz-rowgap, 0.35rem) / -2 - 0.5px);
+  height: 1px;
+  background: var(--rule-week);
+  pointer-events: none;
+}
+/* And none on the Swiss month: the hairline is a colour on a border the cell
+   keeps, so taking it away moves nothing. A rota's rule is not a week rule. */
+.horizon-swiss.rules-none .hz-cell:not(.has-shift):not(.has-shift-edge) { border-top-color: transparent; }
+
+/* ------------------------------------- CALENDAR VARIANTS (P5.4) ---------- */
+/*
+ * `planner` and `bold` are mostly tokens — the server lays a lane under the
+ * widget's own (`lookLane` in `widget-style.ts`): a paper palette and Fraunces
+ * for the planner, the box's own ink as the rule and Roboto Flex for bold — so
+ * the scaffold ink, the tints and every designed colour are re-derived against
+ * the ground the box actually has. What a token cannot say is the numerals'
+ * face where a treatment names its own, and their weight; that is all here.
+ * Two classes on each selector (the section's own and the look's), so the
+ * look outranks a theme's `:root[data-theme]` numeral weight.
+ */
+.horizon.cal-planner .hz-num, .horizon-swiss.cal-planner .hz-cell .hz-num,
+.skymonth.cal-planner .sk-mnum, .skyweek.cal-planner .sk-num,
+.weekcols.cal-planner .wc-num, .next.cal-planner .dr-num {
+  font-family: var(--disp); font-stretch: var(--disp-stretch, 100%);
+  font-weight: 400; letter-spacing: 0;
+}
+.horizon.cal-bold .hz-num, .horizon-swiss.cal-bold .hz-cell .hz-num,
+.skymonth.cal-bold .sk-mnum, .skyweek.cal-bold .sk-num,
+.weekcols.cal-bold .wc-num, .next.cal-bold .dr-num {
+  font-family: var(--disp); font-stretch: var(--disp-stretch, 100%);
+  font-weight: 900;
+}
+/* High-contrast rules: the rule is the ink (the lane's `--rule`), and the flat
+   month's week rule is drawn twice as heavy, still out of flow. */
+.horizon.cal-bold .hz-weekrule { height: 2px; top: calc(var(--hz-rowgap, 0.35rem) / -2 - 1px); }
 
 /*
  * A calendar widget in a freeform box fills the box: its month rows (or week

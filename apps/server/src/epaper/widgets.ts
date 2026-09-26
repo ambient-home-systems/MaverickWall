@@ -65,6 +65,7 @@ import {
 } from './ladder.js';
 import { calendarView } from './calendar-view.js';
 import { shiftsShown } from './shift-style.js';
+import { calendarsOf } from './calendar-filter.js';
 import { variantOf } from './variants.js';
 import { withInk } from './honours.js';
 import { childCells, groupChildren, topLevelWidgets } from './group-cells.js';
@@ -1977,7 +1978,7 @@ function drawCalendarWidget(
       model,
       m,
       box,
-      { pills: cellEvents !== 'dots', shifts: shiftsShown(config, 'month') },
+      { pills: cellEvents !== 'dots', shifts: shiftsShown(config, 'month'), calendars: calendarsOf(config) },
       log,
     );
   }

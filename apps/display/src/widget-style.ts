@@ -175,6 +175,61 @@ export const STYLE_DERIVED: readonly { readonly token: string; readonly from: re
   { token: '--sky-storm-bottom', from: ['--bg'] },
 ];
 
+/**
+ * The colours a calendar's `planner` look lays on its box (plan item P5.4):
+ * a paper ground, a pen's ink and a ledger's rules — Paper Almanac's own
+ * eleven colours, which are hand-tuned for exactly that and held to the
+ * contrast bar by the theme's own tests, rather than a twelfth palette nobody
+ * has measured. Almanac's face comes with it, so the numerals are Fraunces.
+ *
+ * A **lane**, not a stylesheet rule, because a lane is what re-derives the
+ * scaffold ink, the shift tints and every designed colour against the new
+ * ground: a paper box on a dark wall whose date numerals were still measured
+ * against the dark wall would be the invisible numeral this derivation exists
+ * to prevent. It sits under the widget's own lane, so a household who picks
+ * Planner and then its own accent gets their accent.
+ */
+export const PLANNER_LANE: Readonly<Record<string, string>> = {
+  '--bg': '#FBF8F1',
+  '--panel': '#FFFFFF',
+  '--rule': '#E4DCC9',
+  '--ink': '#241F19',
+  '--muted': '#8A8474',
+  '--faint': '#A89F8B',
+  '--accent': '#B3372B',
+  '--s-day': '#986911',
+  '--s-night': '#2F5D8C',
+  '--s-break': '#467E52',
+  '--s-straight': '#777166',
+  '--disp': "'Fraunces', Georgia, serif",
+};
+
+/**
+ * The face a calendar's `bold` look draws its numerals in: Roboto Flex, whose
+ * weight axis reaches 1000 — the one bundled face that has a heavier numeral
+ * than the 700 every month already draws. Oswald, Space Grotesk and Fraunces
+ * stop at 700, so asking them for a heavier weight would draw the same glyphs.
+ */
+export const BOLD_FACE = "'Roboto Flex', 'Roboto Condensed', 'Roboto', system-ui, sans-serif";
+
+/**
+ * The lane a widget's look lays under its own (plan item P5.4), or nothing.
+ *
+ * `ink` is the ink the box will actually draw in — the theme's, under the
+ * wall's default lane, under the widget's own — because `bold`'s rules are
+ * that ink: a high-contrast rule is a rule in the colour the words are.
+ */
+export function lookLane(
+  type: string,
+  variant: unknown,
+  ink: string | undefined,
+): Readonly<Record<string, string>> | undefined {
+  if (type !== 'calendar') return undefined;
+  if (variant === 'planner') return PLANNER_LANE;
+  if (variant === 'bold') return ink === undefined ? { '--disp': BOLD_FACE } : { '--rule': ink, '--disp': BOLD_FACE };
+  return undefined;
+}
+
 // ---- end style tables ----
 
 /** A lane as the editor holds it: the colours and faces set, and the enums. */

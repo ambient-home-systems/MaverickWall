@@ -15,15 +15,14 @@
  * its default, the same way a Weather widget reads a shift field in `fields`
  * as nothing to do with it.
  *
- * **The clock's, the forecast's, the countdown's and Home Assistant's tile
- * draw; the calendar's two do not yet.** Those are the values the plan names,
- * added ahead of their drawings so the schema, the editor and the panel's
- * honours tables have one shape to grow into; every renderer draws the
- * calendar's default for both until the session that designs them (P5.4).
- * `browser-widget-looks.test.ts` holds the wall to that and
- * `epaper-ink.test.ts` holds the panel to it; the designed looks are measured
- * in `browser-weather-range`, `-colour`, `-today` and `-playful`, the
- * `browser-countdown-*` files and `browser-ha-tile`.
+ * **Every type's looks draw now but Home Assistant's `list`, which is its
+ * default.** The calendar's two were the last (P5.4): `planner` and `bold` are
+ * a lane the server lays under the widget's own (`lookLane` in
+ * `widget-style.ts`) plus the numerals' face and weight in the stylesheet. A
+ * panel still draws a calendar one way, and `epaper-ink.test.ts` holds it to
+ * that; the designed looks are measured in `browser-weather-range`,
+ * `-colour`, `-today` and `-playful`, the `browser-countdown-*` files,
+ * `browser-ha-tile` and `browser-calendar-looks`.
  *
  * Pure, with no DOM, for the reason `widget-options.ts`, `ink.ts` and
  * `ladder.ts` are: the renderer builds nodes and does no thinking, and there is

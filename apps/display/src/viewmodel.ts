@@ -8,6 +8,7 @@ import type {
 } from './manifest.js';
 import { isGlyphKey, type GlyphKey } from './glyphs.js';
 import { markInitial } from './shift-style.js';
+import { countBySource } from './calendar-filter.js';
 import { styleTokensOf } from './widget-style.js';
 import { NO_ONE_SHOTS, type OneShotMemory } from './motion.js';
 export type { ManifestShift };
@@ -277,6 +278,13 @@ export interface HorizonCell {
    */
   readonly shifts: readonly HorizonShift[];
   readonly eventCount: number;
+  /**
+   * The same total per calendar, by source id — what a widget that keeps only
+   * some calendars counts from (plan item P5.4, `calendar-filter.ts`), since
+   * `events` below is capped and a count cannot be taken from a list that has
+   * been cut.
+   */
+  readonly sourceCounts: ReadonlyMap<string, number>;
   /**
    * A few of the day's events, for the `pills` and `week` calendar modes. Capped
    * because a cell or a column has room for a handful; `eventCount` above is the
@@ -1725,6 +1733,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
       inMonth: date.slice(0, 7) === todayMonth,
       shifts,
       eventCount: events.length,
+      sourceCounts: countBySource(events),
       /*
        * Enough for the densest cell any style draws, and the *renderer* does
        * the cutting.

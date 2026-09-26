@@ -115,7 +115,36 @@ const widgetConfigFields = z
      * chosen, since three of the four are colour.
      */
     shiftStyle: z.enum(['tint', 'label', 'edge', 'dot']).optional(),
+    /*
+     * The comfortable month's looks (plan item P5.4, part 4): how today is
+     * marked, whether the month is named above the grid, how a timed event
+     * says whose it is, and whether each week is ruled. **Absent means the
+     * cell treatment's own look** — the flat-text month's ring, no heading, a
+     * dot and no rule; the Swiss month's accent numeral, large heading, dot and
+     * hairline — so a canvas saved before these keys existed draws exactly as
+     * it did. Resolved by `monthLooks` in `apps/display/src/calendar-looks.ts`;
+     * a panel reads none of them and `PANEL_IGNORES` says why. Full grid lines
+     * and weekend shading are deliberately not values here (open question Q1:
+     * "a month cell is not a card").
+     */
+    todayStyle: z.enum(['ring', 'fill', 'numeral']).optional(),
+    monthHeading: z.enum(['large', 'small', 'hidden']).optional(),
+    eventMark: z.enum(['dot', 'bar', 'text']).optional(),
+    gridLines: z.enum(['week', 'none']).optional(),
+    /*
+     * Accepted, never written by the editor, and read by nothing: the agenda
+     * draws every timed event's time and has no time to switch off, and the
+     * month's times are its widest tier's to decide. Kept in this `.strict()`
+     * schema because deleting it would refuse any stored config that carries
+     * it — a 400 on a save the household did not make (plan item P5.4, part 6).
+     */
     showTimes: z.boolean().optional(),
+    /*
+     * The agenda draws each event's location after its title, in the quiet
+     * ink, when this is `true` — and only where it fits on the title's last
+     * line, so it never costs an event a line (plan item P5.4, part 6). Absent
+     * means off, so no agenda already hanging changes.
+     */
     showLocations: z.boolean().optional(),
     /*
      * Shift — whose rota the badge draws, and which of its lines.

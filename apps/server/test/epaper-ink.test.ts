@@ -301,6 +301,11 @@ const PROBES: Readonly<Record<string, readonly unknown[]>> = {
   shiftStyle: ['label', 'edge', 'dot'],
   showTimes: [false],
   showLocations: [true],
+  // The month's four looks (P5.4): every value but each treatment's own.
+  todayStyle: ['ring', 'fill', 'numeral'],
+  monthHeading: ['large', 'small', 'hidden'],
+  eventMark: ['bar', 'text'],
+  gridLines: ['week', 'none'],
   people: [['p1']],
   fields: [['shift'], ['value'], ['high'], ['label']],
   shiftName: ['code'],

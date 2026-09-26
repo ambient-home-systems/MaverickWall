@@ -303,3 +303,45 @@ describe('assembly', () => {
     expect(Object.keys(plain!).sort()).toEqual(['config', 'h', 'id', 'type', 'w', 'x', 'y', 'z']);
   });
 });
+
+// ---- A calendar's look (plan item P5.4) -----------------------------------------
+
+describe('a calendar’s look, laid as a lane under the widget’s own', () => {
+  const calendar = (id: string, config: unknown): PlacedWidgetRow => ({ ...widget(id, config), type: 'calendar' });
+  const placedOf = (config: unknown, extra: Partial<BuildManifestInput> = {}) =>
+    buildManifest({ ...BASE, ...extra, layoutWidgetsPortrait: [calendar('cal', config)] }).layout.portrait.widgets[0]!;
+
+  it('carries nothing for the standard look, so an unstyled calendar sends the row it always sent', () => {
+    expect(Object.keys(placedOf(undefined)).sort()).toEqual(['config', 'h', 'id', 'type', 'w', 'x', 'y', 'z']);
+    expect(Object.keys(placedOf({ cellEvents: 'swiss' })).sort()).toEqual(['config', 'h', 'id', 'type', 'w', 'x', 'y', 'z']);
+    // A look another type owns is not a calendar's.
+    expect(placedOf({ variant: 'analogue' }).styleTokens).toBeUndefined();
+  });
+
+  it('lays a paper ground on a planner, with its numerals and scaffold measured against the paper', () => {
+    const tokens = placedOf({ variant: 'planner' }).styleTokens!;
+    expect(tokens['--bg']).toBe(BUILTIN_THEME_TOKENS.almanac['--bg']);
+    expect(tokens['--disp']).toBe(FRAUNCES);
+    // On Panels' near-black wall, the scaffold is re-derived for cream, not kept dark-on-dark.
+    expect(contrast(tokens['--ink-scaffold']!, tokens['--bg']!)).toBeGreaterThanOrEqual(4.5);
+    expect(tokens['--ink-scaffold']).not.toBe(withTints({ ...BUILTIN_THEME_TOKENS.panels, '--radius': '0' })['--ink-scaffold']);
+  });
+
+  it('lets the household’s own lane win over the planner’s token by token', () => {
+    const tokens = placedOf({ variant: 'planner', style: { '--accent': '#0B3D91' } }).styleTokens!;
+    expect(tokens['--accent']).toBe('#0B3D91');
+    expect(tokens['--bg']).toBe(BUILTIN_THEME_TOKENS.almanac['--bg']);
+  });
+
+  it('rules a bold month in the ink the box draws in, under whichever theme is showing', () => {
+    const placed = placedOf(
+      { variant: 'bold' },
+      { screen: { ...BASE.screen!, daytimeTheme: 'almanac', daytimeStartsAt: '07:00', daytimeEndsAt: '19:00' } },
+    );
+    expect(placed.styleTokens!['--rule']).toBe(BUILTIN_THEME_TOKENS.panels['--ink']);
+    expect(placed.styleTokens!['--rule-week']).toBe(BUILTIN_THEME_TOKENS.panels['--ink']);
+    expect(placed.daytimeStyleTokens!['--rule']).toBe(BUILTIN_THEME_TOKENS.almanac['--ink']);
+    // And follows a widget that set its own ink.
+    expect(placedOf({ variant: 'bold', style: { '--ink': '#2A2A2A' } }).styleTokens!['--rule']).toBe('#2A2A2A');
+  });
+});

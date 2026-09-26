@@ -22,7 +22,7 @@ import { isEinkWall, physicalWall } from '../wall-sizes.js';
 import { wallMotion } from '../wall-motion.js';
 import { isWidgetGround, wallpaperById, type WidgetGround } from '../wallpapers.js';
 import { builtinThemeTokens } from './builtin-themes.js';
-import { resolveStyleTokens, storedStyleLayer, styleLayerOf, type WidgetStyle } from './widget-style.js';
+import { lookLane, resolveStyleTokens, storedStyleLayer, styleLayerOf, type WidgetStyle } from './widget-style.js';
 
 /**
  * The manifest: everything a display needs, in one document.
@@ -641,14 +641,31 @@ const NO_STYLE: StyleContext = { active: builtinThemeTokens(STAND_IN_THEME) };
  * The display applies whichever theme it is showing, which only it knows.
  */
 function widgetStyleFields(
+  type: string,
   config: unknown,
   styling: StyleContext,
 ): { readonly styleTokens?: Record<string, string>; readonly daytimeStyleTokens?: Record<string, string> } {
-  const own = styleLayerOf(typeof config === 'object' && config !== null ? (config as Record<string, unknown>)['style'] : undefined);
-  if (own === undefined) return {};
+  const c = typeof config === 'object' && config !== null ? (config as Record<string, unknown>) : {};
+  const own = styleLayerOf(c['style']);
   const context = styling.canvas === undefined ? [] : [styling.canvas];
-  const active = resolveStyleTokens(styling.active, context, own);
-  const day = styling.daytime === undefined ? undefined : resolveStyleTokens(styling.daytime, context, own);
+  /*
+   * A calendar's look (plan item P5.4) is a lane laid under the widget's own:
+   * `planner`'s paper palette and face, `bold`'s rules in the box's own ink.
+   * Resolved per theme, because `bold`'s ink is whichever ink the box draws
+   * in under that theme. A widget with no look and no lane still returns
+   * nothing, so its row is byte-identical to the one it always sent.
+   */
+  const layered = (base: Readonly<Record<string, string>>): WidgetStyle | undefined => {
+    const ink = (own?.['--ink'] as string | undefined) ?? styling.canvas?.['--ink'] ?? base['--ink'];
+    const look = lookLane(type, c['variant'], ink);
+    if (look === undefined) return own;
+    return { ...look, ...(own ?? {}) } as WidgetStyle;
+  };
+  const activeLane = layered(styling.active);
+  if (activeLane === undefined) return {};
+  const active = resolveStyleTokens(styling.active, context, activeLane);
+  const day =
+    styling.daytime === undefined ? undefined : resolveStyleTokens(styling.daytime, context, layered(styling.daytime));
   return {
     ...(active === undefined ? {} : { styleTokens: active }),
     ...(day === undefined ? {} : { daytimeStyleTokens: day }),
@@ -687,7 +704,7 @@ function placeCanvas(
       config: displayConfig(widget.type, widget.config, readings),
       // The style lane, resolved (RFC 014 §4.1) — absent for a widget that
       // carries none, which is every widget until a household opens the tab.
-      ...widgetStyleFields(widget.config, styling),
+      ...widgetStyleFields(widget.type, widget.config, styling),
       // The group this box sits inside (RFC 014 §5.1). Spread, so a canvas
       // with no group serialises byte for byte as it did before the key.
       ...(widget.parentId !== undefined ? { parentId: widget.parentId } : {}),

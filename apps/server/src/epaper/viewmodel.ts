@@ -19,6 +19,7 @@ import { addDays, dayOfWeek, type CivilDate } from '@maverick-wall/core';
 
 import type { Manifest, ManifestDay, ManifestEvent, ManifestPersonShift } from '../api/manifest.js';
 import { markInitial, type ShiftMark } from './shift-style.js';
+import { countBySource } from './calendar-filter.js';
 
 /**
  * The most of today the model carries, so the *renderer* can decide how much
@@ -105,6 +106,12 @@ export interface EpaperGridCell {
   /** How many events fall on this day, for density shading. */
   readonly eventCount: number;
   /**
+   * The same total per calendar, by source id, so a widget that keeps some
+   * calendars counts only theirs (plan item P5.4) — `events` below is capped,
+   * and a count cannot be taken from a list that has been cut.
+   */
+  readonly sourceCounts: ReadonlyMap<string, number>;
+  /**
    * The first few events on this day, for the labelled-pill month and the week
    * columns. Density shading only ever needed the count; a cell that names what
    * is on it needs the names, and a panel has no second request to make.
@@ -135,6 +142,8 @@ export interface EpaperCellEvent {
   readonly allDay: boolean;
   /** The server's own "covers more than one date". */
   readonly continues: boolean;
+  /** Which calendar it came from, for the widget's "calendars to show". */
+  readonly sourceId: string;
 }
 
 export interface EpaperShiftLine {
@@ -338,6 +347,7 @@ export function buildEpaperModel(manifest: Manifest, options: EpaperViewOptions 
         isToday: date === today,
         inWindow: day !== undefined,
         eventCount: gridEvents.length,
+        sourceCounts: countBySource(gridEvents),
         shifts: (day?.shifts ?? []).map((shift) => ({
           initial: markInitial(shift.personName),
           code: shift.shortCode,
@@ -350,6 +360,7 @@ export function buildEpaperModel(manifest: Manifest, options: EpaperViewOptions 
             title: event.title,
             allDay: event.allDay,
             continues: event.continues,
+            sourceId: event.sourceId,
           })),
       });
     }

@@ -531,6 +531,31 @@ export function customTokens(base: Readonly<Record<string, string>>): Record<str
 }
 
 /**
+ * A colour the household chose, as *text* on the theme's two grounds.
+ *
+ * The designed styles' `readable` loop (`paletteTokens`), for a hue that
+ * arrives at draw time rather than with the theme: a calendar's colour drawn
+ * as its event's words (plan item P5.4). Mixed toward the theme's ink in the
+ * same steps until it clears 4.5:1 on both `--bg` and `--panel`, so it keeps
+ * as much of its identity as the grounds allow and ends at the ink — which is
+ * still legible — on a ground where no tint of it would be. An unparseable
+ * value on either side answers the ink.
+ */
+export function readableHue(hue: string, background: string, panel: string, ink: string): string {
+  if (parseHex(hue) === undefined || parseHex(background) === undefined || parseHex(ink) === undefined) {
+    return ink;
+  }
+  const other = parseHex(panel) === undefined ? background : panel;
+  let ratio = 0;
+  let value = hue;
+  while ((contrastRatio(value, background) < 4.5 || contrastRatio(value, other) < 4.5) && ratio < 1) {
+    ratio = Math.round((ratio + 0.02) * 100) / 100;
+    value = mix(ink, hue, ratio);
+  }
+  return value;
+}
+
+/**
  * The ink to draw *on* a colour the household chose.
  *
  * A calendar's hue is the one ground on this wall that is not a theme surface:
