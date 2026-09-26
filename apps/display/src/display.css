@@ -819,6 +819,361 @@ body {
   text-align: center;
 }
 
+/*
+ * The `colour` forecast (plan item P5.1): the strip, painted.
+ *
+ * Every rule is scoped under `.wx-colour`, so the strip every other wall draws
+ * is untouched to the pixel — Classic's forecast is the strip, and its
+ * ratchets are the check. On a measured wall the runs take their roles (the
+ * temperature the event's, the low the time's, the name the scaffold's), so a
+ * colour strip is legible at the same angle as the agenda beside it; on an
+ * unmeasured wall each role's fallback is the strip's own rem, so the two draw
+ * the same geometry and differ only in colour and the glyph.
+ *
+ * The glyph is 1.4x the temperature where the strip's is 1.18x: a two-tone sky
+ * is two objects in one mark, and at the strip's size the smaller is a speck of
+ * a second colour. `COLOUR_TIERS` pays for the height.
+ */
+.wx-colour .wx-name { font-size: var(--t-wall-scaffold, 1.25rem); }
+.wx-colour .wx-temp { font-size: var(--t-wall-event, 1.7rem); }
+.wx-colour .wx-temp.lo { font-size: var(--t-wall-time, 1.3rem); }
+.wx-colour .wx-ico {
+  width: calc(var(--t-wall-event, 1.7rem) * 1.4);
+  height: calc(var(--t-wall-event, 1.7rem) * 1.4);
+}
+[data-tier="T1"] .wx-colour .wx-ico {
+  width: calc(var(--t-wall-event, 1.7rem) * 1.1);
+  height: calc(var(--t-wall-event, 1.7rem) * 1.1);
+}
+[data-tier="T3"] .wx-colour .wx-ico {
+  width: calc(var(--t-wall-event, 1.7rem) * 1.8);
+  height: calc(var(--t-wall-event, 1.7rem) * 1.8);
+}
+/*
+ * A temperature's tone, from `weather-scale.ts`. After the strip's `.lo` rules
+ * and at their specificity, so the low keeps its quieter weight and takes its
+ * own colour instead of `--muted`: a tint that stopped at the high would say
+ * half of the range. The tokens are contrast-held against both grounds a
+ * widget sits on (`paletteTokens`), so a tinted number is as legible as the
+ * muted one it replaces.
+ */
+.wx-colour [data-tone="cold"] { color: var(--temp-cold); }
+.wx-colour [data-tone="cool"] { color: var(--temp-cool); }
+.wx-colour [data-tone="warm"] { color: var(--temp-warm); }
+.wx-colour [data-tone="hot"] { color: var(--temp-hot); }
+
+/*
+ * A sky's parts, painted (`glyphs.ts`'s `GLYPH_PARTS`). Keyed on the glyph's
+ * own `gl-parts` class rather than on the widget, so the parts are colours
+ * wherever a two-tone sky is drawn; the svg's own `currentColor` is what any
+ * part the sheet does not name falls back to.
+ */
+.gl-parts .gl-sun,
+.gl-parts .gl-bolt { fill: var(--wx-sun); }
+.gl-parts .gl-cloud,
+.gl-parts .gl-wind { fill: var(--wx-cloud); }
+.gl-parts .gl-rain { fill: var(--wx-rain); }
+.gl-parts .gl-snow { fill: var(--wx-snow); }
+.gl-parts .gl-fog { fill: var(--wx-fog); }
+.gl-parts .gl-storm { fill: var(--wx-storm); }
+
+/*
+ * The `range` forecast (plan item P5.1, "iOS 10-day"): a row per day, with a
+ * bar from the low to the high on the week's own scale.
+ *
+ * Each row is its own grid on one shared template (`--wr-cols`, written by
+ * `renderWeatherRange`) whose widths the tier pass fills in with the widest
+ * name and temperature, so the columns line up down the list and nothing is
+ * cut: a name is never ellipsised, because the table asks for room beside the
+ * widest one rather than budgeting for a short one. Rows are separated by a
+ * rule and space, never a card — the strip's own rule, one direction along.
+ *
+ * Sized by role on a measured wall: the temperatures and the name are the
+ * event role, the rain chance the scaffold's, and the glyph and the bar are
+ * lengths in the row's own `em`, which is the temperature. `line-height` is a
+ * number, for the reason `.wx`'s neighbours give — `normal` is a property of
+ * the face file and moves a row a pixel when a font lands.
+ */
+.wx-range {
+  display: flex;
+  flex-direction: column;
+  padding: var(--s2) 0;
+  flex: 0 0 auto;
+}
+.wr-row {
+  display: grid;
+  grid-template-columns: var(--wr-cols);
+  align-items: center;
+  column-gap: 0.45em;
+  padding: var(--s1) 0;
+  font-size: var(--t-wall-event, 1.7rem);
+  line-height: 1.15;
+  min-height: 1.5em;
+}
+.wr-row + .wr-row { border-top: 1px solid var(--rule); }
+.wr-name {
+  font-size: var(--t-wall-event, 1.5rem);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.wr-ico { width: 1.3em; height: 1.3em; }
+.wr-rain {
+  font-size: var(--t-wall-scaffold, 1.25rem);
+  font-weight: 700;
+  color: var(--wx-rain);
+  text-align: right;
+  white-space: nowrap;
+}
+.wr-temp {
+  font-size: var(--t-wall-event, 1.7rem);
+  font-weight: 600;
+  text-align: right;
+  white-space: nowrap;
+}
+.wr-lo { color: var(--muted); font-weight: 400; }
+/* The track, the day's window on it, and one ramp inside every window. */
+.wr-bar {
+  position: relative;
+  height: 0.3em;
+  border-radius: 0.15em;
+  background: var(--rule);
+}
+.wr-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 0.3em;
+  border-radius: inherit;
+  overflow: hidden;
+}
+.wr-ramp { position: absolute; top: 0; bottom: 0; }
+/* Where it is now, on today's bar: a dot in the wall's own ink. */
+.wr-now {
+  position: absolute;
+  top: 50%;
+  width: 0.55em;
+  height: 0.55em;
+  margin: -0.275em 0 0 -0.275em;
+  border-radius: 50%;
+  background: var(--ink);
+}
+
+/*
+ * The `today` forecast (plan item P5.1, "iOS widget"): a card on its sky.
+ *
+ * **The only widget on the wall with a ground of its own**, and it earns one:
+ * the sky *is* the reading, the way a phone's weather card is blue at noon and
+ * indigo at midnight. `data-sky` picks one of the six gradients every theme
+ * derives (`paletteTokens` in `theme.ts`, decision D2), each with the ink that
+ * clears 4.5:1 on both of its stops, so no colour is chosen here and a custom
+ * theme restyles its skies by restyling its palette. It casts the theme's own
+ * `--shadow-card` (decision D8), which Blueprint, Swiss and every e-ink-sized
+ * wall set to none.
+ *
+ * The card fills its box: it is a card rather than a strip. Every size is a
+ * role on a measured wall and the design's rem on one nobody has measured,
+ * except the lede — the one large reading decision D1 permits — which is the
+ * room the rest leaves, written back by `tierToday` as `--wt-lede-size`, and
+ * never larger than the clock's own cap (`--t-wall-clock`, 1.8x the event
+ * role; `calc(var(--t-event) * 1.8)` where nobody measured). The first draw
+ * sets no size and draws the cap, which is what `tierToday` measures from.
+ * `line-height` is a number throughout, for the reason `.wx`'s neighbours give.
+ */
+.wx-today {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: var(--s3) var(--s4);
+  border-radius: var(--radius, 0.4rem);
+  background: linear-gradient(180deg, var(--wt-top), var(--wt-bottom));
+  color: var(--wt-ink);
+  box-shadow: var(--shadow-card, none);
+  line-height: 1.15;
+}
+.wx-today[data-sky="day"] {
+  --wt-top: var(--sky-day-top);
+  --wt-bottom: var(--sky-day-bottom);
+  --wt-ink: var(--sky-day-ink);
+}
+.wx-today[data-sky="night"] {
+  --wt-top: var(--sky-night-top);
+  --wt-bottom: var(--sky-night-bottom);
+  --wt-ink: var(--sky-night-ink);
+}
+.wx-today[data-sky="cloud"] {
+  --wt-top: var(--sky-cloud-top);
+  --wt-bottom: var(--sky-cloud-bottom);
+  --wt-ink: var(--sky-cloud-ink);
+}
+.wx-today[data-sky="rain"] {
+  --wt-top: var(--sky-rain-top);
+  --wt-bottom: var(--sky-rain-bottom);
+  --wt-ink: var(--sky-rain-ink);
+}
+.wx-today[data-sky="snow"] {
+  --wt-top: var(--sky-snow-top);
+  --wt-bottom: var(--sky-snow-bottom);
+  --wt-ink: var(--sky-snow-ink);
+}
+.wx-today[data-sky="storm"] {
+  --wt-top: var(--sky-storm-top);
+  --wt-bottom: var(--sky-storm-bottom);
+  --wt-ink: var(--sky-storm-ink);
+}
+/* The words sit in front of the sky's moving layer, which is the first child. */
+.wt-top, .wt-next { position: relative; }
+.wt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  column-gap: 0.2em;
+  font-size: var(--wt-lede-size, var(--t-wall-clock, calc(var(--t-event) * 1.8)));
+  line-height: 1;
+}
+.wt-lede { display: flex; align-items: baseline; column-gap: 0.12em; white-space: nowrap; }
+/* Light and tight, the way a phone sets its temperature: a reading this large
+   in the heavy weight would outshout the whole wall at the same size. */
+.wt-temp { font-weight: 300; letter-spacing: var(--ls-oversized); }
+/* In the card's other mode, today's low beside its high — the quieter partner. */
+.wt-temp-lo { font-size: 0.45em; font-weight: 500; }
+.wt-glyph { width: 0.62em; height: 0.62em; }
+.wt-range {
+  display: flex;
+  column-gap: var(--s3);
+  margin-top: var(--s1);
+  font-size: var(--t-wall-time, 1.3rem);
+  font-weight: 600;
+  white-space: nowrap;
+}
+/* The sky's words wrap at a word rather than being cut: "Light rain and fog"
+   is a different sky from "Light rain", and `tierToday` pays for the line. */
+.wt-cond {
+  margin-top: var(--s1);
+  font-size: var(--t-wall-event, 1.7rem);
+  font-weight: 600;
+  overflow-wrap: break-word;
+}
+.wt-feels { margin-top: var(--s1); font-size: var(--t-wall-time, 1.3rem); white-space: nowrap; }
+.wt-next {
+  display: flex;
+  justify-content: space-between;
+  column-gap: var(--s3);
+  padding-top: var(--s3);
+}
+.wt-hour {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  row-gap: var(--s1);
+  font-size: var(--t-wall-event, 1.7rem);
+}
+.wt-hour-at { font-size: var(--t-wall-scaffold, 1.25rem); font-weight: 600; white-space: nowrap; }
+.wt-hour-ico { width: 1em; height: 1em; }
+.wt-hour-temp { font-weight: 600; white-space: nowrap; }
+.wt-dl { flex: 0 0 auto; font-size: var(--t-wall-time, 1.3rem); white-space: nowrap; }
+.wt-dl-name { font-weight: 700; margin-right: 0.35em; }
+.wt-dl-hi { font-weight: 600; margin-right: 0.3em; }
+/*
+ * The sky's moving layer, and its still picture. Behind the words, clipped to
+ * the card's own corners, and never a target. Each element is placed by the
+ * renderer from a fixed table in shares of the card (`SKY_PARTICLES`), and
+ * painted in the theme's condition colour for what it is — the sun's glow in
+ * `--wx-sun`, a cloud in `--wx-cloud`, rain in `--wx-rain`, snow in
+ * `--wx-snow` — held faint, since it is the sky's texture rather than a
+ * reading. Nothing here moves: the scoped block at the foot of this file does,
+ * and only where it may.
+ */
+.wt-sky {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.wt-fx { position: absolute; display: block; }
+.wt-fx-glow {
+  right: -22%;
+  top: -48%;
+  width: 60%;
+  height: 120%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, var(--wx-sun), transparent);
+  opacity: 0.55;
+}
+.wt-fx-cloud {
+  width: 48%;
+  height: 36%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, var(--wx-cloud), transparent);
+  opacity: 0.4;
+}
+.wt-fx-drop {
+  width: calc(var(--s1) / 2);
+  height: 12%;
+  border-radius: var(--s1);
+  background: var(--wx-rain);
+  opacity: 0.45;
+}
+.wt-fx-flake {
+  width: var(--s2);
+  height: var(--s2);
+  border-radius: 50%;
+  background: var(--wx-snow);
+  opacity: 0.6;
+}
+
+/*
+ * The `playful` forecast (plan item P5.1): the strip's days, with their names
+ * large, a bundled picture each, and an advice line under them.
+ *
+ * The strip's own grid and rules (a column per day, a rule between two), sized
+ * by role on a measured wall and by the design's rem on one nobody measured.
+ * The names are the event role in the display face's heaviest weight — "big
+ * day names" is the look — and each picture is twice the temperature, an
+ * `<img>` from the bundled set (`emojiNode`, decision D6), never a character.
+ * The advice spans the strip, because it is about today rather than a column.
+ */
+.wx-playful {
+  display: grid;
+  grid-template-columns: repeat(var(--wx-days, 5), minmax(0, 1fr));
+  padding: var(--s3) 0;
+  flex: 0 0 auto;
+  line-height: 1.15;
+}
+.wp-day { display: flex; flex-direction: column; align-items: center; text-align: center; min-width: 0; }
+.wp-day + .wp-day { border-left: 1px solid var(--rule); }
+.wp-name {
+  font-family: var(--disp); font-stretch: var(--disp-stretch, 100%);
+  font-size: var(--t-wall-event, 1.7rem);
+  font-weight: 800;
+  white-space: nowrap;
+}
+.wp-emoji {
+  display: block;
+  width: calc(var(--t-wall-event, 1.7rem) * 2.2);
+  height: calc(var(--t-wall-event, 1.7rem) * 2.2);
+  margin: var(--s1) auto var(--s2);
+}
+.wp-temp { font-size: var(--t-wall-event, 1.7rem); font-weight: 700; white-space: nowrap; }
+.wp-temp .lo,
+.wp-temp.lo { color: var(--muted); font-weight: 400; }
+.wp-advice {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  column-gap: var(--s2);
+  padding-top: var(--s3);
+  font-size: var(--t-wall-event, 1.7rem);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.wp-advice-emoji { display: block; flex: 0 0 auto; width: 1.4em; height: 1.4em; }
+
 /* --- THE HOUSE -------------------------------------------------------- */
 
 /*
@@ -2832,6 +3187,494 @@ body {
   text-align: center;
 }
 
+/*
+ * A countdown's picture (plan item P5.2): bundled artwork drawn as an `<img>`
+ * at the size of the words beside it, never a code point for the device's
+ * font (D6). With the label it leads; beside "Today!" it follows.
+ */
+.cd-emoji {
+  height: 1em;
+  width: auto;
+  vertical-align: -0.12em;
+  margin-right: 0.3em;
+}
+.cd-emoji-today { height: 0.8em; margin: 0 0 0 0.15em; vertical-align: 0; }
+
+/*
+ * The tear-off page (plan item P5.2). A sheet with a binder strip, the count
+ * large, its unit and the target's own date; the household's label under it.
+ *
+ * **Its type is roles, not the box.** The label is the lede and every other
+ * run is a fraction of it, so the page's tier (`PAGE_TIERS`) can be stated in
+ * one unit and a larger box buys a larger form rather than larger letters.
+ * The count is the clock's role — 1.8 ledes, the most one reading may outsize
+ * an event name (D1) — and capped by the box the way the clock is, so the
+ * smallest page still draws its count whole: `--cd-chars` is how many
+ * characters it holds, the clock's `--clock-chars` one widget along.
+ */
+.cd-page { gap: var(--s2); }
+.cdp-sheet {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+  min-width: min(100%, calc(var(--t-wall-lede, var(--t-event)) * 4.5));
+  max-width: 100%;
+  padding: 0 var(--s4) var(--s3);
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+/* The binder: a band in the accent with two holes punched through it. */
+.cdp-binder {
+  align-self: stretch;
+  height: calc(var(--t-wall-lede, var(--t-event)) * 0.5);
+  margin: 0 calc(var(--s4) * -1) var(--s2);
+  background:
+    radial-gradient(circle at 28% 50%, var(--bg) 0 0.16em, transparent 0.18em),
+    radial-gradient(circle at 72% 50%, var(--bg) 0 0.16em, transparent 0.18em),
+    var(--accent);
+  font-size: var(--t-wall-lede, var(--t-event));
+}
+.cdp-num {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 700;
+  /*
+   * The clock's role, or what the box can hold: its height less the box's own
+   * padding and the 2.1 ledes the binder, the unit and the sheet's padding
+   * take — so in a box too short for the whole page the count gives way and
+   * nothing else is squeezed — or its width shared across the characters.
+   */
+  font-size: min(
+    var(--t-wall-clock, calc(var(--t-event) * 1.8)),
+    calc(var(--buh) * 100 - var(--s4) - var(--t-wall-lede, var(--t-event)) * 2.1),
+    calc(var(--buw) * 110 / var(--cd-chars, 2))
+  );
+  line-height: 1;
+  white-space: nowrap;
+}
+.cdp-unit, .cdp-date {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 600;
+  font-size: var(--t-wall-scaffold, 1.3rem);
+  letter-spacing: var(--ls-scaffold);
+  text-transform: uppercase;
+  line-height: 1.15;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.cdp-date {
+  align-self: stretch;
+  text-align: center;
+  margin-top: var(--s2);
+  padding-top: var(--s1);
+  border-top: 1px solid var(--rule);
+}
+.cdp-label {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 600;
+  font-size: var(--t-wall-lede, var(--t-event));
+  line-height: 1.15;
+  color: var(--ink);
+  text-align: center;
+  /*
+   * No `max-width`: a flex item already fits its column, and the tier pass
+   * plants its measuring probe with this class — a `max-width` would clamp the
+   * probe in a narrow box, read `ch` as a third of itself, and hand the page a
+   * tier it cannot hold. Measured, in a narrow column: 4.5px a character where
+   * the face's own is 13.6.
+   */
+  overflow-wrap: break-word;
+}
+/*
+ * Yesterday's page, lifted away at midnight. Transparent at rest, so its still
+ * frame — and every frame on a wall that asks for less motion — is today's
+ * page with nothing over it.
+ */
+.cdp-leaf {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 var(--s4) var(--s3);
+  background: var(--bg);
+  opacity: 0;
+  transform-origin: 50% 0;
+  pointer-events: none;
+}
+
+/*
+ * The boarding pass (plan item P5.2): a head, the destination large, "Departs
+ * in 12 days", a perforated rule and the count on a departure board. The same
+ * roles-not-box rule as the page, and the board's flaps are the clock's role
+ * capped by the box.
+ */
+.cd-ticket { align-items: stretch; }
+.cdt-pass {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  max-width: 100%;
+  padding: var(--s2) var(--s4) var(--s3);
+  overflow: hidden;
+  text-align: left;
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+.cdt-head {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 700;
+  font-size: var(--t-wall-label, 1.2rem);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  line-height: 1.15;
+  color: var(--muted);
+  white-space: nowrap;
+  padding-bottom: var(--s1);
+  border-bottom: 1px solid var(--rule);
+}
+.cdt-dest {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 700;
+  font-size: var(--t-wall-lede, var(--t-event));
+  line-height: 1.15;
+  margin-top: var(--s1);
+  overflow-wrap: break-word;
+}
+.cdt-when {
+  font-family: var(--f-sans);
+  font-size: var(--t-wall-event, 1.7rem);
+  line-height: 1.15;
+  color: var(--ink);
+  margin-top: var(--s1);
+}
+/* The perforation is the board's own top edge: a row of round holes. */
+.cdt-board {
+  display: flex;
+  gap: var(--s1);
+  margin-top: var(--s2);
+  padding-top: var(--s3);
+  border-top: calc(var(--s1) * 0.9) dotted var(--muted);
+}
+.cdt-flap {
+  position: relative;
+  display: inline-block;
+  min-width: 0.62em;
+  padding: 0.04em 0.08em;
+  overflow: hidden;
+  text-align: center;
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 700;
+  font-size: min(
+    var(--t-wall-clock, calc(var(--t-event) * 1.8)),
+    calc(var(--buh) * 26),
+    calc(var(--buw) * 22)
+  );
+  line-height: 1;
+  color: var(--bg);
+  background:
+    linear-gradient(to bottom, transparent calc(50% - 0.02em), var(--panel) calc(50% - 0.02em), var(--panel) calc(50% + 0.02em), transparent calc(50% + 0.02em)),
+    var(--ink);
+  border-radius: 0.08em;
+}
+/* The digit that was, falling away over the one that is. At rest, nothing. */
+.cdt-flap-old {
+  position: absolute;
+  inset: 0;
+  padding: inherit;
+  color: var(--bg);
+  background: var(--ink);
+  opacity: 0;
+  transform-origin: 50% 100%;
+}
+
+/*
+ * The occasion (plan item P5.2): the number dressed for the day — the count in
+ * the first of an accent pair, its unit in the second, the occasion's motif
+ * over them and a scene behind. The pair is two of the palette's readable
+ * tokens (`OCCASION_LOOKS`), so both are legible on every theme by the
+ * palette's own derivation; `--oc-a`/`--oc-b` are written on the section.
+ *
+ * The roles are the page's: the label the lede, the unit the scaffold, and
+ * the count the clock's role capped by the box — its height less the unit, or
+ * its width shared across its characters.
+ */
+.cd-occasion { position: relative; gap: var(--s1); }
+.cd-occasion > .cdo-head, .cd-occasion > .cdo-label { position: relative; }
+/* The motif beside the count and its unit, as tall as the two together. */
+.cdo-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s3);
+  max-width: 100%;
+}
+.cdo-count { display: flex; flex-direction: column; align-items: center; min-width: 0; }
+.cdo-motif { flex: 0 0 auto; line-height: 0; }
+.cdo-motif-img { height: calc(var(--t-wall-lede, var(--t-event)) * 2.4); width: auto; }
+.cdo-num {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 700;
+  font-size: min(
+    var(--t-wall-clock, calc(var(--t-event) * 1.8)),
+    calc(var(--buh) * 100 - var(--s4) - var(--t-wall-lede, var(--t-event)) * 1.2),
+    calc(var(--buw) * 110 / var(--cd-chars, 2))
+  );
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--oc-a, var(--ink));
+}
+.cdo-unit {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 600;
+  font-size: var(--t-wall-scaffold, 1.3rem);
+  letter-spacing: var(--ls-scaffold);
+  text-transform: uppercase;
+  line-height: 1.15;
+  white-space: nowrap;
+  color: var(--oc-b, var(--muted));
+}
+.cdo-label {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 600;
+  font-size: var(--t-wall-lede, var(--t-event));
+  line-height: 1.15;
+  color: var(--ink);
+  text-align: center;
+  overflow-wrap: break-word;
+}
+/*
+ * The scene: a clipped layer behind the words, hidden from a screen reader.
+ * Every piece rests where `SCENE_SPOTS` puts it, faint, so the still frame is
+ * a picture of the same weather; what moves it is the scoped block below.
+ */
+.cdo-scene {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.cdo-fx { position: absolute; }
+.cdo-flake {
+  width: var(--s2);
+  height: var(--s2);
+  border-radius: 50%;
+  background: var(--wx-snow, var(--oc-b, var(--muted)));
+  opacity: 0.7;
+}
+.cdo-balloon, .cdo-leaf, .cdo-sparkle {
+  height: calc(var(--t-wall-lede, var(--t-event)) * 0.9);
+  width: auto;
+  opacity: 0.5;
+}
+.cdo-sparkle { opacity: 0.3; }
+.cdo-sun {
+  top: 6%;
+  right: 6%;
+  height: calc(var(--t-wall-lede, var(--t-event)) * 1.3);
+  width: auto;
+  opacity: 0.55;
+}
+/* Water: a row of humps twice the box wide, so moving it half its width is
+   one whole wave. In the rain's blue whatever the pair is: water is water. */
+.cdo-wave {
+  left: 0;
+  bottom: 0;
+  width: 200%;
+  height: calc(var(--buh, 1vh) * 6);
+  background-image: radial-gradient(50% 100% at 50% 100%, var(--wx-rain, var(--oc-a, var(--muted))) 96%, transparent 100%);
+  background-size: 12.5% 100%;
+  background-repeat: repeat-x;
+  opacity: 0.35;
+}
+.cdo-wave-2 { bottom: calc(var(--buh, 1vh) * 3); opacity: 0.2; }
+/* A paper plane: a dart, cut from one square. */
+.cdo-plane {
+  width: calc(var(--t-wall-lede, var(--t-event)) * 1.1);
+  height: calc(var(--t-wall-lede, var(--t-event)) * 0.55);
+  background: var(--oc-b, var(--muted));
+  clip-path: polygon(0 0, 100% 50%, 0 100%, 26% 50%);
+  opacity: 0.5;
+}
+/* A spark rests where it lands, so the still frame is three bursts going off. */
+.cdo-spark {
+  width: var(--s1);
+  height: var(--s1);
+  border-radius: 50%;
+  background: var(--oc-a, var(--accent));
+  opacity: 0.7;
+  transform: translate(calc(var(--dx, 0) * var(--s4) * 1.6), calc(var(--dy, 0) * var(--s4) * 1.6));
+}
+.cdo-spark-b { background: var(--oc-b, var(--accent)); }
+
+/*
+ * The progress bar (plan item P5.2): the label, the count, a bar of the days
+ * gone since the start date, and the percentage. The fill's length is written
+ * inline; what grows it at midnight is the scoped block below, and only
+ * `transform` moves.
+ */
+.cd-progress { gap: var(--s2); align-items: stretch; }
+.cdg-label {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 600;
+  font-size: var(--t-wall-lede, var(--t-event));
+  line-height: 1.15;
+  color: var(--ink);
+  text-align: center;
+  overflow-wrap: break-word;
+}
+.cdg-count, .cdm-count {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: var(--s2);
+  white-space: nowrap;
+}
+.cdg-num {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 700;
+  font-size: min(
+    var(--t-wall-clock, calc(var(--t-event) * 1.8)),
+    calc(var(--buh) * 100 - var(--s4) - var(--t-wall-lede, var(--t-event)) * 0.2),
+    calc(var(--buw) * 110 / var(--cd-chars, 2))
+  );
+  line-height: 1;
+  color: var(--ink);
+}
+.cdg-unit, .cdm-unit, .cdg-pct {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 600;
+  font-size: var(--t-wall-scaffold, 1.3rem);
+  letter-spacing: var(--ls-scaffold);
+  text-transform: uppercase;
+  line-height: 1.15;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.cdg-pct { text-align: center; }
+.cdg-bar {
+  height: calc(var(--t-wall-lede, var(--t-event)) * 0.5);
+  overflow: hidden;
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: calc(var(--t-wall-lede, var(--t-event)) * 0.25);
+}
+.cdg-fill {
+  height: 100%;
+  background: var(--accent);
+  transform-origin: 0 50%;
+}
+.cdg-empty {
+  font-family: var(--f-sans);
+  font-size: var(--t-wall-scaffold, 1.3rem);
+  line-height: 1.15;
+  color: var(--muted);
+  text-align: center;
+}
+
+/*
+ * The mini month (plan item P5.2): the count, the target's month with the
+ * target circled and today marked, and the label. The ring and the mark are
+ * painted rather than bordered, so neither moves a square.
+ */
+.cd-month { gap: var(--s2); }
+.cdm-num {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 700;
+  font-size: min(
+    calc(var(--t-wall-lede, var(--t-event)) * 1.4),
+    calc(var(--buh) * 100 - var(--s4)),
+    calc(var(--buw) * 110 / var(--cd-chars, 2))
+  );
+  line-height: 1;
+  color: var(--ink);
+}
+.cdm-cal {
+  width: 100%;
+  max-width: calc(var(--t-wall-scaffold, 1.3rem) * 18);
+}
+.cdm-title {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 700;
+  font-size: var(--t-wall-scaffold, 1.3rem);
+  letter-spacing: var(--ls-scaffold);
+  text-transform: uppercase;
+  line-height: 1.15;
+  color: var(--muted);
+  text-align: center;
+  white-space: nowrap;
+  margin-bottom: var(--s1);
+}
+.cdm-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  font-size: var(--t-wall-scaffold, 1.3rem);
+  line-height: 1.7;
+  text-align: center;
+}
+.cdm-head {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 700;
+  color: var(--muted);
+}
+.cdm-day { color: var(--ink-scaffold, var(--muted)); }
+.cdm-day.is-target, .cdm-day.is-today { color: var(--ink); font-weight: 700; }
+.cdm-day.is-target {
+  background-image: radial-gradient(circle closest-side, transparent calc(100% - 0.16em), var(--accent) calc(100% - 0.14em), var(--accent) calc(100% - 0.02em), transparent 100%);
+}
+.cdm-day.is-today {
+  background-image: linear-gradient(var(--ink), var(--ink));
+  background-repeat: no-repeat;
+  background-position: 50% 86%;
+  background-size: 1.1em 0.1em;
+}
+.cdm-day.is-target.is-today {
+  background-image:
+    radial-gradient(circle closest-side, transparent calc(100% - 0.16em), var(--accent) calc(100% - 0.14em), var(--accent) calc(100% - 0.02em), transparent 100%),
+    linear-gradient(var(--ink), var(--ink));
+  background-repeat: no-repeat;
+  background-position: 50% 50%, 50% 86%;
+  background-size: 100% 100%, 1.1em 0.1em;
+}
+.cdm-label {
+  font-family: var(--f-cond, var(--f-sans)); font-stretch: 75%;
+  font-weight: 600;
+  font-size: var(--t-wall-lede, var(--t-event));
+  line-height: 1.15;
+  color: var(--ink);
+  text-align: center;
+  overflow-wrap: break-word;
+}
+
+/*
+ * The day's confetti: pieces thrown from above the box. Transparent until the
+ * scoped block below moves them, so a still wall draws none.
+ */
+.cd-confetti {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.cd-bit {
+  position: absolute;
+  top: -6%;
+  width: var(--s2);
+  height: var(--s3);
+  opacity: 0;
+  background: var(--accent);
+}
+.cd-bit-1 { background: var(--wx-sun, var(--accent)); }
+.cd-bit-2 { background: var(--wx-rain, var(--accent)); }
+.cd-bit-3 { background: var(--temp-hot, var(--accent)); }
+.cd-bit-4 { background: var(--state-active, var(--accent)); }
+
 /* Image widget: an uploaded picture covering its box. Its corners follow the
    box's Corners option: the box is padded, so rounding the box alone curves
    empty space and leaves the picture square. */
@@ -3037,3 +3880,267 @@ body {
  * third-party module sending either never goes blank on upgrade (rule nine).
  */
 .gp-text { font-size: 2rem; color: var(--ink); line-height: 1.4; }
+
+/*
+ * The motion fixture's still frame (plan P4.3) — a dot and a bar, positioned
+ * in shares of their box. A test fixture no server sends: `motion-fixture.ts`
+ * says why it exists. Still by default, like everything else on the wall;
+ * what moves it is the scoped block below and nothing here.
+ */
+.fx-fixture { position: relative; width: 100%; height: 100%; overflow: hidden; }
+.fx-fixture-loop {
+  position: absolute; left: 0; top: 20%;
+  width: 20%; height: 30%;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.fx-fixture-once {
+  position: absolute; left: 0; right: 0; bottom: 10%;
+  height: 20%;
+  background: var(--muted);
+}
+
+/*
+ * **Motion on a browser wall, and all of it is in this one block** (plan P4.3,
+ * decision D7).
+ *
+ * The wall rebuilds its whole document every fifteen seconds, so an animation
+ * is a new animation on every tick and restarts from nought unless something
+ * says where it was. `motion.ts` is that something: it writes each animated
+ * element's `animation-duration` and a negative `animation-delay` taken from
+ * the corrected wall clock (a loop), or from the moment a one-shot first fired
+ * (a burst), inline. What is declared here is only *what* moves — the keyframes
+ * and the name that binds them — and four things about it are the rule rather
+ * than taste, each held by `apps/display/test/motion.test.ts`:
+ *
+ *  - **Inside `prefers-reduced-motion: no-preference`.** A household who has
+ *    asked their system for less motion is served none, with no setting of
+ *    ours to find. A keyframe set is inside it as well as every binding, so
+ *    the rule is one fence rather than two.
+ *  - **Under `.canvas[data-motion="on"]`**, which `main.ts` writes from the
+ *    wall's own Motion switch (`screens.motion`; null is on, and the e-ink
+ *    sizes default it off). An admin preview's canvas carries no attribute at
+ *    all, so a preview is always still.
+ *  - **`transform` and `opacity` only**, in every keyframe. Both are
+ *    composited; anything else is a layout or a paint on every frame, on a
+ *    cheap tablet bolted to a wall for a year.
+ *  - **No duration and no delay here.** The phase is computed from the
+ *    duration, so the duration is stated once, in TypeScript, where it is
+ *    computed; a second copy here is how the two would come to disagree.
+ *
+ * An e-paper panel reaches none of this: its frame is a packed raster drawn on
+ * the server, and every style draws its still frame there.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  /* The fixture's loop: a dot drifting across its box and back to the start. */
+  @keyframes fx-fixture-drift {
+    from { transform: translateX(0); }
+    to { transform: translateX(400%); }
+  }
+  /* The fixture's one-shot: a bar arriving from below, once per event. */
+  @keyframes fx-fixture-arrive {
+    from { opacity: 0; transform: translateY(100%); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .canvas[data-motion="on"] .fx-fixture-loop {
+    animation-name: fx-fixture-drift;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+  }
+  .canvas[data-motion="on"] .fx-fixture-once.fx-playing {
+    animation-name: fx-fixture-arrive;
+    animation-timing-function: ease-out;
+    animation-fill-mode: both;
+  }
+  /*
+   * A countdown's day (plan item P5.2): each piece falls the height of its box
+   * (`--buh` is one percent of it), drifting and turning as it goes, and fades
+   * at the foot. Flat, and capped at `CONFETTI_PIECES`.
+   */
+  @keyframes cd-confetti-fall {
+    0% { opacity: 1; transform: translate(0, 0) rotate(0deg); }
+    85% { opacity: 1; }
+    100% {
+      opacity: 0;
+      transform: translate(calc(var(--cf-drift, 0) * var(--s3)), calc(var(--buh, 1vh) * 115)) rotate(var(--cf-turn, 360deg));
+    }
+  }
+  .canvas[data-motion="on"] .cd-bit.fx-playing {
+    animation-name: cd-confetti-fall;
+    animation-timing-function: cubic-bezier(0.25, 0.55, 0.4, 1);
+    animation-fill-mode: both;
+  }
+  /* The tear-off page, once at midnight: yesterday lifts away. */
+  @keyframes cd-page-tear {
+    0% { opacity: 1; transform: none; }
+    100% { opacity: 0; transform: translateY(-45%) rotate(-9deg); }
+  }
+  .canvas[data-motion="on"] .cdp-leaf.fx-playing {
+    animation-name: cd-page-tear;
+    animation-timing-function: ease-in;
+    animation-fill-mode: both;
+  }
+  /* A board's flap, only where its digit changed: the old half folds down. */
+  @keyframes cd-flap-fall {
+    0% { opacity: 1; transform: scaleY(1); }
+    100% { opacity: 1; transform: scaleY(0); }
+  }
+  .canvas[data-motion="on"] .cdt-flap-old.fx-playing {
+    animation-name: cd-flap-fall;
+    animation-timing-function: ease-in;
+    animation-fill-mode: backwards;
+  }
+  /*
+   * A countdown's occasion (plan item P5.2): each scene is a loop locked to
+   * the wall clock by `motion.ts` (`sceneLayer` in `countdown-looks.ts`), so a
+   * rebuilt scene carries on where it was. `--x`/`--y` are where a piece
+   * rests, in percent of the box, and `--buw`/`--buh` one percent of it — so a
+   * flake resting a third of the way down falls from above the box to below
+   * it, and its still frame is where it rests.
+   */
+  @keyframes cd-oc-fall {
+    0% { transform: translate(0, calc(var(--buh, 1vh) * (-14 - var(--y, 0)))) rotate(0deg); }
+    50% { transform: translate(var(--s3), calc(var(--buh, 1vh) * (43 - var(--y, 0)))) rotate(180deg); }
+    100% { transform: translate(0, calc(var(--buh, 1vh) * (100 - var(--y, 0)))) rotate(360deg); }
+  }
+  @keyframes cd-oc-rise {
+    0% { transform: translate(0, calc(var(--buh, 1vh) * (100 - var(--y, 0)))); }
+    50% { transform: translate(calc(var(--s3) * -1), calc(var(--buh, 1vh) * (41 - var(--y, 0)))); }
+    100% { transform: translate(0, calc(var(--buh, 1vh) * (-18 - var(--y, 0)))); }
+  }
+  @keyframes cd-oc-glide {
+    0% { transform: translate(calc(var(--buw, 1vw) * (-14 - var(--x, 0))), 0); }
+    100% { transform: translate(calc(var(--buw, 1vw) * (100 - var(--x, 0))), calc(var(--buh, 1vh) * -10)); }
+  }
+  @keyframes cd-oc-wave {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+  @keyframes cd-oc-glow {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 0.7; }
+  }
+  @keyframes cd-oc-twinkle {
+    0%, 100% { opacity: 0.1; }
+    50% { opacity: 0.6; }
+  }
+  @keyframes cd-oc-burst {
+    0% { opacity: 0; transform: translate(0, 0); }
+    10% { opacity: 0.9; }
+    100% {
+      opacity: 0;
+      transform: translate(calc(var(--dx, 0) * var(--s4) * 1.6), calc(var(--dy, 0) * var(--s4) * 1.6 + var(--s3)));
+    }
+  }
+  .canvas[data-motion="on"] .cdo-flake,
+  .canvas[data-motion="on"] .cdo-leaf {
+    animation-name: cd-oc-fall;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+  }
+  .canvas[data-motion="on"] .cdo-balloon {
+    animation-name: cd-oc-rise;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+  }
+  .canvas[data-motion="on"] .cdo-plane {
+    animation-name: cd-oc-glide;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+  }
+  .canvas[data-motion="on"] .cdo-wave {
+    animation-name: cd-oc-wave;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+  }
+  .canvas[data-motion="on"] .cdo-sun {
+    animation-name: cd-oc-glow;
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
+  }
+  .canvas[data-motion="on"] .cdo-sparkle {
+    animation-name: cd-oc-twinkle;
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
+  }
+  .canvas[data-motion="on"] .cdo-spark {
+    animation-name: cd-oc-burst;
+    animation-timing-function: ease-out;
+    animation-iteration-count: infinite;
+  }
+  /* A progress bar, once, the day it grows: from yesterday's length to today's. */
+  @keyframes cd-fill-grow {
+    from { transform: scaleX(var(--cdg-was, 0)); }
+    to { transform: none; }
+  }
+  .canvas[data-motion="on"] .cdg-fill.fx-playing {
+    animation-name: cd-fill-grow;
+    animation-timing-function: ease-out;
+    animation-fill-mode: backwards;
+  }
+
+  /*
+   * The forecast's `today` card (plan item P5.1): its sky, per condition —
+   * the sun glows, clouds drift, rain streaks and snow falls. Every one is a
+   * loop locked to the wall clock by `motion.ts` (`skyLayer` in `render.ts`),
+   * so a card rebuilt on the tick carries on where it was. Only the glow
+   * touches `opacity`, and only by breathing between two faint values: a
+   * brighter pulse would be a flicker in a room. It does not swell, either:
+   * a `scale()` in this stylesheet is the one transform `widget-tiers.test.ts`
+   * refuses outright, because it is how `fitToBox` used to lie about a
+   * section's size. Nothing flashes, a storm included — `weather-looks.ts`
+   * says why.
+   */
+  @keyframes wt-glow {
+    0%, 100% { opacity: 0.45; }
+    50% { opacity: 0.7; }
+  }
+  @keyframes wt-drift {
+    from { transform: translateX(-120%); }
+    to { transform: translateX(240%); }
+  }
+  @keyframes wt-rain {
+    from { transform: translateY(-450%); }
+    to { transform: translateY(450%); }
+  }
+  @keyframes wt-snow {
+    0% { transform: translate(0, -500%); }
+    50% { transform: translate(150%, 0); }
+    100% { transform: translate(0, 500%); }
+  }
+  .canvas[data-motion="on"] .wt-fx-glow {
+    animation-name: wt-glow;
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
+  }
+  .canvas[data-motion="on"] .wt-fx-cloud {
+    animation-name: wt-drift;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+  }
+  .canvas[data-motion="on"] .wt-fx-drop {
+    animation-name: wt-rain;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+  }
+  .canvas[data-motion="on"] .wt-fx-flake {
+    animation-name: wt-snow;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+  }
+
+  /*
+   * The forecast's `playful` strip (plan item P5.1): each picture bobs, up a
+   * little and back, a fixed step behind its neighbour so the strip moves as
+   * one slow wave. `transform` alone, so the column around it never moves.
+   */
+  @keyframes wp-bob {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8%); }
+  }
+  .canvas[data-motion="on"] .wp-emoji {
+    animation-name: wp-bob;
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
+  }
+}

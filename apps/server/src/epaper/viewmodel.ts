@@ -179,6 +179,13 @@ export interface EpaperModel {
    * drawn to hold exactly one.
    */
   readonly weekdayLabelsLong: readonly string[];
+  /**
+   * The household's first day of the week, which the labels above are already
+   * ordered by — carried as a fact for the one draw that lays out a month of
+   * its own: a countdown's mini month (plan item P5.2), whose Monday has to sit
+   * in the column the calendar's does.
+   */
+  readonly weekStart: 'sunday' | 'monday';
   /** Rows of exactly seven cells, in the household's week order. */
   readonly weeks: readonly (readonly EpaperGridCell[])[];
   readonly timezone: string;
@@ -344,6 +351,7 @@ export function buildEpaperModel(manifest: Manifest, options: EpaperViewOptions 
     upcoming,
     weekdayLabels: [...(weekStart === 'monday' ? WEEKDAY_LABELS_MONDAY : WEEKDAY_LABELS_SUNDAY)],
     weekdayLabelsLong: [...(weekStart === 'monday' ? WEEKDAY_LONG_MONDAY : WEEKDAY_LONG_SUNDAY)],
+    weekStart,
     weeks,
     timezone,
     generatedAt: manifest.generatedAt,

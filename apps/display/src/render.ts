@@ -1,5 +1,6 @@
 import type {
   ChoreItemModel,
+  WeatherDayModel,
   DayModel,
   DisplayModel,
   EventModel,
@@ -8,19 +9,23 @@ import type {
   TodayShiftModel,
   TodoItemModel,
 } from './viewmodel.js';
-import { DISPLAY_LOCALE, localDate, localTime } from './viewmodel.js';
+import { DISPLAY_LOCALE, localTime } from './viewmodel.js';
 import {
   FACE_DIAL_PATH,
   FACE_HUB_PATH,
   analogueFace,
-  clockVariant,
   stackedDateLines,
   wallClockReading,
 } from './clock-face.js';
 import { agendaTimeFitsBeside, weekColumnsFit } from './density.js';
 import type { PanelData, PanelReading } from './viewmodel.js';
 import type { ManifestWidget, CanvasBackground } from './manifest.js';
-import { glyphNode } from './glyphs.js';
+import { glyphNode, glyphPartsNode, isGlyphKey } from './glyphs.js';
+import { emojiNode } from './emoji.js';
+import { lockLoop } from './motion.js';
+import { MOTION_FIXTURE_TYPE, renderMotionFixture } from './motion-fixture.js';
+import { renderCountdown } from './countdown-looks.js';
+import { variantOf } from './variants.js';
 import { boxRect, gutterStepFor } from './gutter.js';
 import { childCells, groupChildren, topLevelWidgets } from './group-cells.js';
 import { applyStyleTokens, styleTokensOf } from './widget-style.js';
@@ -60,17 +65,51 @@ import {
   type CalendarTier,
 } from './tiers.js';
 import {
+  COUNTDOWN_PARTS,
+  COUNTDOWN_TIERS,
+  PLAYFUL_COLUMN_CH,
+  TODAY_LEDE_FLOOR_EM,
+  TODAY_RUNGS,
   WEATHER_COLUMN_CH,
+  WEATHER_STYLE_TIERS,
   WIDGET_TIERS,
   columnsAt,
+  rangeColumnsAt,
+  todayRungsAt,
   itemsAt,
+  partsAt,
   rungsAt,
   rungsByPriority,
   shiftBadgesToLines,
   stackedItemHeight,
   widgetTierFor,
+  type RangeColumn,
+  type TodayRung,
   type WidgetTier,
 } from './widget-tiers.js';
+import { adviceLine, type Advice } from './weather-advice.js';
+import {
+  PLAYFUL_BOB_MS,
+  PLAYFUL_BOB_STEP_MS,
+  SKY_MOTION_MS,
+  SKY_PARTICLES,
+  adviceInput,
+  emojiForGlyph,
+  todayCard,
+  todayOf,
+  type SkyMotion,
+  type TodayCard,
+} from './weather-looks.js';
+import {
+  barSpan,
+  rampGradient,
+  rampWithin,
+  scalePercent,
+  tempTone,
+  unitOf,
+  weekScale,
+  type TempUnit,
+} from './weather-scale.js';
 
 /**
  * The DOM, and no decisions.
@@ -333,8 +372,26 @@ const WEATHER_ROW_CLASS: Readonly<Record<WeatherField, string>> = {
 function weatherColumn(
   rows: readonly { readonly field: WeatherField; readonly text: string }[],
   paired: boolean,
+  tint?: { readonly day: WeatherDayModel; readonly unit: TempUnit },
 ): HTMLElement {
   const cell = el('div', 'wx-day');
+  /*
+   * The `colour` look's one difference from the strip, row by row: a
+   * temperature carries the tone of the stop nearest it, which the stylesheet
+   * turns into a colour. Stamped as data rather than as a class so the tone
+   * is read back off the page by name, and never on a day with no number —
+   * an em dash is not a temperature and is not tinted as one.
+   */
+  const toneOf = (field: WeatherField): string | undefined => {
+    if (tint === undefined) return undefined;
+    const value = field === 'high' ? tint.day.highValue : field === 'low' ? tint.day.lowValue : undefined;
+    return value === undefined ? undefined : tempTone(value, tint.unit);
+  };
+  const toned = (node: HTMLElement, field: WeatherField): HTMLElement => {
+    const tone = toneOf(field);
+    if (tone !== undefined) node.setAttribute('data-tone', tone);
+    return node;
+  };
   for (let index = 0; index < rows.length; index++) {
     const row = rows[index]!;
     const next = rows[index + 1];
@@ -345,8 +402,17 @@ function weatherColumn(
       // fields back by name, and counting rows here would call the second of
       // the pair given up while it is on the glass.
       temp.setAttribute('data-field', `${row.field} ${next.field}`);
-      temp.appendChild(document.createTextNode(`${row.text} `));
-      temp.appendChild(el('span', 'lo', next.text));
+      if (tint === undefined) {
+        temp.appendChild(document.createTextNode(`${row.text} `));
+      } else {
+        // Each half of the pair takes its own tone, so the first is a span
+        // too; the space between them stays a text node, as the strip's is.
+        temp.appendChild(toned(el('span', 'wx-hi', row.text), row.field));
+        temp.appendChild(document.createTextNode(' '));
+      }
+      // The second of the pair is `.lo` whichever field it is, as it is on the
+      // strip — the look adds tones and moves nothing else.
+      temp.appendChild(toned(el('span', 'lo', next.text), next.field));
       cell.appendChild(temp);
       index++;
       continue;
@@ -363,7 +429,7 @@ function weatherColumn(
      * the one that matters if the first is ever loosened.
      */
     if (row.field === 'icon') {
-      const glyph = glyphNode(row.text, `${WEATHER_ROW_CLASS[row.field]} gl`);
+      const glyph = (tint === undefined ? glyphNode : glyphPartsNode)(row.text, `${WEATHER_ROW_CLASS[row.field]} gl`);
       if (glyph !== null) {
         glyph.setAttribute('data-field', row.field);
         cell.appendChild(glyph);
@@ -374,7 +440,7 @@ function weatherColumn(
     // beside the high: its emphasis is a property of the field, not of whether
     // the household happened to put it next to something.
     const cls = row.field === 'low' ? `${WEATHER_ROW_CLASS[row.field]} lo` : WEATHER_ROW_CLASS[row.field];
-    const line = el('div', cls, row.text);
+    const line = toned(el('div', cls, row.text), row.field);
     line.setAttribute('data-field', row.field);
     cell.appendChild(line);
   }
@@ -388,22 +454,406 @@ function renderWeather(
 ): HTMLElement | undefined {
   const view = weatherWidgetView(model.weather, config);
   if (view.days.length === 0) return undefined;
+  /*
+   * A designed look (plan item P5.1). `range` and `today` are different
+   * drawings with functions of their own; `colour` is the strip with its tones
+   * on, so it goes through the strip's own column builder and differs from it
+   * only where it means to; `playful` is the strip's days and ladder with a
+   * picture in place of the glyph, and has a column builder of its own because
+   * the picture is an `<img>` that moves.
+   */
+  const variant = variantOf('weather', config);
+  if (variant === 'range') return renderWeatherRange(model, view.days, RANGE_ALL);
+  if (variant === 'today') return renderWeatherToday(model, TODAY_ALL);
+  if (variant === 'playful') {
+    return renderWeatherPlayful(model, view.days, ladder, playfulAdvice(model, config));
+  }
 
   const paired = pairsTemperatures(ladder);
-  const strip = el('section', 'wx');
+  const colour = variant === 'colour';
+  const unit = unitOf(view.days, model.weatherUnits?.temp);
+  const strip = el('section', colour ? 'wx wx-colour' : 'wx');
   for (const day of view.days) {
     const rows = ladderRows(
       ladder,
       { name: day.name, icon: day.glyph ?? '', high: day.high, low: day.low },
       WEATHER_ROLES,
     );
-    strip.appendChild(weatherColumn(rows, paired));
+    strip.appendChild(weatherColumn(rows, paired, colour ? { day, unit } : undefined));
   }
 
   if (model.weatherNote !== undefined) {
     strip.appendChild(el('div', 'wx-note', model.weatherNote));
   }
   return strip;
+}
+
+/** Every column of a `range` row: what the first draw asks for, before the box is asked. */
+const RANGE_ALL: readonly RangeColumn[] = ['bar', 'low', 'high', 'glyph', 'rain'];
+
+/**
+ * The `range` forecast (plan item P5.1, "iOS 10-day"): a row per day — its
+ * name, its glyph, its rain chance, its low, a bar from the low to the high on
+ * the week's own scale, and its high.
+ *
+ * **Each row is a grid of its own with the same columns**, so the tier pass can
+ * give up rows by whole rows (`beltItems`) the way every other list does. The
+ * columns line up because the tier pass measures the widest name and the
+ * widest temperature and writes them back as the widths every row uses
+ * (`--wr-name-w`, `--wr-temp-w`); before it has, each row sizes to itself.
+ *
+ * **The bar is one ramp in a window.** Every row carries the same ramp, as wide
+ * as the whole track, with its four stops placed where the anchors fall on
+ * this week (`weather-scale.ts`); the window is the day's low-to-high. So a
+ * temperature is one colour on every row, and the colour is absolute — a
+ * freezing week is blue however its days compare with each other.
+ *
+ * A column the tier gave up is not drawn at all, and a column no drawn day has
+ * anything for (a provider with no rain chance) is not drawn either — an empty
+ * track down the middle of a list is room spent on nothing. A day that lacks a
+ * glyph or a rain chance where others have one keeps an empty cell, so its
+ * numbers stay under everybody else's.
+ */
+function renderWeatherRange(
+  model: DisplayModel,
+  week: readonly WeatherDayModel[],
+  columns: readonly RangeColumn[],
+  rows = week.length,
+): HTMLElement {
+  const section = el('section', 'wx-range');
+  const days = week.slice(0, rows);
+  const unit = unitOf(week, model.weatherUnits?.temp);
+  const current = model.weatherCurrent;
+  /*
+   * The scale is the whole forecast the widget shows, never only the rows its
+   * box has room for: a shorter box draws fewer days, and redrawing the ones
+   * it keeps on a different scale would move every bar for a reason that has
+   * nothing to do with the weather.
+   */
+  const scale = weekScale(week, current?.tempValue);
+  const glyphs = columns.includes('glyph');
+  const rain = columns.includes('rain') && days.some((day) => day.precipChance !== undefined);
+  const todayDate = model.today?.date;
+  // One template for every row, so the columns line up once the tier pass has
+  // written the widths back; until it has, each width is the row's own.
+  const template = [
+    'var(--wr-name-w, max-content)',
+    ...(glyphs ? ['1.3em'] : []),
+    ...(rain ? ['var(--wr-rain-w, max-content)'] : []),
+    'var(--wr-temp-w, max-content)',
+    // No floor of its own: `RANGE_TIERS` gives any box that reaches T0 4ch of
+    // bar, and in a box below the table's floor the bar is what gets shorter —
+    // measured, a 1.5em minimum pushed the high past the box's edge at a
+    // quarter of a 1080px wall, and a cut number is worse than a short bar.
+    'minmax(0, 1fr)',
+    'var(--wr-temp-w, max-content)',
+  ];
+  section.style.setProperty('--wr-cols', template.join(' '));
+
+  days.forEach((day, index) => {
+    const row = el('div', 'wr-row');
+    row.appendChild(el('span', 'wr-name', day.name));
+    if (glyphs) {
+      const glyph = glyphNode(day.glyph, 'wr-ico gl');
+      row.appendChild(glyph ?? el('span', 'wr-ico'));
+    }
+    if (rain) {
+      row.appendChild(el('span', 'wr-rain', day.precipChance === undefined ? '' : `${day.precipChance}%`));
+    }
+    row.appendChild(el('span', 'wr-temp wr-lo', rangeDegrees(day.lowValue)));
+    const bar = el('span', 'wr-bar');
+    const span = scale === undefined ? undefined : barSpan(scale, day.lowValue, day.highValue);
+    if (scale !== undefined && span !== undefined) {
+      const fill = el('span', 'wr-fill');
+      fill.style.left = `${span.left}%`;
+      fill.style.width = `${span.width}%`;
+      const ramp = el('span', 'wr-ramp');
+      const within = rampWithin(span);
+      ramp.style.left = `${within.left}%`;
+      ramp.style.width = `${within.width}%`;
+      ramp.style.backgroundImage = rampGradient(scale, unit);
+      fill.appendChild(ramp);
+      bar.appendChild(fill);
+    }
+    /*
+     * Where it is now, on today's bar alone — the first day, and only when it
+     * is today by date (or carries none, which is a cache older than dates).
+     * The scale already reaches the reading, so the dot is never off the end.
+     */
+    if (index === 0 && scale !== undefined && current !== undefined &&
+        (day.date === undefined || day.date === todayDate)) {
+      const dot = el('span', 'wr-now');
+      dot.style.left = `${scalePercent(scale, current.tempValue)}%`;
+      bar.appendChild(dot);
+    }
+    row.appendChild(bar);
+    row.appendChild(el('span', 'wr-temp wr-hi', rangeDegrees(day.highValue)));
+    section.appendChild(row);
+  });
+
+  if (model.weatherNote !== undefined) section.appendChild(el('div', 'wx-note', model.weatherNote));
+  return section;
+}
+
+/** A temperature with no unit on it — the bar says which end is which, as iOS's does. */
+function rangeDegrees(value: number | undefined): string {
+  return value === undefined ? '—' : `${Math.round(value)}°`;
+}
+
+/**
+ * How a Today card is drawn: which of its rungs, which form its next row takes,
+ * and how many of each. The first draw asks for everything the forecast has;
+ * the tier pass (`tierToday`) draws it again with what the box affords.
+ */
+interface TodayDraw {
+  readonly rungs: readonly TodayRung[];
+  readonly next: 'hours' | 'days';
+  readonly hours: number;
+  readonly days: number;
+}
+
+const TODAY_ALL: TodayDraw = {
+  rungs: TODAY_RUNGS,
+  next: 'hours',
+  hours: Number.POSITIVE_INFINITY,
+  days: Number.POSITIVE_INFINITY,
+};
+
+/**
+ * The `today` forecast (plan item P5.1, "iOS widget"): a card on its sky.
+ *
+ * Top to bottom: one large reading with its glyph beside it, today's high and
+ * low on the line under it, the sky in words, how it feels, and then — pushed
+ * to the card's foot — the next hours, or the next days on one line. What each
+ * of those *says* is `todayCard`'s (`weather-looks.ts`), including the card's
+ * second mode: with no reading recent enough to call now, the lede is today's
+ * high with its low beside it and there is no feels-like, because nothing here
+ * may present a forecast as a measurement.
+ *
+ * **The sky is the theme's.** `data-sky` picks one of the six gradients
+ * `paletteTokens` derives for every theme, built-in and custom, each with the
+ * ink that clears 4.5:1 on both of its stops — so the words on a snow sky are
+ * dark and the words on a storm are light, by construction rather than by a
+ * colour chosen here. The card casts `--shadow-card`, which a theme or an
+ * e-ink size sets to none (decision D8).
+ *
+ * **The lede is the room the rest leaves**, capped at the clock's role
+ * (decision D1: never more than 1.8x the event role, the ratio the clock is
+ * held to). The first draw sets no size and so draws the cap; `tierToday`
+ * measures what the kept rungs cost and writes the lede's size back as
+ * `--wt-lede-size`.
+ *
+ * **What moves is a layer behind the words**, `skyLayer`, and it moves only
+ * through `motion.ts`: phase-locked to the wall clock so a redraw resumes it,
+ * and still wherever the scoped block in `display.css` does not reach.
+ */
+function renderWeatherToday(model: DisplayModel, draw: TodayDraw): HTMLElement | undefined {
+  const card = todayCard({
+    days: model.weather,
+    current: model.weatherCurrent,
+    hourly: model.weatherHourly,
+    todayDate: model.today?.date,
+    now: model.now,
+    timezone: model.timezone,
+    hour12: model.hour12,
+  });
+  if (card === undefined) return undefined;
+  const section = el('section', 'wx-today');
+  section.setAttribute('data-sky', card.sky);
+  section.setAttribute('data-lede', card.mode);
+  const sky = skyLayer(card.motion, model.now);
+  if (sky !== undefined) section.appendChild(sky);
+
+  const top = el('div', 'wt-top');
+  const head = el('div', 'wt-head');
+  const lede = el('div', 'wt-lede');
+  lede.appendChild(el('span', 'wt-temp', card.lede));
+  if (card.ledeLow !== undefined) lede.appendChild(el('span', 'wt-temp-lo', card.ledeLow));
+  head.appendChild(lede);
+  const glyph = glyphNode(card.glyph, 'wt-glyph gl');
+  if (glyph !== null) head.appendChild(glyph);
+  top.appendChild(head);
+  // Today's range rides with the lede: it is part of the rung that is never
+  // given up (`TODAY_RUNGS`), and in the other mode it is in the lede itself.
+  if (card.high !== undefined || card.low !== undefined) {
+    const range = el('div', 'wt-range');
+    if (card.high !== undefined) range.appendChild(el('span', 'wt-hi', `H ${card.high}`));
+    if (card.low !== undefined) range.appendChild(el('span', 'wt-lo', `L ${card.low}`));
+    top.appendChild(range);
+  }
+  if (draw.rungs.includes('condition') && card.condition !== undefined) {
+    top.appendChild(el('div', 'wt-cond', card.condition));
+  }
+  if (draw.rungs.includes('feels') && card.feels !== undefined) {
+    top.appendChild(el('div', 'wt-feels', card.feels));
+  }
+  section.appendChild(top);
+
+  if (draw.rungs.includes('next')) {
+    const next = todayNext(card, draw);
+    if (next !== undefined) section.appendChild(next);
+  }
+  return section;
+}
+
+/**
+ * The card's last row: the next hours (a time, a glyph and a temperature
+ * each), or the next days as one line. The hours are asked for first and the
+ * line is what a card without the height for three lines of them draws —
+ * or a forecast with no hours in it at all.
+ */
+function todayNext(card: TodayCard, draw: TodayDraw): HTMLElement | undefined {
+  if (draw.next === 'hours' && card.hours.length > 0) {
+    const row = el('div', 'wt-next wt-hours');
+    for (const hour of card.hours.slice(0, draw.hours)) {
+      const item = el('div', 'wt-hour');
+      item.appendChild(el('span', 'wt-hour-at', hour.label));
+      const glyph = glyphNode(hour.glyph, 'wt-hour-ico gl');
+      // An hour with no glyph keeps an empty cell, so its temperature stays on
+      // the line with everybody else's.
+      item.appendChild(glyph ?? el('span', 'wt-hour-ico'));
+      item.appendChild(el('span', 'wt-hour-temp', hour.temp));
+      row.appendChild(item);
+    }
+    return row;
+  }
+  if (card.days.length === 0) return undefined;
+  const line = el('div', 'wt-next wt-days');
+  for (const day of card.days.slice(0, draw.days)) {
+    const item = el('span', 'wt-dl');
+    item.appendChild(el('span', 'wt-dl-name', day.name));
+    item.appendChild(el('span', 'wt-dl-hi', day.high));
+    item.appendChild(el('span', 'wt-dl-lo', day.low));
+    line.appendChild(item);
+  }
+  return line;
+}
+
+/**
+ * The moving layer behind a Today card, or nothing for a sky that is still.
+ *
+ * Every element is placed from a fixed table (`SKY_PARTICLES`) and locked to
+ * the wall clock through `lockLoop`, each a fixed share of the cycle behind the
+ * one before — so a rebuilt card puts every drop where the old card had it,
+ * and two walls in one house rain in step. The keyframes that make any of it
+ * move are declared only in `display.css`'s scoped block; everywhere else this
+ * layer is a still picture of the same sky.
+ */
+function skyLayer(motion: SkyMotion, now: number): HTMLElement | undefined {
+  if (motion === 'none') return undefined;
+  const layer = el('div', 'wt-sky');
+  layer.setAttribute('data-fx', motion);
+  const duration = SKY_MOTION_MS[motion];
+  if (motion === 'glow') {
+    const glow = el('span', 'wt-fx wt-fx-glow');
+    lockLoop(glow, duration, now);
+    layer.appendChild(glow);
+    return layer;
+  }
+  const cls = motion === 'drift' ? 'wt-fx-cloud' : motion === 'rain' ? 'wt-fx-drop' : 'wt-fx-flake';
+  const spots = SKY_PARTICLES[motion];
+  spots.forEach((spot, index) => {
+    const node = el('span', `wt-fx ${cls}`);
+    node.style.left = `${spot.left}%`;
+    node.style.top = `${spot.top}%`;
+    lockLoop(node, duration, now + Math.round((index * duration) / spots.length));
+    layer.appendChild(node);
+  });
+  return layer;
+}
+
+/**
+ * The advice line a `playful` forecast carries today, or none: switched off by
+ * the household (`advice: false` — absent is on, the `showFace` idiom), or a
+ * day that calls for nothing. Read off today by date, never the first column
+ * the box happens to draw, and never a forecast that does not reach today.
+ */
+function playfulAdvice(model: DisplayModel, config: unknown): Advice | undefined {
+  if (widgetConfig(config)['advice'] === false) return undefined;
+  const today = todayOf(model.weather, model.today?.date);
+  if (today === undefined) return undefined;
+  return adviceLine(adviceInput(today, model.weatherCurrent, model.weatherUnits));
+}
+
+/**
+ * The `playful` forecast (plan item P5.1): the strip's days, each with its name
+ * large, a bundled picture for its sky and its numbers, and the advice line.
+ *
+ * **The household's ladder is honoured**, as it is on the strip and the colour
+ * strip — the icon rung is the picture here — so reordering or dropping a row
+ * on the Content tab does what it does on any other forecast. The picture is an
+ * `<img>` from the bundled set (`emojiNode`, decision D6), never a character a
+ * tablet's own font would draw; a sky with no picture drops the rung and gives
+ * the room back, the glyph's rule.
+ *
+ * Each picture bobs, a fixed step of the cycle behind its left-hand neighbour,
+ * locked to the wall clock (`lockLoop`), so the strip moves as one gentle wave
+ * and a redraw does not restart it.
+ */
+function renderWeatherPlayful(
+  model: DisplayModel,
+  days: readonly WeatherDayModel[],
+  ladder: readonly WeatherField[],
+  advice: Advice | undefined,
+): HTMLElement {
+  const paired = pairsTemperatures(ladder);
+  const strip = el('section', 'wx-playful');
+  days.forEach((day, index) => {
+    const rows = ladderRows(
+      ladder,
+      { name: day.name, icon: day.glyph ?? '', high: day.high, low: day.low },
+      WEATHER_ROLES,
+    );
+    strip.appendChild(playfulColumn(rows, paired, model.now + index * PLAYFUL_BOB_STEP_MS));
+  });
+  if (advice !== undefined) {
+    const line = el('div', 'wp-advice');
+    line.setAttribute('data-advice', advice.key);
+    const picture = emojiNode(advice.emoji, 'wp-advice-emoji');
+    if (picture !== null) line.appendChild(picture);
+    line.appendChild(el('span', 'wp-advice-words', advice.words));
+    strip.appendChild(line);
+  }
+  if (model.weatherNote !== undefined) strip.appendChild(el('div', 'wx-note', model.weatherNote));
+  return strip;
+}
+
+/** One playful day, from the ladder: the strip's pairing rule, with a picture for the icon rung. */
+function playfulColumn(
+  rows: readonly { readonly field: WeatherField; readonly text: string }[],
+  paired: boolean,
+  bobAt: number,
+): HTMLElement {
+  const cell = el('div', 'wp-day');
+  for (let index = 0; index < rows.length; index++) {
+    const row = rows[index]!;
+    const next = rows[index + 1];
+    if (paired && (row.field === 'high' || row.field === 'low') && next !== undefined &&
+        (next.field === 'high' || next.field === 'low')) {
+      const temp = el('div', 'wp-temp');
+      temp.setAttribute('data-field', `${row.field} ${next.field}`);
+      temp.appendChild(document.createTextNode(`${row.text} `));
+      temp.appendChild(el('span', 'lo', next.text));
+      cell.appendChild(temp);
+      index++;
+      continue;
+    }
+    if (row.field === 'icon') {
+      // `row.text` is a glyph key; the picture is the one that key maps to.
+      const picture = emojiNode(emojiForGlyph(isGlyphKey(row.text) ? row.text : undefined), 'wp-emoji');
+      if (picture !== null) {
+        picture.setAttribute('data-field', row.field);
+        lockLoop(picture, PLAYFUL_BOB_MS, bobAt);
+        cell.appendChild(picture);
+      }
+      continue;
+    }
+    const cls = row.field === 'name' ? 'wp-name' : row.field === 'low' ? 'wp-temp lo' : 'wp-temp';
+    const line = el('div', cls, row.text);
+    line.setAttribute('data-field', row.field);
+    cell.appendChild(line);
+  }
+  return cell;
 }
 
 /* -------------------------------------------------------------- HOUSE ---- */
@@ -1175,10 +1625,11 @@ function renderBanners(model: DisplayModel): HTMLElement | undefined {
 /**
  * The clock, as a widget: the time the today block already shows, on its own —
  * in whichever of its three designed variants the household chose (RFC 014
- * §4.2). What each variant *is* lives in `clock-face.ts`; this only builds it.
+ * §4.2). What each variant *is* lives in `clock-face.ts`, and which one a
+ * config means in `variants.ts`; this only builds it.
  */
 function renderClockWidget(model: DisplayModel, config?: unknown): HTMLElement {
-  const variant = clockVariant(config);
+  const variant = variantOf('clock', config);
   if (variant === 'analogue') return renderAnalogueClock(model);
   const view = clockWidgetView(config);
   const box = el('div', variant === 'stacked' ? 'fw-clock clk-stacked' : 'fw-clock');
@@ -1309,7 +1760,7 @@ export function renderWidget(
     case 'shift':
       return renderShiftWidget(model, config);
     case 'countdown':
-      return renderCountdownWidget(model, config);
+      return renderCountdown(model, config, widgetId);
     case 'external':
       return renderExternalWidget(model, config);
     case 'notes':
@@ -1320,6 +1771,14 @@ export function renderWidget(
       return renderChoresWidget(model, config);
     case 'image':
       return renderImageWidget(config, mediaBase);
+    /*
+     * The motion demonstration (plan P4.3) — a test fixture no server sends:
+     * `WIDGET_TYPES` refuses it at the layout save and drops it from a stored
+     * row, so the only way it is ever drawn is a test rewriting the manifest.
+     * `motion-fixture.ts` says why it exists and why it stays.
+     */
+    case MOTION_FIXTURE_TYPE:
+      return renderMotionFixture(model.now, widgetId, config, model.oneShots);
     default:
       return undefined;
   }
@@ -1526,41 +1985,6 @@ function renderExternalWidget(model: DisplayModel, config: unknown): HTMLElement
   const panel = typeof id === 'string' ? model.externalPanels[`ext:${id}`] : undefined;
   if (panel === undefined) return el('div', 'cd-empty', 'Pick a module in this widget’s options.');
   return renderGenericPanel(panel, panelRowLimit(config));
-}
-
-/**
- * A countdown to a date the household set.
- *
- * Days are counted from the wall's own clock reading against the target — and
- * `model.now` is the *server's* time, not the tablet's, so a countdown does not
- * drift with a screen whose clock is two hours out. The label is the widget's
- * title. A date not yet set says so rather than drawing a bare zero.
- */
-function renderCountdownWidget(model: DisplayModel, config: unknown): HTMLElement {
-  const c = widgetConfig(config);
-  const target = typeof c['target'] === 'string' ? c['target'] : '';
-  const label = typeof c['title'] === 'string' ? (c['title'] as string).trim() : '';
-
-  const box = el('section', 'cd');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(target)) {
-    box.appendChild(el('div', 'cd-empty', 'Set a date in this widget’s options.'));
-    return box;
-  }
-
-  const today = localDate(model.now, model.timezone);
-  const days = Math.round(
-    (Date.parse(`${target}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86_400_000,
-  );
-  const abs = Math.abs(days);
-
-  if (days === 0) {
-    box.appendChild(el('div', 'cd-num', 'Today'));
-  } else {
-    box.appendChild(el('div', 'cd-num', String(abs)));
-    box.appendChild(el('div', 'cd-unit', `${abs === 1 ? 'day' : 'days'}${days < 0 ? ' ago' : ''}`));
-  }
-  if (label !== '') box.appendChild(el('div', 'cd-label', label));
-  return box;
 }
 
 /**
@@ -1797,10 +2221,21 @@ function applyWidgetFormat(
     box.style.borderRadius = 'var(--fw-radius)';
     box.style.overflow = 'hidden';
   }
-  // The drop shadow control is gone: a shadow bands on e-ink, burns in on
-  // OLED, and buys nothing at reading distance. `c['shadow']` is deliberately
-  // never read — a widget with `shadow: true` already in its stored config
-  // simply draws without one, rather than needing a migration to remove it.
+  /*
+   * The drop shadow is honoured again (decision D8, plan item P4.4), and it is
+   * the theme's rather than the widget's: the box casts `--shadow-card`, which
+   * each theme sets — soft on Panels and Household, paper-like on Almanac,
+   * none on Blueprint and Swiss — and which a wall sized as an e-ink panel
+   * sets to none (`applyTheme`'s `eink`). So a household with an OLED or e-ink
+   * screen can switch every shadow off in one place, which a literal here
+   * could never offer; that is why the value is a `var()` and never a length.
+   *
+   * It was dropped for a while — a shadow bands on e-ink and burns in on OLED
+   * — and the stored key was left alone rather than migrated, so a widget
+   * that kept `shadow: true` through that time lights up now as intended. The
+   * e-paper panel draws none: `shadow` stays in `PANEL_IGNORES`.
+   */
+  if (c['shadow'] === true) box.style.boxShadow = 'var(--shadow-card, none)';
 }
 
 /** Wrap a widget body with its title when one is set to show, else pass through. */
@@ -2089,8 +2524,22 @@ function applyWidgetTiers(
   mediaBase: string,
 ): void {
   for (const entry of entries) {
-    const table = WIDGET_TIERS[entry.widget.type];
-    const primary = WIDGET_PRIMARY[entry.widget.type];
+    /*
+     * A forecast's table and primary run depend on its look (plan item P5.1):
+     * `range` is rows of a different markup with its own table, and `colour`
+     * is the strip's markup with a larger glyph and so its own table too.
+     */
+    if (entry.widget.type === 'countdown') {
+      tierCountdown(entry);
+      continue;
+    }
+    const look = entry.widget.type === 'weather' ? variantOf('weather', entry.widget.config) : undefined;
+    const table = look !== undefined ? (WEATHER_STYLE_TIERS[look] ?? WIDGET_TIERS['weather']) : WIDGET_TIERS[entry.widget.type];
+    const primary =
+      look === 'range' ? RANGE_PRIMARY
+        : look === 'today' ? TODAY_PRIMARY
+          : look === 'playful' ? PLAYFUL_PRIMARY
+            : WIDGET_PRIMARY[entry.widget.type];
     if (table === undefined || primary === undefined) {
       // Not one of the six. It still may not be cut through a row.
       beltGenericRows(entry);
@@ -2104,7 +2553,10 @@ function applyWidgetTiers(
 
     switch (entry.widget.type) {
       case 'weather':
-        tierWeather(entry, model, table, inner, chPx, emPx);
+        if (look === 'range') tierRange(entry, model, table, inner, chPx, emPx);
+        else if (look === 'today') tierToday(entry, model, table, inner, chPx, emPx);
+        else if (look === 'playful') tierPlayful(entry, model, table, inner, chPx, emPx);
+        else tierWeather(entry, model, table, inner, chPx, emPx);
         break;
       case 'shift':
         tierShift(entry, model, table, inner, chPx, emPx);
@@ -2194,6 +2646,340 @@ function tierWeather(
   for (const column of [...entry.body.querySelectorAll('.wx-day')] as HTMLElement[]) {
     beltItems(entry.box, [...column.children] as HTMLElement[]);
   }
+}
+
+/**
+ * A countdown's primary run in each look that has a table: the household's
+ * label, at the lede (`widget-tiers.ts` says why). The probe is planted in the
+ * look's own section, so it inherits exactly the cascade the label does.
+ */
+const COUNTDOWN_PRIMARY: Readonly<Record<string, { readonly cls: string; readonly host: string }>> = {
+  page: { cls: 'cdp-label', host: '.cd-page' },
+  ticket: { cls: 'cdt-dest', host: '.cd-ticket' },
+  occasion: { cls: 'cdo-label', host: '.cd-occasion' },
+  progress: { cls: 'cdg-label', host: '.cd-progress' },
+  month: { cls: 'cdm-label', host: '.cd-month' },
+};
+
+/**
+ * A countdown in any look but `number`: which of its parts the box affords
+ * (plan item P5.2).
+ *
+ * The parts are drawn in full by `renderCountdown` and the tier takes off
+ * what this box cannot hold — chosen from the box's size in the label's own
+ * `ch` and `em`, never from what spilled, which is the difference between a
+ * form and a belt. The belt still runs after, as it does on every widget, and
+ * the browser tests hold it to having nothing to do.
+ *
+ * `number` has no table and comes through here to the belt alone: it sizes to
+ * its box by `--buw`/`--buh` and draws exactly what it always drew.
+ */
+function tierCountdown(entry: TieredWidget): void {
+  const look = variantOf('countdown', entry.widget.config);
+  const table = COUNTDOWN_TIERS[look];
+  const primary = COUNTDOWN_PRIMARY[look];
+  const parts = COUNTDOWN_PARTS[look];
+  if (table === undefined || primary === undefined || parts === undefined) {
+    beltGenericRows(entry);
+    return;
+  }
+  const host = entry.box.querySelector(primary.host);
+  if (!(host instanceof HTMLElement)) return;
+  const inner = innerBox(entry.box);
+  const { chPx, emPx } = typeMetrics(host, primary.cls);
+  if (!(chPx > 0) || !(emPx > 0)) return;
+  const tier = widgetTierFor(table, inner.w, inner.h, chPx, emPx);
+  const kept = partsAt(parts, tier);
+  for (const node of [...entry.body.querySelectorAll<HTMLElement>('[data-part]')]) {
+    if (!kept.includes(node.dataset['part'] ?? '')) node.remove();
+  }
+  stampTier(entry.box, tier, 1);
+  stampRungs(entry.box, kept);
+  beltItems(entry.box, [...entry.body.querySelectorAll<HTMLElement>('[data-part]')]);
+}
+
+/** The `range` look's primary run: its temperatures, as the strip's is. */
+const RANGE_PRIMARY = { cls: 'wr-temp', host: '.wr-row' } as const;
+
+/**
+ * The `range` forecast: how many days, and how much each row says.
+ *
+ * **Height buys days and width buys columns**, the strip's shape turned on its
+ * side. The width is asked *beside the widest name* (`RANGE_TIERS` says why:
+ * a provider's own word for a day is never cut), so the first draw's names are
+ * measured before anything is decided — each row sized itself to its own
+ * content on that draw, so a name's cell is exactly its width.
+ *
+ * Then the rows are drawn once more with the columns the tier kept and the
+ * days the box holds, the widest name and temperature are written back as the
+ * widths every row shares so the columns line up, and the one belt runs over
+ * whole rows. What one row costs is read off the drawn row, never declared —
+ * the rule every table in `widget-tiers.ts` states.
+ */
+function tierRange(
+  entry: TieredWidget,
+  model: DisplayModel,
+  table: readonly WidgetTier[],
+  inner: { readonly w: number; readonly h: number },
+  chPx: number,
+  emPx: number,
+): void {
+  const config = widgetConfig(entry.widget.config);
+  const view = weatherWidgetView(model.weather, config);
+  const firstRows = [...entry.body.querySelectorAll('.wr-row')] as HTMLElement[];
+  if (firstRows.length === 0 || view.days.length === 0) return;
+  const nameW = widest(entry.body, '.wr-name');
+  const gap = parseFloat(getComputedStyle(firstRows[0] as HTMLElement).columnGap) || 0;
+  const tier = widgetTierFor(table, Math.max(0, inner.w - nameW - gap), inner.h, chPx, emPx);
+  const columns = rangeColumnsAt(tier);
+
+  // One row's pitch — its height and the room between two — off the drawn rows.
+  const pitch = firstRows.length > 1
+    ? (firstRows[1] as HTMLElement).offsetTop - (firstRows[0] as HTMLElement).offsetTop
+    : (firstRows[0] as HTMLElement).offsetHeight;
+  const rowH = (firstRows[0] as HTMLElement).offsetHeight;
+  // The section's top padding is room no row is drawn in — measured, leaving
+  // it in put a third row past the foot of Classic's forecast box at
+  // 1080x1920, and the belt took it off the glass. Its *bottom* padding is not
+  // charged: the belt measures a row against the box's foot, so the last row
+  // may end in it, and charging it cost 1920x1080 a day that fits.
+  const room = inner.h - parseFloat(getComputedStyle(entry.body).paddingTop);
+  const capacity = pitch > 0 ? Math.floor((room - rowH) / pitch + 1 + 0.001) : Infinity;
+  const days = Math.min(view.days.length, itemsAt(tier, capacity));
+
+  replaceBody(entry, renderWeatherRange(model, view.days, columns, days));
+  const section = entry.body;
+  section.style.setProperty('--wr-name-w', `${widest(section, '.wr-name')}px`);
+  section.style.setProperty('--wr-temp-w', `${widest(section, '.wr-temp')}px`);
+  const rain = section.querySelector('.wr-rain');
+  if (rain !== null) section.style.setProperty('--wr-rain-w', `${widest(section, '.wr-rain')}px`);
+  const rows = [...section.querySelectorAll('.wr-row')] as HTMLElement[];
+  beltItems(entry.box, rows);
+  stampRungs(entry.box, columns);
+  stampTier(entry.box, tier, rows.filter((row) => row.style.display !== 'none').length);
+}
+
+/** The `today` look's primary run: its condition words, the event role (`TODAY_TIERS`). */
+const TODAY_PRIMARY = { cls: 'wt-cond', host: '.wt-top' } as const;
+
+/** The `playful` look's primary run: its temperatures, as the strip's is. */
+const PLAYFUL_PRIMARY = { cls: 'wp-temp', host: '.wp-day' } as const;
+
+/**
+ * The specimen a Today card's lede is sized against — the widest reading a
+ * forecast writes — rather than the reading on the glass.
+ *
+ * So the lede's size is a function of the box and never of the weather: "9°"
+ * and "19°" draw at one size, and a card does not grow when the temperature
+ * falls a degree. The same argument as the clock's `--clock-chars`, taken one
+ * step further, because a clock's width only changes at a household's own
+ * setting and a temperature's changes every quarter of an hour.
+ */
+const LEDE_SPECIMEN = '-00°';
+
+/**
+ * The `today` forecast: which rungs, which form the next row takes, how many
+ * hours or days are in it, and how large the lede is.
+ *
+ * **The tier is the table's, from the room the card has** — the box's own
+ * height below any title, in `em` of the condition words — and the table is
+ * summed at the lede's floor (`TODAY_LEDE_FLOOR_EM`). What the table cannot
+ * say is measured off the first draw, never declared:
+ *
+ *  - **How many hours, and how many days**, by width: each is drawn at its own
+ *    width in the first draw, so the count is how many fit across the card
+ *    with the row's own gap between them. A wider card names more of the day.
+ *  - **Hours or the one line of days**, by height: the hours are three lines,
+ *    and a card whose room, once the lede has its floor, is short of them
+ *    draws the next days on one line instead — the plan's "or, in a short box".
+ *  - **The lede's size**: the room the kept rungs leave, no larger than the
+ *    cap the first draw was drawn at (`--t-wall-clock`, decision D1) and no
+ *    wider than the card — measured across `LEDE_SPECIMEN`, not the reading.
+ *
+ * A card that the table put at a tier whose rungs, drawn, leave the lede under
+ * its floor — a condition long enough to wrap to two lines — gives up a rung
+ * and asks again, so a long sky costs the hours before it costs the lede.
+ */
+function tierToday(
+  entry: TieredWidget,
+  model: DisplayModel,
+  table: readonly WidgetTier[],
+  inner: { readonly w: number; readonly h: number },
+  chPx: number,
+  emPx: number,
+): void {
+  const first = entry.body;
+  if (!first.classList.contains('wx-today')) return;
+  const head = first.querySelector<HTMLElement>('.wt-head');
+  if (head === null) return;
+  const style = getComputedStyle(first);
+  const padY = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+  const contentW = first.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+  // The room the card has: the box below any title, which `inner` would count.
+  const boxStyle = getComputedStyle(entry.box);
+  const room = entry.box.clientHeight - parseFloat(boxStyle.paddingBottom) - first.offsetTop;
+
+  // The cap, as the first draw drew it, and the lede's width and height in its
+  // own `em` — the height too, because a line box at `line-height: 1` is not
+  // always exactly one em once a smaller run sits on its baseline.
+  const cap = parseFloat(getComputedStyle(head).fontSize);
+  const ledeEm = measureWith(head, LEDE_SPECIMEN) / cap;
+  const tallEm = head.offsetHeight > 0 ? head.offsetHeight / cap : 1;
+  const byWidth = ledeEm > 0 ? contentW / ledeEm : cap;
+  const floor = TODAY_LEDE_FLOOR_EM * emPx;
+
+  // How many of the next hours and days fit across, off their drawn widths.
+  const hours = fitAcross(first.querySelector<HTMLElement>('.wt-hours'), contentW);
+  const hasHours = model.weatherHourly.length > 0;
+
+  const tier = widgetTierFor(table, inner.w, room, chPx, emPx);
+  let rungs = todayRungsAt(tier);
+  let next: 'hours' | 'days' = hasHours ? 'hours' : 'days';
+  let days = Number.POSITIVE_INFINITY;
+  let lede = cap;
+  for (;;) {
+    replaceBody(entry, renderWeatherToday(model, { rungs, next, hours, days }) ?? first);
+    const card = entry.body;
+    const top = card.querySelector<HTMLElement>('.wt-top');
+    const drawnHead = card.querySelector<HTMLElement>('.wt-head');
+    const row = card.querySelector<HTMLElement>('.wt-next');
+    if (next === 'days' && row !== null && !Number.isFinite(days)) {
+      // The line's own count, once it is the line that is drawn.
+      days = fitAcross(row, contentW);
+      continue;
+    }
+    const rest =
+      (top?.offsetHeight ?? 0) - (drawnHead?.offsetHeight ?? 0) + (row === null ? 0 : outerHeight(row)) + padY;
+    lede = (room - rest) / tallEm;
+    if (lede >= floor || rungs.length <= 1) break;
+    if (next === 'hours' && rungs.includes('next')) {
+      next = 'days';
+      continue;
+    }
+    rungs = rungs.slice(0, -1);
+  }
+
+  const size = Math.max(Math.min(cap, byWidth, lede), Math.min(emPx, cap));
+  entry.body.style.setProperty('--wt-lede-size', `${Math.floor(size * 100) / 100}px`);
+  const drawnNext = entry.body.querySelector('.wt-next');
+  entry.box.setAttribute(
+    'data-next',
+    drawnNext === null ? 'none' : drawnNext.classList.contains('wt-hours') ? 'hours' : 'days',
+  );
+  stampRungs(entry.box, rungs);
+  // The tier the card was *drawn* at: the table's, unless a rung had to go to
+  // keep the lede at its floor, in which case the one those rungs are.
+  stampTier(entry.box, table[rungs.length - 1] ?? tier, drawnNext === null ? 0 : drawnNext.children.length);
+}
+
+/** A node's height with its vertical margins — what it costs the column it sits in. */
+function outerHeight(node: HTMLElement): number {
+  const style = getComputedStyle(node);
+  return node.offsetHeight + parseFloat(style.marginTop) + parseFloat(style.marginBottom);
+}
+
+/**
+ * How many of a row's children fit across `width`, each at the width the first
+ * draw gave it and with the row's own gap between two — at least one, and all
+ * of them when there is no row. Cumulative rather than the widest times a
+ * count, because "Now" and "14" are not the same width and a row that budgeted
+ * every hour for the widest would leave one off for nothing.
+ */
+function fitAcross(row: HTMLElement | null, width: number): number {
+  if (row === null) return Number.POSITIVE_INFINITY;
+  const gap = parseFloat(getComputedStyle(row).columnGap) || 0;
+  let used = 0;
+  let count = 0;
+  for (const child of Array.from(row.children) as HTMLElement[]) {
+    const needed = child.offsetWidth + (count === 0 ? 0 : gap);
+    if (count > 0 && used + needed > width + 0.5) break;
+    used += needed;
+    count += 1;
+  }
+  return Math.max(1, count);
+}
+
+/**
+ * A lede row's natural width with its readings swapped for the specimen, in
+ * the cascade's own pixels, and put back as it was. `max-content` for the one
+ * read, because the row is laid out across the card and its drawn width is
+ * the card's rather than its own.
+ */
+function measureWith(head: HTMLElement, specimen: string): number {
+  const runs = Array.from(head.querySelectorAll<HTMLElement>('.wt-temp, .wt-temp-lo'));
+  const saved = runs.map((run) => run.textContent);
+  for (const run of runs) run.textContent = specimen;
+  const width = head.style.width;
+  head.style.width = 'max-content';
+  const measured = head.offsetWidth;
+  head.style.width = width;
+  runs.forEach((run, index) => {
+    run.textContent = saved[index] ?? '';
+  });
+  return measured;
+}
+
+/**
+ * The `playful` forecast: how many days across, how much each says, and
+ * whether the advice line is drawn under them.
+ *
+ * The strip's own pass for everything but the advice (`tierWeather`: width
+ * buys days, the tier buys rungs, the belt runs inside each column), and the
+ * advice line is kept only where the whole ladder is — it is the first thing
+ * given up (`PLAYFUL_TIERS`) — and only where the box has room under the
+ * columns for it, measured off the line the first draw drew.
+ */
+function tierPlayful(
+  entry: TieredWidget,
+  model: DisplayModel,
+  table: readonly WidgetTier[],
+  inner: { readonly w: number; readonly h: number },
+  chPx: number,
+  emPx: number,
+): void {
+  const config = widgetConfig(entry.widget.config);
+  const drawn = entry.body.querySelectorAll('.wp-day').length;
+  if (drawn === 0) return;
+  const columns = Math.min(drawn, columnsAt(inner.w, chPx, PLAYFUL_COLUMN_CH));
+  const tier = widgetTierFor(table, inner.w / columns, inner.h, chPx, emPx);
+  const full = weatherLadder(config);
+  const ladder = rungsAt(tier, full);
+  const view = weatherWidgetView(model.weather, { ...config, count: columns });
+  const advice = ladder.length === full.length ? playfulAdvice(model, config) : undefined;
+
+  const draw = (withAdvice: boolean): void => {
+    replaceBody(entry, renderWeatherPlayful(model, view.days, ladder, withAdvice ? advice : undefined));
+    entry.body.style.setProperty('--wx-days', String(columns));
+  };
+  draw(advice !== undefined);
+  let adviceShown = advice !== undefined;
+  const line = entry.body.querySelector<HTMLElement>('.wp-advice');
+  if (line !== null) {
+    const foot = entry.box.getBoundingClientRect().bottom - parseFloat(getComputedStyle(entry.box).paddingBottom || '0');
+    if (line.getBoundingClientRect().bottom > foot + 0.5) {
+      draw(false);
+      adviceShown = false;
+    }
+  }
+  entry.box.setAttribute('data-advice', advice === undefined ? 'none' : adviceShown ? 'shown' : 'given-up');
+  stampTier(entry.box, tier, columns);
+  stampRungs(entry.box, ladder);
+  for (const column of [...entry.body.querySelectorAll('.wp-day')] as HTMLElement[]) {
+    beltItems(entry.box, [...column.children] as HTMLElement[]);
+  }
+}
+
+/**
+ * The widest drawn run of one class, in the cascade's own pixels — `offsetWidth`,
+ * untransformed, for `typeMetrics`' reason. Rounded up, so a column set to it
+ * never clips its own widest word by a subpixel.
+ */
+function widest(root: HTMLElement, selector: string): number {
+  let most = 0;
+  for (const node of Array.from(root.querySelectorAll(selector)) as HTMLElement[]) {
+    most = Math.max(most, node.offsetWidth);
+  }
+  return Math.ceil(most);
 }
 
 /**
@@ -2969,7 +3755,20 @@ export function renderFreeform(
    * and this picks the record for the theme actually on the glass. Absent is
    * the active theme, which is every preview and every wall with no schedule.
    */
-  options: { readonly daytime?: boolean } = {},
+  options: {
+    readonly daytime?: boolean;
+    /*
+     * Whether this wall may move (plan P4.3): `screens.motion` as the server
+     * resolved it, which only `main.ts` reads off the manifest. Stamped on the
+     * canvas as `data-motion`, where every animation rule in `display.css` is
+     * scoped. **Absent stamps nothing**, which is every admin preview — the
+     * gallery's cards and the editor's live canvas — and a canvas with no
+     * attribute matches no rule, so a preview is always still: a settings
+     * screen somebody is working in is not the place for a cloud to drift
+     * across the thing they are trying to arrange.
+     */
+    readonly motion?: boolean;
+  } = {},
 ): void {
   const takeover = model.interrupts.find((interrupt) => interrupt.takeover);
   if (takeover !== undefined) {
@@ -2981,6 +3780,9 @@ export function renderFreeform(
   const screen = el('div', 'screen freeform');
   const canvas = el('div', 'canvas');
   canvas.style.setProperty('--aspect', String(layout.aspect));
+  // Set before anything inside it is built, so an element that animates is
+  // created under the attribute rather than restyled into it a moment later.
+  if (options.motion !== undefined) canvas.setAttribute('data-motion', options.motion ? 'on' : 'off');
   /*
    * How much room between the widgets (RFC 014 §4.4), out of two budgets.
    *
@@ -3094,9 +3896,11 @@ export function renderFreeform(
       // A box the household placed but that has no data yet says so, rather
       // than being an empty rectangle nobody can explain from the kitchen.
       box.appendChild(el('div', 'fw-empty', 'Nothing to show yet.'));
-    } else if (widget.type === 'clock' || widget.type === 'image') {
+    } else if (widget.type === 'clock' || widget.type === 'image' || widget.type === MOTION_FIXTURE_TYPE) {
       // The clock sizes itself to its box, and the image covers it — both fill
-      // the box on their own, in CSS, with no measurement here at all.
+      // the box on their own, in CSS, with no measurement here at all. The
+      // motion fixture is two shapes positioned in percentages of its box, and
+      // has no form to take from a tier either.
       box.appendChild(body);
     } else if (widget.type === 'calendar' && calendarGridFills(widget.config)) {
       // The month and week grids fill their box: their rows/cells stretch to the

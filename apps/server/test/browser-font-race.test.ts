@@ -66,6 +66,7 @@ import {
   browser,
   equipHousehold,
   install,
+  loadWallSettled,
   shutDownBrowser,
   type Installation,
   type NamedFeed,
@@ -307,6 +308,53 @@ describe('a wall whose first paint beats its webfonts', () => {
         `both readings must land inside one ${WALL_TICK_MS}ms wall tick, or they are ` +
           `readings of two different draws; it took ${raced.elapsed}ms`,
       ).toBeLessThan(WALL_TICK_MS);
+    },
+    SLOW,
+  );
+});
+
+describe('the settle every measuring file stands on', () => {
+  /**
+   * `loadWallSettled` draws with the fonts in hand even when they arrive late.
+   *
+   * It loads a wall once. It used to load it twice, and the second load was the
+   * proof that the settle held: the fonts came from the HTTP cache. Now the
+   * proof is taken on every call — an init script records each face's status
+   * when the first canvas is drawn, and the helper throws if one was still
+   * loading — and this is where that proof is made to matter. The fonts are
+   * three seconds late on a cold context, far longer than the manifest takes,
+   * so a helper that released the manifest without waiting for the faces would
+   * draw on the fallback here every time, not one run in thirty.
+   */
+  it(
+    'holds the first draw until the faces are in, however late they are',
+    async () => {
+      const started = Date.now();
+      const { page, close } = await loadWallSettled(link, { width: 1080, height: 1920 }, {
+        beforeLoad: (context) =>
+          context.route('**/assets/fonts/**', async (route) => {
+            await new Promise((resolve) => setTimeout(resolve, FONT_DELAY_MS));
+            await route.continue();
+          }),
+      });
+      try {
+        const atFirstDraw = await page.evaluate(
+          () =>
+            (window as unknown as { __mwFirstDrawFonts?: { family: string; status: string }[] })
+              .__mwFirstDrawFonts ?? [],
+        );
+        expect(atFirstDraw.length, 'no face was recorded at the first draw').toBeGreaterThan(0);
+        expect(
+          atFirstDraw.filter((face) => face.status !== 'loaded').map((face) => `${face.family} ${face.status}`),
+          'a face was not in when the wall first drew',
+        ).toEqual([]);
+        // And the fonts really were late, or this proves nothing about waiting.
+        expect(Date.now() - started, 'the late fonts did not delay the settle').toBeGreaterThanOrEqual(
+          FONT_DELAY_MS,
+        );
+      } finally {
+        await close();
+      }
     },
     SLOW,
   );

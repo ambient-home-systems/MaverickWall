@@ -132,6 +132,34 @@ describe('withTints, the four emphasis roles', () => {
     );
   });
 
+  it('derives the soft shadow by default and none when the theme stored none (P4.4)', () => {
+    expect(withTints(DARK)['--shadow-card']).toBe('0 0.15rem 0.6rem rgba(0, 0, 0, 0.45)');
+    expect(withTints(LIGHT)['--shadow-card']).toMatch(/^0 0\.1rem 0\.5rem rgba\(/);
+    expect(withTints({ ...DARK, '--shadow-card': 'none' })['--shadow-card']).toBe('none');
+  });
+
+  it('derives the designed styles’ palette, readable on both grounds (P4.5)', () => {
+    for (const theme of [DARK, LIGHT]) {
+      const t = withTints(theme);
+      for (const token of [
+        '--wx-sun', '--wx-cloud', '--wx-rain', '--wx-snow', '--wx-storm', '--wx-fog',
+        '--temp-cold', '--temp-cool', '--temp-warm', '--temp-hot',
+        '--state-active', '--state-alert', '--state-idle',
+      ]) {
+        expect(contrastOf(t[token] as string, theme['--bg']), token).toBeGreaterThanOrEqual(4.5);
+        expect(contrastOf(t[token] as string, theme['--panel']), token).toBeGreaterThanOrEqual(4.5);
+      }
+      for (const sky of ['day', 'night', 'cloud', 'rain', 'snow', 'storm']) {
+        for (const stop of ['top', 'bottom']) {
+          expect(
+            contrastOf(t[`--sky-${sky}-ink`] as string, t[`--sky-${sky}-${stop}`] as string),
+            `${sky} ${stop}`,
+          ).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+    }
+  });
+
   it('falls back toward pure ink rather than looping forever on an unreadable pair', () => {
     // Ink and background almost identical: 4.5:1 may be out of reach, but the
     // loop must still terminate and hand back a colour.
@@ -170,7 +198,10 @@ describe('scaffoldInk, on both bundles (parity with the display bundle)', () => 
     return source.slice(from, to + 3);
   }
 
-  for (const name of ['relativeLuminance', 'contrastRatio', 'scaffoldInk']) {
+  // `paletteTokens` joined for the designed styles' colours and the card
+  // shadow (plan items P4.4 and P4.5): one derivation, so the builder's
+  // preview and the wall a custom theme reaches cannot draw two skies.
+  for (const name of ['relativeLuminance', 'contrastRatio', 'scaffoldInk', 'paletteTokens']) {
     it(`draws ${name} character-identical on both sides`, () => {
       expect(bodyOf(server, name, 'themes.ts')).toBe(bodyOf(display, name, 'theme.ts'));
     });
@@ -187,6 +218,14 @@ describe('scaffoldInk, on both bundles (parity with the display bundle)', () => 
 describe('themeTokensSchema', () => {
   it('accepts a full valid token set', () => {
     expect(themeTokensSchema.safeParse(DARK).success).toBe(true);
+  });
+  it('accepts a shadow of none and refuses every other value (P4.4)', () => {
+    // One literal is the whole of the safety: nothing a household types can
+    // reach `box-shadow`, and Soft is an absence rather than a stored word.
+    expect(themeTokensSchema.safeParse({ ...DARK, '--shadow-card': 'none' }).success).toBe(true);
+    for (const bad of ['soft', '0 0 10px red', '', 'url(x)']) {
+      expect(themeTokensSchema.safeParse({ ...DARK, '--shadow-card': bad }).success, bad).toBe(false);
+    }
   });
   it('refuses a non-hex colour', () => {
     expect(themeTokensSchema.safeParse({ ...DARK, '--accent': 'red' }).success).toBe(false);

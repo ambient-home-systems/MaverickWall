@@ -1,6 +1,7 @@
 import { z } from '../validation.js';
 import { WIDGET_TYPES } from './manifest.js';
 import { widgetStyleBody } from './widget-style.js';
+import { EMOJI_KEYS } from '../emoji.js';
 
 /**
  * A stored image's own name — 64 hex plus a known extension, the shape
@@ -181,15 +182,40 @@ const widgetConfigFields = z
      * for one idea — so each renderer filters to its own allowlist and a value
      * a type does not know is "not for me", drawn as that type's default.
      *
-     * The clock is the first: `plain` (the clock every wall has drawn),
+     * The clock was the first: `plain` (the clock every wall has drawn),
      * `stacked` (the time over the weekday over the date) and `analogue` (a
      * filled face with two hands). **Absent means `plain`**, like every
      * default in this schema, so a canvas saved before this key existed sends
      * a byte-identical config and no stored ETag churns. `plain` is still a
      * member rather than only an absence, because the ink lane has to be able
      * to say "plain on the panel" beside a wall that says `stacked`.
+     *
+     * The September household review added a list per type (plan item P4.1),
+     * each with its default first: weather (`strip`, `today`, `range`,
+     * `colour`, `playful`), countdown (`number`, `page`, `ticket`,
+     * `occasion`, `progress`, `month`), Home Assistant (`list`, `tile`) and
+     * the calendar (`planner`, `bold`, its own look being an absence with no
+     * name). Which type draws which value is `VARIANTS` in
+     * `apps/display/src/variants.ts` and its transcription in
+     * `epaper/variants.ts`; `variants-parity.test.ts` holds this enum to be
+     * exactly their union. **Only the clock's draw anything yet** — every
+     * other value is stored, accepted and drawn as its type's default until
+     * the session that designs it.
      */
-    variant: z.enum(['plain', 'stacked', 'analogue']).optional(),
+    variant: z
+      .enum([
+        // clock
+        'plain', 'stacked', 'analogue',
+        // weather
+        'strip', 'today', 'range', 'colour', 'playful',
+        // countdown
+        'number', 'page', 'ticket', 'occasion', 'progress', 'month',
+        // homeassistant
+        'list', 'tile',
+        // calendar
+        'planner', 'bold',
+      ])
+      .optional(),
     /*
      * Group (RFC 014 §5.1) — how a group lays its children out inside its own
      * box: a `row` divides the group's inner box equally across its children in
@@ -227,6 +253,13 @@ const widgetConfigFields = z
     showLow: z.boolean().optional(),
     showIcon: z.boolean().optional(),
     /*
+     * The `playful` look's advice line (plan item P5.1) — "Umbrella day" when
+     * today calls for one. Absence means on, like `showFace`: only `playful`
+     * reads it, so a wall that has not picked that look is unchanged whatever
+     * this says.
+     */
+    advice: z.boolean().optional(),
+    /*
      * Home Assistant — which watched readings this widget shows, **by entity
      * id** (P1.3); absent or empty is all of them. It held labels until then,
      * so a rename took a reading off every widget that had picked it, and a
@@ -242,6 +275,47 @@ const widgetConfigFields = z
     target: z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/, 'A countdown date has to be YYYY-MM-DD.')
+      .optional(),
+    /*
+     * Countdown, since plan item P5.2 — three more, every one absent by
+     * default and every absence exactly what a countdown drew before:
+     *
+     *  - `unitWords` counts in `days` or in `sleeps` ("12 sleeps until
+     *    Christmas"). Absent is days. Sleeps count forward only: a date that
+     *    has passed reads "3 days ago" whichever is chosen.
+     *  - `emoji` is a **key** from the bundled set (P4.2), drawn beside the
+     *    label as an `<img>` — never a code point, so every wall draws the same
+     *    picture (D6). A key outside the set is refused rather than dropped.
+     *    A panel draws none of them; `asciiTitle` is still its guard.
+     *  - `celebrate` plays confetti on the day. **Absent is on**, the one
+     *    default here that does anything, and the day is the only time it
+     *    does: a burst the first time the day is drawn and at most once an
+     *    hour after. Only `false` switches it off.
+     */
+    unitWords: z.enum(['days', 'sleeps']).optional(),
+    emoji: z.enum(EMOJI_KEYS).optional(),
+    celebrate: z.boolean().optional(),
+    /*
+     * Countdown, the item's second half (P5.2):
+     *
+     *  - `occasion` dresses the `occasion` look for Christmas, a birthday,
+     *    Halloween, a holiday, the end of term, New Year, or something else.
+     *    Absent is `custom` — the theme's own accent and the household's own
+     *    picture — which is the wall's reading and the panel's (where the look
+     *    is drawn as the number anyway).
+     *  - `from` is the start date a `progress` bar counts its days gone from.
+     *    **Refused, never coerced, when it is not before `target`**: a bar from
+     *    a start after its own end has no honest length, and quietly swapping
+     *    the two or clamping one to the other would draw a number the household
+     *    did not choose. The check is on the whole config rather than here,
+     *    because it is a fact about two fields (`startBeforeTarget`).
+     */
+    occasion: z
+      .enum(['christmas', 'birthday', 'halloween', 'vacation', 'schools-out', 'new-year', 'custom'])
+      .optional(),
+    from: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'A countdown start date has to be YYYY-MM-DD.')
       .optional(),
     // External module widget — which registered module's panel to draw (its id).
     module: z.string().max(64).optional(),
@@ -332,6 +406,7 @@ export const inkOverrideBody = widgetConfigFields
     readings: true,
     shiftName: true,
     showDate: true,
+    unitWords: true,
     variant: true,
   })
   .strict();
@@ -365,7 +440,33 @@ const laneConfigFields = widgetConfigFields.extend({
  * The style lane stays: a note standing in for a forecast is still a box on
  * this wall, and may be dressed like one.
  */
-export const whenEmptyConfigBody = laneConfigFields.omit({ ink: true }).strict();
+/**
+ * The sentence a countdown's start date on or after its target is refused
+ * with (plan item P5.2) — written for somebody choosing two dates, and the
+ * editor says it beside the field before the save is tried
+ * (`START_AFTER_TARGET` in the display's `countdown.ts`, the same words).
+ */
+export const START_AFTER_TARGET = 'The start date has to be before the date it counts down to.';
+
+/**
+ * A countdown's start date comes before its target, or the config is refused
+ * with a sentence (plan item P5.2). Only when both are set: a start with no
+ * target yet is a household halfway through filling the form in, and the wall
+ * already says "Set a date" for that.
+ *
+ * Compared as civil dates, which as `YYYY-MM-DD` strings sort as they read.
+ * On the whole config rather than on `from`, because a field cannot see its
+ * neighbour; attached to each schema that is *parsed* rather than to the
+ * fields they are built from, since zod refuses to extend or pick from an
+ * object that carries a refinement.
+ */
+function startBeforeTarget(config: { from?: string | undefined; target?: string | undefined }, ctx: z.RefinementCtx): void {
+  if (config.from === undefined || config.target === undefined) return;
+  if (config.from < config.target) return;
+  ctx.addIssue({ code: 'custom', path: ['from'], message: START_AFTER_TARGET });
+}
+
+export const whenEmptyConfigBody = laneConfigFields.omit({ ink: true }).strict().superRefine(startBeforeTarget);
 
 export const whenEmptyBody = z
   .object({ type: z.enum(WIDGET_TYPES), config: whenEmptyConfigBody.optional() })
@@ -373,7 +474,8 @@ export const whenEmptyBody = z
 
 export const widgetConfigBody = laneConfigFields
   .extend({ whenEmpty: whenEmptyBody.optional() })
-  .strict();
+  .strict()
+  .superRefine(startBeforeTarget);
 
 /**
  * A canvas background (RFC 005 Phases 3 and 3b): a solid colour, a two-stop

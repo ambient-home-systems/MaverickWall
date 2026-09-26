@@ -72,7 +72,7 @@ import { join } from 'node:path';
 import { backupTo, databasePath, integrityCheck } from '../db/open.js';
 import { bytesOf, type WallAddress } from './app.js';
 import { epaperOrientation } from '../epaper/frame.js';
-import { INK_LANE, PANEL_IGNORES } from '../epaper/honours.js';
+import { INK_LANE, INK_LOOKS, PANEL_IGNORES } from '../epaper/honours.js';
 import { ingressPath } from './ingress.js';
 import { buildDiagnostics } from '../api/diagnostics.js';
 import { readImage, storeImage, listImages } from '../api/media.js';
@@ -88,6 +88,7 @@ import {
   WALL_SIZE_CUSTOM,
   WALL_SIZE_PRESETS,
 } from '../wall-sizes.js';
+import { wallMotion } from '../wall-motion.js';
 import type { LogBuffer } from '../logbuffer.js';
 import {
   parseBackground,
@@ -438,6 +439,16 @@ const screenBody = z.object({
    * a row *means* is decided in the handler against `layout-slots.ts`.
    */
   schedule_form: optionalText(1),
+  /*
+   * Whether this wall may move (plan P4.3). `motion_shown` is what the switch
+   * was drawn as, `1` or `0`, and it is the marker too: the handler writes the
+   * column only when the posted switch differs from it — the household moved
+   * it — and otherwise leaves it as it was, so a wall whose Motion nobody
+   * touched keeps the null that lets an e-ink size turn it off. A page cached
+   * from before the row existed posts neither, and changes nothing.
+   */
+  motion: checkbox(),
+  motion_shown: optionalText(1),
   ...Object.fromEntries(
     Array.from({ length: MAX_SCHEDULE_ROWS }, (_, i) => i + 1).flatMap((n) => [
       [`schedule_slot_${n}`, optionalText(24)],
@@ -762,7 +773,7 @@ function wallTemplatePreviews(
 ): readonly Record<string, unknown>[] {
   return catalogue.map((t) => ({
     id: t.id,
-    // The name travels for the suggestion on `/admin/walls/new`: a card
+    // The name travels for the suggestion on `/admin/walls/new/browser`: a card
     // reading "Suggested for Sky Week" has to name the card the household just
     // pressed, and reading it back out of the DOM would be a second copy of a
     // string this JSON already holds (RFC 015 §3.1).
@@ -1282,9 +1293,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     }
     if (screens.length === 0) {
       attention.push({
-        title: 'No walls paired yet',
-        detail: 'Pair a tablet, a television or an e-paper panel to put the calendar on a screen.',
-        href: 'admin/walls', tag: 'Not set up', bad: false,
+        // "Add", not "Pair" (P2.2): pairing is the step that opens a browser
+        // wall's link, and an e-paper panel is never paired at all.
+        title: 'No walls yet',
+        detail: 'Add a tablet, a television or an e-paper panel to put the calendar on a wall.',
+        href: 'admin/walls/new', tag: 'Not set up', bad: false,
       });
     }
     for (const screen of screens) {
@@ -2683,19 +2696,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
 
   // The Walls list itself — `admin-walls.ts` (RFC 016). Registered here rather
   // than beside the other modules at the top of this function, because this is
-  // where its route was: `/admin/walls` must be declared ahead of
-  // `/admin/walls/new` and `/admin/walls/:id` below.
+  // where its route was: `/admin/walls` and the `/admin/walls/new` chooser must
+  // be declared ahead of `/admin/walls/:id` below.
   registerWallsRoutes(app, deps);
   // A wall's own CSS (RFC 014 §7) — admin-css.ts, beside the wall it belongs to.
   registerCssRoutes(app, deps);
   /*
-   * Declared ahead of `/admin/walls/:id`, for the reason the approve route
+   * The browser wall's add page, one step behind the chooser (P2.2). Declared
+   * ahead of the `/admin/walls/:id/…` family for the reason the approve route
    * states one screen along: a static segment must come before the param that
-   * would otherwise swallow it. Here the swallow is silent rather than loud —
-   * `:id` redirects an id it does not recognise to the Walls list, so "new"
-   * would bounce off the list instead of 404ing.
+   * would otherwise swallow it.
    */
-  app.get('/admin/walls/new', (c: Context) => c.html(newWallPage(c)));
+  app.get('/admin/walls/new/browser', (c: Context) => c.html(newWallPage(c)));
   app.get('/admin/walls/:id', (c: Context) => {
     const id = c.req.param('id') ?? '';
     /*
@@ -3021,6 +3033,24 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       schedule = rows;
     }
 
+    /*
+     * Whether this wall may move (plan P4.3), written only when it was moved.
+     *
+     * A switch always posts an answer, so "on" in the body cannot tell a
+     * household who chose motion from one who never looked at the row — and
+     * the difference is the whole of the e-ink default: a wall saved with a
+     * 7.5" e-ink size and the switch untouched must be still, not locked on by
+     * a switch that was drawn on while the size was still a television. So the
+     * form says what it drew, and a posted value equal to that is the column
+     * handed back unchanged — null stays null, and `wallMotion` goes on reading
+     * it against whatever size this save stores.
+     */
+    let motion: number | null = stored?.motion ?? null;
+    const motionShown = (shaped.value.motion_shown ?? '').trim();
+    if ((motionShown === '1' || motionShown === '0') && shaped.value.motion !== (motionShown === '1')) {
+      motion = shaped.value.motion ? 1 : 0;
+    }
+
     // Density overrides: empty follows the household default, a number is
     // range-checked here beside the theme and zone checks.
     const density = (
@@ -3084,6 +3114,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         readDistanceMm: size.distanceMm,
         layoutGutter,
         layoutStyle,
+        motion,
       })
     ) {
       return c.redirect('/admin/walls', 302);
@@ -5128,6 +5159,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `</div>`;
 
     // --- Device and time --------------------------------------------------
+    const motionOn = wallMotion(screen.motion, screen.panelWidthMm, screen.panelHeightMm);
     const device =
       wsetGroup('Identity', textField({ label: 'Wall name', name: 'name', required: true, value: screen.name })) +
       `<div class="wset-group">` +
@@ -5233,6 +5265,32 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `<p class="hint-1">Two facts about the hardware, like the mounting above: ` +
           `nothing else in here knows how large this wall is or how far away it is ` +
           `read from. Leave them unset and it draws exactly as it does today.</p>`,
+      ) +
+      /*
+       * Whether this wall may move (plan P4.3, decision D7) — beside the size
+       * because the size is what decides its default: an e-ink panel running
+       * the browser wall repaints the whole screen for every frame, so the
+       * e-ink sizes default it off. Drawn as the answer `wallMotion` gives for
+       * the stored row, which is what the wall is doing; `motion_shown` says
+       * what that was, so the handler can tell a switch the household moved
+       * from one they left alone (see the handler). Nothing on a wall moves
+       * yet except where a style that moves has been chosen, and the hint says
+       * so rather than promising animation somebody will go looking for.
+       */
+      wsetGroup(
+        'Motion',
+        `<div class="rows">` +
+          switchRow({
+            label: 'Motion',
+            name: 'motion',
+            checked: motionOn,
+            hint:
+              'Lets the styles that move — weather that drifts, a countdown that ' +
+              'celebrates — move on this wall. Off by default for an e-ink size. ' +
+              'A device set to reduce motion stays still either way.',
+          }) +
+          `<input type="hidden" name="motion_shown" value="${motionOn ? '1' : '0'}">` +
+          `</div>`,
       ) +
       wsetGroup(
         'Time',
@@ -5433,17 +5491,20 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     return page({
       self: selfHref(c),
       modules: navModules(deps.db),
-      title: 'Pair a new wall — Maverick Wall',
+      // The chooser's own words (P2.2): "Add a browser wall" is what was
+      // pressed, so it is what the page is called. "Pair" is the next page's
+      // verb — the QR and the code — and nothing before it.
+      title: 'Add a browser wall — Maverick Wall',
       nav: 'walls',
-      heading: 'Pair a new wall',
+      heading: 'Add a browser wall',
+      back: { label: 'Add a wall', href: 'admin/walls/new' },
       saved: readSaved(c),
       intro:
-        'A browser wall: a tablet, a monitor or a television with Maverick Wall open ' +
-        'in a browser. Name it and say what it is, and the next page has the QR and ' +
-        'the short code to open on the wall itself.',
+        'A tablet, a monitor or a television with Maverick Wall open in a browser. ' +
+        'Name it and say what it is, and the next page has the QR and the short ' +
+        'code to open on the wall itself.',
       body:
         (error === undefined ? '' : errorBlock(error)) +
-        `<p><a class="link" href="admin/walls">← Back to walls</a></p>` +
         `<form method="post" action="admin/screens" id="add">` +
         textField({
           label: 'Name',
@@ -5745,7 +5806,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
        */
       ...(inkPanels.length === 0
         ? {}
-        : { ink: { panels: inkPanels, lane: INK_LANE, ignores: PANEL_IGNORES } }),
+        : { ink: { panels: inkPanels, lane: INK_LANE, ignores: PANEL_IGNORES, looks: INK_LOOKS } }),
       // The watched Home Assistant to-do lists, for the To-do widget's picker
       // (RFC 012). Empty when there are none, and the picker says so.
       todoLists: todoListChoices(deps.db),

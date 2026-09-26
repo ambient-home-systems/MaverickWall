@@ -18,7 +18,8 @@ import {
 } from '@maverick-wall/core';
 
 import { canvasGutterStep } from '../gutter.js';
-import { physicalWall } from '../wall-sizes.js';
+import { isEinkWall, physicalWall } from '../wall-sizes.js';
+import { wallMotion } from '../wall-motion.js';
 import { builtinThemeTokens } from './builtin-themes.js';
 import { resolveStyleTokens, storedStyleLayer, styleLayerOf, type WidgetStyle } from './widget-style.js';
 
@@ -1137,6 +1138,18 @@ export interface Manifest {
     readonly panelHeightMm?: number;
     readonly readDistanceMm?: number;
     /**
+     * Whether this wall is sized as one of the wall-size picker's e-ink panels
+     * (`isEinkWall`), which the display reads to set `--shadow-card` to none
+     * whatever the theme says (decision D8, plan item P4.4): a shadow is grey,
+     * and grey on e-ink is dither that bands.
+     *
+     * **Optional, and absent when it is not**, on the `panelWidthMm` argument:
+     * `true` or nothing, so every wall that is not an e-ink panel — every wall
+     * in the world but a handful — sends the document it sent before this
+     * existed, byte for byte, and no stored ETag churns.
+     */
+    readonly eink?: true;
+    /**
      * How much room this wall leaves between the widgets on it, as a step on
      * the spacing scale — `0` (touching) to `4` (what every wall drew before
      * this field existed). RFC 014 §4.4.
@@ -1175,6 +1188,17 @@ export interface Manifest {
      * on the `layoutGutter` argument above — spread, never emitted empty.
      */
     readonly customCss?: string;
+    /**
+     * Whether this wall may move (plan P4.3): **present only as `false`**.
+     *
+     * Resolved here from `screens.motion` and the wall's size by `wallMotion`,
+     * so the e-ink default is decided once and the wall reads an answer rather
+     * than a preset table of its own. Absent is on — the `allowTodo` argument
+     * above: every wall in the world moves unless somebody said otherwise, so
+     * `"motion": true` on each of them would churn every stored ETag at one
+     * image pull for a setting nobody opened.
+     */
+    readonly motion?: false;
   };
   readonly days: readonly ManifestDay[];
   /** Everyone the wall knows about, so a legend can be drawn. */
@@ -1430,6 +1454,8 @@ export interface BuildManifestInput {
     readonly layoutStyle?: string | null;
     /** The wall's own CSS, already scoped; null until written (RFC 014 §7). */
     readonly customCss?: string | null;
+    /** Whether this wall may move, as stored; null is "never chosen" (plan P4.3). */
+    readonly motion?: number | null;
   };
   /**
    * Resolve a theme reference to its shape and (for a custom theme) its tokens.
@@ -1916,6 +1942,14 @@ export function buildManifest(input: BuildManifestInput): Manifest {
         input.screen?.panelHeightMm,
         input.screen?.readDistanceMm,
       ) ?? {}),
+      // Spread on the same argument: `true` or nothing (P4.4).
+      ...(isEinkWall(
+        input.screen?.panelWidthMm,
+        input.screen?.panelHeightMm,
+        input.screen?.readDistanceMm,
+      )
+        ? { eink: true as const }
+        : {}),
       /*
        * Spread and refused on the same argument as the three above it, one
        * setting along: absent has to be *identical* to the document this was
@@ -1932,6 +1966,17 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       // The wall's own CSS (RFC 014 §7), on the same argument once more: the
       // scoped text as stored, and nothing at all until a household wrote one.
       ...(wallCss === undefined ? {} : { customCss: wallCss }),
+      /*
+       * Still, said only when it is. The raw millimetres rather than
+       * `physicalWall`'s answer, because the e-ink default is about which
+       * panel this is and not about whether a reading distance came with it.
+       * A document with no screen — the stand-in, a preview — says nothing,
+       * and a preview never stamps the switch on its canvas anyway.
+       */
+      ...(input.screen !== undefined &&
+      !wallMotion(input.screen.motion, input.screen.panelWidthMm, input.screen.panelHeightMm)
+        ? { motion: false as const }
+        : {}),
     },
     display: {
       todayEvents: clamp(input.household.displayTodayEvents, 1, 20, 8),

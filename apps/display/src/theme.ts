@@ -85,6 +85,9 @@ const HOUSEHOLD: ThemeTokens = {
   '--ink-scaffold': '#706C65',
   '--ink-quiet': '#8A8474',
   '--rule-week': '#E6DFCF',
+  // A soft shadow in the theme's own ink, faint: warm paper lifts a card
+  // rather than floating it (decision D8, plan item P4.4).
+  '--shadow-card': '0 0.1rem 0.5rem rgba(38, 34, 28, 0.14)',
 };
 
 /** Steel-blue on a light technical ground: the bound design system as a wall. */
@@ -109,6 +112,9 @@ const BLUEPRINT: ThemeTokens = {
   '--ink-scaffold': '#6C6D6E',
   '--ink-quiet': '#7C8288',
   '--rule-week': '#C6C9CD',
+  // None: a wireframe separates with its rules, and a shadow on a drawing
+  // reads as a smudge (decision D8, plan item P4.4).
+  '--shadow-card': 'none',
 };
 
 /** The board's descendant: dark, but the blocks read as discrete panels. */
@@ -131,6 +137,9 @@ const PANELS: ThemeTokens = {
   '--ink-scaffold': '#9B9B9A',
   '--ink-quiet': '#9AA5B2',
   '--rule-week': '#2A323E',
+  // Soft, and dark on a dark ground, which is the only way a shadow shows on
+  // one at all (decision D8, plan item P4.4).
+  '--shadow-card': '0 0.15rem 0.6rem rgba(0, 0, 0, 0.45)',
 };
 
 /** Month-as-hero paper ledger: cream ground, red accent, serif display face. */
@@ -157,6 +166,9 @@ const ALMANAC: ThemeTokens = {
   '--ink-scaffold': '#76716B',
   '--ink-quiet': '#8A8474',
   '--rule-week': '#E4DCC9',
+  // Paper-like: a hard offset with no blur, a printed card laid on the
+  // ledger rather than floated above it (decision D8, plan item P4.4).
+  '--shadow-card': '0.08rem 0.12rem 0 rgba(36, 31, 25, 0.14)',
 };
 
 
@@ -203,6 +215,9 @@ const SWISS: ThemeTokens = {
   '--ink-scaffold': '#A2A2A2',
   '--ink-quiet': '#A1A1AA',
   '--rule-week': '#27272A',
+  // None: the style this theme is named after has no depth in it, and a
+  // near-black ground would lose a shadow anyway (decision D8, plan item P4.4).
+  '--shadow-card': 'none',
 };
 
 const THEMES: Readonly<Record<ThemeName, ThemeTokens>> = {
@@ -326,7 +341,11 @@ export function themeTokens(name: string): ThemeTokens {
   const base = THEMES[key];
   const background = base['--bg'] ?? '#000000';
 
-  const derived: Record<string, string> = { ...base };
+  // The designed styles' palette (P4.5) is derived from this theme's own
+  // colours by the one derivation a custom theme goes through, and the
+  // theme's declared tokens win over it — which is how a built-in's own
+  // `--shadow-card` reaches the wall rather than the derived default.
+  const derived: Record<string, string> = { ...paletteTokens(base), ...base };
   for (const token of SHIFT_TOKENS) {
     const hue = base[token];
     if (hue === undefined) continue;
@@ -375,6 +394,111 @@ function scaffoldInk(ink: string, background: string): string {
 }
 
 /**
+ * The tokens the designed widget styles paint with (plan items P4.4 and P4.5),
+ * derived from a theme's own grounds and ink.
+ *
+ * Written twice, in `apps/display/src/theme.ts` and `apps/server/src/api/
+ * themes.ts`, and held character-identical by `themes.test.ts` — the seam
+ * `scaffoldInk` already sits at, and for the same reason: the builder's
+ * preview and the wall a custom theme reaches must draw one colour, not two
+ * that agree most of the time. The five built-ins go through it too, from
+ * their own colours, so a custom theme copied from Panels draws Panels' rain.
+ *
+ * Three families are **readable**: they paint a glyph or a word, so each
+ * starts at a canonical hue and is mixed toward the theme's ink until it
+ * clears 4.5:1 on *both* grounds a widget sits on, `--bg` and `--panel` —
+ * `scaffoldInk`'s loop, turned round to keep a colour's identity rather than
+ * to demote an ink. Weather conditions (`--wx-*`), four temperature stops
+ * cold to hot (`--temp-*`), and three Home Assistant states (`--state-*`),
+ * of which idle is the theme's own muted ink held to the same bar. A theme
+ * whose ink cannot clear the bar ends at its ink, which is still a colour
+ * (rule nine), never a loop that does not stop.
+ *
+ * The **skies** are grounds rather than inks: six gradients, a top and a
+ * bottom each, tinted twelve per cent toward the theme's ground so a sky sits
+ * in its theme, with the ink drawn over it. Each sky names its ink — white,
+ * or a near-black slate for the pale snow sky — and each stop is pushed away
+ * from that ink until it clears 4.5:1, so every word on every sky is legible
+ * by construction rather than by a colour somebody happened to pick.
+ *
+ * And the **card shadow** (decision D8): `none` when the theme asked for none,
+ * otherwise a soft one — dark and heavy on a dark ground, where nothing else
+ * shows, and faint in the theme's own ink on a light one. The five built-ins
+ * declare theirs outright and win over this; a custom theme takes this.
+ * Nothing in the stylesheet reads any of it yet except a widget whose Style
+ * tab asks for a drop shadow, which is what keeps every wall's pixels where
+ * they were.
+ */
+function paletteTokens(base: Readonly<Record<string, string | undefined>>): Record<string, string> {
+  const background = base['--bg'] ?? '#000000';
+  const panel = base['--panel'] ?? background;
+  const ink = base['--ink'] ?? '#FFFFFF';
+  const out: Record<string, string> = {};
+
+  const readable = (hue: string): string => {
+    let ratio = 0;
+    let value = hue;
+    while ((contrastRatio(value, background) < 4.5 || contrastRatio(value, panel) < 4.5) && ratio < 1) {
+      ratio = Math.round((ratio + 0.02) * 100) / 100;
+      value = mix(ink, hue, ratio);
+    }
+    return value;
+  };
+  const hues: readonly (readonly [string, string])[] = [
+    ['--wx-sun', '#F2B632'],
+    ['--wx-cloud', '#9AA7B4'],
+    ['--wx-rain', '#4C8FE0'],
+    ['--wx-snow', '#8CC8E8'],
+    ['--wx-storm', '#9B7BE0'],
+    ['--wx-fog', '#A3A8AE'],
+    ['--temp-cold', '#4C8FE0'],
+    ['--temp-cool', '#3FB0A8'],
+    ['--temp-warm', '#F2A33A'],
+    ['--temp-hot', '#E5533D'],
+    ['--state-active', '#F2B632'],
+    ['--state-alert', '#E5533D'],
+    ['--state-idle', base['--muted'] ?? ink],
+  ];
+  for (const [token, hue] of hues) out[token] = readable(hue);
+
+  const skies: readonly (readonly [string, string, string, boolean])[] = [
+    ['day', '#2F6FC0', '#6FA8E8', false],
+    ['night', '#141A3C', '#2E3A7A', false],
+    ['cloud', '#5B6673', '#8C97A3', false],
+    ['rain', '#2E3D4F', '#546A80', false],
+    ['snow', '#DCE7F0', '#F4F8FB', true],
+    ['storm', '#2A1F4A', '#4B3A7A', false],
+  ];
+  for (const [kind, top, bottom, pale] of skies) {
+    const skyInk = pale ? '#1A1F24' : '#FFFFFF';
+    const away = pale ? '#FFFFFF' : '#000000';
+    const settle = (stop: string): string => {
+      const tinted = mix(stop, background, 0.88);
+      let ratio = 0;
+      let value = tinted;
+      while (contrastRatio(value, skyInk) < 4.5 && ratio < 1) {
+        ratio = Math.round((ratio + 0.02) * 100) / 100;
+        value = mix(away, tinted, ratio);
+      }
+      return value;
+    };
+    out[`--sky-${kind}-top`] = settle(top);
+    out[`--sky-${kind}-bottom`] = settle(bottom);
+    out[`--sky-${kind}-ink`] = skyInk;
+  }
+
+  const light = contrastRatio(background, '#000000') > contrastRatio(background, '#FFFFFF');
+  const shade = parseHex(ink) ?? [0, 0, 0];
+  out['--shadow-card'] =
+    base['--shadow-card'] === 'none'
+      ? 'none'
+      : light
+        ? `0 0.1rem 0.5rem rgba(${shade[0]}, ${shade[1]}, ${shade[2]}, 0.14)`
+        : '0 0.15rem 0.6rem rgba(0, 0, 0, 0.45)';
+  return out;
+}
+
+/**
  * A custom theme's base tokens with the derived shift tints added — the client
  * mirror of the server's `withTints` (`apps/server/src/api/themes.ts`), so the
  * builder's live preview matches the wall the manifest will draw. A light
@@ -400,6 +524,9 @@ export function customTokens(base: Readonly<Record<string, string>>): Record<str
   out['--ink-scaffold'] = scaffoldInk(ink, background);
   out['--ink-quiet'] = base['--muted'] ?? ink;
   out['--rule-week'] = base['--rule'] ?? background;
+  // The designed styles' palette and the card shadow (P4.4, P4.5), measured
+  // against this theme's own grounds. Mirrors `withTints`, token for token.
+  Object.assign(out, paletteTokens(base));
   return out;
 }
 
@@ -493,6 +620,25 @@ export interface Themeable {
  * every corner — and those cannot be expressed as a custom property.
  */
 export function applyTheme(
+  element: Themeable,
+  name: string,
+  tokens?: Readonly<Record<string, string>>,
+  shape?: string,
+  eink?: boolean,
+): void {
+  applyThemeTokens(element, name, tokens, shape);
+  /*
+   * A wall sized as one of the e-ink panels on the wall-size picker draws no
+   * shadow, whatever its theme says (decision D8, plan item P4.4): a shadow is
+   * grey, and grey on e-ink is dither that bands. Written after the theme so
+   * it wins over the theme's own `--shadow-card`, and re-written on every draw
+   * with it — so a wall re-measured as a television gets its theme's shadow
+   * back on the next tick rather than keeping this one.
+   */
+  if (eink === true) element.style.setProperty('--shadow-card', 'none');
+}
+
+function applyThemeTokens(
   element: Themeable,
   name: string,
   tokens?: Readonly<Record<string, string>>,

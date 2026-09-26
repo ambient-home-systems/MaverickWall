@@ -8,6 +8,7 @@ import type {
 } from './manifest.js';
 import { isGlyphKey, type GlyphKey } from './glyphs.js';
 import { styleTokensOf } from './widget-style.js';
+import { NO_ONE_SHOTS, type OneShotMemory } from './motion.js';
 export type { ManifestShift };
 export type { GlyphKey };
 
@@ -272,12 +273,98 @@ export interface WeatherDayModel {
   readonly high: string;
   readonly low: string;
   /**
+   * The same two temperatures as numbers, in the unit below, or undefined
+   * where the strip draws an em dash (plan item P5.1).
+   *
+   * The strip has only ever needed the formatted strings. The `range` style
+   * draws a bar from the low to the high on the week's own scale, and the
+   * `colour` style tints each on the temperature scale, and neither can be
+   * worked out of "13°C" without parsing a string this file wrote.
+   */
+  readonly highValue: number | undefined;
+  readonly lowValue: number | undefined;
+  /** The scale those numbers are in — `F` or `C` — when the day said. */
+  readonly tempUnit: 'F' | 'C' | undefined;
+  /**
    * The civil date this covers, or absent when the provider did not say — and
    * absent for a forecast cached by a server older than this field, which is
    * why nothing may assume it. Only the join uses it; the strip still labels
    * itself with `name`, which is the provider's own wording.
    */
   readonly date: string | undefined;
+  /**
+   * The provider's own words for the day — "Mostly Cloudy" — which the
+   * manifest has always carried and this model used to drop (plan item P3.7).
+   * Carried now so a style can say it; nothing draws it yet.
+   */
+  readonly summary: string | undefined;
+  /*
+   * The richer half (plan item P3.1). Each is undefined when the server sent
+   * nothing usable — an older server, a provider without it, or a value that is
+   * not a number in range — and a style that wants one draws without it.
+   * Numbers stay numbers, in the panel's `units`; only temperatures are
+   * formatted here, as they always were.
+   */
+  /** Percent, 0–100. */
+  readonly precipChance: number | undefined;
+  readonly precipAmount: number | undefined;
+  readonly windMax: number | undefined;
+  readonly uvMax: number | undefined;
+  /** Local ISO time, `YYYY-MM-DDTHH:MM`, in the household's zone. */
+  readonly sunrise: string | undefined;
+  readonly sunset: string | undefined;
+  /** NWS's paragraph behind `summary`. */
+  readonly detail: string | undefined;
+}
+
+/**
+ * What it is like outside now (plan item P3.1), read defensively.
+ *
+ * Absent — not a model full of dashes — whenever it cannot be trusted as
+ * "now": the server leaves it out past ninety minutes, and `weatherFrom`
+ * leaves it out again against the wall's own clock, because a wall drawing a
+ * manifest it saved before the network went is the one place the server's
+ * rule cannot reach.
+ */
+export interface CurrentWeatherModel {
+  readonly observedAt: number;
+  /** A station's measurement, or a forecast model's. A style may say which. */
+  readonly source: 'observed' | 'modelled';
+  /** Formatted as a day's high is: "54°". */
+  readonly temp: string;
+  /** The same reading as a number, in the panel's units, for a style that places it on a scale. */
+  readonly tempValue: number;
+  readonly feelsLike: string | undefined;
+  readonly condition: string | undefined;
+  readonly glyph: GlyphKey | undefined;
+  readonly isDay: boolean;
+  readonly humidity: number | undefined;
+  readonly windSpeed: number | undefined;
+  readonly windGust: number | undefined;
+  readonly windDir: string | undefined;
+  readonly uv: number | undefined;
+}
+
+/** One of the next twenty-four hours. */
+export interface HourlyWeatherModel {
+  readonly at: number;
+  readonly temp: string;
+  readonly glyph: GlyphKey | undefined;
+  readonly isDay: boolean;
+  readonly precipChance: number | undefined;
+}
+
+export interface AirQualityModel {
+  readonly aqi: number;
+  readonly scale: 'us' | 'eu';
+  readonly label: string;
+  readonly observedAt: number;
+}
+
+export interface WeatherUnitsModel {
+  readonly temp: 'F' | 'C';
+  readonly wind: 'mph' | 'km/h';
+  readonly precip: 'in' | 'mm';
 }
 
 export type Staleness =
@@ -318,6 +405,20 @@ function horizonMonthLabel(
 
 export interface DisplayModel {
   readonly timezone: string;
+  /**
+   * Whether this wall reads a twelve-hour clock — the household's choice, as
+   * `clock` and every event time already draw it. Carried for the one draw that
+   * formats an instant of its own: the Today card names its next hours (plan
+   * item P5.1), and "14" on a wall whose clock says "2:00 pm" is two clocks.
+   */
+  readonly hour12: boolean;
+  /**
+   * Which day the household's week starts on — the month grid's own column
+   * order, carried for the one other draw that lays out a month: a
+   * countdown's mini month (plan item P5.2), whose Monday has to sit in the
+   * same column as the calendar's beside it.
+   */
+  readonly weekStart: 'sunday' | 'monday';
   readonly theme: string;
   readonly todayLabel: string;
   readonly clock: string;
@@ -359,6 +460,13 @@ export interface DisplayModel {
   readonly weather: readonly WeatherDayModel[];
   /** Something quiet to say about the forecast, such as its age. */
   readonly weatherNote: string | undefined;
+  /** What it is like now, when there is a reading recent enough to say so. */
+  readonly weatherCurrent: CurrentWeatherModel | undefined;
+  /** The hours still to come, at most twenty-four; empty when none were sent. */
+  readonly weatherHourly: readonly HourlyWeatherModel[];
+  readonly weatherAir: AirQualityModel | undefined;
+  /** What the numbers above are in; undefined when nothing needs saying. */
+  readonly weatherUnits: WeatherUnitsModel | undefined;
   /** Third-party module panels, keyed by their `ext:<id>` block key. */
   readonly externalPanels: Readonly<Record<string, PanelData>>;
   /** The chore board, when the household has any (RFC 008 phase 2). */
@@ -432,6 +540,18 @@ export interface DisplayModel {
    * it reaches the renderer, which is the one place that draws anything.
    */
   readonly todoNotices: Readonly<Record<string, string>>;
+  /**
+   * When each widget's one-shot effects fired, by widget id and event (plan
+   * P4.3) — the confetti on a countdown's day, a page flipping at midnight.
+   *
+   * The second piece of this model that is not the manifest, and it reaches the
+   * renderer the way `todoNotices` above does, for the reason `todoNotices`
+   * gives: the whole document is rebuilt every fifteen seconds, so the moment a
+   * burst began cannot live in the node that is showing it. `main.ts` owns the
+   * memory; a surface that keeps none — every admin preview — gets
+   * `NO_ONE_SHOTS`, which draws each one-shot's still frame.
+   */
+  readonly oneShots: OneShotMemory;
 }
 
 /**
@@ -916,45 +1036,188 @@ export function todoFrom(panel: unknown): readonly TodoListModel[] | undefined {
  *
  * A module's slice arrives as `unknown` and is shaped here rather than trusted:
  * a server one version ahead, or a provider that changed a field, must cost
- * the panel and nothing else.
+ * the panel and nothing else. That holds field by field for everything the
+ * richer panel added (plan item P3.7): a field this bundle cannot read is
+ * undefined, and the day, the reading or the hour around it is still drawn.
+ *
+ * `now` is the wall's corrected clock, and only the current conditions and the
+ * hours read it — an offline wall redrawing a saved manifest must not present
+ * a morning's temperature as the afternoon's.
  */
-export function weatherFrom(panel: unknown): {
+export function weatherFrom(panel: unknown, now?: number): {
   days: WeatherDayModel[];
   note: string | undefined;
+  current: CurrentWeatherModel | undefined;
+  hourly: HourlyWeatherModel[];
+  air: AirQualityModel | undefined;
+  units: WeatherUnitsModel | undefined;
 } {
-  if (typeof panel !== 'object' || panel === null) return { days: [], note: undefined };
+  const empty = { days: [], note: undefined, current: undefined, hourly: [], air: undefined, units: undefined };
+  if (typeof panel !== 'object' || panel === null) return empty;
   const raw = (panel as { days?: unknown }).days;
-  if (!Array.isArray(raw)) return { days: [], note: undefined };
+  if (!Array.isArray(raw)) return empty;
 
   const days: WeatherDayModel[] = [];
   for (const entry of raw) {
     if (typeof entry !== 'object' || entry === null) continue;
-    const day = entry as {
-      name?: unknown; glyph?: unknown; high?: unknown; low?: unknown; unit?: unknown;
-      date?: unknown;
-    };
-    if (typeof day.name !== 'string') continue;
-    const unit = typeof day.unit === 'string' ? day.unit : '';
-    const degrees = (value: unknown): string =>
-      typeof value === 'number' ? `${Math.round(value)}°` : '—';
+    const day = entry as Record<string, unknown>;
+    if (typeof day['name'] !== 'string') continue;
+    const unit = typeof day['unit'] === 'string' ? day['unit'] : '';
     days.push({
-      name: day.name,
-      glyph: isGlyphKey(day.glyph) ? day.glyph : undefined,
-      high: degrees(day.high),
+      name: day['name'],
+      glyph: isGlyphKey(day['glyph']) ? day['glyph'] : undefined,
+      high: degrees(day['high']),
       // The unit rides on the low so the row reads "84° 69°F" rather than
       // repeating itself five times across the strip.
-      low: `${degrees(day.low)}${unit === '' ? '' : unit}`,
+      low: `${degrees(day['low'])}${unit === '' ? '' : unit}`,
+      highValue: finite(day['high']),
+      lowValue: finite(day['low']),
+      tempUnit: unit === 'F' || unit === 'C' ? unit : undefined,
       // A cached forecast written before this field existed has no date, and a
       // provider can decline to give one. Both mean "cannot be joined", never
       // "join it to whatever is nearest".
-      date: typeof day.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(day.date)
-        ? day.date
+      date: typeof day['date'] === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(day['date'])
+        ? day['date']
         : undefined,
+      summary: text(day['summary'], 60),
+      precipChance: percent(day['precipChance']),
+      precipAmount: measure(day['precipAmount']),
+      windMax: measure(day['windMax']),
+      uvMax: measure(day['uvMax']),
+      sunrise: localIsoTime(day['sunrise']),
+      sunset: localIsoTime(day['sunset']),
+      detail: text(day['detail'], 600),
     });
   }
 
-  const note = (panel as { note?: unknown }).note;
-  return { days, note: typeof note === 'string' && note !== '' ? note : undefined };
+  const record = panel as Record<string, unknown>;
+  const note = record['note'];
+  return {
+    days,
+    note: typeof note === 'string' && note !== '' ? note : undefined,
+    current: currentFrom(record['current'], now),
+    hourly: hourlyFrom(record['hourly'], now),
+    air: airFrom(record['air']),
+    units: unitsFrom(record['units']),
+  };
+}
+
+/** A temperature as the strip writes one, or an em dash. */
+function degrees(value: unknown): string {
+  return typeof value === 'number' && Number.isFinite(value) ? `${Math.round(value)}°` : '—';
+}
+
+/** A finite number of either sign, or undefined — a temperature can be below zero. */
+function finite(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+/** A non-negative number, or undefined. */
+function measure(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+/** A percent, or undefined for anything outside 0–100. */
+function percent(value: unknown): number | undefined {
+  const n = measure(value);
+  return n !== undefined && n <= 100 ? Math.round(n) : undefined;
+}
+
+/** An instant a server stamped, or undefined. */
+function instant(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+/** `YYYY-MM-DDTHH:MM`, exactly, or undefined. */
+function localIsoTime(value: unknown): string | undefined {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value) ? value : undefined;
+}
+
+/**
+ * How old "now" may be on the wall: the server's own ninety minutes
+ * (`CURRENT_MAX_AGE_MS` in the weather module), which the two packages cannot
+ * share an import for.
+ */
+const CURRENT_MAX_AGE_MS = 90 * 60_000;
+
+const COMPASS_POINTS = [
+  'N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW',
+];
+
+function currentFrom(value: unknown, now: number | undefined): CurrentWeatherModel | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const c = value as Record<string, unknown>;
+  const observedAt = instant(c['observedAt']);
+  const source = c['source'];
+  if (observedAt === undefined || (source !== 'observed' && source !== 'modelled')) return undefined;
+  if (typeof c['temp'] !== 'number' || !Number.isFinite(c['temp']) || typeof c['isDay'] !== 'boolean') {
+    return undefined;
+  }
+  if (now !== undefined && now - observedAt > CURRENT_MAX_AGE_MS) return undefined;
+  const dir = c['windDir'];
+  return {
+    observedAt,
+    source,
+    temp: degrees(c['temp']),
+    tempValue: c['temp'],
+    feelsLike: typeof c['feelsLike'] === 'number' && Number.isFinite(c['feelsLike']) ? degrees(c['feelsLike']) : undefined,
+    condition: text(c['condition'], 60),
+    glyph: isGlyphKey(c['glyph']) ? c['glyph'] : undefined,
+    isDay: c['isDay'],
+    humidity: percent(c['humidity']),
+    windSpeed: measure(c['windSpeed']),
+    windGust: measure(c['windGust']),
+    windDir: typeof dir === 'string' && COMPASS_POINTS.indexOf(dir) >= 0 ? dir : undefined,
+    uv: measure(c['uv']),
+  };
+}
+
+function hourlyFrom(value: unknown, now: number | undefined): HourlyWeatherModel[] {
+  if (!Array.isArray(value)) return [];
+  const hours: HourlyWeatherModel[] = [];
+  for (const entry of value) {
+    if (hours.length >= 24) break;
+    if (typeof entry !== 'object' || entry === null) continue;
+    const h = entry as Record<string, unknown>;
+    const at = instant(h['at']);
+    if (at === undefined || typeof h['temp'] !== 'number' || !Number.isFinite(h['temp'])) continue;
+    if (typeof h['isDay'] !== 'boolean') continue;
+    // An hour that has ended is not "next" — the same rule the server applies,
+    // for a wall drawing a manifest it saved an hour ago.
+    if (now !== undefined && at + 60 * 60_000 <= now) continue;
+    hours.push({
+      at,
+      temp: degrees(h['temp']),
+      glyph: isGlyphKey(h['glyph']) ? h['glyph'] : undefined,
+      isDay: h['isDay'],
+      precipChance: percent(h['precipChance']),
+    });
+  }
+  return hours;
+}
+
+function airFrom(value: unknown): AirQualityModel | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const a = value as Record<string, unknown>;
+  const aqi = measure(a['aqi']);
+  const observedAt = instant(a['observedAt']);
+  const label = text(a['label'], 40);
+  const scale = a['scale'];
+  if (aqi === undefined || observedAt === undefined || label === undefined) return undefined;
+  if (scale !== 'us' && scale !== 'eu') return undefined;
+  return { aqi: Math.round(aqi), scale, label, observedAt };
+}
+
+function unitsFrom(value: unknown): WeatherUnitsModel | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const u = value as Record<string, unknown>;
+  const temp = u['temp'];
+  const wind = u['wind'];
+  const precip = u['precip'];
+  if (temp !== 'F' && temp !== 'C') return undefined;
+  if (wind !== 'mph' && wind !== 'km/h') return undefined;
+  if (precip !== 'in' && precip !== 'mm') return undefined;
+  return { temp, wind, precip };
 }
 
 /** A whole number inside a range, or the fallback when it is not one at all. */
@@ -1284,6 +1547,13 @@ export interface BuildOptions {
    * tell it.
    */
   readonly todoNotices?: Readonly<Record<string, string>>;
+  /**
+   * The wall's one-shot memory (plan P4.3). Optional and defaulted to none, on
+   * `todoNotices`' argument: it is what this page has already shown, which no
+   * manifest can say, and a caller with no page to remember for — a preview, a
+   * test building a model from a document — draws every one-shot still.
+   */
+  readonly oneShots?: OneShotMemory;
 }
 
 export function buildModel(options: BuildOptions): DisplayModel {
@@ -1325,7 +1595,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
    * provider that gave no date) gets none — never its neighbour's, which is the
    * failure that would put tomorrow's rain on today's row and be believed.
    */
-  const weather = weatherFrom(manifest.panels?.['weather']);
+  const weather = weatherFrom(manifest.panels?.['weather'], now);
   const weatherByDate = new Map<string, WeatherDayModel>();
   for (const day of weather.days) {
     if (day.date !== undefined && !weatherByDate.has(day.date)) weatherByDate.set(day.date, day);
@@ -1435,6 +1705,8 @@ export function buildModel(options: BuildOptions): DisplayModel {
 
   return {
     timezone,
+    hour12,
+    weekStart,
     theme: manifest.theme.active,
     todayLabel: `${weekday} ${dayNumber} ${month}`,
     clock: localTime(now, timezone, hour12),
@@ -1455,6 +1727,10 @@ export function buildModel(options: BuildOptions): DisplayModel {
     horizonMonth: horizonMonthLabel(cells, timezone),
     weather: weather.days,
     weatherNote: weather.note,
+    weatherCurrent: weather.current,
+    weatherHourly: weather.hourly,
+    weatherAir: weather.air,
+    weatherUnits: weather.units,
     externalPanels,
     chores,
     todo,
@@ -1472,6 +1748,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
     layoutStyle: styleTokensOf(manifest.screen?.layoutStyleTokens),
     layoutDaytimeStyle: styleTokensOf(manifest.screen?.layoutDaytimeStyleTokens),
     todoNotices: options.todoNotices ?? {},
+    oneShots: options.oneShots ?? NO_ONE_SHOTS,
     notices: manifest.notices.map((notice) => ({ level: notice.level, message: notice.message })),
     staleness,
     blocks,

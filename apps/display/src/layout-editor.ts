@@ -41,7 +41,14 @@ import {
   type CalendarView,
 } from './widget-views.js';
 import { clearLaneKeys, inkOf, mergeInk, setLaneValue } from './ink.js';
-import { clockVariant } from './clock-face.js';
+import {
+  VARIANT_LABELS,
+  hasVariants,
+  hiddenByVariant,
+  LOOK_SEGMENTS_MAX,
+  variantOf,
+  variantsFor,
+} from './variants.js';
 import { createHistory, type History } from './history.js';
 import {
   SNAP,
@@ -91,6 +98,17 @@ import {
 } from './omission.js';
 import { inspectorView } from './inspector.js';
 import { previewReadingKeys } from './widget-options.js';
+import {
+  OCCASIONS,
+  OCCASION_LABELS,
+  START_AFTER_TARGET,
+  celebrates,
+  countdownEmoji,
+  countdownOccasion,
+  countdownWords,
+  daysUntil,
+} from './countdown.js';
+import { EMOJI_KEYS, emojiNode } from './emoji.js';
 import { TIER_NAMES, type TierName } from './tiers.js';
 import { PALETTE, SWATCH, describeWidget, describeWidgetIn, labelFor } from './widget-labels.js';
 import {
@@ -284,8 +302,25 @@ function boot(): void {
     readonly panels: readonly InkPanel[];
     /** Which keys the lane offers, per widget type. */
     readonly lane: Readonly<Record<string, readonly string[]>>;
-    /** Wall settings a panel cannot draw, each with the reason. */
-    readonly ignores: readonly { readonly key: string; readonly label: string; readonly why: string }[];
+    /**
+     * Wall settings a panel cannot draw, each with the reason — on every type,
+     * or on only the `types` named (a Look is honoured on a clock and not yet
+     * on a forecast, plan item P4.1).
+     */
+    readonly ignores: readonly {
+      readonly key: string;
+      readonly types?: readonly string[];
+      readonly label: string;
+      readonly why: string;
+    }[];
+    /**
+     * The Looks the lane offers, per type, when it is fewer than the wall's
+     * (`INK_LOOKS`): a forecast's panel draws the strip and the range, and the
+     * lane offers those and `today` rather than looks it would draw as its
+     * strip. Absent is every look the type has. Optional so a server older
+     * than the table still gets a lane.
+     */
+    readonly looks?: Readonly<Record<string, readonly string[]>>;
   }
   let ink: InkTables | undefined;
   let lane: 'wall' | 'ink' = 'wall';
@@ -1643,7 +1678,13 @@ function boot(): void {
     // With the resolved tokens, so a custom theme previews as itself rather
     // than as the bundle's fallback — and so the style lane's seeded values
     // (`styleBase`) and the preview describe the same wall.
-    applyTheme(previewWall, manifest.theme.active, manifest.theme.activeTokens, manifest.theme.activeShape);
+    applyTheme(
+      previewWall,
+      manifest.theme.active,
+      manifest.theme.activeTokens,
+      manifest.theme.activeShape,
+      manifest.screen?.eink === true,
+    );
 
     // The wall as it will actually draw — always free-form now. It draws straight
     // into the shadow wall: the reused sections measure themselves and scale to
@@ -3371,6 +3412,33 @@ function boot(): void {
 
   /** The type's own controls — the Content tab, and the ink lane's raw material. */
   function buildTypeConfig(widget: Widget, cfg: Record<string, unknown>): void {
+    const before = new Set(Array.from(configPanel.children));
+    buildTypeControls(widget, cfg);
+    pruneToVariant(widget.type, cfg, before);
+  }
+
+  /**
+   * Take off the type's own controls that the chosen look does not use (plan
+   * item P4.1): `VARIANT_HIDES` in `variants.ts`, by the `data-cfg-key` each
+   * control is annotated with.
+   *
+   * `buildClockConfig`'s early returns, written down as data so every type's
+   * looks can state theirs in one table and a test can read it without a DOM.
+   * Read off the lane's own config, so the ink lane asks what the *panel* will
+   * draw. Only what this pass built is considered — the rows above it on the
+   * same panel belong to somebody else.
+   */
+  function pruneToVariant(type: string, cfg: Record<string, unknown>, before: ReadonlySet<Element>): void {
+    const hidden = hiddenByVariant(type, cfg);
+    if (hidden.length === 0) return;
+    for (const child of Array.from(configPanel.children)) {
+      if (before.has(child)) continue;
+      const key = (child as HTMLElement).dataset['cfgKey'];
+      if (key !== undefined && hidden.includes(key)) child.remove();
+    }
+  }
+
+  function buildTypeControls(widget: Widget, cfg: Record<string, unknown>): void {
     buildViewField(widget, cfg);
     if (widget.type === 'group') buildGroupConfig(widget, cfg);
     else if (widget.type === 'calendar') buildCalendarConfig(widget, cfg);
@@ -3552,7 +3620,9 @@ function boot(): void {
       return typeof lane === 'object' && lane !== null &&
         (lane as Record<string, unknown>)[key.slice('style.'.length)] !== undefined;
     };
-    const ignored = (ink?.ignores ?? []).filter((entry) => isSet(entry.key));
+    const ignored = (ink?.ignores ?? []).filter(
+      (entry) => isSet(entry.key) && (entry.types === undefined || entry.types.includes(widget.type)),
+    );
     if (ignored.length > 0) {
       const heading = document.createElement('p');
       heading.className = 'hint insp-ink-note';
@@ -3671,6 +3741,147 @@ function boot(): void {
     );
     dateField.appendChild(date);
     configPanel.appendChild(dateField);
+
+    /*
+     * The occasion an `occasion` countdown is dressed for, and the date a
+     * `progress` bar counts from (P5.2) — each shown only on its own look
+     * (`VARIANT_HIDES`). Neither is offered on the ink lane: a panel draws the
+     * occasion as the number, and the start date is the countdown's identity
+     * the way its target is, so a panel following a wall draws the wall's.
+     *
+     * "Something else" is written as an absence, the default every other
+     * control here keeps; a start date on or after the target is said to be
+     * wrong beside the field, in the sentence the save would refuse it with.
+     */
+    const occasionField = cfgField('Occasion', 'occasion');
+    const occasion = document.createElement('select');
+    for (const value of OCCASIONS) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = OCCASION_LABELS[value];
+      occasion.appendChild(option);
+    }
+    occasion.value = countdownOccasion(cfg);
+    occasion.addEventListener('change', () =>
+      setConfig(widget, 'occasion', occasion.value === 'custom' ? undefined : occasion.value),
+    );
+    occasionField.appendChild(occasion);
+    configPanel.appendChild(occasionField);
+
+    const fromField = cfgField('Counting from', 'from');
+    const from = document.createElement('input');
+    from.type = 'date';
+    from.value = typeof cfg['from'] === 'string' ? (cfg['from'] as string) : '';
+    fromField.appendChild(from);
+    configPanel.appendChild(fromField);
+    const fromHint = document.createElement('p');
+    fromHint.dataset['cfgKey'] = 'from';
+    configPanel.appendChild(fromHint);
+    // Re-said in place on every change to either date: a write does not
+    // rebuild the inspector, so a hint drawn once would go on saying whatever
+    // was true when the widget was selected.
+    const sayFrom = (): void => {
+      const refused = /^\d{4}-\d{2}-\d{2}$/.test(from.value) && /^\d{4}-\d{2}-\d{2}$/.test(date.value) &&
+        !(daysUntil(from.value, date.value) > 0);
+      fromHint.className = refused ? 'hint le-cfg-refused' : 'hint';
+      fromHint.textContent = refused
+        ? START_AFTER_TARGET
+        : 'The bar runs from this date to the one above, and fills a little each day.';
+      if (refused) fromHint.setAttribute('role', 'alert');
+      else fromHint.removeAttribute('role');
+    };
+    sayFrom();
+    from.addEventListener('change', () => {
+      setConfig(widget, 'from', /^\d{4}-\d{2}-\d{2}$/.test(from.value) ? from.value : undefined);
+      sayFrom();
+    });
+    date.addEventListener('change', sayFrom);
+
+    /*
+     * The three the plan added (P5.2), each absent by default. The words are
+     * annotated for the ink lane, which offers them (`INK_LANE.countdown`); the
+     * picture and the celebration are the wall's alone, so the lane drops them
+     * and `PANEL_IGNORES` says why beside the widget that has them set.
+     *
+     * On the ink lane "Days" is written out when the wall says sleeps, the
+     * Look's own rule: clearing the override there would hand the panel back
+     * to the wall's words rather than to the days chosen.
+     */
+    const wallWords = countdownWords(widget.config);
+    configPanel.appendChild(
+      segControl(
+        'Count in',
+        [
+          ['days', 'Days'],
+          ['sleeps', 'Sleeps'],
+        ],
+        countdownWords(cfg),
+        (value) =>
+          setConfig(widget, 'unitWords', value === 'days' && (lane === 'wall' || wallWords === 'days') ? undefined : value),
+        'unitWords',
+      ),
+    );
+    const wordsHint = document.createElement('p');
+    wordsHint.className = 'hint';
+    wordsHint.dataset['cfgKey'] = 'unitWords';
+    wordsHint.textContent = 'Sleeps count forward only: once the date has passed it reads “3 days ago”.';
+    configPanel.appendChild(wordsHint);
+
+    configPanel.appendChild(emojiPicker(countdownEmoji(cfg), (key) => setConfig(widget, 'emoji', key)));
+
+    configPanel.appendChild(
+      switchRow(
+        'Celebrate on the day',
+        'Confetti the first time the day is shown, then again at most once an hour. It stays still on a wall ' +
+          'with Motion off, or one set to reduce motion.',
+        celebrates(cfg),
+        (on) => setConfig(widget, 'celebrate', on ? undefined : false),
+        'celebrate',
+      ),
+    );
+  }
+
+  /**
+   * A picture from the bundled set (plan items P4.2 and P5.2): a grid of the
+   * artwork itself, one button each, with "None" first.
+   *
+   * A grid of pictures rather than a list of names, because the choice is the
+   * picture — and the pictures are the wall's own files (`emojiNode`), so what
+   * is picked here is exactly what the wall draws, on every device. Built as a
+   * `div` rather than inside `cfgField`'s `<label>`: a label activates its
+   * first control when anything else in it is clicked, and with a hundred and
+   * fifty buttons in one that is a picture chosen by clicking the heading.
+   */
+  function emojiPicker(current: string | undefined, onPick: (key: string | undefined) => void): HTMLElement {
+    const field = document.createElement('div');
+    field.className = 'le-cfg-field';
+    field.dataset['cfgKey'] = 'emoji';
+    const heading = document.createElement('span');
+    heading.textContent = 'Picture';
+    field.appendChild(heading);
+    const grid = document.createElement('div');
+    grid.className = 'le-emoji-grid';
+    grid.setAttribute('role', 'group');
+    grid.setAttribute('aria-label', 'Picture');
+    const choice = (key: string | undefined, content: Node): void => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset['emoji'] = key ?? '';
+      button.setAttribute('aria-pressed', key === current ? 'true' : 'false');
+      button.appendChild(content);
+      button.addEventListener('click', () => {
+        onPick(key);
+        renderConfigPanel();
+      });
+      grid.appendChild(button);
+    };
+    choice(undefined, document.createTextNode('None'));
+    for (const key of EMOJI_KEYS) {
+      const picture = emojiNode(key);
+      if (picture !== null) choice(key, picture);
+    }
+    field.appendChild(grid);
+    return field;
   }
 
   /**
@@ -3949,10 +4160,11 @@ function boot(): void {
    * empty space, and a household pressing Rounded on a forecast saw nothing
    * move.
    *
-   * There is no drop-shadow control here any more: a shadow bands on e-ink,
-   * burns in on OLED, and buys nothing at reading distance. A widget that
-   * already has `shadow: true` in its stored config simply draws without one
-   * now — nothing here rewrites that key, so it is dead rather than migrated.
+   * The drop-shadow control was taken out for a while — a shadow bands on
+   * e-ink and burns in on OLED — and is back (decision D8, plan item P4.4)
+   * as a request for the *theme's* shadow, which a theme or an e-ink wall can
+   * switch off. Nothing rewrote the stored key in between, so a widget that
+   * kept `shadow: true` draws one again.
    */
   function buildFormatConfig(widget: Widget, cfg: Record<string, unknown>): void {
     buildLookField(widget, cfg);
@@ -4064,6 +4276,31 @@ function boot(): void {
       );
     }
 
+    /*
+     * Drop shadow — restored (decision D8, plan item P4.4), and offered on
+     * every widget, not only behind a ground: a shadow is cast outside the
+     * box, so unlike a rounded corner it shows on a bare one too.
+     *
+     * What it draws is the *theme's* card shadow rather than one this control
+     * chooses, which is the whole of the design: a household with an OLED or
+     * e-ink screen switches every shadow on the wall off in one place — the
+     * theme, or an e-ink size under Device and time — rather than widget by
+     * widget. The hint says so, because on Blueprint or Swiss this switch does
+     * nothing until the theme changes, and a control that silently does
+     * nothing is the `options.json` bug. Not annotated for the ink lane: a
+     * panel draws no shadow (`PANEL_IGNORES`), and the lane's note says so
+     * when this is set.
+     */
+    configPanel.appendChild(
+      switchRow(
+        'Drop shadow',
+        'Casts the theme’s card shadow behind this widget. Blueprint, Swiss and a wall sized as an ' +
+          'e-ink panel draw none.',
+        cfg['shadow'] === true,
+        (checked) => setConfig(widget, 'shadow', checked ? true : undefined),
+      ),
+    );
+
     buildStyleLane([widget], cfg);
   }
 
@@ -4071,35 +4308,59 @@ function boot(): void {
    * The Look: a widget's designed variant (RFC 014 §4.2), at the top of the
    * Style tab because it is the largest thing the tab can change.
    *
-   * The clock is the one type with variants so far; a type without any draws
-   * no row rather than a picker of one. Annotated with `variant`, so the ink
-   * lane keeps it — a panel draws every clock variant (`PANEL_HONOURS`), so
-   * every value is offered there too. `plain` is the default and is stored as
-   * an absence on the wall; on the ink lane it is written out when the wall
-   * says otherwise, because clearing the override there would hand the panel
-   * straight back to the wall's variant rather than to the plain one chosen.
+   * Read off the type's own list in `variants.ts` (plan item P4.1), so every
+   * type with looks gets one control and a type without any draws no row
+   * rather than a picker of one. Up to three looks are one segmented row, the
+   * clock's; past that the row would break its labels in a 258px column, so
+   * the choices are a small grid of labelled buttons instead — the same
+   * buttons, the same pressed state, laid out two rows deep.
+   *
+   * Annotated with `variant`, so the ink lane keeps it wherever `INK_LANE`
+   * offers it — the clock's, today, because a panel draws every clock variant
+   * (`PANEL_HONOURS`). The default is stored as an absence on the wall; on the
+   * ink lane it is written out when the wall says otherwise, because clearing
+   * the override there would hand the panel straight back to the wall's look
+   * rather than to the default one chosen. A default that *is* an absence —
+   * the calendar's — is never written anywhere: the schema refuses the empty
+   * string, and no lane offers a Look whose default could not be stored.
    */
   function buildLookField(widget: Widget, cfg: Record<string, unknown>): void {
-    if (widget.type !== 'clock') return;
-    const wallVariant = clockVariant(widget.config);
-    configPanel.appendChild(
-      segControl(
-        'Look',
-        [
-          ['plain', 'Plain'],
-          ['stacked', 'Stacked'],
-          ['analogue', 'Analogue'],
-        ],
-        clockVariant(cfg),
-        (value) =>
-          setConfig(
-            widget,
-            'variant',
-            value === 'plain' && (lane === 'wall' || wallVariant === 'plain') ? undefined : value,
-          ),
-        'variant',
-      ),
+    if (!hasVariants(widget.type)) return;
+    const type = widget.type;
+    /*
+     * On the ink lane, only the looks a panel is offered (`INK_LOOKS`): a
+     * forecast's `colour` and `playful` are drawn there as its strip, so a
+     * choice of them on the lane would be a control that moves nothing. The
+     * lane then shows what the panel *draws* — the strip, for a wall wearing
+     * one of those — and says so under the row.
+     */
+    const offered = lane === 'ink' ? ink?.looks?.[type] : undefined;
+    const values = offered === undefined ? variantsFor(type) : variantsFor(type).filter((v) => offered.includes(v));
+    const labels = VARIANT_LABELS[type] as Readonly<Record<string, string>>;
+    const fallback = values[0] ?? '';
+    const wallVariant = variantOf(type, widget.config);
+    const chosen = variantOf(type, cfg);
+    const field = segControl(
+      'Look',
+      values.map((value) => [value, labels[value] ?? value] as const),
+      values.includes(chosen) ? chosen : fallback,
+      (value) =>
+        setConfig(
+          widget,
+          'variant',
+          value === '' || (value === fallback && (lane === 'wall' || wallVariant === fallback)) ? undefined : value,
+        ),
+      'variant',
     );
+    if (values.length > LOOK_SEGMENTS_MAX) field.querySelector('.seg')?.classList.add('le-look-grid');
+    configPanel.appendChild(field);
+    if (!values.includes(chosen)) {
+      const note = document.createElement('p');
+      note.className = 'hint';
+      note.dataset['cfgKey'] = 'variant';
+      note.textContent = `A panel draws the ${labels[chosen] ?? chosen} look as its ${(labels[fallback] ?? fallback).toLowerCase()}.`;
+      configPanel.appendChild(note);
+    }
   }
 
   /**
@@ -4620,11 +4881,10 @@ function boot(): void {
      * An analogue face has no digits to format and a stacked clock always
      * draws its date, so each of these rows is offered only where it does
      * something — an option that does nothing is worse than one not offered.
-     * Read off the lane's own config, so the ink lane asks what the *panel*
-     * will draw.
+     * Both are built here whatever the look, and `pruneToVariant` takes off
+     * the ones the look does not use: which is which is `VARIANT_HIDES` in
+     * `variants.ts`, the table every type's looks now state theirs in.
      */
-    const variant = clockVariant(cfg);
-    if (variant === 'analogue') return;
     configPanel.appendChild(
       segControl(
         'Time format',
@@ -4642,7 +4902,6 @@ function boot(): void {
         'clockFormat',
       ),
     );
-    if (variant !== 'plain') return;
     configPanel.appendChild(
       switchRow(
         'Show the date',
@@ -4684,6 +4943,20 @@ function boot(): void {
     // The symbol and the low used to be two switches here; they are rows on the
     // ladder now, which is the one place a widget's rows are decided.
     buildLadder(widget, cfg);
+
+    // The playful look's advice line (P5.1). Built for every look and taken off
+    // by `VARIANT_HIDES` wherever it does nothing, which is everywhere else.
+    // Absent is on, the `showFace` idiom: a household who picked the playful
+    // look picked its advice with it, and a switch is how they say otherwise.
+    configPanel.appendChild(
+      switchRow(
+        'Advice line',
+        'A line under the forecast, such as “Umbrella day”, when today calls for one.',
+        cfg['advice'] !== false,
+        (checked) => setConfig(widget, 'advice', checked ? undefined : false),
+        'advice',
+      ),
+    );
   }
 
   function buildShiftConfig(widget: Widget, cfg: Record<string, unknown>): void {

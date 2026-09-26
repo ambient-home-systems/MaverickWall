@@ -125,6 +125,20 @@ const SHAPE_OPTIONS: readonly { readonly value: ThemeShape; readonly label: stri
   { value: 'swiss', label: 'Swiss' },
 ];
 
+/**
+ * The shadow control's two answers (decision D8, plan item P4.4).
+ *
+ * Soft is the derived default and is stored as an absence, so every theme a
+ * household built before this existed reads as Soft — which is the shadow a
+ * widget that asked for one used to cast. None is stored as the CSS value
+ * itself (`themeTokensSchema`'s one literal), which is what a household with
+ * an OLED screen wants: every drop shadow on the wall off in one place.
+ */
+const SHADOW_OPTIONS: readonly { readonly value: string; readonly label: string }[] = [
+  { value: 'none', label: 'None' },
+  { value: 'soft', label: 'Soft' },
+];
+
 const nameBody = text('A name for the theme', 60);
 
 export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
@@ -258,6 +272,15 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
       const value = body[token];
       if (typeof value === 'string' && value !== '') raw[token] = value;
     }
+
+    // Shadows: Soft is the derived default and is stored as an absence, so an
+    // absent field (a hand-built or pre-control request) reads as Soft. Any
+    // other value is refused — rule five is reject, not coerce.
+    const shadows = body['shadows'];
+    if (shadows !== undefined && shadows !== 'soft' && shadows !== 'none') {
+      return { ok: false, message: 'Choose None or Soft for the shadows.' };
+    }
+    if (shadows === 'none') raw['--shadow-card'] = 'none';
 
     const tokens = themeTokensSchema.safeParse(raw);
     if (!tokens.success) {
@@ -437,6 +460,16 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
         ? (submittedShape as ThemeShape)
         : (theme?.shape ?? 'neutral');
 
+    // A rejected submission's own answer first, then the stored theme's, then
+    // Soft — the derived default a theme with no choice stored draws.
+    const submittedShadows = values?.['shadows'];
+    const currentShadows =
+      submittedShadows === 'none' || submittedShadows === 'soft'
+        ? submittedShadows
+        : stored?.['--shadow-card'] === 'none'
+          ? 'none'
+          : 'soft';
+
     const colourField = (token: (typeof TOKEN_HELP)[number]): string =>
       `<div class="tf-row">` +
       `<input type="color" name="${escapeHtml(token.key)}" ` +
@@ -495,7 +528,11 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
             'like overflow counts and past times, and the hairline between weeks. The ' +
             'scaffolding ink is mixed from your text colour and your background, and ' +
             'the mix is pushed further until it clears 4.5:1 against that background, ' +
-            'so a low-contrast pair comes back corrected rather than as you set it.',
+            'so a low-contrast pair comes back corrected rather than as you set it. ' +
+            'The colours the designed widget styles use — weather, temperature, Home ' +
+            'Assistant states and the skies behind a forecast — are worked out the ' +
+            'same way, each pushed toward your text colour until it clears 4.5:1 on ' +
+            'both your background and your panels.',
           TOKEN_HELP.filter((t) => !t.key.startsWith('--s-')).map(colourField).join(''),
         ) +
 
@@ -511,7 +548,7 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
 
         section(
           'Corners and type',
-          'A theme is colour, the corner radius and the faces — and nothing else. How ' +
+          'A theme is colour, the corner radius, the faces and its shadow — and nothing else. How ' +
             'large the type is comes from the wall’s own size and the distance it is ' +
             'read from, under Device and time on that wall’s settings; where each ' +
             'widget sits and how big its box is comes from the layout editor. If the ' +
@@ -527,6 +564,23 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
           }) +
             fontField('--disp', 'Headings', 'The big type — the clock, dates, the month.') +
             fontField('--f-sans', 'Body', 'Event titles and the everyday text.'),
+        ) +
+
+        section(
+          'Shadows',
+          'The shadow a widget casts when its Style tab asks for one — never on a ' +
+            'widget that did not. A shadow reads as depth on most walls, burns in ' +
+            'on an OLED panel and bands on e-ink, so None switches every ' +
+            'shadow on every wall wearing this theme off in one place. A wall sized ' +
+            'as an e-ink panel draws none whichever you pick. Soft is worked out ' +
+            'from your background: dark and heavier on a dark one, where nothing ' +
+            'lighter would show, and faint in your text colour on a light one.',
+          segControl({
+            label: 'Shadows',
+            name: 'shadows',
+            options: SHADOW_OPTIONS,
+            selected: currentShadows,
+          }),
         ) +
 
         section(

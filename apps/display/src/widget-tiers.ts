@@ -161,6 +161,470 @@ export const WEATHER_TIERS: readonly WidgetTier[] = [
 export const WEATHER_COLUMN_CH = 9;
 
 /**
+ * The `colour` forecast (plan item P5.1): the strip, with each sky painted in
+ * its condition colours and each temperature tinted on the temperature scale.
+ *
+ * **It gives up exactly what the strip gives up, in the strip's order** — the
+ * ladder from the bottom: the low, then the high, then the glyph, and the day's
+ * name last. The plan names this style "today's strip" and states no order of
+ * its own, and a household who picked the colours did not ask for the rows to
+ * go in a different order from the forecast they had.
+ *
+ * **Its own table because its glyph is a different size at every rung.** A
+ * two-tone sky is two objects in one mark — a sun behind a cloud, a bolt under
+ * one — and at the strip's size the smaller of the two is a speck of a second
+ * colour. So the glyph is stated in the temperature's own `em` (1.1, 1.4 and
+ * 1.8 at T1, T2 and T3, `display.css`), and each rung's height is the sum of
+ * what that rung draws, measured off a drawn colour strip at 1080x1920:
+ *
+ *     tier        needs           columns  rungs  what one column says
+ *     T0 Number   4ch x 1.7em     1+       1      the day's name alone
+ *     T1 Pair     6ch x 2.9em     1+       2      name and glyph
+ *     T2 Strip    9ch x 4.3em     1+       3      name, glyph, high
+ *     T3 Full    11ch x 4.7em     1+       4      the whole ladder, glyph at its largest
+ *
+ * The strip's own padding is 0.85em, a name's row 0.86em and the temperature's
+ * row 1.16em; a glyph's row is the glyph, nothing more. So T1 is
+ * 0.85 + 0.86 + 1.1, T2 0.85 + 0.86 + 1.4 + 1.16 and T3 the same with a 1.8em
+ * glyph — **T3 needs more height than T2 here where the strip's does not**,
+ * because this glyph grows with the rung and the strip's T3 budget was set
+ * before it did. `browser-weather-colour` holds the table to the drawing by
+ * asserting the belt never has anything to do: a threshold set too low would
+ * have to hide a row to fit, and that is what it counts.
+ */
+export const COLOUR_TIERS: readonly WidgetTier[] = [
+  { tier: 'T0', minCh: 4, minEm: 1.7, items: 1, rungs: 1 },
+  { tier: 'T1', minCh: 6, minEm: 2.9, items: 1, rungs: 2 },
+  { tier: 'T2', minCh: 9, minEm: 4.3, items: 1, rungs: 3 },
+  { tier: 'T3', minCh: 11, minEm: 4.7, items: 1, rungs: 4 },
+];
+
+/**
+ * The columns of one `range` row, in the order they are **kept** — the bar
+ * first, because a range style that has given up its bar is the strip on its
+ * side. The row is drawn in reading order (name, glyph, rain, low, bar, high);
+ * this is only which of them a narrow box still has room for.
+ */
+export const RANGE_COLUMNS = ['bar', 'low', 'high', 'glyph', 'rain'] as const;
+export type RangeColumn = (typeof RANGE_COLUMNS)[number];
+
+/**
+ * The `range` forecast (plan item P5.1, "iOS 10-day"): one row per day — its
+ * name, its glyph, its rain chance, its low, a bar from the low to the high on
+ * the week's own scale, and its high.
+ *
+ * **Primary role: the temperature** (`.wr-temp`), for the strip's reason: the
+ * numbers are what a forecast is for, and the shortest run is the one that can
+ * see a collapse.
+ *
+ *     tier        needs (beside the name)   days  rungs  what one row says
+ *     T0 Bar      14ch x 1.6em              1+    3      low, bar, high
+ *     T1 Marked   18ch x 1.6em              1+    4      and the glyph
+ *     T2 Full     23ch x 1.6em              1+    5      and the rain chance
+ *     T3 Week     28ch x 5.4em              3+    5      the same, in a box with room for the week
+ *
+ * **The order is the plan's, read per axis: the foot gives up days, the side
+ * gives up the rain chance and then the glyph.** A row is a day, so a box
+ * that loses height loses days from the bottom — `items` is a floor and the
+ * measured capacity is what a taller box buys, the rule every table here
+ * states. What loses *width* first is the rain chance, which is a detail of a
+ * day, then the glyph, which the bar and its two numbers say better; the bar
+ * and its numbers are never given up, because they are the style.
+ *
+ * **The widths are stated beside the day's name rather than including it.**
+ * The name is the provider's own word — "Today", "Wed", "Wednesday", "This
+ * Afternoon" — and it is never cut, so the renderer measures the widest name it
+ * is drawing and asks this table about the room left over. A table that
+ * budgeted for "Wed" would clip "Wednesday"; one that budgeted for "This
+ * Afternoon" would give up the glyph on every Open-Meteo wall.
+ *
+ * Summed in `ch` of the temperature role, whose figures are 1.21ch wide
+ * (`tiers.ts` has the measurement): a temperature is four figures at most
+ * ("-12°"), 4.8ch; the bar's floor 4ch; a gap 1.2ch; the glyph 1.3em, 3.1ch;
+ * the rain chance "100%" in the scaffold role, 3.8ch. T3 is T2 with room for
+ * three rows, which is the House table's shape: at the top of the ladder there
+ * is nothing left to add to a row, so height is the only thing left to buy.
+ */
+export const RANGE_TIERS: readonly WidgetTier[] = [
+  { tier: 'T0', minCh: 14, minEm: 1.6, items: 1, rungs: 3 },
+  { tier: 'T1', minCh: 18, minEm: 1.6, items: 1, rungs: 4 },
+  { tier: 'T2', minCh: 23, minEm: 1.6, items: 1, rungs: 5 },
+  { tier: 'T3', minCh: 28, minEm: 5.4, items: 3, rungs: 5 },
+];
+
+/** The columns a `range` row keeps at this tier. Never fewer than the bar and its two numbers. */
+export function rangeColumnsAt(tier: WidgetTier): readonly RangeColumn[] {
+  return RANGE_COLUMNS.slice(0, Math.max(3, Math.min(RANGE_COLUMNS.length, tier.rungs)));
+}
+
+/**
+ * What a Today card says, in the order it is **kept** (plan item P5.1). The
+ * lede — the one large reading, with today's high and low on the line under
+ * it — is never given up; the plan's order is the rest of the list read from
+ * the bottom: the next hours first, then the feels-like, then the condition
+ * words.
+ *
+ * The high and the low ride with the lede rather than taking a rung of their
+ * own, because in the card's other mode (no current reading) they *are* the
+ * lede, and a card that had room for one number and not its range would be
+ * the one form in which the two modes said different kinds of thing.
+ */
+export const TODAY_RUNGS = ['lede', 'condition', 'feels', 'next'] as const;
+export type TodayRung = (typeof TODAY_RUNGS)[number];
+
+/**
+ * The smallest the lede is drawn while the card still keeps a rung under it,
+ * in `em` of the card's primary role.
+ *
+ * The lede is the reading the card exists for, and its size is whatever the
+ * box has left once the rungs the tier kept are drawn — up to the clock's cap
+ * (decision D1: 1.8x the event role, `--t-wall-clock`), which it reaches in
+ * any box with room. This is the other end: below it, a rung goes before the
+ * lede shrinks further. 1.6em is the height the heaviest condition words set
+ * at the event role would look *equal* to beside a lede drawn in the light
+ * weight the card uses — at which point the lede is no longer a lede.
+ */
+export const TODAY_LEDE_FLOOR_EM = 1.6;
+
+/**
+ * The `today` forecast (plan item P5.1, "iOS widget"): a card on its sky with a
+ * large reading, the words for the sky, how it feels, and the next hours — or,
+ * in a box with room for one line of them, the next days as that line.
+ *
+ * **Primary role: the condition words** (`.wt-cond`), the event role. The lede
+ * is not a role — it is the room left over, capped (`TODAY_LEDE_FLOOR_EM`) —
+ * so the table is stated in the one run whose size does not depend on the box.
+ *
+ *     tier        needs           rungs  what the card says
+ *     T0 Lede     8ch x 0em       1      the reading, its high and low
+ *     T1 Said    10ch x 5.0em     2      and the condition words
+ *     T2 Felt    10ch x 6.0em     3      and how it feels
+ *     T3 Next    12ch x 7.5em     4      and the next hours, or the next days on one line
+ *
+ * Summed at the lede's floor from each rung measured off a drawn card, in `em`
+ * of the event role, at 1080x1920 and 1920x1080 on a wall nobody measured and
+ * on a 32" television (the four agree to a hundredth): the card's padding
+ * 1.0em (step 3 each side), the lede 1.6em, and the range line under it 1.05em
+ * (the time role at 1.15 leading, and a step-1 gap) — T0 needs none of it,
+ * because rule nine draws the lede in any box. The condition words cost 1.3em,
+ * the feels-like 1.05em, and the one line of days 1.5em with its step-3 space
+ * above it. The hours are **three** lines — a time, a glyph and a temperature,
+ * 3.8em — and whether a card reaching T3 draws them or the one line of days is
+ * measured rather than tabled: the box's room once the lede has its floor,
+ * against the hours row drawn. That is the plan's "or, in a short box, the next
+ * days as one line", and it is a question about height alone.
+ *
+ * The widths are the lede's floor across "-12°" and its glyph (T0), then the
+ * shortest condition a provider sends ("Clear", "Fog") with room to be read
+ * (T1-T2), then two days of the next line (T3). A condition longer than the
+ * card is wide wraps at a word rather than being cut, and the lede gives up
+ * the height it costs.
+ */
+export const TODAY_TIERS: readonly WidgetTier[] = [
+  { tier: 'T0', minCh: 8, minEm: 0, items: 1, rungs: 1 },
+  { tier: 'T1', minCh: 10, minEm: 5.0, items: 1, rungs: 2 },
+  { tier: 'T2', minCh: 10, minEm: 6.0, items: 1, rungs: 3 },
+  { tier: 'T3', minCh: 12, minEm: 7.5, items: 1, rungs: 4 },
+];
+
+/** The rungs a Today card keeps at this tier. Never fewer than the lede. */
+export function todayRungsAt(tier: WidgetTier): readonly TodayRung[] {
+  return TODAY_RUNGS.slice(0, Math.max(1, Math.min(TODAY_RUNGS.length, tier.rungs)));
+}
+
+/**
+ * The `playful` forecast (plan item P5.1): the strip's days, each with its name
+ * large, a bundled picture for its weather that bobs, and its numbers — and an
+ * advice line under them in plain words.
+ *
+ * **It gives up what the strip gives up, in the strip's order**, for
+ * `COLOUR_TIERS`' reason: the ladder is the household's own list, and a look
+ * that reordered what it sacrifices would be a second ladder nobody can see.
+ * The advice line is not a rung. It is the first thing given up, before any of
+ * them: it is kept only where the whole ladder is drawn and the box has the
+ * room under it, measured off the drawn line — a card that had to choose
+ * between "Umbrella day" and the day's high keeps the high, which is the fact
+ * the advice was drawn from.
+ *
+ * **Primary role: the temperature** (`.wp-temp`), the strip's argument. The day
+ * name is the event role here too — "big day names" is the look — so the
+ * column is wider than the strip's for the same word count, which is
+ * `PLAYFUL_COLUMN_CH`.
+ *
+ *     tier        needs           columns  rungs  what one column says
+ *     T0 Name     5ch x 2.2em     1+       1      the day's name alone
+ *     T1 Picture  7ch x 4.8em     1+       2      name and picture
+ *     T2 High     9ch x 6.0em     1+       3      name, picture, high
+ *     T3 Full    11ch x 6.0em     1+       4      the whole ladder
+ *
+ * Summed from each row measured off a drawn playful strip, in `em` of the
+ * temperature, at 1080x1920 and 1920x1080 on a wall nobody measured and on a
+ * 32" television: the strip's padding 1.0em, a name's row 1.16em (the event
+ * role at 1.15 leading), the picture 2.63em (2.2em of it and a step-1 and a
+ * step-2 margin), and the temperatures' row 1.16em. The advice line, when it
+ * is kept, is another 1.9em under them. A first draft of this table guessed
+ * 4.6 and 5.8 and was short by a fifth of an em at both, which the belt would
+ * have paid for by hiding a row. T2 and T3 differ in width and not height, the
+ * strip's reason: the high and the low share a line while they are adjacent.
+ */
+export const PLAYFUL_TIERS: readonly WidgetTier[] = [
+  { tier: 'T0', minCh: 5, minEm: 2.2, items: 1, rungs: 1 },
+  { tier: 'T1', minCh: 7, minEm: 4.8, items: 1, rungs: 2 },
+  { tier: 'T2', minCh: 9, minEm: 6.0, items: 1, rungs: 3 },
+  { tier: 'T3', minCh: 11, minEm: 6.0, items: 1, rungs: 4 },
+];
+
+/**
+ * The width one playful column needs, in `ch` of the temperature role — the
+ * strip's `WEATHER_COLUMN_CH` for a column whose name is set at the event role
+ * rather than the scaffold's, so "Today" in the heavy weight is the widest thing
+ * in it rather than the temperatures.
+ */
+export const PLAYFUL_COLUMN_CH = 11;
+
+/**
+ * The forecast's table for each of its designed looks that the wall draws.
+ */
+export const WEATHER_STYLE_TIERS: Readonly<Record<string, readonly WidgetTier[]>> = {
+  strip: WEATHER_TIERS,
+  colour: COLOUR_TIERS,
+  range: RANGE_TIERS,
+  today: TODAY_TIERS,
+  playful: PLAYFUL_TIERS,
+};
+
+/**
+ * The parts of a countdown's `page` look (plan item P5.2), in the order they
+ * are **kept**: the count, its unit, the household's label, and the target's
+ * own date. The binder strip is not a part — it is what makes the sheet a
+ * page, and it is thin enough never to be the thing a box cannot hold.
+ */
+export const PAGE_PARTS = ['num', 'unit', 'label', 'date'] as const;
+export type PagePart = (typeof PAGE_PARTS)[number];
+
+/**
+ * The tear-off page: the count on a drawn sheet.
+ *
+ * **Primary role: the lede** (`.cdp-label`, the household's own label). The
+ * count is drawn at the clock's role — 1.8 ledes, the most any one reading on
+ * the wall may outsize an event name (D1, `WALL_TYPE_CAPS`) — and capped by
+ * the box as the clock is, so the table can be stated in one unit: every other
+ * run on the page is a fraction of the lede.
+ *
+ *     tier        needs           rungs  what the page says
+ *     T0 Count    6ch x 3.8em     2      the count and its unit
+ *     T1 Label   12ch x 5.3em     3      and the label under the sheet
+ *     T2 Dated   15ch x 6.5em     4      and the target's date on the sheet
+ *
+ * The date goes first because it is the fact the household already knows —
+ * they chose it — where the label is the thing the count is *for*; the unit
+ * stays to the end because "12" on a calendar page with no unit reads as the
+ * twelfth.
+ *
+ * **Measured off the drawn page rather than summed**, on the shipped Classic
+ * wall with the forecast's box made a page: the sheet with its count and unit
+ * is 3.80em tall on a wall nobody has measured, 4.96em with the date, and the
+ * label is 1.15em under it a step-2 gap below — 5.19em and 6.36em, taken up to
+ * 5.3 and 6.5. A measured wall needs less (its scaffold is half a lede where
+ * the fallback is two thirds: 5.64em for the whole page on a 32" television),
+ * and one table in ledes cannot be exact for both, so it is the unmeasured
+ * wall's, the larger: a measured wall reaches each rung a little later than it
+ * could, and no wall reaches one it cannot hold. The widths are the sheet's
+ * own 4.5-lede minimum (12.4ch) and the date with the sheet's padding (15ch).
+ * `browser-countdown-page` holds the table to the drawing by asserting the
+ * belt never has anything to do.
+ */
+export const PAGE_TIERS: readonly WidgetTier[] = [
+  { tier: 'T0', minCh: 6, minEm: 3.8, items: 1, rungs: 2 },
+  { tier: 'T1', minCh: 12, minEm: 5.3, items: 1, rungs: 3 },
+  { tier: 'T2', minCh: 15, minEm: 6.5, items: 1, rungs: 4 },
+];
+
+/**
+ * The parts of a countdown's `ticket` look, in the order they are **kept**:
+ * the destination (the household's label), the line "Departs in 12 days", the
+ * departure board under its perforated rule, and the pass's own head.
+ */
+export const TICKET_PARTS = ['dest', 'when', 'board', 'head'] as const;
+export type TicketPart = (typeof TICKET_PARTS)[number];
+
+/**
+ * The boarding pass.
+ *
+ * **Primary role: the lede** (`.cdt-dest`, the destination), the page's reason
+ * one look along. The board's flaps are the clock's role, capped by the box.
+ *
+ *     tier        needs           rungs  what the pass says
+ *     T0 Line     9ch x 3.2em     2      the destination and "Departs in 12 days"
+ *     T1 Board   12ch x 6.0em     3      and the board, under its perforation
+ *     T2 Pass    20ch x 6.9em     4      and the pass's head
+ *
+ * **The board goes before the line, and that is the one surprise in it.** The
+ * board is the look — but it says the number the line already says in words,
+ * at nearly twice the height, so a box with room for one of them keeps the one
+ * that also says what the number counts. The head is the last thing added
+ * because it is the only part that says nothing about this countdown.
+ *
+ * Measured the page's way: the pass is 3.13em with its line, 5.85em with the
+ * board and 6.71em with the head, on a wall nobody has measured. The head's
+ * width is what sets T2's: "BOARDING PASS" is thirteen tracked capitals that
+ * do not wrap, about 16ch, plus the pass's padding.
+ */
+export const TICKET_TIERS: readonly WidgetTier[] = [
+  { tier: 'T0', minCh: 9, minEm: 3.2, items: 1, rungs: 2 },
+  { tier: 'T1', minCh: 12, minEm: 6.0, items: 1, rungs: 3 },
+  { tier: 'T2', minCh: 20, minEm: 6.9, items: 1, rungs: 4 },
+];
+
+/**
+ * The parts of a countdown's `occasion` look, in the order they are kept: the
+ * count, its unit, the household's label, and the occasion's motif. The scene
+ * behind them is not a part — it says nothing, and it is drawn in a layer of
+ * its own that takes no room.
+ */
+export const OCCASION_PARTS = ['num', 'unit', 'label', 'motif'] as const;
+
+/**
+ * The occasion: the number dressed for the day.
+ *
+ * **Primary role: the lede** (`.cdo-label`), the page's reason. The count is
+ * the clock's role capped by the box, the unit the scaffold, and the motif a
+ * picture beside them, as tall as the two together (2.4 ledes).
+ *
+ *     tier        needs           rungs  what the occasion says
+ *     T0 Count    7ch x 2.6em     2      the count and its unit
+ *     T1 Label   10ch x 3.9em     3      and the label under them
+ *     T2 Motif   15ch x 3.9em     4      and the motif beside the count
+ *
+ * **The motif goes first**, although it is the look: the colours and the
+ * scene say "Christmas" on their own, and a box that can hold one more thing
+ * keeps the one that says *what* is being counted to. It costs width and not
+ * height, because it sits beside the count — which is what lets the wide,
+ * short box a forecast leaves, where a countdown most often goes, keep it.
+ *
+ * Measured off the drawn look on Classic's wall nobody has measured, the
+ * page's method: the count and its unit stand 2.57 ledes tall, the label 1.15
+ * under a 0.12 gap (3.84 in all), and the count with its motif beside it is
+ * 5.41 ledes wide at three figures — 15ch of the label's condensed face, whose
+ * `ch` is 0.36 to 0.39 of its em. A 32" television needs less (its count and
+ * unit are 2.38 ledes), so the table is the unmeasured wall's, the larger.
+ */
+export const OCCASION_TIERS: readonly WidgetTier[] = [
+  { tier: 'T0', minCh: 7, minEm: 2.6, items: 1, rungs: 2 },
+  { tier: 'T1', minCh: 10, minEm: 3.9, items: 1, rungs: 3 },
+  { tier: 'T2', minCh: 15, minEm: 3.9, items: 1, rungs: 4 },
+];
+
+/**
+ * The parts of a countdown's `progress` look, in the order they are kept: the
+ * count, the bar, the household's label and the percentage.
+ */
+export const PROGRESS_PARTS = ['count', 'bar', 'label', 'pct'] as const;
+
+/**
+ * The progress bar.
+ *
+ * **Primary role: the lede** (`.cdg-label`). The count is the clock's role
+ * capped by the box, the bar half a lede tall, the percentage the scaffold.
+ *
+ *     tier        needs           rungs  what the bar says
+ *     T0 Count    6ch x 1.9em     1      the count and its unit
+ *     T1 Bar      8ch x 2.6em     2      and the bar under it
+ *     T2 Label   10ch x 4.0em     3      and the label over them
+ *     T3 Full    16ch x 5.0em     4      and the percentage under the bar
+ *
+ * **The percentage goes first**: it is the bar said again in words, which a
+ * box with room for the bar already shows. The bar goes before the count is
+ * ever touched, because "12 days" without a bar is the number, and a bar
+ * without its count is a line nobody can read a date off.
+ *
+ * Measured the page's way: the count is 1.80 ledes, the bar 0.50 and the
+ * percentage 0.77, with 0.24 between each (4.95 in all). The percentage's
+ * width sets T3's — "100% of the way" is fifteen tracked capitals that do not
+ * wrap, about 5.5 ledes.
+ */
+export const PROGRESS_TIERS: readonly WidgetTier[] = [
+  { tier: 'T0', minCh: 6, minEm: 1.9, items: 1, rungs: 1 },
+  { tier: 'T1', minCh: 8, minEm: 2.6, items: 1, rungs: 2 },
+  { tier: 'T2', minCh: 10, minEm: 4.0, items: 1, rungs: 3 },
+  { tier: 'T3', minCh: 16, minEm: 5.0, items: 1, rungs: 4 },
+];
+
+/**
+ * The parts of a countdown's `month` look, in the order they are kept: the
+ * count, the grid of days, the household's label, the month's name and the
+ * weekday heads.
+ */
+export const MONTH_PARTS = ['count', 'grid', 'label', 'title', 'heads'] as const;
+
+/**
+ * The mini month.
+ *
+ * **Primary role: the lede** (`.cdm-label`). The count is 1.4 ledes, the
+ * squares and the heads the scaffold.
+ *
+ *     tier        needs           rungs  what the month says
+ *     T0 Count    6ch x 1.5em     1      the count and its unit
+ *     T1 Grid    20ch x 8.5em     2      and the target's month, circled
+ *     T2 Label   20ch x 9.9em     3      and the label under it
+ *     T3 Full    20ch x 12.0em    5      and the month's name and the heads
+ *
+ * **The heads and the name go first**, together: they say what the household
+ * already knows (which month they chose, and which column is Monday), and a
+ * square with a ring round it on the fourth row of seven reads as a date
+ * without either. The grid is the look, so it comes straight after the count.
+ *
+ * Measured the page's way, and stated for a **six-week** month, the tallest a
+ * month can be — the table has to hold for whatever date the household picks,
+ * and a grid's rows are the one thing in it the target decides: a row is 1.7
+ * scaffolds, 1.13 ledes, so six rows are 6.8 under a 1.4 count, the label 1.15
+ * under that, and the heads a row more with the name 0.89 over them. **The
+ * width is the ring's**: a square has to be about 1.5 scaffolds wide for the
+ * ring to go round two figures rather than through them, so seven of them are
+ * 10.5 scaffolds — 7 ledes, 20ch of the label's face. That was 12ch in the
+ * first draft, from the figures alone, and a narrow column on the portrait
+ * wall drew every two-figure day cut: 27px of "30" in a 24px square.
+ *
+ * **Classic's own box is below T1**, at 4.4 ledes in portrait: a month is five
+ * or six rows of type, and a box a forecast was drawn in cannot hold one at a
+ * size somebody reads from across a kitchen — so it draws the count, which is
+ * what a box gives up to, rather than a grid too small to read.
+ */
+export const MONTH_TIERS: readonly WidgetTier[] = [
+  { tier: 'T0', minCh: 6, minEm: 1.5, items: 1, rungs: 1 },
+  { tier: 'T1', minCh: 20, minEm: 8.5, items: 1, rungs: 2 },
+  { tier: 'T2', minCh: 20, minEm: 9.9, items: 1, rungs: 3 },
+  { tier: 'T3', minCh: 20, minEm: 12.0, items: 1, rungs: 5 },
+];
+
+/**
+ * A countdown's table for each of its looks the wall draws with one. `number`
+ * is deliberately not here: it keeps the clock's `--buw`/`--buh` sizing, so an
+ * existing countdown is drawn exactly as it was (plan item P5.2).
+ */
+export const COUNTDOWN_TIERS: Readonly<Record<string, readonly WidgetTier[]>> = {
+  page: PAGE_TIERS,
+  ticket: TICKET_TIERS,
+  occasion: OCCASION_TIERS,
+  progress: PROGRESS_TIERS,
+  month: MONTH_TIERS,
+};
+
+/** Each look's parts, in the order its table keeps them. */
+export const COUNTDOWN_PARTS: Readonly<Record<string, readonly string[]>> = {
+  page: PAGE_PARTS,
+  ticket: TICKET_PARTS,
+  occasion: OCCASION_PARTS,
+  progress: PROGRESS_PARTS,
+  month: MONTH_PARTS,
+};
+
+/** The parts a look keeps at this tier: its first `rungs`, never fewer than one. */
+export function partsAt<P extends string>(parts: readonly P[], tier: WidgetTier): readonly P[] {
+  return parts.slice(0, Math.max(1, Math.min(parts.length, tier.rungs)));
+}
+
+/**
  * The rota badge: one card of rows, per person on a rota today.
  *
  * **Primary role: the shift's own name** (`.shift-badge .what`) — the headline,

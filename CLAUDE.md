@@ -64,10 +64,10 @@ Violating any of these is a failed task.
 - No absolute px in the display's type or layout. Every size on the wall derives from --px-arcmin, which derives from the screen's panel size and read distance. A hardcoded px legibility floor is the bug that made the month grid name zero events on a small panel: it is correct on one screen and wrong on all the others.
 - No scale-to-fit as a substitute for a density tier. A section that does not fit gives up content, not points. transform: scale() on a laid-out section is banned in new code — and there is none left in old code either: `fitToBox` is deleted, and `reflow-stability.test.ts` scans the stylesheet and the renderer for one. A uniform transform is photographic enlargement; it changes how big a widget looks and can never change what it says.
 - A widget reads its own box and chooses a form; it never draws everything and hides what spilled. The calendar's tiers are `tiers.ts` and the thresholds are in characters and ems of the event role, so one table is right on every panel — a new one belongs there rather than as a pixel threshold in a renderer. Hard rule 2 permits a container query for exactly this, and for nothing else yet.
-- **Emoji on a browser wall are bundled artwork, never a device font; anything an e-paper panel draws carries none at all.** *(Rewritten 2026-09-24 for decision D6; the plan is `docs/plan-2026-09-household-review.md`.)* The rule this replaces was "no emoji in anything a screen renders", and its reason is unchanged: the image ships no emoji font, so an emoji set as *text* is a third-party asset resolved on the device — it differs on every panel, some kiosks draw an empty box, and `asciiTitle` deletes it outright on e-ink. **That rule was written down and broken at the same time** — every forecast and every device class chose one until the first-party vocabulary replaced them. What changed is the remedy, not the reason. The owner wants emoji in a weather or countdown style, so the wall ships its own: a curated Twemoji set under `apps/server/assets/emoji/`, served from `/assets/emoji/<name>.svg` and drawn as an `<img>` from a *key* the manifest carries, never a code point (plan item P4.2), so every screen draws the same picture. A code point handed to the device's font in a designed style is still the bug this rule was written for. The one exception is stated so nobody "fixes" it: text a household typed itself, such as a countdown's title, renders in the device's own font (Q9), because it is their string and the wall does not rewrite it. E-paper keeps the drawn glyphs. **Until S11 lands this is stricter than it reads**: `no-emoji.test.ts` still refuses an emoji anywhere a screen reads from, which is correct while there is no artwork to draw. Once S11 lands it is narrowed to the e-paper renderer and its tests, with `asciiTitle` as the panel's guard, and gains the assertion that a designed wall style draws emoji as a bundled `<img>` and never as text. It scans comments too, because a comment is where the next one gets pasted from.
-- **No stat tiles — but a designed widget style may make one reading its lede.** *(Amended 2026-09-24 for decision D1.)* A big number with a caption, or a 3-up row of them, is a dashboard idiom, and this is a calendar: the wall's job is the thing the household does not already know, and a row of tiles says the things they do. That is still out, on any widget. What D1 permits is narrower: a designed style — the weather "Today" card, a countdown's number — may carry **one** large reading, capped against the event role the way the clock is (1.8x, `WALL_TYPE_CAPS`), so the biggest number on the wall can never outsize an event name by more than the clock already may. The cap is the rule rather than the size; a large reading with no cap is a stat tile with a style name. Enforced once S15 and S16 land by each style's own ratio assertion at three sizes, the way `orientation.test.ts` holds the clock to 1.8x.
-- **Shadows on a browser wall come from one theme token, and a theme or an e-ink preset can switch them off.** *(Rewritten 2026-09-24 for decision D8.)* The rule this replaces was "no shadow on the display, at any size, in any theme", because a shadow bands on e-ink and burns in on OLED. Both are still true, and they are now the reason the shadow is a *token* rather than the reason for a ban: `--shadow-card` is set per theme (soft on Panels and Household, paper-like on Almanac, none on Blueprint and Swiss), derived for a custom theme, and set to none by the e-ink presets of the wall-size picker (plan item P4.4). A literal `box-shadow` in a widget rule is therefore still wrong — it is the one shadow a household with an OLED or e-ink screen could not turn off. An e-paper panel draws none: `shadow` stays in `PANEL_IGNORES`, which `epaper-ink.test.ts` already proves by rendering. Separation is still space, then a 1px rule, then a ground step, in that order; a shadow is a look a theme lays on top of that and never the only thing separating two boxes. Enforced once S13 lands by `builtin-themes-parity.test.ts`, which holds the token's per-theme values in the bundle and on the server to each other.
-- **Motion on a browser wall is phase-locked to the wall clock, gated by reduced motion and the wall's own switch, and moves only `transform` and `opacity`. An e-paper panel is always still.** *(Rewritten 2026-09-24 for decision D7.)* The rule this replaces was "no transition or animation on any surface a screen sees", because the wall has no pointer and redraws every 15 s: a transition there confirms nothing and reads as a flicker in a room, and `draw()` empties and rebuilds the whole wall on every tick, so a naive CSS animation restarts four times a minute. The owner decided weather and countdown styles may move, and that confetti may fall on a countdown's day. The reasons survive as the conditions (plan item P4.3): a looping effect takes a negative `animation-delay` from the corrected wall clock, so a rebuilt element resumes where the old one was; a one-shot fires once per event from a per-widget memory in `main.ts`, not once per tick; every `@keyframes`, `animation` and `transition` sits inside `prefers-reduced-motion: no-preference` and under `.canvas[data-motion="on"]`, the wall's Motion switch (`screens.motion`, null meaning on, Q6, and off by default on the e-ink presets); and only `transform` and `opacity` are animated, because anything else is layout or paint on every frame of an old tablet. The panel draws each style's still frame. **The ban was a convention for as long as it existed, and a convention is what a future contributor breaks** — reasonably, from a browser habit, in a file nobody re-reads — which is why its replacement is a build failure too. **Until S12 lands the ban is still what is enforced**: `apps/display/test/motion.test.ts` holds `display.css` (source *and* the copy `dist/` serves), the wall's HTML, its offline shell and every module in `main.ts`'s import graph to carrying neither word at all, and `apps/server/test/motion-scope.test.ts` holds the panel path to reaching no stylesheet. Once S12 lands `motion.test.ts` and the display half of `motion-scope.test.ts` enforce the scope instead — no animation outside the scoped block, keyframes that touch only `transform` and `opacity` — the panel path still reaches no stylesheet at all, and a browser test holds an animation's computed time continuous across a redraw. The admin's rule is unchanged and `motion-scope.test.ts` keeps holding it: three durations and three easings, every declaration inside `prefers-reduced-motion: no-preference`, because the admin is a settings screen somebody is touching, where the same 180ms is the only thing telling them the tap landed.
+- **Emoji on a browser wall are bundled artwork, never a device font; anything an e-paper panel draws carries none at all.** *(Rewritten 2026-09-24 for decision D6; the plan is `docs/plan-2026-09-household-review.md`.)* The rule this replaces was "no emoji in anything a screen renders", and its reason is unchanged: the image ships no emoji font, so an emoji set as *text* is a third-party asset resolved on the device — it differs on every panel, some kiosks draw an empty box, and `asciiTitle` deletes it outright on e-ink. **That rule was written down and broken at the same time** — every forecast and every device class chose one until the first-party vocabulary replaced them. What changed is the remedy, not the reason. The owner wants emoji in a weather or countdown style, so the wall ships its own: a curated Twemoji set under `apps/server/assets/emoji/`, served from `/assets/emoji/<name>.svg` and drawn as an `<img>` from a *key* the manifest carries, never a code point (plan item P4.2), so every screen draws the same picture. A code point handed to the device's font in a designed style is still the bug this rule was written for. The one exception is stated so nobody "fixes" it: text a household typed itself, such as a countdown's title, renders in the device's own font (Q9), because it is their string and the wall does not rewrite it. E-paper keeps the drawn glyphs. **S11 has landed the artwork and the test narrowing described above.** `no-emoji.test.ts` now scans only `apps/server/src/epaper/**` and its own `epaper-*` tests, with `asciiTitle` kept as the panel's guard; the wall side of the old ban is enforced by rendering instead of by a source scan — `browser-emoji.test.ts` proves a real paired wall draws `emojiNode`'s output as a same-origin `<img>`, never a code point in the live DOM. It scans comments too, because a comment is where the next one gets pasted from. The forecast's `playful` look (P5.1) is the first designed style to draw from the vocabulary, through `emojiNode`, and `browser-weather-playful.test.ts` holds every picture it draws to a same-origin `<img>` from `/assets/emoji/` that actually loaded, with no emoji code point anywhere in the rendered text; the countdown's arrive with S16.
+- **No stat tiles — but a designed widget style may make one reading its lede.** *(Amended 2026-09-24 for decision D1.)* A big number with a caption, or a 3-up row of them, is a dashboard idiom, and this is a calendar: the wall's job is the thing the household does not already know, and a row of tiles says the things they do. That is still out, on any widget. What D1 permits is narrower: a designed style — the weather "Today" card, a countdown's number — may carry **one** large reading, capped against the event role the way the clock is (1.8x, `WALL_TYPE_CAPS`), so the biggest number on the wall can never outsize an event name by more than the clock already may. The cap is the rule rather than the size; a large reading with no cap is a stat tile with a style name. Enforced for the forecast's Today card by `browser-weather-today.test.ts`, which holds its lede to 1.8x the event role at three sizes (1080x1920, 1920x1080 and a 43" television at 2560x1440) and to reaching that cap where the box has room, the way `orientation.test.ts` holds the clock; the countdown's number is S16's to hold the same way.
+- **Shadows on a browser wall come from one theme token, and a theme or an e-ink preset can switch them off.** *(Rewritten 2026-09-24 for decision D8.)* The rule this replaces was "no shadow on the display, at any size, in any theme", because a shadow bands on e-ink and burns in on OLED. Both are still true, and they are now the reason the shadow is a *token* rather than the reason for a ban: `--shadow-card` is set per theme (soft on Panels and Household, paper-like on Almanac, none on Blueprint and Swiss), derived for a custom theme, and set to none by the e-ink presets of the wall-size picker (plan item P4.4). A literal `box-shadow` in a widget rule is therefore still wrong — it is the one shadow a household with an OLED or e-ink screen could not turn off. An e-paper panel draws none: `shadow` stays in `PANEL_IGNORES`, which `epaper-ink.test.ts` already proves by rendering. Separation is still space, then a 1px rule, then a ground step, in that order; a shadow is a look a theme lays on top of that and never the only thing separating two boxes. Enforced by `builtin-themes-parity.test.ts`, which holds the token's per-theme values in the bundle and on the server to each other, and by `browser-widget-shadow.test.ts`, which reads the computed `box-shadow` on a real wall: every box `none` on every built-in until a widget asks, and the theme's shadow — or none, on an e-ink-sized wall — once it does.
+- **Motion on a browser wall is phase-locked to the wall clock, gated by reduced motion and the wall's own switch, and moves only `transform` and `opacity`. An e-paper panel is always still.** *(Rewritten 2026-09-24 for decision D7.)* The rule this replaces was "no transition or animation on any surface a screen sees", because the wall has no pointer and redraws every 15 s: a transition there confirms nothing and reads as a flicker in a room, and `draw()` empties and rebuilds the whole wall on every tick, so a naive CSS animation restarts four times a minute. The owner decided weather and countdown styles may move, and that confetti may fall on a countdown's day. The reasons survive as the conditions (plan item P4.3): a looping effect takes a negative `animation-delay` from the corrected wall clock, so a rebuilt element resumes where the old one was; a one-shot fires once per event from a per-widget memory in `main.ts`, not once per tick; every `@keyframes`, `animation` and `transition` sits inside `prefers-reduced-motion: no-preference` and under `.canvas[data-motion="on"]`, the wall's Motion switch (`screens.motion`, null meaning on, Q6, and off by default on the e-ink presets); and only `transform` and `opacity` are animated, because anything else is layout or paint on every frame of an old tablet. The panel draws each style's still frame. **The ban was a convention for as long as it existed, and a convention is what a future contributor breaks** — reasonably, from a browser habit, in a file nobody re-reads — which is why its replacement is a build failure too. **S12 landed it, and the scope is what is enforced now.** `apps/display/test/motion.test.ts` parses `display.css` (source *and* the copy `dist/` serves) and refuses any `@keyframes` or animation binding outside `@media (prefers-reduced-motion: no-preference)`, any binding whose selector does not start at `.canvas[data-motion="on"]`, any keyframe that moves something other than `transform` or `opacity`, any transition at all, and any `animation-duration`, `animation-delay` or shorthand in the stylesheet — the duration is stated once, in `motion.ts`, where the phase is computed from it. It also holds `motion.ts` as **the one module** in `main.ts`'s import graph that says "animation", writing only `animationDuration` and `animationDelay`; every other wall module still carries none of the words. `apps/server/test/motion-scope.test.ts` holds the same scope on the stylesheet the server actually serves and the panel path to reaching no stylesheet at all, and `browser-motion.test.ts` measures a real Chromium: a loop's computed phase continuous across a tick, a one-shot that resumes through a redraw and does not refire, and nothing moving under reduced motion or with the switch off. The admin's rule is unchanged and `motion-scope.test.ts` keeps holding it: three durations and three easings, every declaration inside `prefers-reduced-motion: no-preference`, because the admin is a settings screen somebody is touching, where the same 180ms is the only thing telling them the tap landed.
 - No proportional figures on the display. font-variant-numeric: tabular-nums is not a preference here: a figure that changes width changes a row's geometry, and a geometry change forecloses e-ink partial refresh.
 - The date numeral is never larger than the event name beside it by more than 1.2x. The wall's job is the thing the household does not already know.
 - A month cell is not a card. No fill, no border, no radius, no shadow. Structure comes from the week rule and the column gutter. D8's shadow token is a widget's and a theme's and does not reach a cell, and full grid lines or weekend shading wait on Q1 rather than on this sentence being reread.
@@ -320,6 +320,36 @@ pnpm -r build
 dependency's declarations. `packages/calendar` passed 153 tests for days over
 `ical.js` imports that `tsc` rejects outright. Do not remove the build step.
 
+**CI runs the same work split across runners, not a smaller version of it.**
+One `pnpm test` job took ten minutes, and 8m48s of it was the server suite —
+77% of that the 53 files that drive a real browser, on a four-core runner where
+each file's own Chromium competes with the workers. So `ci.yml` has a
+`packages` job (build, then calendar, core and display) and a `server` job in
+four `vitest --shard` runners, each building first exactly as `pnpm test`
+does, and a `test` job that passes only when every part did, under the name the
+one job had. **The count is measured, not picked, and the answer changed
+once:** vitest shards by equal file *counts* in SHA-1 order of the path, so
+where the heavy browser files land is decided by their names. A model built
+from one run's per-file timings (it reproduces which shard every file ran in,
+and lands a steady ~42s under each measured step) first put three shards at
+176, 172 and 169s and four at 151, 100, 194 and 94, which is slower than three.
+After #294 stopped the browser tests sleeping through fixed waits, the same
+model on that run's timings puts three at 170, 122 and 186s and four at 147,
+85, 143 and 109s, so it is four. **Measured, the gain is small and inside
+the noise, and that is worth knowing before reading one run as a verdict.**
+Two runs on four took 192, 109, 148 and 113s (4m05s end to end) and 183, 112,
+155 and 82s (3m51s). The same tests on three shards took 228, 219 and 182s at
+their slowest across three runs (4m39s, 4m29s and 3m53s). So four's slowest
+shard averages about 188s against three's 210s, and end to end about 3m58s
+against 4m20s: about 22s better, while three alone varies by 46s from one run
+to the next. The model's 39s
+is an upper bound rather than a promise, because per-file times move with what
+runs beside them. Shard 1 is the laggard at four, holding about 147s of work
+against the others' 85–143s. The step reads the total from
+`strategy.job-total`, so the matrix is the one place the count is written.
+Adding files moves the balance, so re-measure before changing it, and compare
+averages of several runs rather than one against one.
+
 ### Running it
 
 ```bash
@@ -455,11 +485,13 @@ were rewritten before any code depended on the change.
   from whatever source is necessary.
 
 **Nothing a household sees changed on that date, and the tests still enforce
-the old bans until the sessions that build the permissions land** — S11 narrows
-`no-emoji.test.ts`, S12 rewrites `motion.test.ts` and `motion-scope.test.ts`,
-S13 brings the shadow token under `builtin-themes-parity.test.ts`. A rule that
-permits more than its test does is the right way round for a few releases; the
-other way round is a rule nothing enforces.
+the old bans until the sessions that build the permissions land.** **S11 has
+landed**: `no-emoji.test.ts` narrows to the e-paper renderer and its tests, and
+the bundled Twemoji artwork ships (see below). S12 still needs to rewrite
+`motion.test.ts` and `motion-scope.test.ts`, and S13 still needs to bring the
+shadow token under `builtin-themes-parity.test.ts`. A rule that permits more
+than its test does is the right way round for a few releases; the other way
+round is a rule nothing enforces.
 
 **0.61.0 is the current release.** `main`, the tag and the published image
 agree with each other, and `advertise` is what keeps them that way — it writes
@@ -7746,88 +7778,242 @@ merge the same diff read 3846 over 274 against 3830 over 271, the same +16
 and +5. As with the paragraphs above, that agreement is an observation and
 not a method.
 
-**P5.3's server half shipped: the data a Home Assistant tile card needs, and
-seven more domains to read it from.** The tile look itself (`variant: 'tile'`,
-`HOUSE_TILE_TIERS`, the panel's outlined boxes) is the display half and did
-not ship here. What did is four things, all in
-`modules/homeassistant/entities.ts` and the cache write beside it. **A `tone`
-per reading** (`'active' | 'alert' | null`), from `toneFor`: a door open is an
-alert, a light on is merely a fact, a temperature is neither. It is tested
-table-first: `TONES` in `ha-units.test.ts` is one row per sentence a household
-would agree with or not, 54 of them, and a test fails when a watchable domain
-has no row. **A `changedAt`**, which is Home Assistant's `last_changed`, until
-now read only by `signals()`. **Seven read-only domains (Q8, the plan's
-proposed default, built as proposed)**: `light`, `switch`, `input_boolean`,
-`fan`, `cover`, `lock`, `climate`, each worded as a tile says it ("On · 60%",
-"Open · 40%", "Unlocked", "Heating · 21°"). Reading one is a GET of
-`/api/states`, which this module has always made, so `HA_SERVICES` is still
-two members and `ha-write-boundary.test.ts` is green and unedited. And **five
-glyphs** (`light`, `switch`, `fan`, `cover`, `thermostat`), drawn on the 24
-grid for the wall and the admin and redrawn at 12 pixels for the panel.
+**A household with no coordinates and no Home Assistant can now set its
+weather location by typing a town, city or postcode (P2.3).** The Weather
+screen's "Look up" is a third submit inside the one form (`formaction`, the
+same mechanism as "Use my Home Assistant home location"), and it asks
+Open-Meteo's key-less geocoding service — a separate host from either
+forecast provider, public https only, through the SSRF-guarded fetcher — for
+up to five matches, each parsed with Zod **one result at a time** so one odd
+entry does not cost the other four. The page re-renders with the whole form
+echoed and the matches as radio choices ("London, England, United Kingdom");
+"Use this place" writes the chosen pair and saves the rest of the form,
+reading the same narrower `haLocationBody`-derived shape `use-ha-location`
+does, so a stray typed coordinate cannot fail it — there is no server-side
+session holding the five results between the lookup and this submit, so the
+coordinate pair a household picks *is* the value the radio carries. Three
+sentences, none bare: no place by that name, the lookup service not
+answering, and nothing typed.
 
-**The cache keeps an allowlist of attributes per domain, read on the way in
-and again on the way out.** The shortcut would have been to cache the whole
-attributes object. That would have put `entity_picture` in a table a backup
-carries, and on a real light that attribute is a Home Assistant path with a
-token in its query string: an address and a credential in one field. The
-fake now sends that attribute, and `rgb_color`, `changed_by`, `hvac_modes` and
-five more like them. The test reads the whole `ha_entity_cache` table back as
-text and finds none of them. A binary sensor's row is still
-`{"device_class":"door"}` byte for byte, so every row already in a database
-reads back unchanged.
+**The Enter-key trap this screen has already shipped once is closed at the
+source rather than avoided.** `defaultSubmit()` carries no `formaction`, so
+typing a town and pressing Enter — or pressing the visible Save with nothing
+but a town typed — both post to Save's own handler. Reading "no coordinates"
+there as "clear the location" would have been this screen's data-loss bug in
+a new shape, so Save itself treats a typed place with no coordinates as a
+lookup and only saves normally once there are coordinates or the form is
+genuinely blank.
 
-**The fault this found is the more useful half.** The house panel carried a
-`fetchedAt` that moved on every thirty-second poll. The panel is in
-`manifestEtag`'s preimage and the e-paper frame's ETag hashes the manifest's,
-so every household with a reading on a wall was sent a new manifest every
-half minute, and every panel beside it a new frame. Nothing read the field.
-The to-do panel had left out its own `lastFetchedAt` for exactly this reason
-and said so. This one was found because `changedAt` promises "the manifest
-moves only when the state does", and that could not be tested next to a field
-that moved on every poll. The field is gone, and two tests now hold a second
-poll of an unchanged house to the same manifest ETag and the same frame ETag.
-**The fake had the same fault one layer down**: it restamped `last_changed`
-from `Date.now()` on every request, so no test could have told a manifest
-that moves with the house from one that moves with the clock. Its stamps are
-relative to the moment it was stood up now, and the kitchen's moves only when
-a test changes the temperature, as Home Assistant's does.
+"Use this device's location" is a `hidden` button revealed only by
+`geolocate-button.js` when `window.isSecureContext && 'geolocation' in
+navigator` — which fails, by design, on most plain-http LAN installs and
+inside the Home Assistant sidebar iframe, and stays hidden rather than
+offering a control that then fails silently. **Its own fault was only ever
+going to be found by measuring**: `button,.btn` sets its own `display`, which
+beats the user agent's `[hidden]` the identical way `.row-fields[hidden]` and
+`.saverow [hidden]` already exist to fix — so the button was visible from the
+first render, on every install, and a browser test proved it before the fix
+and after. Proven in a real browser by overriding `isSecureContext` directly,
+since this harness's own loopback origin is a secure context on Chromium's
+own account (measured: `http://127.0.0.1` reports `isSecureContext: true`)
+and cannot otherwise demonstrate the failure this control exists to hide
+behind. Home Assistant not connected gets one line pointing at the
+connection screen instead of a button with nothing to press. The latitude and
+longitude fields stay, for fine-tuning — a found place's centre can sit over
+the county line from the actual house, and NWS alert zones are worked out
+from the exact point.
 
-**"The list draws exactly what it drew" is a measurement, not a reading of
-the diff.** `main`'s `entities.ts` from just before this change was compiled
-beside the new one and run over 111 cases: every existing domain, every
-device class either renderer names, and every state that matters, each in two
-watch variants. Its answers are committed as
-`test/fixtures/ha-readings-before-tiles.json`, and the new `toReading` is held
-to them on every field but the two it adds: the six the list draws and P1.3's
-`key`, which it picks readings by. The wall's
-`houseFrom` and the panel's frame are held identical with and without `tone`,
-`changedAt` and `fetchedAt`. Ten mutations were checked, each by reverting
-one fix, and all ten are red: the tone table, the allowlist on the way in,
-the allowlist on the way out, `changedAt`, `fetchedAt` against the manifest,
-`fetchedAt` against the frame, a domain dropped, a doubled climate unit, an
-old wording moved, and a panel cell dropped. **Two decisions are worth knowing
-before a reader re-argues them.** The fan is three blades on both media,
-because four drew a clean pinwheel on the 24 grid and a hooked cross at 12
-pixels, which is a symbol this wall will never draw. And `light` is a pendant
-lamp rather than a bulb, because `illuminance` already is one.
+The parser is checked against a real Open-Meteo geocoding response, committed
+as a fixture the way every other provider in this codebase is. Five mutations
+were checked — the Enter-key branch, the per-result parsing collapsed to a
+document-level parse, the `place_choice` regex loosened, the device-location
+button's hidden fix removed, and the Home Assistant not-connected line
+deleted — and all five are red. **3894 tests passing, 1 skipped and 5
+expected failures, over 279 files**: calendar 153 over 10 · core 314 over 9 ·
+display 626 over 35 · server 2801 over 225 plus the five `it.fails`, measured
+on the tree after `main` was merged into this branch, which had taken P1.2,
+P1.3 and P2.1 in the meantime, with `MW_BROWSER_EXECUTABLE` naming the
+provisioned Chromium for the revision mismatch S01 recorded. One browser test
+outside this diff, `browser-wall-theme.test.ts`'s theme-suggestion case, went
+red once in the full run and green alone and on an immediate rerun of the
+whole server suite — the font-race shape this document already records for a
+cold context under load, not a fault in this change. Against P2.1's 3875 over
+278 recorded just above, the difference is +19 tests and +1 file —
+`weather-geocoding.test.ts`'s own 18 plus one new browser test in
+`browser-admin.test.ts` — the fourth time running the arithmetic and the
+reading have agreed, and still not a method.
 
-**Still unproven where it counts:** no real Home Assistant has been asked for
-a light, a lock or a thermostat, and every attribute shape here is copied
-from Home Assistant's own documentation into a fake.
+**P2.1's second half and P2.2 shipped: Walls and the four Home Assistant list
+screens have their one "Add …" in the app bar too, and adding a wall is one
+door.** Readings, Calendars, To-do lists and "Tell me when…" each carry an
+app-bar **Add readings**, **Add a calendar**, **Add a list** and **Add a
+rule** to `…/new`, and the lists carry no form. The rule templates moved onto
+**Add a rule**, because a template starts a rule. Both old template addresses
+(`/admin/home-assistant?template=` and `…/alerts?template=`) answer a 302 to
+`…/alerts/new?template=` with the query intact. Every create refusal comes
+back on its add page, with one exception, stated at its site: a to-do list that
+was added and could not be read comes back on the list, where the new row is.
+The readings picker used to reload the page it was on, which was the list; on
+an add page that shows only the form again, so the mount names where to go
+(`data-done`). `browser-ha-add-readings.test.ts` drives that in a real browser
+and goes red on the old `reload()` with the bundle rebuilt. **The action is
+drawn whether or not a house is connected**, and its add page then says "not
+connected yet" and links to Connection, as the list does. An "Add" that came and
+went with the connection would be the one list in the admin whose create action
+was not always in the same place. Connection is not a collection and is
+unchanged.
 
-**3952 tests passing, 1 skipped and 5 expected
-failures, over 278 files**: calendar 153 over 10 · core 314 over 9 · display
-627 over 35 · server 2858 over 224 plus the five `it.fails`. Measured with a
-real Chromium (`MW_BROWSER_EXECUTABLE`) on a clone whose tags had been
-fetched, on this change rebased onto `main` after P2.1's first half. Against
-P2.1's 3875 over 278 above, that is +77 tests and no new files: 69 in
-`ha-units.test.ts` (54 of them the tone table's rows), 5 in
-`homeassistant.test.ts`, 2 in `epaper-house-widget.test.ts` and 1 in the
-display's `viewmodel.test.ts`. One earlier full run went red on
-`epaper-ink`'s "draws nothing else for calendar", which timed out at 5s while
-a second suite run overlapped it (load average 12 on 4 cores). Run alone, it
-takes 2633ms on this tree and 2593ms on a clean worktree of `main`, so it is
-written down here rather than chased.
+**Walls:** the three buttons under the header became one **Add a wall**, which
+leads to a chooser (`/admin/walls/new`) offering **Add a browser wall** and
+**Add an e-paper wall**, each with its one line. The two pages behind it
+(`/new/browser`, `/new/epaper`; `/admin/epaper` redirects to the second) are
+headed with the chooser row's exact words, and both end on **Add wall**, where
+the e-paper page said "Create". "Approve a pairing code" is a link in the
+list's lead line and under the chooser. "Pair" is kept for the step that pairs
+a browser (the QR and link page, and the "Pair it" on an unpaired card). The
+Overview's "No walls paired yet / Pair a tablet, a television or an e-paper
+panel … on a screen" is now "No walls yet / Add a tablet …", linking to the
+chooser. The wizard's last page and the Readings card say "Add a wall" too. No
+open question (Q1–Q10) touches either item.
+
+**The vocabulary crawl connects a fake house now**, which closes the blind spot
+its header had stated since it was written: "the Home Assistant page renders
+more once a connection exists (there is no fake HA here)". Every Home Assistant
+page is read unconnected first, the way the empty household's pages are, so
+connecting trades nothing away. The crawl then asserts each add page was read
+**with its form drawn**. That assertion was green against a crawl whose house
+never connected until the readings check stopped using "Add reading", which the
+page's own heading ("Add readings") contains either way. A new sweep refuses the
+retired phrasings ("Pair a browser wall", "Add an e-paper panel", "No walls
+paired yet"…) with a zero allow-list. It cannot see the Overview's no-walls row,
+because the crawl has walls; `admin-defaults` is what goes red there.
+
+Eighteen mutations were checked and all are red. Two needed a second test
+before they were. Hiding the HA "Add …" while disconnected stayed green until
+`ha-screens` read the list's app bar on a household that never connected. And
+the "form drawn" check above passed until its readings phrase changed. Measured
+at 390px: every app-bar label fits on one line in the 64px bar, the new ones
+from "Add a list" at 90.7px to "Add a calendar" at 124.5px. Every one of the ten
+Home Assistant pages puts its first control above the 355px the one old page
+did: the add pages at 92, 121, 121 and 185px, and the lists at 251, 316, 320 and
+207px, down from forms that sat lower on the same screens.
+
+**One red in the first full run was a race in a test this change touched, and
+it is fixed rather than re-run.** `browser-wall-theme` read the suggested theme
+after a refused POST. It waited only for a theme radio to be *attached*, which
+the server-rendered cards satisfy before `template-gallery.js` has written the
+suggestion. It passed five of five alone, and failed every time with that
+script's fetch delayed by 1.5s. It now waits for the re-rendered document's
+`load`, which a module script holds, and passes with the delay too.
+
+**3912 tests passing and 1 skipped, over 280 files**: calendar 153 over 10 ·
+core 314 over 9 · display 626 over 35 · server 2819 over 226. Measured with
+`pnpm test` and a real Chromium (`MW_BROWSER_EXECUTABLE`, as above), on the tree
+after `main` was merged in, which had taken P2.3 meanwhile. Against P2.3's 3894
+passing and 5 expected failures over 279, the five `it.fails` are now ordinary
+passes (+5), and this change adds 13 tests and one file. Before the merge the
+same diff read 3893 over 279 against S05's 3875 over 278, the same +18 and +1.
+The arithmetic agrees, which, as every paragraph above says, is an observation
+and not a method.
+
+**The weather panel carries what it is like now, the next day of hours, and
+more about each day (plan items P3.1–P3.4, P3.6–P3.8, session S08). Nothing on
+a wall or a panel draws any of it yet** — the styles that will are S14 and S15
+— **and it must not ship without S09 (P3.5)**: `current` changes every fifteen
+minutes, `manifestEtag` hashes the whole document, and until S09 narrows the
+e-paper preimage every paired panel's frame ETag moves on that cadence, weather
+widget or not. The panel gains `current`, `hourly`, `units` and `air`, and each
+day gains `precipChance`, `precipAmount`, `windMax`, `uvMax`, `sunrise`,
+`sunset` and `detail`. **Every one is optional and spread**, and that is
+asserted as text: a cache holding only a forecast row written by the previous
+release assembles to the exact string the previous release produced, so a
+household with nothing new keeps its manifest and its ETag byte for byte;
+emitting `units` unconditionally or `current: null` turns it red.
+
+**Every parser reads real bytes.** Open-Meteo answers the cloud environment, so
+a full forecast for Washington (imperial) and London (metric), two air-quality
+answers and a sunrise/sunset spread — ten places, 25 June to 9 October — were
+captured live with the exact URLs the code builds, and the README beside them
+says so. NWS does not answer a cloud address, so its parsers read the owner's
+five captures under `fixtures/nws/real/`, and **those bytes found a fault on
+the first run**: every hourly period carries `"name": ""`, which the daily
+period schema — whose one required field is the row's name — refused all 156
+of. The hourly reader has its own schema. They also showed NWS's hourly
+`isDaytime` is a 06:00–18:00 clock (18:00 is "night" before a 19:02 sunset), so
+day and night come from the sun instead. **One capture the owner task asked for
+is not among them**, the observation with a null temperature; the fallback is
+tested against KDCA's real observation with that one value set to null, in the
+shape the same document uses for four other quantities, and
+`fixtures/nws/real/README.md` records it as missing rather than papering over
+it.
+
+**Sunrise and sunset are calculated for every provider** by `sun.ts`, the NOAA
+algorithm, pure, with the zone's offset handed in. Against Open-Meteo's own
+answer for 1,726 events it is within two minutes everywhere the sun is not
+grazing the horizon, and within five on the 34 days it is — the crossing moves
+by 1/sin(hour angle), which is geometry rather than error, and the test says so
+rather than excluding those days. It agrees with Open-Meteo on every day with
+no sunrise or no sunset, which Open-Meteo marks with a sentinel (sunrise at
+00:00, daylight 0 or 86,400 s) that the parser now reads as absence. Two facts
+about the reference were measured, not assumed: Open-Meteo computes for the
+grid cell it reports (the requested point is up to eleven minutes off at 86°N),
+and it truncates to the minute (mean +0.52 across 1,794 events). **Its local
+times are in one fixed offset for the whole answer**, even across a clock
+change — Sydney's sunrises run on without a jump over 4 October — so sun times
+are turned back into instants with `utc_offset_seconds` and re-printed in the
+household's zone; the Sydney case is the test that can see it, because a
+Washington fixture in September has no clock change to fail on.
+
+**Current conditions older than ninety minutes are not "now"**, applied twice:
+at assembly (`presentCurrent`, where NWS falls back to the hourly period
+covering now, `source: 'modelled'`, and Open-Meteo, whose conditions already are
+a model, falls back to nothing), and again in the wall's `weatherFrom` against
+its own clock, because an offline wall redrawing its IndexedDB copy is the one
+place the server's rule cannot reach. The job runs every fifteen minutes and
+asks each part whether it is due — conditions every fifteen, forecasts and air
+hourly, with three minutes' slack for the scheduler's jitter — and a failed
+part keeps its last copy and stays due. Open-Meteo's one answer carries every
+part, and only the due parts are written, so the days are not re-stamped every
+fifteen minutes. **Moving to fifteen minutes nearly quadrupled one request**:
+a location NWS cannot resolve would have asked `/points` every run instead of
+hourly; it waits for the forecast now, with one exception for a gridpoint
+cached by the previous release, which is asked for its hourly and station URLs
+once, at once. NWS stays in Fahrenheit and mph whatever the setting, as its page
+already said, and its SI observations are converted to match. **Air quality is
+off until switched on (Q5, the proposed default)**, names
+`air-quality-api.open-meteo.com` beside the switch before anything has been
+asked, reads the European index in a `Europe/` zone and the US one elsewhere,
+and forgets its reading when switched off (migration `0052`, one generated
+`ADD COLUMN`, read). The wall's `weatherFrom` carries `summary` now, which it
+had dropped since the day it was written.
+
+**Thirty-three mutations were checked and all are red**, 24 of them on the
+server's first pass. One display mutation stayed green at first — not handing
+`weatherFrom` the wall's clock — because the only `buildModel` test drew a
+reading forty minutes old; it draws one ninety-one minutes old too now. And one
+assertion was vacuous as first written: "switching air quality on brings the
+job forward" read `next_run_at ?? 0` on a database with no `job_state` row, so
+it passed whatever the code did; it seeds the row now. The list view's
+optional rain chance (P3.7) and the e-paper reader of the new fields were not
+built: the first widens the agenda's date column, which is a density decision
+with its own measurement, and the second has no panel style to read them for
+until P5.1.
+
+**4526 tests passing and 1 skipped, over 315 files**: calendar 153 over 10 ·
+core 314 over 9 · display 824 over 44 · server 3235 over 252. Measured with
+`pnpm test` and a real Chromium (`MW_BROWSER_EXECUTABLE`) on a clone whose
+tags had been fetched, after merging `main` at #301. Against the 4449 over 315
+recorded above, that is +77 tests and no new files: 69 in `ha-units.test.ts`
+(54 of them the tone table's rows), 5 in `homeassistant.test.ts`, 2 in
+`epaper-house-widget.test.ts` and 1 in the display's `viewmodel.test.ts`. The
+same diff read 3952 against 3875 before the merge, the same +77. The merged
+tree's first run went red on one test of this change's own, the e-paper frame
+test described above, which is how the P3.5 interaction was found. Earlier,
+before the merge, one full run went red on `epaper-ink`'s "draws nothing else
+for calendar", which timed out at 5s while a second suite run overlapped it
+(load average 12 on 4 cores); run alone it took 2633ms on this tree and 2593ms
+on a clean worktree of `main`, so it is written down here rather than
+chased.
 
 ---
 

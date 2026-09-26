@@ -66,11 +66,20 @@ const SCREENS = [
   '/admin/home-assistant/calendars',
   '/admin/home-assistant/lists',
   '/admin/home-assistant/alerts',
+  /*
+   * The four add pages P2.1 moved each screen's form to. Measured on the same
+   * claim as the six: a household pressing "Add …" meets the control the page
+   * is for above where the one page they replace put its first control.
+   */
+  '/admin/home-assistant/readings/new',
+  '/admin/home-assistant/calendars/new',
+  '/admin/home-assistant/lists/new',
+  '/admin/home-assistant/alerts/new',
 ] as const;
 
 describe('the Home Assistant screens on a phone', () => {
   it(
-    'puts the first thing you can act on above where the old page did, on every one of the six',
+    'puts the first thing you can act on above where the old page did, on every one of the ten',
     async () => {
       const home = await install();
       installations.push(home);

@@ -1273,6 +1273,8 @@ export interface AdminScreenRow extends ScreenRow {
   readonly layoutGutter: number | null;
   /** The wall's default style lane as stored JSON; null is none (RFC 014 §4.1). */
   readonly layoutStyle: string | null;
+  /** Whether this wall may move; null is "never chosen" (plan P4.3). */
+  readonly motion: number | null;
   /** The viewport this screen last reported, for the editor's "match" (RFC 005). */
   readonly reportW: number | null;
   readonly reportH: number | null;
@@ -1302,7 +1304,7 @@ export function readAdminScreens(db: SqliteDatabase): AdminScreenRow[] {
               layout_landscape_aspect AS layoutLandscapeAspect,
               layout_background AS layoutBackground,
               layout_landscape_background AS layoutLandscapeBackground,
-              layout_gutter AS layoutGutter, layout_style AS layoutStyle,
+              layout_gutter AS layoutGutter, layout_style AS layoutStyle, motion,
               report_w AS reportW, report_h AS reportH,
               last_seen_at AS lastSeenAt, last_seen_ip AS lastSeenIp,
               last_seen_forwarding AS lastSeenForwarding, app_version AS appVersion
@@ -1381,6 +1383,13 @@ export interface ScreenSettings {
    * the row existed cannot clear a lane nobody touched.
    */
   readonly layoutStyle: string | null;
+  /**
+   * Whether this wall may move, or null for "never chosen" (plan P4.3). The
+   * handler writes a value only when the household moved the switch, and
+   * otherwise hands back what the column already holds — so a null survives
+   * a save, and the e-ink default goes on following the wall's size.
+   */
+  readonly motion: number | null;
 }
 
 export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSettings): boolean {
@@ -1394,7 +1403,7 @@ export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSet
                 display_today_events = ?, display_next_days = ?, display_horizon_weeks = ?,
                 clock_24 = ?,
                 panel_width_mm = ?, panel_height_mm = ?, read_distance_mm = ?,
-                layout_gutter = ?, layout_style = ?,
+                layout_gutter = ?, layout_style = ?, motion = ?,
                 updated_at = ?
           WHERE id = ?`,
       )
@@ -1404,7 +1413,7 @@ export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSet
         s.allowDismiss ? 1 : 0, s.allowChores ? 1 : 0, s.allowTodo ? 1 : 0,
         s.displayTodayEvents, s.displayNextDays, s.displayHorizonWeeks,
         s.clock24, s.panelWidthMm, s.panelHeightMm, s.readDistanceMm,
-        s.layoutGutter, s.layoutStyle,
+        s.layoutGutter, s.layoutStyle, s.motion,
         Date.now(), id,
       ).changes > 0
   );
@@ -1700,13 +1709,20 @@ export interface WeatherSettings {
   readonly provider: 'nws' | 'openmeteo';
   /** `imperial` (°F) or `metric` (°C). */
   readonly units: 'imperial' | 'metric';
+  /**
+   * Whether to read air quality from Open-Meteo's second host (plan item P3.8).
+   * Optional on a write, where absent means "leave it as it is": the wizard
+   * saves the forecast settings and has no opinion about this switch.
+   */
+  readonly airQuality?: boolean;
 }
 
-export function readWeatherSettings(db: SqliteDatabase): WeatherSettings {
+export function readWeatherSettings(db: SqliteDatabase): WeatherSettings & { readonly airQuality: boolean } {
   const row = db
     .prepare(
       `SELECT weather_enabled AS enabled, latitude, longitude,
-              weather_provider AS provider, weather_units AS units
+              weather_provider AS provider, weather_units AS units,
+              air_quality_enabled AS airQuality
          FROM household_settings WHERE id = 'singleton'`,
     )
     .get() as
@@ -1716,6 +1732,7 @@ export function readWeatherSettings(db: SqliteDatabase): WeatherSettings {
         longitude: number | null;
         provider: string | null;
         units: string | null;
+        airQuality: number | null;
       }
     | undefined;
   return {
@@ -1724,6 +1741,7 @@ export function readWeatherSettings(db: SqliteDatabase): WeatherSettings {
     longitude: row?.longitude ?? null,
     provider: row?.provider === 'openmeteo' ? 'openmeteo' : 'nws',
     units: row?.units === 'metric' ? 'metric' : 'imperial',
+    airQuality: row?.airQuality === 1,
   };
 }
 
@@ -1775,11 +1793,21 @@ export function writeWeatherSettings(db: SqliteDatabase, settings: WeatherSettin
   const wasUsable = previous.enabled && previous.latitude !== null && previous.longitude !== null;
   const isUsable = settings.enabled && settings.latitude !== null && settings.longitude !== null;
 
+  /*
+   * Air quality is its own consent (Q5), so it has its own two transitions.
+   * Off forgets what it found — a reading from a request the household has
+   * withdrawn consent for is not theirs to keep, the update check's rule — and
+   * on asks at once, like any setting the household has just asked to see.
+   */
+  const air = settings.airQuality ?? previous.airQuality;
+  const airOff = previous.airQuality && !air;
+  const airOn = !previous.airQuality && air;
+
   const write = db.transaction(() => {
     db.prepare(
       `UPDATE household_settings
           SET weather_enabled = ?, latitude = ?, longitude = ?,
-              weather_provider = ?, weather_units = ?, updated_at = ?
+              weather_provider = ?, weather_units = ?, air_quality_enabled = ?, updated_at = ?
         WHERE id = 'singleton'`,
     ).run(
       settings.enabled ? 1 : 0,
@@ -1787,10 +1815,12 @@ export function writeWeatherSettings(db: SqliteDatabase, settings: WeatherSettin
       settings.longitude,
       settings.provider,
       settings.units,
+      air ? 1 : 0,
       Date.now(),
     );
 
     if (invalidated) db.prepare('DELETE FROM weather_cache').run();
+    else if (airOff) db.prepare(`DELETE FROM weather_cache WHERE cache_key = 'openmeteo:air'`).run();
     if (moved) {
       db.prepare(
         `UPDATE alert_zones SET enabled = 0, updated_at = ? WHERE provider = 'nws'`,
@@ -1864,9 +1894,10 @@ export function writeWeatherSettings(db: SqliteDatabase, settings: WeatherSettin
      *
      * `invalidated` is the cache being wrong (a move, a provider swap, a units
      * change) and the usable transition is the household asking to see it at
-     * all. Anything else already has the answer it needs.
+     * all, and so is air quality being switched on. Anything else already has
+     * the answer it needs.
      */
-    if (invalidated || (isUsable && !wasUsable)) {
+    if (invalidated || (isUsable && !wasUsable) || (airOn && isUsable)) {
       db.prepare(`UPDATE job_state SET next_run_at = 0 WHERE kind = 'weather-sync'`).run();
     }
   });
@@ -2214,6 +2245,14 @@ export interface ScreenRow {
    * until one is written. Named in the `SELECT` for the reason the gutter is.
    */
   readonly customCss: string | null;
+  /**
+   * Whether this wall may move: `1`, `0`, or null for "never chosen", which
+   * `wallMotion` reads as on except on an e-ink size (plan P4.3). Named in the
+   * `SELECT` for the reason the gutter is — an unselected column reads as
+   * null, which is "on", which is exactly what a household who switched
+   * motion off would never notice was ignored.
+   */
+  readonly motion: number | null;
 }
 
 export function readScreens(db: SqliteDatabase): ScreenRow[] {
@@ -2240,7 +2279,7 @@ export function readScreens(db: SqliteDatabase): ScreenRow[] {
               layout_background AS layoutBackground,
               layout_landscape_background AS layoutLandscapeBackground,
               layout_gutter AS layoutGutter, layout_style AS layoutStyle,
-              custom_css_scoped AS customCss
+              custom_css_scoped AS customCss, motion
          FROM screens WHERE revoked_at IS NULL`,
     )
     .all() as ScreenRow[];

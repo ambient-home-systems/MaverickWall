@@ -16,6 +16,45 @@
 
 ## Unreleased
 
+**Two new looks for the weather widget: Range and Colour.** Pick one under
+**Look** on the widget's Style tab. **Range** is a row per day — its name, its
+picture, its chance of rain, then a bar from the day's low to its high set
+against the whole week, coloured from cool to warm, with a dot on today's bar
+where the temperature is now. A small box shows fewer days rather than smaller
+ones, and a narrow one gives up the rain chance and then the picture before it
+gives up the bar. **Colour** is the forecast strip you already have with its
+skies painted — grey clouds, blue rain, a yellow sun behind a cloud — and each
+temperature coloured by how warm it is. An e-paper panel draws Range as black
+bars on its own, and draws Colour as the plain strip, since a panel has no
+colours. Nothing changes on a wall until somebody picks one.
+
+**Two more: Today and Playful.** **Today** is a card like a phone's weather
+widget: the temperature now in large type, today's high and low under it, the
+sky in words, how it feels, and the next few hours along the bottom — or, in a
+shorter box, the next few days on one line. The card is painted the colour of
+the sky, blue on a clear day, indigo at night, grey when it is overcast, slate
+in the rain, and the sky moves gently: the sun glows, clouds drift, rain falls.
+When there is no recent reading it shows today's high and low instead, so it
+never shows an old temperature as the one outside now. On an e-paper panel,
+Today shows the temperature in large type with the time it was read, since a
+panel may sleep for an hour. **Playful** is the forecast strip with big day
+names and a big picture for each day's weather that bobs gently, and a line
+underneath when today calls for it: "Umbrella day" when rain is likely, "Coat
+weather" when the high stays under 10°C (50°F), "Shorts weather" from 24°C
+(75°F), "Sunscreen" when the UV is 6 or more, and "Windy" from 30 km/h (19
+mph). The line can be switched off on the widget's Content tab, and nothing
+moves on a device set to reduce motion or on a wall whose Motion switch is off.
+
+**Each wall has a Motion switch.** It is under **Device and time** on the
+wall's settings, beside the wall's size, and it decides whether the styles
+that move — the Today and Playful weather, and a countdown that celebrates,
+still to come — may move on that wall. It is on for every wall already
+hanging, and off by default when the wall's size is one of the e-ink panels,
+which redraw the whole screen for every frame. A tablet or television set to
+reduce motion stays still whatever the switch says. An animation carries on
+smoothly through the wall's redraw every fifteen seconds instead of starting
+again.
+
 **A Shift widget showing two people now shows both of them.** When two people
 on the rota were working the same day, the wall drew the first person's badge
 and quietly left the second off, because the box was sized for one badge and
@@ -50,8 +89,49 @@ iCloud or CalDAV account, or Home Assistant — and the note about reaching
 Google, iCloud and Microsoft 365 through Home Assistant is on that page now,
 where you are when you need it. "Generate from a colour" is on the Add a
 theme page, and the pages under the Store take you back with the link at the
-top left rather than a big button. Walls and the Home Assistant screens get
-the same treatment in a later release.
+top left rather than a big button.
+
+**Walls and the Home Assistant screens have their "Add" in the same place
+too.** Readings, Calendars, To-do lists and "Tell me when…" in Home Assistant
+each have one **Add …** button at the top right, opening a page of its own;
+the ready-made rules ("Garage door open late" and the rest) are on the **Add
+a rule** page, where you start one. On Walls, **Add a wall** asks which kind:
+**a browser wall** — a tablet, monitor or television showing a web page — or
+**an e-paper wall**, an ESPHome or OpenDisplay panel. The two pages behind it
+are named the same way and both finish on **Add wall**. "Approve a pairing
+code", for a wall that is already showing one, is a link at the top of the
+Walls page and on the Add a wall page.
+
+**The weather now knows what it is like outside right now, not just what the
+days will bring.** The wall checks the current conditions every fifteen
+minutes — with the National Weather Service, measured at your nearest weather
+station; with Open-Meteo, from its model — along with the next twenty-four
+hours, each day's chance of rain, its wind, its sunrise and sunset, and (from
+Open-Meteo) its UV index and how much rain is expected. None of it is drawn on
+the wall yet: it is what the new weather styles, coming next, are built from.
+The forecast itself is still fetched once an hour, as before.
+
+**Air quality, if you want it.** The Weather page has a new **Show air
+quality** switch. It is off until you turn it on, because it asks a second
+service, `air-quality-api.open-meteo.com`, for a reading once an hour — whichever
+forecast you use — and the switch says so before it asks anything. Turning it
+off forgets the last reading.
+
+**The Weather page says what each forecast gives you.** Under "Forecast from"
+it now explains the difference: the National Weather Service covers the United
+States and measures the conditions at a station; Open-Meteo covers the world,
+models the conditions, and adds the UV index and rainfall amounts.
+
+**An e-paper panel is no longer sent a new picture for something it does not
+show.** A panel used to get a fresh picture whenever anything changed: a Home
+Assistant reading on a widget it did not have, a to-do list it did not show,
+and, with the weather above, the current conditions every fifteen minutes
+even on a panel with no weather on it. It also got one each time your
+calendars were checked, about every fifteen minutes, even when nothing on them
+had changed. On a battery panel every new picture is a full redraw, a flash
+and a little of the battery. A panel is now sent one only when something it
+draws has changed. Each panel gets one new picture when you update, and after
+that only when something on it changes.
 
 **The house can show lights, switches, fans, blinds, locks and the
 heating.** On Home Assistant › Readings you can now add a light ("On ·
@@ -64,9 +144,9 @@ they did.
 
 **A wall showing Home Assistant readings stops reloading them every half
 minute.** Every poll of Home Assistant sent every wall, and every e-paper
-panel beside it, a fresh copy of the page even when nothing in the house had
-changed. Now a wall gets a new copy only when something it shows has changed,
-which matters most for an e-paper panel on a battery.
+panel showing a Home Assistant widget, a fresh copy of the page even when
+nothing in the house had changed. Now they get a new copy only when something
+they show has changed, which matters most for an e-paper panel on a battery.
 
 ## 0.67.0
 

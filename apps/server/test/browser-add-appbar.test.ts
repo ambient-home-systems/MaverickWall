@@ -7,8 +7,9 @@
  * viewport, the number of lines its label actually broke onto (read off a
  * Range's client rects, since a button's box says nothing about whether the
  * words inside it wrapped), and whether the heading beside it overflowed its
- * own box. Shift types is the tightest case and is here for that reason: it is
- * the one list page with a back crumb *and* an action in the same bar.
+ * own box. Shift types was the tightest case when this was written — a back
+ * crumb *and* an action in the same bar — and the four Home Assistant list
+ * screens are the same shape, with "Tell me when…" the longest heading of them.
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import { TEARDOWN, browser, install, shutDownBrowser, type Installation } from './browser-harness.js';
@@ -27,6 +28,13 @@ const LISTS: readonly (readonly [string, string])[] = [
   ['/admin/shifts/types', 'Add a shift type'],
   ['/admin/chores', 'Add a chore'],
   ['/admin/themes', 'Add a theme'],
+  // P2.1's second half and P2.2. "Tell me when…" is the tightest of these:
+  // a back crumb, the longest heading on any list, and an action beside it.
+  ['/admin/walls', 'Add a wall'],
+  ['/admin/home-assistant/readings', 'Add readings'],
+  ['/admin/home-assistant/calendars', 'Add a calendar'],
+  ['/admin/home-assistant/lists', 'Add a list'],
+  ['/admin/home-assistant/alerts', 'Add a rule'],
 ];
 
 describe('the app bar\'s "Add …" on a 390px phone', () => {

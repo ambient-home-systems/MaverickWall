@@ -330,9 +330,9 @@ describe('connecting, through the form', () => {
     const ha = await fakeHomeAssistant();
     await connect(h, ha);
 
-    // Readings: the two sections that were "On the wall" and "Add readings"
-    // are one screen now (RFC 014 §4.2), and the picker went with them.
-    const html = await (await h.call('/admin/home-assistant/readings')).text();
+    // Readings: the picker is on its own add page since P2.1, one step from
+    // the list's app-bar "Add readings".
+    const html = await (await h.call('/admin/home-assistant/readings/new')).text();
     // A datalist rather than a search box with a script behind it: the browser
     // does the type-ahead and the page adds nothing that can fail to load.
     expect(html).toContain('<datalist id="ha-entities">');
@@ -343,7 +343,7 @@ describe('connecting, through the form', () => {
     // The calendar entity is offered as a source rather than as a reading, and
     // that offer is a screen along now.
     expect(html).not.toContain('calendar.family');
-    expect(await (await h.call('/admin/home-assistant/calendars')).text()).toContain('calendar.family');
+    expect(await (await h.call('/admin/home-assistant/calendars/new')).text()).toContain('calendar.family');
   });
 
   it('still renders every stored setting when Home Assistant is unreachable', async () => {
@@ -897,10 +897,18 @@ describe('readings on the wall', () => {
   });
 
   it('leaves an e-paper frame alone across a poll that changed nothing', async () => {
-    // The half of the `fetchedAt` fault that costs a battery. A panel's frame
-    // ETag hashes the manifest's, so a manifest that moved every thirty
-    // seconds was a full frame download every thirty seconds, on hardware
-    // documented as a glance class that sleeps between them.
+    /*
+     * The half of the `fetchedAt` fault that costs a battery, on the one panel
+     * it still reaches.
+     *
+     * P3.5 took the modules' panels out of the frame's ETag unless the canvas
+     * draws them (`framePanels`), so the built-in layout was already safe and a
+     * panel with no Home Assistant widget proves nothing here. A panel that
+     * *does* draw one hashes the whole house panel — and a house panel carrying
+     * a `fetchedAt` moved on every thirty-second poll, which is a full frame
+     * download every thirty seconds on hardware documented as a glance class
+     * that sleeps between them. So the panel gets a Home Assistant widget.
+     */
     const h = await harness();
     const ha = await fakeHomeAssistant();
     await connect(h, ha);
@@ -909,9 +917,19 @@ describe('readings on the wall', () => {
       label: 'Kitchen',
       display_mode: 'label_value',
     });
+    const at = Date.now();
     h.db
-      .prepare(`UPDATE screens SET kind = 'epaper', panel_width = 800, panel_height = 480 WHERE id = 'wall'`)
+      .prepare(
+        `UPDATE screens SET kind = 'epaper', panel_width = 800, panel_height = 480,
+                            layout_mode = 'freeform' WHERE id = 'wall'`,
+      )
       .run();
+    h.db
+      .prepare(
+        `INSERT INTO layout_widgets (id, screen_id, orientation, type, x, y, w, h, z, config, created_at, updated_at)
+         VALUES ('house', 'wall', 'landscape', 'homeassistant', 0.05, 0.05, 0.9, 0.9, 0, '{}', ?, ?)`,
+      )
+      .run(at, at);
     const frame = async (): Promise<string | null> =>
       (await h.call(`/d/epaper/${h.displayToken}.png`)).headers.get('etag');
 
@@ -1101,21 +1119,24 @@ describe('the shipped templates, through the form', () => {
     await connect(h, ha);
 
     /*
-     * Both halves move with the builder (RFC 014 §3.2). The rows link to the
-     * screen the form is on now, and the old hub address answers a 302 that
-     * carries the query through — a link already in the world is a contract,
-     * and this one is the entire interface the feature has.
+     * Both halves move with the builder (RFC 014 §3.2, and again in P2.1).
+     * The rows link to the page the form is on now, the rule add page, and
+     * both old addresses answer a 302 that carries the query through — a link
+     * already in the world is a contract, and this one is the entire interface
+     * the feature has.
      */
-    const listing = await (await h.call('/admin/home-assistant/alerts')).text();
+    const listing = await (await h.call('/admin/home-assistant/alerts/new')).text();
     // Relative, so the `<base>` decides where it points — which is what lets
     // the same markup work under a Home Assistant ingress prefix.
-    expect(listing).toContain('href="admin/home-assistant/alerts?template=garage"');
+    expect(listing).toContain('href="admin/home-assistant/alerts/new?template=garage"');
 
-    const bookmarked = await h.call('/admin/home-assistant?template=garage');
-    expect(bookmarked.status).toBe(302);
-    expect(bookmarked.headers.get('location')).toBe('/admin/home-assistant/alerts?template=garage');
+    for (const old of ['/admin/home-assistant?template=garage', '/admin/home-assistant/alerts?template=garage']) {
+      const bookmarked = await h.call(old);
+      expect(bookmarked.status, old).toBe(302);
+      expect(bookmarked.headers.get('location'), old).toBe('/admin/home-assistant/alerts/new?template=garage');
+    }
 
-    const html = await (await h.call('/admin/home-assistant/alerts?template=garage')).text();
+    const html = await (await h.call('/admin/home-assistant/alerts/new?template=garage')).text();
     expect(html).toContain('value="Garage door open late"');
     // The window the brief names, prefilled rather than described.
     expect(html).toContain('type="time" name="from_time" value="23:00"');
@@ -1453,7 +1474,7 @@ describe('Home Assistant calendars, from the Calendars screen', () => {
 
     // And the picker's own section says where calendars go, so their absence
     // reads as deliberate rather than as something missing.
-    const readings = await (await h.call('/admin/home-assistant/readings')).text();
+    const readings = await (await h.call('/admin/home-assistant/readings/new')).text();
     expect(readings).toContain('Calendar entities are not readings');
   });
 });

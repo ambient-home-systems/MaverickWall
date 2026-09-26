@@ -240,6 +240,13 @@ export interface Manifest {
     readonly panelHeightMm?: number;
     readonly readDistanceMm?: number;
     /**
+     * Whether this wall is sized as one of the e-ink panels on the wall-size
+     * picker, which draws no shadow whatever its theme says (decision D8,
+     * plan item P4.4). Absent on every other wall and on an older server, and
+     * both draw the theme's own shadow.
+     */
+    readonly eink?: boolean;
+    /**
      * How much room this wall leaves between its widgets, as a step on the
      * spacing scale (RFC 014 §4.4). Absent on a wall whose household has not
      * chosen — which is every wall until one does — and on a server older than
@@ -259,6 +266,13 @@ export interface Manifest {
      * the field; read defensively for the reason a widget's is.
      */
     readonly customCss?: unknown;
+    /**
+     * Whether this wall may move (plan P4.3): `screens.motion` resolved by the
+     * server, e-ink sizes included. **Absent means on** and only `false` is
+     * ever sent, so a wall nobody has touched — and every wall a server older
+     * than the switch draws — reads a document with nothing new in it.
+     */
+    readonly motion?: boolean;
   };
   readonly days: readonly ManifestDay[];
   readonly people: readonly ManifestPerson[];

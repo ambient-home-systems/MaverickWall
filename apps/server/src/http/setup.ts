@@ -1058,8 +1058,11 @@ export function registerSetupRoutes(app: Hono, deps: SetupDeps): void {
           ? 'No calendars yet — you can add one from the Calendars page whenever you like.'
           : 'Your calendar will sync within a few seconds.',
       body:
-        `<p>Pair a wall from the <a class="link" href="admin/walls">Walls</a> ` +
-        `page — it gives you a QR code and a link to open on the wall itself.</p>` +
+        // "Add", not "Pair" (P2.2): a browser wall's pairing is the QR and the
+        // link, one step after adding it, and an e-paper panel is never paired.
+        `<p>Add a wall from the <a class="link" href="admin/walls">Walls</a> ` +
+        `page — a tablet or a television gets a QR code and a link to open on ` +
+        `the wall itself.</p>` +
         `<p><a class="link" href="admin">Go to the admin →</a></p>`,
     });
   }

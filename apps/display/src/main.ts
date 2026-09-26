@@ -25,6 +25,7 @@ import {
 import { announcement, buildModel, localTime } from './viewmodel.js';
 import { createManifestStore } from './store.js';
 import { createCustomCssSheet, customCssBlocks } from './custom-css.js';
+import { createOneShotMemory } from './motion.js';
 import { assess, DEFAULT_LIMITS } from './watchdog.js';
 
 /**
@@ -191,6 +192,26 @@ function start(): void {
     return live;
   };
 
+  /*
+   * When each widget's one-shot effects fired, by widget id and event (plan
+   * P4.3) — the confetti on a countdown's day, a page flipping at midnight.
+   *
+   * The same mechanism as `todoNotices` above, and for the same reason: a draw
+   * rebuilds the document every fifteen seconds, so the moment a burst began
+   * cannot live in the node that is showing it. Held here, handed to the model,
+   * and asked by the renderer, which is how a one-shot fires once per event
+   * rather than once per tick — and how a redraw in the middle of a burst
+   * resumes it rather than starting it again. `createOneShotMemory` is the
+   * rule, in `motion.ts` where a test can reach it; this is only where the
+   * memory lives, which has to be somewhere that outlives a draw.
+   *
+   * Unlike the notices it is **not** cleared by a poll. A new manifest is not
+   * a new event: the countdown's day is still the same day after the list on
+   * the glass has been refreshed, and clearing here would set the confetti off
+   * once a minute.
+   */
+  const oneShots = createOneShotMemory();
+
   renderMessage(root, 'Maverick Wall', 'Waiting for the first update…');
   customCss.clear();
 
@@ -286,7 +307,11 @@ function start(): void {
       lastConfirmedAt,
       offline,
       todoNotices: liveTodoNotices(),
+      oneShots,
     });
+    // Events nothing has asked about for an hour are forgotten, on the clock
+    // they were remembered on.
+    oneShots.sweep(now);
 
     // Which blocks are on screen, for the few layout rules that need to know
     // one is absent. A space-separated attribute so `~=` can test it, which
@@ -308,6 +333,7 @@ function start(): void {
       day && manifest.theme.daytime !== undefined ? manifest.theme.daytime : manifest.theme.active,
       day ? manifest.theme.daytimeTokens : manifest.theme.activeTokens,
       day ? manifest.theme.daytimeShape : manifest.theme.activeShape,
+      manifest.screen?.eink === true,
     );
     /*
      * One rendering path: every wall is free-form. `pickCanvas` returns the
@@ -320,7 +346,17 @@ function start(): void {
     const canvas = pickCanvas(manifest.layout, geo.layout, local);
     // Which theme is on the glass decides which resolution of a style lane
     // the boxes wear (RFC 014 §4.1) — the same `day` the root was just themed by.
-    renderFreeform(root, model, canvas, undefined, { daytime: day });
+    /*
+     * And whether it may move (plan P4.3). Absent on the document means on —
+     * the household has not switched it off, and a server older than the
+     * switch has nothing to say — so only an explicit `false` stills the wall.
+     * The stylesheet does the rest: `data-motion="on"` is half of the scope
+     * every animation rule sits in, and `prefers-reduced-motion` is the other.
+     */
+    renderFreeform(root, model, canvas, undefined, {
+      daytime: day,
+      motion: manifest.screen?.motion !== false,
+    });
     /*
      * The household's CSS goes on only while a canvas is on the glass. Asked
      * of the document rather than of the model: `renderFreeform` draws an

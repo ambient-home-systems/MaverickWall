@@ -116,6 +116,14 @@ export const themeTokensSchema = z
     // to keep the display's defaults.
     '--disp': fontStack.optional(),
     '--f-sans': fontStack.optional(),
+    /*
+     * Shadows (decision D8, plan item P4.4): the one value a household can
+     * store is `none`, and absent is the derived soft shadow. Stored as the
+     * CSS value itself rather than as a word the server translates, so the
+     * token set is still what the wall reads — and one literal is the whole
+     * of the safety, since nothing a household types can reach `box-shadow`.
+     */
+    '--shadow-card': z.literal('none').optional(),
   })
   .strict();
 
@@ -224,6 +232,111 @@ function scaffoldInk(ink: string, background: string): string {
 }
 
 /**
+ * The tokens the designed widget styles paint with (plan items P4.4 and P4.5),
+ * derived from a theme's own grounds and ink.
+ *
+ * Written twice, in `apps/display/src/theme.ts` and `apps/server/src/api/
+ * themes.ts`, and held character-identical by `themes.test.ts` — the seam
+ * `scaffoldInk` already sits at, and for the same reason: the builder's
+ * preview and the wall a custom theme reaches must draw one colour, not two
+ * that agree most of the time. The five built-ins go through it too, from
+ * their own colours, so a custom theme copied from Panels draws Panels' rain.
+ *
+ * Three families are **readable**: they paint a glyph or a word, so each
+ * starts at a canonical hue and is mixed toward the theme's ink until it
+ * clears 4.5:1 on *both* grounds a widget sits on, `--bg` and `--panel` —
+ * `scaffoldInk`'s loop, turned round to keep a colour's identity rather than
+ * to demote an ink. Weather conditions (`--wx-*`), four temperature stops
+ * cold to hot (`--temp-*`), and three Home Assistant states (`--state-*`),
+ * of which idle is the theme's own muted ink held to the same bar. A theme
+ * whose ink cannot clear the bar ends at its ink, which is still a colour
+ * (rule nine), never a loop that does not stop.
+ *
+ * The **skies** are grounds rather than inks: six gradients, a top and a
+ * bottom each, tinted twelve per cent toward the theme's ground so a sky sits
+ * in its theme, with the ink drawn over it. Each sky names its ink — white,
+ * or a near-black slate for the pale snow sky — and each stop is pushed away
+ * from that ink until it clears 4.5:1, so every word on every sky is legible
+ * by construction rather than by a colour somebody happened to pick.
+ *
+ * And the **card shadow** (decision D8): `none` when the theme asked for none,
+ * otherwise a soft one — dark and heavy on a dark ground, where nothing else
+ * shows, and faint in the theme's own ink on a light one. The five built-ins
+ * declare theirs outright and win over this; a custom theme takes this.
+ * Nothing in the stylesheet reads any of it yet except a widget whose Style
+ * tab asks for a drop shadow, which is what keeps every wall's pixels where
+ * they were.
+ */
+function paletteTokens(base: Readonly<Record<string, string | undefined>>): Record<string, string> {
+  const background = base['--bg'] ?? '#000000';
+  const panel = base['--panel'] ?? background;
+  const ink = base['--ink'] ?? '#FFFFFF';
+  const out: Record<string, string> = {};
+
+  const readable = (hue: string): string => {
+    let ratio = 0;
+    let value = hue;
+    while ((contrastRatio(value, background) < 4.5 || contrastRatio(value, panel) < 4.5) && ratio < 1) {
+      ratio = Math.round((ratio + 0.02) * 100) / 100;
+      value = mix(ink, hue, ratio);
+    }
+    return value;
+  };
+  const hues: readonly (readonly [string, string])[] = [
+    ['--wx-sun', '#F2B632'],
+    ['--wx-cloud', '#9AA7B4'],
+    ['--wx-rain', '#4C8FE0'],
+    ['--wx-snow', '#8CC8E8'],
+    ['--wx-storm', '#9B7BE0'],
+    ['--wx-fog', '#A3A8AE'],
+    ['--temp-cold', '#4C8FE0'],
+    ['--temp-cool', '#3FB0A8'],
+    ['--temp-warm', '#F2A33A'],
+    ['--temp-hot', '#E5533D'],
+    ['--state-active', '#F2B632'],
+    ['--state-alert', '#E5533D'],
+    ['--state-idle', base['--muted'] ?? ink],
+  ];
+  for (const [token, hue] of hues) out[token] = readable(hue);
+
+  const skies: readonly (readonly [string, string, string, boolean])[] = [
+    ['day', '#2F6FC0', '#6FA8E8', false],
+    ['night', '#141A3C', '#2E3A7A', false],
+    ['cloud', '#5B6673', '#8C97A3', false],
+    ['rain', '#2E3D4F', '#546A80', false],
+    ['snow', '#DCE7F0', '#F4F8FB', true],
+    ['storm', '#2A1F4A', '#4B3A7A', false],
+  ];
+  for (const [kind, top, bottom, pale] of skies) {
+    const skyInk = pale ? '#1A1F24' : '#FFFFFF';
+    const away = pale ? '#FFFFFF' : '#000000';
+    const settle = (stop: string): string => {
+      const tinted = mix(stop, background, 0.88);
+      let ratio = 0;
+      let value = tinted;
+      while (contrastRatio(value, skyInk) < 4.5 && ratio < 1) {
+        ratio = Math.round((ratio + 0.02) * 100) / 100;
+        value = mix(away, tinted, ratio);
+      }
+      return value;
+    };
+    out[`--sky-${kind}-top`] = settle(top);
+    out[`--sky-${kind}-bottom`] = settle(bottom);
+    out[`--sky-${kind}-ink`] = skyInk;
+  }
+
+  const light = contrastRatio(background, '#000000') > contrastRatio(background, '#FFFFFF');
+  const shade = parseHex(ink) ?? [0, 0, 0];
+  out['--shadow-card'] =
+    base['--shadow-card'] === 'none'
+      ? 'none'
+      : light
+        ? `0 0.1rem 0.5rem rgba(${shade[0]}, ${shade[1]}, ${shade[2]}, 0.14)`
+        : '0 0.15rem 0.6rem rgba(0, 0, 0, 0.45)';
+  return out;
+}
+
+/**
  * A theme's tokens with the derived shift tints added.
  *
  * A 20% wash of a hue reads far louder over paper than over near-black, so a
@@ -251,6 +364,9 @@ export function withTints(base: ThemeTokens): Record<string, string> {
   out['--ink-scaffold'] = scaffoldInk(ink, background);
   out['--ink-quiet'] = base['--muted'];
   out['--rule-week'] = base['--rule'];
+  // The designed styles' palette and the card shadow (P4.4, P4.5), measured
+  // against this theme's own grounds. Mirrors `customTokens`, token for token.
+  Object.assign(out, paletteTokens(base));
   return out;
 }
 

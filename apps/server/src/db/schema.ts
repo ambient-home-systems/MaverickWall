@@ -92,6 +92,14 @@ export const householdSettings = sqliteTable('household_settings', {
    * match what NWS installs already show.
    */
   weatherUnits: text('weather_units').notNull().default('imperial'),
+  /**
+   * Whether to ask Open-Meteo's air-quality service for a reading (plan item
+   * P3.8). Off by default, and that is the decision rather than a timid
+   * default (Q5): it contacts a second host, `air-quality-api.open-meteo.com`,
+   * whichever provider draws the forecast, so turning it on is the consent —
+   * the update check's rule, one switch along.
+   */
+  airQualityEnabled: integer('air_quality_enabled', { mode: 'boolean' }).notNull().default(false),
   alertsEnabled: integer('alerts_enabled', { mode: 'boolean' }).notNull().default(true),
 
   /**
@@ -621,6 +629,23 @@ export const screens = sqliteTable(
      */
     customCss: text('custom_css'),
     customCssScoped: text('custom_css_scoped'),
+    /**
+     * Whether this wall may move (plan P4.3, decision D7): `1` on, `0` off.
+     *
+     * **Null is on** (Q6), except on a wall whose size is one of the e-ink
+     * presets, where null is off — an e-ink tablet running the browser wall
+     * redraws a whole screen for every frame of an animation, and bands doing
+     * it. `wall-motion.ts` is that one reading, and the manifest carries its
+     * answer rather than this column: `motion: false`, spread, only when the
+     * wall is still, so a wall nobody touched sends the document it always
+     * did. Null is also what a household keeps by leaving the switch alone,
+     * which is what lets a size chosen later still move the default.
+     *
+     * Read by the browser wall only. An e-paper panel draws a still 1-bit frame
+     * on the server whatever this says, so it is in neither honours table —
+     * the `layout_gutter` argument at `PANEL_IGNORES`.
+     */
+    motion: integer('motion', { mode: 'number' }),
     /** The landscape canvas's aspect; null follows the household (RFC 005). */
     layoutLandscapeAspect: real('layout_landscape_aspect'),
     /** Per-orientation canvas background as JSON; null is none (RFC 005 Phase 3). */

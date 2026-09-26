@@ -797,6 +797,12 @@ input[type=file]{width:100%;padding:var(--mw-s-2);border-radius:var(--mw-r-1);
  * user agent's [hidden]{display:none}, so a hidden row-fields would sit
  * there in plain sight rather than actually disappear. */
 .row-fields[hidden]{display:none}
+/* Same reason, one control along: button,.btn below sets its own display,
+ * which beats the user agent's [hidden] the identical way — so the Weather
+ * screen's "Use this device's location" button (P2.3), server-rendered
+ * hidden until the geolocation script decides otherwise, would sit there in
+ * plain sight on every install until that script ran. */
+[data-geolocate][hidden]{display:none}
 
 /* ---- Buttons ---------------------------------------------------------------
  * The default is a filled button: 40px container, 4px corner, 20px of side
@@ -1906,6 +1912,35 @@ pre.code{background:var(--mw-surface-2);
 .le-cfg-field .seg button{flex:1 1 auto;min-width:0;padding:0 var(--mw-s-2);
   white-space:normal;overflow-wrap:break-word;
   height:auto;min-height:38px;line-height:1.15;text-align:center;overflow:visible}
+/* The Look as a grid of labelled choices (plan item P4.1): a type with more
+ * than three designed looks (weather, countdown) draws them three across and as
+ * many rows deep as it needs, rather than as one segmented row that would
+ * break its labels in a 258px column. The same buttons as a segmented control —
+ * every hover, press, pressed-check and 48px pointer target above is theirs —
+ * each outlined on its own, because a joined row's shared edges mean nothing
+ * once the choices wrap onto a second row. */
+.le-cfg-field .seg.le-look-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:var(--mw-s-2);border:0}
+.le-cfg-field .seg.le-look-grid button{border:1px solid var(--mw-ink-3);border-radius:var(--mw-r-2);
+  padding:var(--mw-s-1) var(--mw-s-2)}
+/* A countdown's picture (plan item P5.2): the bundled set as a grid of the
+ * artwork itself, scrolled rather than laid out whole — a hundred and fifty
+ * pictures is a list to look through, not a panel to fill. Each is a 44px
+ * target. Hover and press keep their own ground so the filled button's
+ * states never paint a picture gold. */
+.le-emoji-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--mw-touch),1fr));
+  gap:var(--mw-s-1);max-height:calc(var(--mw-touch) * 4.5);overflow-y:auto;padding:var(--mw-s-1);
+  border:1px solid var(--rule);border-radius:var(--mw-r-2)}
+.le-emoji-grid button{display:flex;align-items:center;justify-content:center;min-height:var(--mw-touch);
+  padding:var(--mw-s-1);color:var(--ink);background:transparent;border:1px solid transparent;
+  border-radius:var(--mw-r-2);font:var(--mw-t-label-sm)}
+.le-emoji-grid button:hover,.le-emoji-grid button:active{color:var(--ink);background:var(--panel2)}
+.le-emoji-grid button[aria-pressed=true]{border-color:var(--accent);background:var(--panel2)}
+.le-emoji-grid img{width:70%;height:auto}
+/* A countdown's start date on or after its target (plan item P5.2): the
+ * sentence the save would refuse it with, said beside the field in the
+ * danger ink rather than left for the save bar to find. */
+.le-cfg-refused{color:var(--mw-danger)}
 .le-config .switch{margin:var(--mw-s-2) 0}
 .le-cfg-field{display:block;margin:var(--mw-s-3) 0 0}
 .le-cfg-field>span{display:block;
@@ -3214,6 +3249,16 @@ const WANTS_DIRTY_SCRIPT = /<form\b[^>]*\bdata-dirty(?=[\s=>])/;
 const WANTS_CONDITIONAL_FIELDS_SCRIPT = /<select\b[^>]*\bdata-cond(?=[\s=>])/;
 
 /**
+ * Does this page hold a `<button data-geolocate>` — "Use this device's
+ * location" (P2.3) — the geolocation script should reveal?
+ *
+ * Same shape as `WANTS_DIRTY_SCRIPT` and the same reason: `geolocate-button.js`
+ * ships only to the one screen that has the button, rather than to every page
+ * in the admin.
+ */
+const WANTS_GEOLOCATE_SCRIPT = /<button\b[^>]*\bdata-geolocate(?=[\s>])/;
+
+/**
  * The strip itself: one sentence and a way to be rid of it.
  *
  * The sentence is a literal from `SAVED_MESSAGES`, never anything the request
@@ -3450,6 +3495,9 @@ export function page(options: PageOptions): string {
       : '') +
     (WANTS_CONDITIONAL_FIELDS_SCRIPT.test(options.body)
       ? `<script type="module" src="assets/conditional-fields.js"></script>`
+      : '') +
+    (WANTS_GEOLOCATE_SCRIPT.test(options.body)
+      ? `<script type="module" src="assets/geolocate-button.js"></script>`
       : '') +
     `</main></body></html>`
   );

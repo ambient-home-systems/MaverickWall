@@ -64,10 +64,23 @@ import {
   type WeatherField,
 } from './ladder.js';
 import { calendarView } from './calendar-view.js';
+import { variantOf } from './variants.js';
 import { withInk } from './honours.js';
 import { childCells, groupChildren, topLevelWidgets } from './group-cells.js';
 import { clockLabel, type EpaperModel } from './viewmodel.js';
 import { drawAnalogueFace } from './clock-face.js';
+import {
+  TODAY_WORDS,
+  countDigits,
+  countdownFrom,
+  countdownProgress,
+  countdownWords,
+  miniMonth,
+  percentWords,
+  ticketLine,
+  todayInMonth,
+  unitWords,
+} from './countdown.js';
 
 /**
  * A widget placed on the canvas: fractional box, plus its stored options.
@@ -328,13 +341,14 @@ const STACKED_DATE_BUDGET = '30 SEPTEMBER';
  */
 function drawClock(fb: Framebuffer, m: EpaperMetrics, box: Box, model: EpaperModel, config: Config): void {
   /*
-   * The variant (RFC 014 §4.2), read exactly as the wall's `clockVariant`
-   * reads it: one of the clock's three, and anything else — absent, or a value
-   * that belongs to another widget type — is `plain`, the clock this function
-   * drew before the key existed. So no stored canvas's frame moves and
-   * `EPAPER_RENDERER_VERSION` does not either.
+   * The variant (RFC 014 §4.2), read through the same resolver the wall reads
+   * it through — `variantOf` in `variants.ts`, transcribed character for
+   * character: one of the clock's three, and anything else — absent, or a
+   * value that belongs to another widget type — is `plain`, the clock this
+   * function drew before the key existed. So no stored canvas's frame moves
+   * and `EPAPER_RENDERER_VERSION` does not either.
    */
-  const variant = str(config, 'variant');
+  const variant = variantOf('clock', config);
   if (variant === 'analogue') {
     /*
      * A face at the box's short side, centred — a picture has no alignment to
@@ -415,17 +429,47 @@ function drawClock(fb: Framebuffer, m: EpaperMetrics, box: Box, model: EpaperMod
   );
 }
 
+/**
+ * A countdown, in the looks a panel draws (plan item P5.2): the number, the
+ * tear-off page, the boarding pass, the progress bar and the mini month, each
+ * as a still frame.
+ *
+ * The words are the wall's — `countdown.ts` is its transcription, held to it
+ * by `countdown-parity.test.ts` — so "sleeps" is honoured here and the day
+ * says "Today!" on every look. What is not drawn is the picture and the
+ * confetti: the alphabet is ASCII, which `asciiTitle` enforces on the label,
+ * and a panel does not move. `occasion` is drawn as the number, for good: its
+ * colours, its motif and its scene are the three things one still bit has none
+ * of, so what is left of it is the number it dresses.
+ */
 function drawCountdown(fb: Framebuffer, m: EpaperMetrics, box: Box, model: EpaperModel, config: Config): void {
   const target = str(config, 'target');
+  const look = variantOf('countdown', config);
+  if (target !== undefined && look === 'page') {
+    drawCountdownPage(fb, m, box, daysBetween(model.today, target), target, config);
+    return;
+  }
+  if (target !== undefined && look === 'ticket') {
+    drawCountdownTicket(fb, m, box, daysBetween(model.today, target), config);
+    return;
+  }
+  if (target !== undefined && look === 'progress') {
+    drawCountdownProgress(fb, m, box, model, target, config);
+    return;
+  }
+  if (target !== undefined && look === 'month') {
+    drawCountdownMonth(fb, m, box, model, target, config);
+    return;
+  }
   const title = str(config, 'title') ?? '';
   let big = '--';
   let unit = '';
   if (target !== undefined) {
     const days = daysBetween(model.today, target);
-    if (days === 0) big = 'Today';
+    if (days === 0) big = TODAY_WORDS;
     else {
-      big = String(Math.abs(days));
-      unit = days > 0 ? (days === 1 ? 'day' : 'days') : days === -1 ? 'day ago' : 'days ago';
+      big = countDigits(days);
+      unit = unitWords(days, countdownWords(config));
     }
   }
   // Same fitting as the clock: "365" in a narrow box must shrink, not lose its
@@ -441,6 +485,349 @@ function drawCountdown(fb: Framebuffer, m: EpaperMetrics, box: Box, model: Epape
     m.body,
     'center',
   );
+}
+
+const PANEL_MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+const PANEL_WEEKDAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+
+/** A target as a page prints it on one bit: "THU 25 DEC", in the panel's own alphabet. */
+function panelTargetDate(target: string): string {
+  const at = new Date(`${target}T12:00:00Z`);
+  if (Number.isNaN(at.getTime())) return target;
+  return `${PANEL_WEEKDAYS[at.getUTCDay()]} ${at.getUTCDate()} ${PANEL_MONTHS[at.getUTCMonth()]}`;
+}
+
+/**
+ * The widest thing the count's slot has to hold, in the state it is in.
+ *
+ * The refresh contract (`render.ts`) wants a rectangle's size to be a function
+ * of the panel and never of today's words, so the count's rung is stepped
+ * against a budget rather than against the number: three figures while it is
+ * counting, whatever the number is, and the day's words on the day. The slot
+ * moves once, at the midnight the words change, which is a full refresh the
+ * panel was going to take for a new date anyway.
+ */
+function countBudget(days: number): string {
+  return days === 0 ? TODAY_WORDS : '000';
+}
+
+/**
+ * The tear-off page, still. **The widget's own frame is the sheet** — every
+ * panel widget is outlined by `drawFrame` — so the page is what goes inside
+ * it: a solid binder band across the top with two holes knocked through it,
+ * the count, its unit, a rule, the target's date, and the label at the foot.
+ *
+ * What a short box gives up is the wall's order (`PAGE_PARTS`), read from the
+ * end: the date, then the label, then the unit — never the count. Predicted
+ * rather than measured, which is what a panel that owns its line heights does.
+ */
+function drawCountdownPage(
+  fb: Framebuffer,
+  m: EpaperMetrics,
+  box: Box,
+  days: number,
+  target: string,
+  config: Config,
+): void {
+  const gap = m.widget.linePad;
+  const label = asciiTitle(str(config, 'title') ?? '').trim();
+  const unit = unitWords(days, countdownWords(config));
+  const binderH = Math.max(6, Math.round(m.body.height * 0.75));
+
+  let withDate = true;
+  let withLabel = label !== '';
+  let withUnit = unit !== '';
+  const below = (): number =>
+    (withUnit ? m.small.height + gap : 0) +
+    (withDate ? m.small.height + gap * 2 + 1 : 0) +
+    (withLabel ? m.body.height + gap : 0);
+  const fits = (): boolean => box.h - binderH - gap - below() >= m.body.height;
+  if (!fits()) withDate = false;
+  if (!fits()) withLabel = false;
+  if (!fits()) withUnit = false;
+
+  const band = Math.min(binderH, box.h);
+  fb.fillRect(box.x, box.y, box.w, band);
+  // The binder's two holes, knocked out of the band.
+  const hole = Math.max(2, Math.round(band / 3));
+  for (const at of [0.28, 0.72]) {
+    fb.fillRect(box.x + Math.round(box.w * at) - Math.floor(hole / 2), box.y + Math.floor((band - hole) / 2), hole, hole, false);
+  }
+
+  let foot = box.y + box.h;
+  if (withLabel) {
+    foot -= m.body.height;
+    drawLines(fb, m, [label], { ...box, y: foot, h: m.body.height }, m.body, 'center');
+    foot -= gap;
+  }
+  if (withDate) {
+    foot -= m.small.height;
+    drawLines(fb, m, [panelTargetDate(target)], { ...box, y: foot, h: m.small.height }, m.small, 'center');
+    foot -= gap + 1;
+    fb.hLine(box.x, box.x + box.w - 1, foot);
+    foot -= gap;
+  }
+  if (withUnit) {
+    foot -= m.small.height;
+    drawLines(fb, m, [unit.toUpperCase()], { ...box, y: foot, h: m.small.height }, m.small, 'center');
+    foot -= gap;
+  }
+  const top = box.y + band + gap;
+  const room = Math.max(0, foot - top);
+  const rung = rungToFit(countBudget(days), box.w, tallerRung(m.body, shorterRung(scaleRung(m, 4.5), rungAtMost(room))));
+  const countY = top + Math.max(0, Math.floor((room - rung.height) / 2));
+  drawLines(fb, m, [days === 0 ? TODAY_WORDS : countDigits(days)], { ...box, y: countY, h: rung.height }, rung, 'center');
+}
+
+/**
+ * The boarding pass, still. The frame is the pass; inside it, the pass's head
+ * over a rule, the destination, the line "Departs in 12 days", a perforated
+ * rule, and the count on a board of filled tiles, each digit knocked out of
+ * its own and the board centred in the room left under the perforation.
+ *
+ * A short box gives up in the wall's order (`TICKET_PARTS`) from the end: the
+ * head, then the board with its perforation — never the destination or the
+ * line. On the day the line says "Today!" and there is no board: nothing is
+ * left to count.
+ */
+function drawCountdownTicket(fb: Framebuffer, m: EpaperMetrics, box: Box, days: number, config: Config): void {
+  const gap = m.widget.linePad;
+  const pad = Math.max(2, gap);
+  const dest = asciiTitle(str(config, 'title') ?? '').trim();
+  const line = ticketLine(days, countdownWords(config));
+  const destRung = rungToFit(dest, box.w, tallerRung(m.body, scaleRung(m, 1.5)));
+  const tileFloor = m.body.height + pad * 2;
+
+  let withHead = true;
+  let withBoard = days !== 0;
+  const text = (): number =>
+    (withHead ? m.small.height + gap * 2 + 1 : 0) + (dest !== '' ? destRung.height + gap : 0) + m.body.height;
+  const perforation = gap * 3 + 1;
+  if (withBoard && box.h - text() - perforation < tileFloor) withHead = false;
+  if (withBoard && box.h - text() - perforation < tileFloor) withBoard = false;
+
+  let y = box.y;
+  if (withHead) {
+    drawLines(fb, m, ['BOARDING PASS'], { ...box, y, h: m.small.height }, m.small, 'left');
+    y += m.small.height + gap;
+    fb.hLine(box.x, box.x + box.w - 1, y);
+    y += gap + 1;
+  }
+  if (dest !== '') {
+    drawLines(fb, m, [dest], { ...box, y, h: destRung.height }, destRung, 'left');
+    y += destRung.height + gap;
+  }
+  drawLines(fb, m, [line], { ...box, y, h: m.body.height }, m.body, 'left');
+  y += m.body.height;
+  if (!withBoard) return;
+
+  // The perforation: a dashed rule across the pass.
+  y += gap;
+  const dash = Math.max(2, pad);
+  for (let x = box.x; x < box.x + box.w; x += dash * 2) fb.hLine(x, Math.min(box.x + box.w - 1, x + dash - 1), y);
+  y += gap * 2 + 1;
+
+  const room = Math.max(0, box.y + box.h - y);
+  const digits = countDigits(days).split('');
+  const tallest = tallerRung(m.body, shorterRung(scaleRung(m, 3), rungAtMost(Math.max(0, room - pad * 2))));
+  // Stepped against three figures, the refresh contract's budget: the board is
+  // the same size at 12 and at 345, so only the ink inside it changes.
+  const tileOf = (rung: TypeRung): number => measureText('0', { rung }) + pad * 2;
+  let rung = tallest;
+  while (rung.index > 0 && tileOf(rung) * 3 + gap * 2 > box.w) rung = rungStep(rung, -1);
+  const w = tileOf(rung);
+  const h = rung.height + pad * 2;
+  const top = y + Math.max(0, Math.floor((room - h) / 2));
+  digits.forEach((digit, index) => {
+    const x = box.x + index * (w + gap * 2);
+    fb.fillRect(x, top, w, h);
+    drawText(fb, x + pad, top + pad, digit, { rung, ink: false });
+  });
+}
+
+/**
+ * The progress bar, still: the label, the count with its unit under it, a bar
+ * of the days gone since the start date — an outline with its gone part
+ * filled — and the percentage under it.
+ *
+ * A short box gives up in the wall's order (`PROGRESS_PARTS`) from the end: the
+ * percentage, then the label, then the bar — never the count. With no start
+ * date the bar's place says so, in the panel's own capitals, rather than
+ * drawing a length made up. Every rectangle is a function of the box and of
+ * whether today is the day (the count's budget), never of how far through the
+ * run the household is: only the ink inside the bar moves from one day to the
+ * next, which is exactly what a partial refresh wants.
+ */
+function drawCountdownProgress(
+  fb: Framebuffer,
+  m: EpaperMetrics,
+  box: Box,
+  model: EpaperModel,
+  target: string,
+  config: Config,
+): void {
+  const gap = m.widget.linePad;
+  const days = daysBetween(model.today, target);
+  const label = asciiTitle(str(config, 'title') ?? '').trim();
+  const unit = unitWords(days, countdownWords(config));
+  const from = countdownFrom(config);
+  const progress = from === undefined ? undefined : countdownProgress(model.today, from, target);
+  const barH = progress === undefined ? m.small.height : m.body.height;
+
+  let withPct = progress !== undefined;
+  let withLabel = label !== '';
+  let withBar = true;
+  const fixed = (): number =>
+    (withLabel ? m.body.height + gap : 0) +
+    (unit !== '' ? m.small.height + gap : 0) +
+    (withBar ? barH + gap : 0) +
+    (withPct ? m.small.height + gap : 0);
+  const fits = (): boolean => box.h - fixed() >= m.body.height;
+  if (!fits()) withPct = false;
+  if (!fits()) withLabel = false;
+  if (!fits()) withBar = false;
+
+  let top = box.y;
+  if (withLabel) {
+    drawLines(fb, m, [label], { ...box, y: top, h: m.body.height }, m.body, 'center');
+    top += m.body.height + gap;
+  }
+  let foot = box.y + box.h;
+  if (withPct && progress !== undefined) {
+    foot -= m.small.height;
+    drawLines(fb, m, [percentWords(progress).toUpperCase()], { ...box, y: foot, h: m.small.height }, m.small, 'center');
+    foot -= gap;
+  }
+  if (withBar) {
+    foot -= barH;
+    if (progress === undefined) {
+      drawLines(fb, m, ['SET A START DATE'], { ...box, y: foot, h: barH }, m.small, 'center');
+    } else {
+      fb.strokeRect(box.x, foot, box.w, barH);
+      const inner = Math.max(0, box.w - 4);
+      const filled = Math.round(inner * progress.fraction);
+      if (filled > 0) fb.fillRect(box.x + 2, foot + 2, filled, Math.max(0, barH - 4));
+    }
+    foot -= gap;
+  }
+  if (unit !== '') {
+    foot -= m.small.height;
+    drawLines(fb, m, [unit.toUpperCase()], { ...box, y: foot, h: m.small.height }, m.small, 'center');
+    foot -= gap;
+  }
+  const room = Math.max(0, foot - top);
+  const rung = rungToFit(countBudget(days), box.w, tallerRung(m.body, shorterRung(scaleRung(m, 4.5), rungAtMost(room))));
+  const countY = top + Math.max(0, Math.floor((room - rung.height) / 2));
+  drawLines(fb, m, [days === 0 ? TODAY_WORDS : countDigits(days)], { ...box, y: countY, h: rung.height }, rung, 'center');
+}
+
+/**
+ * The mini month, still: the count, the target's month under its name and the
+ * weekday heads, with the target ringed and today underlined, and the label at
+ * the foot.
+ *
+ * The heads come from the model, already in the household's order, and the
+ * squares from `miniMonth` at the household's own week start — the calendar's
+ * rule, so Monday is in the same column on both widgets. A short box gives up
+ * in the wall's order (`MONTH_PARTS`) from the end: the heads and the name
+ * together, then the label, then the grid — never the count. The grid's shape
+ * is a fact about the target's month, and the count's rung is stepped against
+ * a budget rather than today's words, so no rectangle moves between two days.
+ */
+function drawCountdownMonth(
+  fb: Framebuffer,
+  m: EpaperMetrics,
+  box: Box,
+  model: EpaperModel,
+  target: string,
+  config: Config,
+): void {
+  const gap = m.widget.linePad;
+  const days = daysBetween(model.today, target);
+  const label = asciiTitle(str(config, 'title') ?? '').trim();
+  const unit = unitWords(days, countdownWords(config));
+  const month = miniMonth(target, model.weekStart);
+  const cellH = m.small.height + gap;
+  const countRung = rungToFit(
+    days === 0 ? TODAY_WORDS : '000 DAYS AGO',
+    box.w,
+    tallerRung(m.small, shorterRung(scaleRung(m, 2), rungAtMost(Math.max(m.small.height, Math.floor(box.h / 4))))),
+  );
+
+  let withHeads = true;
+  let withLabel = label !== '';
+  let withGrid = true;
+  const need = (): number =>
+    countRung.height +
+    (withGrid ? gap + (withHeads ? m.small.height + gap + cellH : 0) + month.weeks.length * cellH : 0) +
+    (withLabel ? gap + m.body.height : 0);
+  if (need() > box.h) withHeads = false;
+  if (need() > box.h) withLabel = false;
+  if (need() > box.h) withGrid = false;
+
+  let y = box.y;
+  const count = days === 0 ? TODAY_WORDS : `${countDigits(days)} ${unit.toUpperCase()}`;
+  drawLines(fb, m, [count], { ...box, y, h: countRung.height }, countRung, 'center');
+  y += countRung.height + gap;
+
+  if (withGrid) {
+    if (withHeads) {
+      const title = `${PANEL_MONTHS[month.month - 1] ?? ''} ${month.year}`;
+      drawLines(fb, m, [title], { ...box, y, h: m.small.height }, m.small, 'center');
+      y += m.small.height + gap;
+    }
+    const cellW = Math.floor(box.w / 7);
+    const left = box.x + Math.floor((box.w - cellW * 7) / 2);
+    const cellRung = rungToFit('30', Math.max(1, cellW - 2), m.small);
+    const centred = (text: string, column: number, rowTop: number): { x: number; w: number } => {
+      const w = measureText(text, { rung: cellRung });
+      const x = left + column * cellW + Math.floor((cellW - w) / 2);
+      drawText(fb, x, rowTop + Math.floor((cellH - cellRung.height) / 2), text, { rung: cellRung });
+      return { x, w };
+    };
+    if (withHeads) {
+      model.weekdayLabels.forEach((head, column) => centred(head.charAt(0).toUpperCase(), column, y));
+      y += cellH;
+    }
+    const targetDay = Number(target.slice(8, 10));
+    const todayDay = todayInMonth(model.today, target);
+    month.weeks.forEach((week, row) => {
+      const rowTop = y + row * cellH;
+      week.forEach((day, column) => {
+        if (day === null) return;
+        const drawn = centred(String(day), column, rowTop);
+        if (day === targetDay) ringAround(fb, left + column * cellW, rowTop, cellW, cellH, drawn.w);
+        if (day === todayDay) {
+          const under = rowTop + Math.floor((cellH + cellRung.height) / 2);
+          fb.hLine(drawn.x, drawn.x + drawn.w - 1, Math.min(rowTop + cellH - 1, under));
+        }
+      });
+    });
+  }
+  if (withLabel) {
+    drawLines(fb, m, [label], { ...box, y: box.y + box.h - m.body.height, h: m.body.height }, m.body, 'center');
+  }
+}
+
+/**
+ * A ring round a square's number: an ellipse inside the square, as wide as the
+ * number needs and no wider than the square, rasterised by asking of every
+ * pixel's centre whether it falls between the ellipse and one stroke inside it
+ * — crisp at one bit, and a function of the square alone.
+ */
+function ringAround(fb: Framebuffer, x: number, y: number, w: number, h: number, textW: number): void {
+  const ry = h / 2;
+  const stroke = Math.max(1, Math.round(ry / 5));
+  const rx = Math.min(w / 2, Math.max(ry, textW / 2 + stroke + 1));
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  for (let py = y; py < y + h; py++) {
+    for (let px = Math.floor(cx - rx); px < Math.ceil(cx + rx); px++) {
+      const outer = ((px + 0.5 - cx) / rx) ** 2 + ((py + 0.5 - cy) / ry) ** 2;
+      const inner = ((px + 0.5 - cx) / Math.max(0.5, rx - stroke)) ** 2 + ((py + 0.5 - cy) / Math.max(0.5, ry - stroke)) ** 2;
+      if (outer <= 1 && inner > 1) fb.set(px, py);
+    }
+  }
 }
 
 /**
@@ -579,6 +966,12 @@ interface TodoLine {
   readonly done: boolean;
 }
 
+/** One watched list, as the panel draws it: how many are open, and each line. */
+interface TodoRead {
+  readonly open: number;
+  readonly items: readonly TodoLine[];
+}
+
 /**
  * The to-do panel's lists, read defensively — `readChorePanel`'s shape.
  *
@@ -587,8 +980,8 @@ interface TodoLine {
  * the widget's stored entity id to that handle itself, because it draws from
  * the household's rows rather than from the manifest's layout.
  */
-function readTodoPanel(panel: unknown): Map<string, { open: number; items: TodoLine[] }> {
-  const lists = new Map<string, { open: number; items: TodoLine[] }>();
+function readTodoPanel(panel: unknown): Map<string, TodoRead> {
+  const lists = new Map<string, TodoRead>();
   if (typeof panel !== 'object' || panel === null) return lists;
   const raw = (panel as { lists?: unknown }).lists;
   if (!Array.isArray(raw)) return lists;
@@ -627,7 +1020,7 @@ function readTodoPanel(panel: unknown): Map<string, { open: number; items: TodoL
  * medium has — the chore board's own reasoning. Summaries go through
  * `asciiTitle` like every stranger's string here.
  */
-function drawTodo(fb: Framebuffer, m: EpaperMetrics, box: Box, panel: unknown, config: Config): void {
+function drawTodo(fb: Framebuffer, m: EpaperMetrics, box: Box, found: TodoRead | undefined, config: Config): void {
   const note = (text: string): void => {
     drawLines(fb, m, [text], box, rungToFit(text, box.w, m.body), 'left');
   };
@@ -643,7 +1036,6 @@ function drawTodo(fb: Framebuffer, m: EpaperMetrics, box: Box, panel: unknown, c
       return;
     }
   } else {
-    const found = readTodoPanel(panel).get(todoListHandle(entityId));
     if (found === undefined) {
       note('(list not on Home Assistant)');
       return;
@@ -757,10 +1149,26 @@ interface EpaperForecastDay {
   readonly low: string;
   /** A key the panel can draw, or `undefined` — a newer server may name one. */
   readonly glyph: GlyphKey | undefined;
+  /*
+   * The `range` look's three extra readings (plan item P5.1), carried **only
+   * when the widget draws that look** — `panelInput` asks for them by look.
+   * A strip does not draw them, so they must not be in what its frame's ETag
+   * hashes (P3.5): a rain chance revised overnight would otherwise refresh
+   * every panel with a strip on it for a number it never shows.
+   */
+  readonly highValue?: number;
+  readonly lowValue?: number;
+  readonly precipChance?: number;
 }
 
-/** Read the weather panel defensively — a module's shape is its own. */
-function forecastDays(panel: unknown): EpaperForecastDay[] {
+/**
+ * Read the weather panel defensively — a module's shape is its own.
+ *
+ * `range` is whether the draw is the `range` look, which reads the numbers as
+ * numbers and the rain chance too; every other look reads the strip's four
+ * strings and nothing else.
+ */
+function forecastDays(panel: unknown, range = false): EpaperForecastDay[] {
   if (panel === null || typeof panel !== 'object') return [];
   const raw = (panel as { days?: unknown }).days;
   if (!Array.isArray(raw)) return [];
@@ -768,8 +1176,11 @@ function forecastDays(panel: unknown): EpaperForecastDay[] {
   for (const entry of raw) {
     if (entry === null || typeof entry !== 'object') continue;
     const day = entry as {
-      name?: unknown; high?: unknown; low?: unknown; unit?: unknown; glyph?: unknown;
+      name?: unknown; high?: unknown; low?: unknown; unit?: unknown; glyph?: unknown; precipChance?: unknown;
     };
+    const finite = (value: unknown): number | undefined =>
+      typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+    const chance = finite(day.precipChance);
     if (typeof day.name !== 'string') continue;
     const unit = typeof day.unit === 'string' ? asciiTitle(day.unit) : '';
     const degrees = (value: unknown): string =>
@@ -779,13 +1190,70 @@ function forecastDays(panel: unknown): EpaperForecastDay[] {
       high: degrees(day.high),
       low: `${degrees(day.low)}${unit}`,
       glyph: isGlyphKey(day.glyph) ? day.glyph : undefined,
+      ...(range && finite(day.high) !== undefined ? { highValue: finite(day.high) as number } : {}),
+      ...(range && finite(day.low) !== undefined ? { lowValue: finite(day.low) as number } : {}),
+      ...(range && chance !== undefined && chance >= 0 && chance <= 100 ? { precipChance: Math.round(chance) } : {}),
     });
   }
   return out;
 }
 
-function drawWeather(fb: Framebuffer, m: EpaperMetrics, box: Box, manifest: Manifest, config: Config): void {
-  let days = forecastDays(manifest.panels['weather']);
+/**
+ * The current conditions, as a panel may draw them: the temperature and the
+ * time it was read, never the one without the other (P3.5).
+ *
+ * A browser wall redraws every fifteen seconds and a battery panel may sleep
+ * for an hour, so a panel's "52" can be an hour older than the wall's beside
+ * it — and a temperature with no time on it says it is the temperature *now*.
+ * So there is no reader that hands a draw the bare number: `text` is the
+ * reading and its stamp, "52F at 07:15", and a style that draws current
+ * conditions on a panel (P5.1's `today`) draws that. The degree sign is not in
+ * the panel's 0x20–0x7E faces, so the unit rides on the number the way the
+ * strip's low already carries it ("13F").
+ *
+ * The time is the reading's own — `observedAt`, which for a modelled reading is
+ * the hour it describes — in the household's zone and clock, through the same
+ * `clockLabel` the panel's header uses. The `today` look (`drawWeatherToday`)
+ * is the draw that reads it, and `panelInput` hands it over only to that look,
+ * so the frame's ETag hashes the reading's exact words where it is drawn and
+ * nowhere else.
+ */
+export interface EpaperCurrent {
+  /** "52F" — rounded, with the panel's unit letter when it has one. */
+  readonly temp: string;
+  /** "07:15", or "07:15 am" on a twelve-hour household. */
+  readonly at: string;
+  /** "52F at 07:15" — the only form a draw should use. */
+  readonly text: string;
+}
+
+export function epaperCurrent(panel: unknown, timezone: string, clock24: boolean): EpaperCurrent | undefined {
+  if (panel === null || typeof panel !== 'object') return undefined;
+  const current = (panel as { current?: unknown }).current;
+  if (current === null || typeof current !== 'object') return undefined;
+  const reading = current as { temp?: unknown; observedAt?: unknown };
+  if (typeof reading.temp !== 'number' || !Number.isFinite(reading.temp)) return undefined;
+  if (typeof reading.observedAt !== 'number' || !Number.isFinite(reading.observedAt)) return undefined;
+  const units = (panel as { units?: unknown }).units;
+  const unit =
+    units !== null && typeof units === 'object' && typeof (units as { temp?: unknown }).temp === 'string'
+      ? asciiTitle((units as { temp: string }).temp)
+      : '';
+  const temp = `${Math.round(reading.temp)}${unit}`;
+  const at = clockLabel(reading.observedAt, timezone, clock24);
+  return { temp, at, text: `${temp} at ${at}` };
+}
+
+function drawWeather(
+  fb: Framebuffer,
+  m: EpaperMetrics,
+  box: Box,
+  forecast: readonly EpaperForecastDay[],
+  config: Config,
+  /** The reading and its time, handed over only when the look draws it (`panelInput`). */
+  current?: EpaperCurrent,
+): void {
+  let days = [...forecast];
   if (days.length === 0) {
     drawLines(fb, m, ['No weather yet'], box, rungToFit('No weather yet', box.w, m.body), 'left');
     return;
@@ -793,6 +1261,19 @@ function drawWeather(fb: Framebuffer, m: EpaperMetrics, box: Box, manifest: Mani
   const wanted = config['count'];
   if (typeof wanted === 'number' && Number.isFinite(wanted) && wanted >= 1) {
     days = days.slice(0, Math.trunc(wanted));
+  }
+
+  // The `range` and `today` looks are drawings of their own (plan item P5.1);
+  // `colour` and `playful` are drawn as the strip, below — one has no colour
+  // to draw on one bit and the other's pictures have no one-bit artwork (D3).
+  const look = variantOf('weather', config);
+  if (look === 'range') {
+    drawWeatherRange(fb, m, box, days);
+    return;
+  }
+  if (look === 'today') {
+    drawWeatherToday(fb, m, box, forecast, current);
+    return;
   }
 
   const ladder = weatherLadder(config);
@@ -940,6 +1421,165 @@ function drawWeather(fb: Framebuffer, m: EpaperMetrics, box: Box, manifest: Mani
 }
 
 /**
+ * The widest reading a Today panel's lede writes: a sign, two figures and the
+ * unit letter — and, with no reading to call now, today's high and low. Every
+ * size on the card is stepped against these rather than against the reading,
+ * the refresh contract's rule (`render.ts`): the lede is the same size at 9F
+ * and at 19F, so a new reading moves ink inside its rectangle and moves no
+ * rectangle.
+ */
+const TODAY_LEDE_BUDGET = '-00F';
+const TODAY_RANGE_LEDE_BUDGET = '-00/-00F';
+/** The widest line under the lede: "at 12:45 pm", or "H -00  L -00F". */
+const TODAY_LINE_BUDGET = 'H -00  L -00F';
+
+/**
+ * The `today` forecast on one bit (plan item P5.1): the large reading with the
+ * time it was read, and today's high and low under it. No sky and no gradient
+ * — one bit has neither — and no feels-like or hours, which are the wall's.
+ *
+ * **The reading and its time are one thing.** A battery panel may sleep for an
+ * hour, so its "52F" can be an hour older than the wall's beside it, and a
+ * temperature with no time on it says it is the temperature now (P3.5). So the
+ * stamp is drawn under the lede in every box that has room for a lede at all,
+ * and a box too short for both draws `epaperCurrent`'s own one line —
+ * "52F at 07:15" — rather than the number alone. With no reading, the lede is
+ * today's high and low with the day's name under it, exactly as the wall's
+ * card falls back: a forecast is never drawn as a measurement.
+ *
+ * Every size is the box's: the lede is the tallest rung the room above the
+ * lines has, no taller than the clock's own cap, and no wider than the budget
+ * above fits — never a function of the words.
+ */
+function drawWeatherToday(
+  fb: Framebuffer,
+  m: EpaperMetrics,
+  box: Box,
+  days: readonly EpaperForecastDay[],
+  current: EpaperCurrent | undefined,
+): void {
+  const today = days[0];
+  if (current === undefined && today === undefined) {
+    drawLines(fb, m, ['No weather yet'], box, rungToFit('No weather yet', box.w, m.body), 'left');
+    return;
+  }
+  const big = current !== undefined ? current.temp : `${today!.high}/${today!.low}`;
+  const budget = current !== undefined ? TODAY_LEDE_BUDGET : TODAY_RANGE_LEDE_BUDGET;
+  const lines: string[] =
+    current !== undefined
+      ? [`at ${current.at}`, ...(today === undefined ? [] : [`H ${today.high}  L ${today.low}`])]
+      : [today!.name];
+  const lineRung = rungToFit(TODAY_LINE_BUDGET, box.w, m.body);
+  const lineH = lineRung.height + m.widget.linePad;
+  // The stamp has to fit under the lede; the range may go, the stamp may not.
+  const room = (count: number): number => box.h - count * lineH - m.widget.rowGap;
+  const keep = room(lines.length) >= m.body.height ? lines.length : room(1) >= m.body.height ? 1 : 0;
+  if (keep === 0) {
+    // No room for a lede over its stamp: the reading and its time on one line.
+    const one = current !== undefined ? current.text : `${today!.high}/${today!.low} ${today!.name}`;
+    drawLines(fb, m, [one], box, rungToFit(`${TODAY_LEDE_BUDGET} at 12:45 pm`, box.w, m.body), 'left');
+    return;
+  }
+  const byHeight = tallerRung(m.body, shorterRung(scaleRung(m, 4.5), rungAtMost(room(keep))));
+  const lede = rungToFit(budget, box.w, byHeight);
+  drawLines(fb, m, [big], { ...box, h: lede.height }, lede, 'left');
+  const top = box.y + lede.height + m.widget.rowGap;
+  drawLines(fb, m, lines.slice(0, keep), { x: box.x, y: top, w: box.w, h: Math.max(0, box.y + box.h - top) }, lineRung, 'left');
+}
+
+/**
+ * The `range` forecast on one bit (plan item P5.1): a row per day, its name,
+ * its glyph, its rain chance, its low, a **black bar** from the low to the high
+ * on the week's own scale, and its high.
+ *
+ * The wall's bar is a ramp of four colours; a panel has one, so the bar is
+ * solid ink over a one-pixel track and the scale is what carries the reading —
+ * where a day's bar sits against the others says as much as its colour did.
+ * No dot for "now": the current reading needs its time on a panel (P3.5), and
+ * a dot has nowhere to write one.
+ *
+ * Gives up what the wall gives up, in the wall's order (`RANGE_TIERS`): days
+ * from the bottom, then the rain chance, then the glyph; the bar and its two
+ * numbers stay. The day's name is never cut, so every column is laid out
+ * beside the widest one drawn. Every size comes from the panel's own ladder —
+ * the body rung for the numbers and the name, the small rung for the rain
+ * chance, the glyph at the forecast's own scale — never from a string, which
+ * is the refresh contract in `render.ts`: a revised forecast moves ink inside
+ * this box and moves nothing else.
+ */
+function drawWeatherRange(fb: Framebuffer, m: EpaperMetrics, box: Box, days: readonly EpaperForecastDay[]): void {
+  const rung = m.body;
+  const small = m.small;
+  const gap = Math.max(4, Math.round(rung.height / 2));
+  const glyphScale = glyphScaleFor(m.bodyGlyph);
+  const glyphW = GLYPH_CELL * glyphScale;
+
+  const values = days.flatMap((day) => [day.lowValue, day.highValue]).filter((v): v is number => v !== undefined);
+  let min = values.length > 0 ? Math.min(...values) : 0;
+  let max = values.length > 0 ? Math.max(...values) : 0;
+  if (min === max) {
+    min -= 1;
+    max += 1;
+  }
+  const num = (value: number | undefined): string => (value === undefined ? '-' : String(Math.round(value)));
+
+  const nameW = Math.max(...days.map((day) => measureText(day.name, { rung })));
+  const tempW = Math.max(...days.flatMap((day) => [num(day.lowValue), num(day.highValue)]).map((t) => measureText(t, { rung })));
+  const hasRain = days.some((day) => day.precipChance !== undefined);
+  const rainW = hasRain ? measureText('100%', { rung: small }) : 0;
+  const minBar = rung.height * 2;
+  const needed = nameW + gap + tempW + gap + minBar + gap + tempW;
+  const withGlyph = box.w >= needed + glyphW + gap;
+  const withRain = hasRain && box.w >= needed + (withGlyph ? glyphW + gap : 0) + rainW + gap;
+
+  // A box too short for one full row still draws its first day in the room
+  // it has (rule nine) — squeezed to the box, never spilling past its foot.
+  const rowH = Math.min(box.h, Math.max(m.widget.listRowH, withGlyph ? glyphHeight(glyphScale) + m.widget.linePad : 0));
+  const rows = Math.max(1, Math.min(days.length, Math.floor(box.h / Math.max(1, rowH))));
+
+  let x = box.x + nameW + gap;
+  const glyphX = x;
+  if (withGlyph) x += glyphW + gap;
+  const rainX = x;
+  if (withRain) x += rainW + gap;
+  const lowX = x;
+  x += tempW + gap;
+  const barX = x;
+  const highX = box.x + box.w - tempW;
+  const barW = Math.max(1, highX - gap - barX);
+  const at = (value: number): number => barX + Math.round(((value - min) / (max - min)) * (barW - 1));
+  const thick = Math.max(2, Math.round(rung.height * 0.35));
+
+  for (let i = 0; i < rows; i++) {
+    const day = days[i] as EpaperForecastDay;
+    const top = box.y + i * rowH;
+    const textY = top + Math.floor((rowH - rung.height) / 2);
+    drawText(fb, box.x, textY, day.name, { rung });
+    if (withGlyph && day.glyph !== undefined && glyphHeight(glyphScale) <= rowH) {
+      drawGlyph(fb, glyphX, top + Math.floor((rowH - glyphHeight(glyphScale)) / 2), day.glyph, glyphScale);
+    }
+    if (withRain && day.precipChance !== undefined) {
+      const words = `${day.precipChance}%`;
+      drawText(fb, rainX + rainW - measureText(words, { rung: small }), top + Math.floor((rowH - small.height) / 2), words, { rung: small });
+    }
+    const low = num(day.lowValue);
+    const high = num(day.highValue);
+    drawText(fb, lowX + tempW - measureText(low, { rung }), textY, low, { rung });
+    drawText(fb, highX + tempW - measureText(high, { rung }), textY, high, { rung });
+    const middle = top + Math.floor(rowH / 2);
+    // The track: a hairline the whole width, so the scale is there to read a
+    // bar against even on a day with nothing to draw on it.
+    fb.hLine(barX, barX + barW - 1, middle);
+    if (day.lowValue !== undefined && day.highValue !== undefined) {
+      const a = at(Math.min(day.lowValue, day.highValue));
+      const b = at(Math.max(day.lowValue, day.highValue));
+      const w = Math.max(thick, b - a + 1);
+      fb.fillRect(Math.min(a, barX + barW - w), middle - Math.floor(thick / 2), w, thick);
+    }
+  }
+}
+
+/**
  * The house, honouring the setting it used to ignore.
  *
  * This went through `drawPanel`'s tolerant reader, which builds "label: value"
@@ -988,8 +1628,7 @@ function houseReadings(panel: unknown): EpaperReading[] {
   return out;
 }
 
-function drawHouse(fb: Framebuffer, m: EpaperMetrics, box: Box, manifest: Manifest, config: Config): void {
-  const panel = manifest.panels['home'] ?? manifest.panels['homeassistant'];
+function drawHouse(fb: Framebuffer, m: EpaperMetrics, box: Box, panel: unknown, config: Config): void {
   let readings = houseReadings(panel);
   const noReadings = (): void => {
     drawLines(fb, m, ['No readings yet'], box, rungToFit('No readings yet', box.w, m.body), 'left');
@@ -1382,12 +2021,120 @@ function weekdayOf(date: string): string {
   return Number.isNaN(at.getTime()) ? '' : (WEEKDAYS[at.getUTCDay()] ?? '');
 }
 
+/**
+ * What one widget's draw takes out of `manifest.panels`, and all it takes (P3.5).
+ *
+ * A panel's frame ETag used to hash the whole manifest, so anything any module
+ * wrote moved every paired panel: a Home Assistant reading every thirty
+ * seconds, a to-do list every minute, and — once the weather carried current
+ * conditions — the weather every fifteen minutes, on panels with no weather on
+ * them. A panel that sees a new ETag downloads a new frame and a battery panel
+ * does a full refresh to show it, so the churn was a flash and a drained
+ * battery for a picture that had not changed.
+ *
+ * So this is the one place a widget reads a module's panel, and `drawWidget`
+ * is handed its answer rather than the manifest: **a draw cannot read anything
+ * the ETag does not hash**, because it has nothing else to read from. The
+ * frame hashes these answers (`canvasPanelInputs`) in place of `panels`. That
+ * is the general version of the change the plan asks for, and it is the same
+ * rule as `agendaRowsInBox`, one layer out: what is hashed and what is drawn
+ * have to be the same reading, or one of them is a guess about the other.
+ *
+ * Each answer is as narrow as the draw it feeds:
+ *
+ * - **Weather** is the forecast days as `forecastDays` reads them — a name, a
+ *   high, a low and a glyph each — so the fields the strip does not draw
+ *   (`current`, `hourly`, `air`, `units`, `fetchedAt`, a day's `detail` and
+ *   rain chance) cannot move a frame. A style that draws current conditions
+ *   (P5.1's `today`) has `epaperCurrent`'s answer added here, which is the
+ *   only way `current` can reach a draw and so the only way it can reach the
+ *   ETag: a panel that draws the reading gets a new frame when it changes, and
+ *   one that does not, does not.
+ * - **A to-do widget** reads its own list and nothing else, and a typed
+ *   checklist reads no panel at all.
+ * - **The house, the chore board and a module's panel** read their whole slice,
+ *   because each draw reads it whole.
+ *
+ * The widget's config is the one the draw is given — after the ink lane — so a
+ * panel-only override is read the way it is drawn.
+ */
+export type PanelInput =
+  | { readonly kind: 'none' }
+  | {
+      readonly kind: 'weather';
+      readonly days: readonly EpaperForecastDay[];
+      /** The reading and its time — only on the `today` look, which draws it. */
+      readonly current?: EpaperCurrent;
+    }
+  | { readonly kind: 'todo'; readonly list: TodoRead | undefined }
+  | { readonly kind: 'panel'; readonly panel: unknown };
+
+const NO_INPUT: PanelInput = { kind: 'none' };
+
+export function panelInput(type: string, manifest: Manifest, config: Config): PanelInput {
+  const panels = manifest.panels;
+  switch (type) {
+    case 'weather': {
+      const look = variantOf('weather', config);
+      const days = forecastDays(panels['weather'], look === 'range');
+      if (look !== 'today') return { kind: 'weather', days };
+      /*
+       * The `today` look draws the current reading with its time (P3.5, P5.1),
+       * so it is the one weather input that carries it — and so the one whose
+       * ETag moves when a new reading arrives. A strip, a range or any other
+       * look reads `days` alone, and a reading taken every fifteen minutes
+       * cannot refresh a panel that does not draw it.
+       *
+       * And of the days it reads today's name, high and low and nothing else:
+       * the card draws no glyph and no other day, so a revised sky on Friday
+       * must not refresh a panel whose card is about today.
+       */
+      const first = days[0];
+      const today: EpaperForecastDay[] =
+        first === undefined ? [] : [{ name: first.name, high: first.high, low: first.low, glyph: undefined }];
+      const current = epaperCurrent(panels['weather'], manifest.timezone, manifest.display.clock24 !== false);
+      return current === undefined ? { kind: 'weather', days: today } : { kind: 'weather', days: today, current };
+    }
+    case 'todo': {
+      const entityId = todoListOf(config);
+      if (entityId === undefined) return NO_INPUT;
+      return { kind: 'todo', list: readTodoPanel(panels['todo']).get(todoListHandle(entityId)) };
+    }
+    case 'chores':
+      return { kind: 'panel', panel: panels['chores'] };
+    case 'homeassistant':
+      return { kind: 'panel', panel: panels['home'] ?? panels['homeassistant'] };
+    case 'external': {
+      const mod = str(config, 'module');
+      return { kind: 'panel', panel: mod !== undefined ? panels[mod] : undefined };
+    }
+    default:
+      return NO_INPUT;
+  }
+}
+
+/**
+ * Every widget's input on one canvas, in the canvas's own order — what the
+ * frame's ETag hashes in place of `manifest.panels`.
+ *
+ * Every widget in the list, drawn or not: a box too small to draw, or a child
+ * whose group was dropped, costs a panel at most a refresh it did not need,
+ * where leaving one out could hide a change it did. The config goes through
+ * `withInk` exactly as `renderFreeformEpaper` sends it to the draw.
+ */
+export function canvasPanelInputs(
+  manifest: Manifest,
+  widgets: readonly PlacedEpaperWidget[],
+): readonly PanelInput[] {
+  return widgets.map((widget) => panelInput(widget.type, manifest, withInk(widget.config)));
+}
+
 function drawWidget(
   fb: Framebuffer,
   type: string,
   box: Box,
   model: EpaperModel,
-  manifest: Manifest,
+  input: PanelInput,
   m: EpaperMetrics,
   config: Config,
 ): void {
@@ -1410,21 +2157,22 @@ function drawWidget(
         alignOf(config),
       );
     case 'todo':
-      return drawTodo(fb, m, box, manifest.panels['todo'], config);
+      return drawTodo(fb, m, box, input.kind === 'todo' ? input.list : undefined, config);
     case 'chores':
-      return drawChores(fb, m, box, manifest.panels['chores'], config);
+      return drawChores(fb, m, box, input.kind === 'panel' ? input.panel : undefined, config);
     case 'weather':
-      return drawWeather(fb, m, box, manifest, config);
+      return input.kind === 'weather'
+        ? drawWeather(fb, m, box, input.days, config, input.current)
+        : drawWeather(fb, m, box, [], config);
     case 'homeassistant':
-      return drawHouse(fb, m, box, manifest, config);
+      return drawHouse(fb, m, box, input.kind === 'panel' ? input.panel : undefined, config);
     case 'external': {
-      const mod = str(config, 'module');
       const rows = config['count'];
       return drawPanel(
         fb,
         m,
         box,
-        mod !== undefined ? manifest.panels[mod] : undefined,
+        input.kind === 'panel' ? input.panel : undefined,
         'No data yet',
         typeof rows === 'number' && Number.isFinite(rows) && rows >= 1 ? Math.trunc(rows) : undefined,
       );
@@ -1528,7 +2276,7 @@ export function renderFreeformEpaper(
     const inner = drawFrame(fb, m, box, config);
     recordRegion(regions, `widget-inner:${position}`, inner);
     if (widget.type !== 'group') {
-      drawWidget(fb, widget.type, inner, model, manifest, m, config);
+      drawWidget(fb, widget.type, inner, model, panelInput(widget.type, manifest, config), m, config);
       return;
     }
     const members = widget.id === undefined ? [] : (children.get(widget.id) ?? []);
@@ -1542,7 +2290,7 @@ export function renderFreeformEpaper(
       const childConfig = withInk(child.config);
       const childInner = drawFrame(fb, m, childBox, childConfig);
       recordRegion(regions, `child-inner:${position}:${index}`, childInner);
-      drawWidget(fb, child.type, childInner, model, manifest, m, childConfig);
+      drawWidget(fb, child.type, childInner, model, panelInput(child.type, manifest, childConfig), m, childConfig);
     });
   });
   return fb;
