@@ -1423,7 +1423,7 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
 
         for (const [button, popover] of [
           ['.le-layers-btn', '.le-layers-pop'],
-          ['.le-tool-btn:has-text("Layout")', '.le-canvas-pop:not(.le-background-pop)'],
+          ['.le-tool-btn[aria-label^="Layout"]', '.le-canvas-pop:not(.le-background-pop)'],
           ['.le-background-btn', '.le-background-pop'],
         ] as const) {
           await page.click(button);
