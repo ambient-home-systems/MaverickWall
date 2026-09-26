@@ -197,9 +197,10 @@ export const householdSettings = sqliteTable('household_settings', {
    */
   layoutLandscapeAspect: real('layout_landscape_aspect').notNull().default(1.7778),
   /**
-   * The canvas background, per orientation, as JSON this process wrote (RFC 005
-   * Phases 3 and 3b): a solid colour, a two-stop gradient, or an uploaded image
-   * by its stored name. Null is no background — the theme's
+   * The canvas background, per orientation, as JSON this process wrote, of
+   * four kinds: a solid colour, a two-stop gradient, an uploaded image by its
+   * stored name (RFC 005 Phases 3 and 3b), or a bundled wallpaper by its
+   * catalogue id (plan item P6.1). Null is no background — the theme's
    * own wall colour shows through, which is what every existing wall has. The
    * shape is validated at the editor boundary; read back defensively here.
    */
@@ -646,6 +647,19 @@ export const screens = sqliteTable(
      * the `layout_gutter` argument at `PANEL_IGNORES`.
      */
     motion: integer('motion', { mode: 'number' }),
+    /**
+     * What each widget draws behind itself (plan item P6.3): `none`, `soft` or
+     * `solid`. **Null is "never chosen"**, which the wall reads per canvas as
+     * Soft over a wallpaper and nothing otherwise — so every wall that existed
+     * before this column draws exactly what it drew, and a household that
+     * leaves the control alone keeps a default that follows its background.
+     * Spread out of the manifest until set, the `motion` argument above.
+     *
+     * Read by the browser wall only. An e-paper panel draws no canvas
+     * background at all, so there is nothing for a ground to separate a
+     * widget from; the panel's own settings page says so.
+     */
+    widgetGround: text('widget_ground'),
     /** The landscape canvas's aspect; null follows the household (RFC 005). */
     layoutLandscapeAspect: real('layout_landscape_aspect'),
     /** Per-orientation canvas background as JSON; null is none (RFC 005 Phase 3). */

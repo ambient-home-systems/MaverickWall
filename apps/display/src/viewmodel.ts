@@ -547,6 +547,14 @@ export interface DisplayModel {
    */
   readonly layoutGutter: number | undefined;
   /**
+   * What each widget draws behind itself (plan item P6.3), as the household
+   * chose it, or undefined for "never chosen". Resolved against each canvas's
+   * own background by `widgetGroundFor` in `renderFreeform` — Soft over a
+   * wallpaper, nothing otherwise — because the default depends on the canvas
+   * and this is a fact about the screen.
+   */
+  readonly widgetGround: string | undefined;
+  /**
    * The wall's default style lane, resolved by the server (RFC 014 §4.1) —
    * what every box on the canvas starts from — and the same against the
    * daylight theme when the wall has one. On the model beside the gutter for
@@ -1775,6 +1783,8 @@ export function buildModel(options: BuildOptions): DisplayModel {
     // Straight off the document: `gutterValue` is the one place a step becomes
     // a length, and it refuses anything this bundle does not know.
     layoutGutter: manifest.screen?.layoutGutter,
+    // As sent; `widgetGroundFor` refuses anything it does not know.
+    widgetGround: manifest.screen?.widgetGround,
     // Read through `styleTokensOf`, which keeps only what a lane can carry.
     layoutStyle: styleTokensOf(manifest.screen?.layoutStyleTokens),
     layoutDaytimeStyle: styleTokensOf(manifest.screen?.layoutDaytimeStyleTokens),

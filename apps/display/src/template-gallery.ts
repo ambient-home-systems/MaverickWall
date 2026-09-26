@@ -13,6 +13,7 @@
  */
 
 import { renderFreeform } from './render.js';
+import { ADMIN_WALLPAPER_BASE } from './wallpaper.js';
 import { buildModel, type DisplayModel } from './viewmodel.js';
 import { applyTheme } from './theme.js';
 import { PREVIEW_ROOT_CLASS, layoutPreviewRoot, previewStylesheet } from './preview-css.js';
@@ -356,7 +357,7 @@ function boot(): void {
         aspect: template.aspect,
         widgets: placed(template.widgets),
         ...(template.background !== undefined ? { background: template.background } : {}),
-      }, 'admin/media/');
+      }, 'admin/media/', { wallpaperBase: ADMIN_WALLPAPER_BASE });
       // The fallback label is only for when this never runs.
       const fallback = thumb.querySelector('.tpl-fallback');
       if (fallback instanceof HTMLElement) fallback.style.display = 'none';

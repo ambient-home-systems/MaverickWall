@@ -16,6 +16,18 @@
 
 ## Unreleased
 
+**A wall can have a wallpaper.** Open a wall's layout, press **Layout**, and
+choose **Wallpaper** under Background: a row of pictures drawn to suit your
+wall's theme, dark ones for a dark theme and light ones for a light one, with
+the rest one tick away behind a note about what they cost to read. Picking one
+puts it on the wall both ways up unless you untick **Use for both portrait and
+landscape**. Three wallpapers ship for now, and more are on the way. Each
+widget sits on a soft ground of the theme's own card colour over a wallpaper so
+its words stay readable; **Widget ground** on the wall's Layout settings makes
+that Solid, or None. Turning on a widget's **Card background** now starts from
+your theme's own card colour rather than a dark grey on every theme. An e-paper
+panel draws no wallpaper: one bit has no room for a picture behind the widgets.
+
 **Two new looks for the weather widget: Range and Colour.** Pick one under
 **Look** on the widget's Style tab. **Range** is a row per day — its name, its
 picture, its chance of rain, then a bar from the day's low to its high set

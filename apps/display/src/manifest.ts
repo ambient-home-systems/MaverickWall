@@ -11,13 +11,22 @@
 export type CivilDate = string;
 
 /**
- * A canvas background (RFC 005 Phase 3): a solid colour or a two-stop gradient.
- * The server validated and clamped it; the wall draws it behind the widgets.
+ * A canvas background, of four kinds: a solid colour, a two-stop gradient, an
+ * uploaded image (RFC 005 Phases 3 and 3b), or a bundled wallpaper (plan item
+ * P6.1). The server validated and clamped it; the wall draws it behind the
+ * widgets.
+ *
+ * A wallpaper arrives *resolved*: its catalogue id and the two file names the
+ * server's catalogue holds for it, so this bundle carries no catalogue of its
+ * own and picks between `small` and `large` by the canvas's pixel size
+ * (`wallpaper.ts`). An id the server does not know never gets this far — it is
+ * dropped there and the canvas draws its theme's ground.
  */
 export type CanvasBackground =
   | { readonly type: 'solid'; readonly color: string }
   | { readonly type: 'gradient'; readonly from: string; readonly to: string; readonly angle: number }
-  | { readonly type: 'image'; readonly image: string };
+  | { readonly type: 'image'; readonly image: string }
+  | { readonly type: 'wallpaper'; readonly id: string; readonly small: string; readonly large: string };
 
 export interface ManifestEvent {
   readonly id: string;
@@ -273,6 +282,14 @@ export interface Manifest {
      * than the switch draws — reads a document with nothing new in it.
      */
     readonly motion?: boolean;
+    /**
+     * What each widget draws behind itself (plan item P6.3): `none`, `soft` or
+     * `solid`, as the household chose it. **Absent is "never chosen"**, which
+     * the wall reads per canvas — Soft over a wallpaper, nothing otherwise
+     * (`widgetGroundFor`) — so a wall nobody touched reads a document with
+     * nothing new in it.
+     */
+    readonly widgetGround?: string;
   };
   readonly days: readonly ManifestDay[];
   readonly people: readonly ManifestPerson[];

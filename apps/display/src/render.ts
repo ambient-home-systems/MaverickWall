@@ -28,6 +28,7 @@ import { MOTION_FIXTURE_TYPE, renderMotionFixture } from './motion-fixture.js';
 import { renderCountdown } from './countdown-looks.js';
 import { variantOf } from './variants.js';
 import { boxRect, gutterStepFor } from './gutter.js';
+import { WALLPAPER_BASE, wallpaperFile, widgetGroundFor, type WidgetGround } from './wallpaper.js';
 import { childCells, groupChildren, topLevelWidgets } from './group-cells.js';
 import { applyStyleTokens, styleTokensOf } from './widget-style.js';
 import { inkOn, shiftTint } from './theme.js';
@@ -3410,16 +3411,23 @@ function replaceBody(entry: TieredWidget, rebuilt: HTMLElement): void {
 const MEDIA_BASE = '/d/media/';
 
 /**
- * A canvas background as a CSS `background` value, or undefined for none.
+ * A canvas background as a CSS `background` value, or undefined for none — for
+ * three of the four kinds.
  *
  * `#rrggbb` and the stored image name are validated server-side; this only
  * shapes them. A solid is the colour; a gradient is a two-stop `linear-gradient`
  * at the stored angle; an image covers the canvas, served from the media store —
  * `url()` around the name only, never anything a stranger wrote (rule three; the
  * name is 64 hex the server minted).
+ *
+ * A wallpaper (plan item P6.1) is none of these: it is drawn by
+ * `applyWallpaper`, in longhands and after the canvas is laid out, because the
+ * file it draws depends on the canvas's pixel size and because the
+ * `background` shorthand would reset the theme's ground colour under it — the
+ * ground that shows while the picture loads and if it never does.
  */
 function backgroundCss(background: CanvasBackground | undefined, mediaBase: string): string | undefined {
-  if (background === undefined) return undefined;
+  if (background === undefined || background.type === 'wallpaper') return undefined;
   if (background.type === 'solid') return background.color;
   if (background.type === 'gradient') {
     return `linear-gradient(${background.angle}deg, ${background.from}, ${background.to})`;
@@ -3427,6 +3435,36 @@ function backgroundCss(background: CanvasBackground | undefined, mediaBase: stri
   // An image with no picture yet (a transient editor state) is no background.
   if (background.image === '') return undefined;
   return `center / cover no-repeat url("${mediaBase}${background.image}")`;
+}
+
+/**
+ * Draw a wallpaper over a canvas already in the document (plan item P6.1).
+ *
+ * Longhands, never the `background` shorthand: the canvas's own rule paints
+ * the theme's `--panel`, and leaving `background-color` alone keeps that
+ * ground under the picture — so the canvas reads as its theme while the file
+ * decodes, and as its theme for good if the file is missing (rule nine). A
+ * name `wallpaperFile` refuses sets nothing at all, which is the same ground.
+ *
+ * Measured rather than guessed: the canvas's longer side in device pixels
+ * picks the file. It is re-set on every redraw, which is every fifteen seconds
+ * on a wall, to the same URL — the browser's decoded-image cache is what keeps
+ * that cheap, and CLAUDE.md records the measurement.
+ */
+function applyWallpaper(
+  canvas: HTMLElement,
+  background: Extract<CanvasBackground, { type: 'wallpaper' }>,
+  base: string,
+): void {
+  const rect = canvas.getBoundingClientRect();
+  const ratio = typeof window !== 'undefined' ? window.devicePixelRatio : 1;
+  const file = wallpaperFile(background, { width: rect.width, height: rect.height }, ratio);
+  if (file === undefined) return;
+  canvas.dataset['wallpaper'] = background.id;
+  canvas.style.backgroundImage = `url("${base}${file}")`;
+  canvas.style.backgroundSize = 'cover';
+  canvas.style.backgroundPosition = 'center';
+  canvas.style.backgroundRepeat = 'no-repeat';
 }
 
 
@@ -4027,6 +4065,12 @@ export function renderFreeform(
      * across the thing they are trying to arrange.
      */
     readonly motion?: boolean;
+    /*
+     * Where the wallpapers are served (plan item P6.1): absolute on the wall,
+     * relative in every admin preview, which sits under the admin's `<base>`
+     * — `mediaBase`'s split, one asset along. Absent is the wall's.
+     */
+    readonly wallpaperBase?: string;
   } = {},
 ): void {
   const takeover = model.interrupts.find((interrupt) => interrupt.takeover);
@@ -4069,11 +4113,22 @@ export function renderFreeform(
    */
   const canvasStyle = options.daytime === true ? model.layoutDaytimeStyle : model.layoutStyle;
   if (canvasStyle !== undefined) applyStyleTokens(canvas, canvasStyle, false);
-  // The canvas background (RFC 005 Phase 3): a solid colour or a gradient behind
-  // the widgets. `background` is a shorthand, so it overrides the theme's wall
-  // colour on this canvas only; absent leaves the theme showing through.
+  // The canvas background, of four kinds: a solid colour, a gradient or an
+  // uploaded image (RFC 005 Phases 3 and 3b), set here as a shorthand that
+  // overrides the theme's wall colour on this canvas only — or a wallpaper
+  // (plan item P6.1), drawn by `applyWallpaper` once the canvas has a size.
+  // Absent leaves the theme showing through.
   const bg = backgroundCss(layout.background, mediaBase);
   if (bg !== undefined) canvas.style.background = bg;
+  /*
+   * What each widget draws behind itself (plan item P6.3). A widget is
+   * transparent, and every contrast guarantee on this wall is measured against
+   * a flat ground, so over a picture the household can put the theme's own
+   * `--panel` behind each one — Soft by default over a wallpaper, nothing by
+   * default anywhere else, which is every wall that existed before this.
+   */
+  const ground: WidgetGround = widgetGroundFor(model.widgetGround, layout.background);
+  if (ground !== 'none') canvas.setAttribute('data-ground', ground);
 
   // Widgets whose body is a section from the responsive layout. Each takes a
   // *form* from its box once it is on screen (`applyWidgetTiers`) rather than
@@ -4145,6 +4200,16 @@ export function renderFreeform(
       widget.config,
       styleTokensOf(options.daytime === true ? widget.daytimeStyleTokens : widget.styleTokens),
     );
+    /*
+     * The widget ground (P6.3) goes behind a *leaf*: a group's children each
+     * draw their own, and a ground on the group as well would be two layers of
+     * `--panel` under every child. A box that paints itself — a Card
+     * background, or a style lane that sets its own `--bg` — keeps what the
+     * household chose for it, which is the more explicit of the two.
+     */
+    if (ground !== 'none' && widget.type !== 'group' && box.style.background === '') {
+      box.classList.add('has-ground');
+    }
     return box;
   };
 
@@ -4289,6 +4354,11 @@ export function renderFreeform(
 
   root.textContent = '';
   root.appendChild(screen);
+
+  // The wallpaper, now the canvas has a size to pick a file by.
+  if (layout.background?.type === 'wallpaper') {
+    applyWallpaper(canvas, layout.background, options.wallpaperBase ?? WALLPAPER_BASE);
+  }
 
   /*
    * Every month grid is drawn at the tier its own cells afford, first: a grid

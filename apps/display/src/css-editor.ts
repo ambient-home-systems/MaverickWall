@@ -24,6 +24,7 @@
  */
 
 import { renderFreeform } from './render.js';
+import { ADMIN_WALLPAPER_BASE } from './wallpaper.js';
 import { buildModel } from './viewmodel.js';
 import { applyTheme } from './theme.js';
 import { geometryFor } from './orientation.js';
@@ -182,7 +183,7 @@ function init(root: HTMLElement): void {
           aspect,
           widgets: drawn,
           ...(canvas?.background !== undefined ? { background: canvas.background } : {}),
-        });
+        }, undefined, { wallpaperBase: ADMIN_WALLPAPER_BASE });
 
         // The household's rules, through the same door the wall uses.
         sheet = createCustomCssSheet(() => doc.styleSheets[0] ?? undefined);

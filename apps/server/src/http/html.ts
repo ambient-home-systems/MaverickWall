@@ -1767,7 +1767,8 @@ pre.code{background:var(--mw-surface-2);
  * neighbour below and to the right. The test measures what is actually
  * reachable rather than trusting this line. */
 .le-handle::before{content:"";position:absolute;inset:-16px -2px -2px -16px}
-/* The canvas background control — none / solid / gradient / image, per canvas. */
+/* The canvas background control — none, or one of four kinds: solid / gradient /
+   image / wallpaper, per canvas. The wallpaper picker reuses the image picker's grid. */
 .le-bg{display:flex;flex-wrap:wrap;align-items:center;gap:var(--mw-s-3);margin:var(--mw-s-3) 0 0}
 .le-bg-label{
   font:var(--mw-t-label-sm);

@@ -8015,6 +8015,86 @@ for calendar", which timed out at 5s while a second suite run overlapped it
 on a clean worktree of `main`, so it is written down here rather than
 chased.
 
+**A canvas background has a fourth kind, the wallpaper, and the editor has a
+picker for it (plan items P6.1 and P6.4, with P6.3's widget ground and card
+default).** `{ type: 'wallpaper', id }` is stored by catalogue id and nothing
+else; `backgroundSchema` refuses an id `apps/server/src/wallpapers.ts` does not
+name (rule five), and `parseBackground` resolves a known one into its two file
+names on the way to a wall and drops an unknown one, so the canvas draws its
+theme's ground (rule nine). **The catalogue has one copy, on the server**: the
+manifest carries the resolved files and the editor is handed the list in its
+bootstrap, so the display bundle transcribes nothing but the one regex a file
+name must match before it goes inside a `url()`, held to the server's as text.
+The files are content-hashed JPEGs under `apps/server/assets/wallpapers/`,
+served at `/assets/wallpapers/<name>` with the fonts route's year-long
+immutable cache, which is honest only because an edited picture is a new name
+— `wallpapers.test.ts` holds every name to the sha256 of its bytes. `static.ts`
+gained `.jpg` and `.jpeg`, `SAFE_NAME` is unchanged, and `WALLPAPERS_DIR`, the
+Dockerfile copy and a boot line follow `EMOJI_DIR` exactly; a missing file is a
+warning, never a refusal to start. **The three wallpapers are placeholders**
+(Dusk and Hills dark, Paper light) from `scripts/wallpapers/placeholders.mjs`,
+which renders seeded SVG with the bundled Chromium; the set is P6.2's (S23).
+
+**Three things in the renderer are the design.** The wallpaper is set in
+longhands and never the `background` shorthand, so the theme's `--panel` stays
+under it — what shows while it decodes and if it never arrives, which is the
+same fallback rather than a second one, and why the catalogue's dominant colour
+is the picker tile's and not the canvas's. It is set **after the canvas is in
+the document**, because the file is chosen by the canvas's longer side in
+device pixels: up to 1600 the small file, past it the large, so every admin
+preview takes the small one. And the base is split the way the media store's
+is — absolute `/assets/wallpapers/` on the wall, relative `assets/wallpapers/`
+in every admin preview, which sits under the ingress `<base>`; the browser test
+reads the *inline* declaration for that, since the harness has no prefix and an
+absolute path resolves to the same place there.
+
+**Widget ground (P6.3) is `screens.widget_ground`** (migration `0054`, one
+generated `ADD COLUMN`, read): None, Soft or Solid on the wall's Layout
+settings. **Null is "never chosen" and the wall resolves it per canvas** — Soft
+over a wallpaper, None otherwise (`widgetGroundFor`) — so every wall that
+existed draws what it drew and the manifest spreads the key only once chosen.
+The form carries `widget_ground_shown` and writes a move only, the Motion
+switch's rule, so a segment drawn checked on the strength of the default does
+not freeze it. Solid is `var(--panel)`; Soft is a `::before` layer of it at
+0.86, because an alpha cannot go on a variable with `color-mix()` out under
+rule two. It sits on leaves only, not a group, and never on a box that paints
+itself. The widget Card background and a solid canvas background now start
+from the theme's own `--panel` rather than `#111820` on every theme. The picker
+filters by tone through `themeTone`, which is `withTints`' own `isLight`
+reading of the theme's `--bg`, so the five built-ins land where the plan names
+them and a custom theme by the same rule. "Use for both" is on by default and
+writes the choice onto every canvas of the other orientation, named layouts
+included, because the save writes the background from whichever canvas is
+posted. An e-paper panel draws no background of any kind, and its Layout
+field's hint now says so.
+
+**The rebuild cost, measured on this container rather than a low-end tablet**:
+a fifteen-second tick at 1920x1080 costs about 77–80ms of main-thread task
+time on the shipped Classic wall and 82–83ms with the largest file (Dusk,
+2880px, 542KB) and its Soft ground, over ten ticks and two runs; at 6x CPU
+throttling 645–714ms against 725–750ms. A cold decode of that file takes
+48–54ms, off the main thread, which throttling does not model. No tick asked
+the network for the picture again, and that is asserted. Thirteen mutations
+were checked, each on a rebuilt bundle where the display was the subject, and
+all thirteen are red: the shorthand, the Soft rule, the default, the size
+threshold, the editor's base, "use for both", the tone filter, the card
+default, an unknown id coerced, the route's name check, the JPEG type, the
+ground written unconditionally, and the schema's catalogue check.
+`admin-asset-urls` is unchanged and green: the thumbnails are set by script,
+not in a stylesheet, which is why the picker test resolves them itself.
+
+**4562 tests passing and 1 skipped, over 319 files**: calendar 153 over 10 ·
+core 314 over 9 · display 831 over 45 · server 3264 over 255. Measured with
+`pnpm test` and a real Chromium (`MW_BROWSER_EXECUTABLE`) on a clone whose tags
+had been fetched, against a baseline of 4526 over 315 taken on the same
+container at `3b2aab2` before any of this was written, which agrees with the
+figure recorded above. The +36 and +4 are this change's own: `wallpapers.test.ts`
+14, `widget-ground.test.ts` 6, `browser-wallpaper.test.ts` 8 and one case in
+`layout-save.test.ts` on the server, and on the display `wallpaper.test.ts` 6
+plus one row `motion.test.ts` generates for every module in `main.ts`'s import
+graph, which `wallpaper.ts` now is. No ratchet baseline moved and none was
+asked to: nothing changes on a wall with no wallpaper.
+
 **The calendar draws a rota in the look the household chooses, for everyone
 on it, on every view (plan item P5.4, parts 1–3).** `shiftStyle` is one enum
 on the widget — `tint` (the wash and the top rule every wall has drawn, and
@@ -8072,7 +8152,7 @@ case is asserted now. Two findings are recorded rather than changed: the
 legend under the month grid is a row the cells get back when the rota is off
 (13 names to 11 at 1920x1080), and a second person's chip is a second line in
 the agenda's date column, which costs the portrait Classic agenda its third
-day. **4569 tests passing and 1 skipped, over 319 files**: calendar 153 over 10 · core 314 over 9 · display 836 over 45 · server 3266 over 255, measured with `pnpm test` and a real Chromium (`MW_BROWSER_EXECUTABLE` naming the provisioned binary, for the revision mismatch S01 recorded) on a clone whose tags had been fetched (`git fetch --tags --unshallow`, which `changelog-shape.test.ts` asks for). Against the 4526 over 315 recorded above, that is +43 tests and +4 files. This change adds four files carrying 40 tests by its own count (`shift-style.test.ts` 10, `shift-style-parity.test.ts` 7, `epaper-shift-label.test.ts` 6, `browser-calendar-shift-styles.test.ts` 17) and one test to `viewmodel.test.ts`, so the arithmetic predicts +41 and the reading says +43 — one more on the display and one more on the server than the diff explains, which is the paragraph above's own warning arriving on schedule and the reason the number here is the reading and not the sum.
+day. **4569 tests passing and 1 skipped, over 319 files**: calendar 153 over 10 · core 314 over 9 · display 836 over 45 · server 3266 over 255, measured with `pnpm test` and a real Chromium (`MW_BROWSER_EXECUTABLE` naming the provisioned binary, for the revision mismatch S01 recorded) on a clone whose tags had been fetched (`git fetch --tags --unshallow`, which `changelog-shape.test.ts` asks for). Against the 4526 over 315 recorded above, that is +43 tests and +4 files. This change adds four files carrying 40 tests by its own count (`shift-style.test.ts` 10, `shift-style-parity.test.ts` 7, `epaper-shift-label.test.ts` 6, `browser-calendar-shift-styles.test.ts` 17) and one test to `viewmodel.test.ts`, so the arithmetic predicts +41 and the reading says +43 — one more on the display and one more on the server than the diff explains, which is the paragraph above's own warning arriving on schedule and the reason the number here is the reading and not the sum. **Measured again on the tree after `main` was merged in**, which had taken the wallpapers (P6.1 and P6.4, the paragraph above this one) meanwhile: **4605 passing and 1 skipped, over 323 files** — calendar 153 over 10 · core 314 over 9 · display 843 over 46 · server 3295 over 258 — with every file green and nothing timed out. That is 4526 + 36 + 43, the two paragraphs' own deltas summed, so the arithmetic and the reading agree, which is recorded as the observation it is.
 
 ---
 

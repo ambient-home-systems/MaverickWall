@@ -20,6 +20,7 @@
  */
 
 import { renderFreeform } from './render.js';
+import { ADMIN_WALLPAPER_BASE } from './wallpaper.js';
 import { buildModel } from './viewmodel.js';
 import { applyTheme, customTokens } from './theme.js';
 import { geometryFor } from './orientation.js';
@@ -120,7 +121,7 @@ function init(root: HTMLElement): void {
         aspect: canvas?.aspect ?? 0.5625,
         widgets: canvas?.widgets ?? [],
         ...(canvas?.background !== undefined ? { background: canvas.background } : {}),
-      });
+      }, undefined, { wallpaperBase: ADMIN_WALLPAPER_BASE });
 
       const boxW = previewBox.getBoundingClientRect().width || 300;
       const frame = document.createElement('iframe');
