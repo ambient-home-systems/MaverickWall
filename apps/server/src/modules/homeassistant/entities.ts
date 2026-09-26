@@ -1,5 +1,5 @@
 import { parseJsonOr, z } from '../../validation.js';
-import type { GlyphKey } from '../../glyphs.js';
+import { isGlyphKey, type GlyphKey } from '../../glyphs.js';
 import { haReadingHandle } from '../../api/manifest.js';
 
 /**
@@ -12,15 +12,20 @@ import { haReadingHandle } from '../../api/manifest.js';
  * The scope guardrail from the brief lives here in practice: this is a small
  * number of readings as ambient context. Lovelace exists, it is mature, and a
  * family calendar that happens to know the indoor temperature is a different
- * product from a dashboard.
+ * product from a dashboard — which is a sentence about what the wall *does*,
+ * and it still holds.
  *
- * What changed on 2026-09-24 is the *look* and not the reach. Decision D4
- * (`docs/plan-2026-09-household-review.md`, P5.3) adopts a Home Assistant
- * tile-card look for a wall that wants one, which is why a reading now carries
- * a `tone` and a `changedAt` — a tile's circle is coloured by the first and its
- * "5 min ago" is read off the second. Hard rule 12 is untouched: a tile shows a
- * state and controls nothing, and the wall still receives a resolved value and
- * never an entity id, an attribute, the token or the address.
+ * What changed on 2026-09-24 is the *look* and not the reach. This header used
+ * to go on to say the wall would never draw a grid of tiles, because tiles
+ * were Lovelace's; decision D4 (`docs/plan-2026-09-household-review.md`, P5.3)
+ * adopts a Home Assistant tile-card look for a wall that wants one, and the
+ * display draws it (`variant: 'tile'`). That is why a reading carries a `tone`,
+ * a `changedAt` and, where its words carry a percentage, a `level` — a tile's
+ * circle is coloured by the first, its "5 min ago" is read off the second and
+ * its read-only bar is the third. Hard rule 12 is untouched: a tile shows a
+ * state and controls nothing — no toggle, no slider, no tap action — and the
+ * wall still receives a resolved value and never an entity id, an attribute,
+ * the token or the address.
  */
 
 /**
@@ -532,6 +537,48 @@ export function toneFor(state: HaState): ReadingTone | null {
 }
 
 /**
+ * How far along a light, a fan or a blind is, 0-100, for a tile's read-only
+ * bar (plan item P5.3) — or `null` for a reading that has no such number.
+ *
+ * **Exactly when `readOwnDomain` puts a percentage in the words, and the same
+ * number.** A bar is a picture of "On · 60%", and a bar that disagreed with the
+ * words under it — drawn for a light whose integration reports no brightness,
+ * or at 0 for a light that is on — would be the wall saying two things about
+ * one lamp. So each branch is `readOwnDomain`'s own condition, restated rather
+ * than shared because that function returns words and the list's words must
+ * not move (`ha-readings-before-tiles.json` is the pin), and `ha-units.test.ts`
+ * holds the two to each other over every case: a level is present if and only
+ * if the value ends in that level and a per-cent sign.
+ *
+ * A thermostat has no level, deliberately: its words carry a temperature, and a
+ * bar from nothing to 21° is a scale nobody chose.
+ */
+export function levelFor(state: HaState): number | null {
+  const words = OWN_WORDS[state.domain];
+  if (words === undefined || !words.includes(state.state)) return null;
+  const { attributes } = state;
+  switch (state.domain) {
+    case 'light': {
+      const level = attributes.brightness;
+      if (state.state !== 'on' || level === undefined || level === 0) return null;
+      return Math.max(1, Math.round((level / 255) * 100));
+    }
+    case 'fan': {
+      const speed = attributes.percentage;
+      if (state.state !== 'on' || speed === undefined || speed === 0) return null;
+      return Math.round(speed);
+    }
+    case 'cover': {
+      const at = attributes.current_position;
+      if (state.state === 'closed' || at === undefined) return null;
+      return at;
+    }
+    default:
+      return null;
+  }
+}
+
+/**
  * Domains whose value already carries its own unit — a percentage, a degree —
  * so a `unit_of_measurement` an integration happened to set would be drawn
  * twice ("Heating · 21° °C").
@@ -575,6 +622,13 @@ export interface EntityReading {
    * own tick, and the document carries the instant, which does not move.
    */
   readonly changedAt: number | null;
+  /**
+   * `levelFor`'s answer, **only when there is one**: a light, a fan or a blind
+   * whose words already carry a percentage. Absent rather than `null` on every
+   * other reading, so a house with no dimmer on its wall sends the document it
+   * sent before a tile had a bar — no ETag moves for a field nothing draws.
+   */
+  readonly level?: number;
 }
 
 export interface WatchedEntity {
@@ -582,6 +636,12 @@ export interface WatchedEntity {
   readonly label: string | null;
   readonly displayMode: DisplayMode;
   readonly sortOrder: number;
+  /**
+   * The picture the household chose on the Readings screen, or nothing for the
+   * automatic one (P5.3). Read defensively — a stored key a later release no
+   * longer draws is the automatic picture, never a blank.
+   */
+  readonly glyph?: string | null;
 }
 
 /** Beyond this a reading is labelled rather than shown as if it were current. */
@@ -589,6 +649,7 @@ export const STALE_AFTER_MS = 15 * 60_000;
 
 export function toReading(state: HaState, watch: WatchedEntity, fetchedAt: number, now: number): EntityReading {
   const mode = watch.displayMode;
+  const level = levelFor(state);
   return {
     key: haReadingHandle(watch.entityId),
     label: watch.label ?? state.friendlyName,
@@ -596,10 +657,14 @@ export function toReading(state: HaState, watch: WatchedEntity, fetchedAt: numbe
     // Duplicating the unit into the value would double it up in `value` mode,
     // where the whole point is that the unit is the only context there is.
     unit: VALUE_CARRIES_UNIT.includes(state.domain) ? null : state.unit,
-    glyph: glyphFor(state),
+    // The household's own picture first, when it is one this vocabulary still
+    // draws; the device class's otherwise. On every look and both media, like
+    // the label: one reading, one picture.
+    glyph: isGlyphKey(watch.glyph) ? watch.glyph : glyphFor(state),
     mode,
     stale: now - fetchedAt > STALE_AFTER_MS,
     tone: toneFor(state),
     changedAt: state.lastChangedAt,
+    ...(level === null ? {} : { level }),
   };
 }

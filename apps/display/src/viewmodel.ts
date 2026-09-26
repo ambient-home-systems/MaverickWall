@@ -632,6 +632,24 @@ export interface HouseReadingModel {
   readonly glyph: GlyphKey | undefined;
   readonly mode: string;
   readonly stale: boolean;
+  /**
+   * How a tile colours this reading (plan item P5.3): something is on,
+   * something is wrong, or — absent — neither. Decided by the server's table
+   * and read here as one of two words; anything else is idle, never a colour
+   * a newer server invented.
+   */
+  readonly tone?: 'active' | 'alert';
+  /**
+   * When the state last changed, epoch milliseconds, for a tile's "5 min ago".
+   * The instant rather than the words, so the manifest stays put while the
+   * state does and the wall words it on its own tick.
+   */
+  readonly changedAt?: number;
+  /**
+   * A light's brightness, a fan's speed or a blind's position, 0-100, for a
+   * tile's read-only bar — present exactly when the words carry it too.
+   */
+  readonly level?: number;
 }
 
 export interface InterruptModel {
@@ -674,7 +692,7 @@ export function houseFrom(panel: unknown): {
     if (typeof entry !== 'object' || entry === null) continue;
     const reading = entry as {
       key?: unknown; label?: unknown; value?: unknown; unit?: unknown; glyph?: unknown;
-      mode?: unknown; stale?: unknown;
+      mode?: unknown; stale?: unknown; tone?: unknown; changedAt?: unknown; level?: unknown;
     };
     /*
      * Through the same sanitiser the alert text uses.
@@ -706,6 +724,21 @@ export function houseFrom(panel: unknown): {
       glyph: isGlyphKey(reading.glyph) ? reading.glyph : undefined,
       mode: typeof reading.mode === 'string' ? reading.mode : 'label_value',
       stale: reading.stale === true,
+      /*
+       * The tile's three (P5.3), each spread only when it is one this bundle
+       * can use — so a reading without them, which is every reading the list
+       * draws from, is modelled exactly as it was, and a value of the wrong
+       * type is no value rather than a colour, a time or a bar nobody sent.
+       */
+      ...(reading.tone === 'active' || reading.tone === 'alert' ? { tone: reading.tone } : {}),
+      ...(typeof reading.changedAt === 'number' && Number.isFinite(reading.changedAt)
+        ? { changedAt: reading.changedAt }
+        : {}),
+      // Refused rather than clamped: a level of 140 is a server being wrong,
+      // and a bar drawn full over it would be a confident picture of nothing.
+      ...(typeof reading.level === 'number' && reading.level >= 0 && reading.level <= 100
+        ? { level: reading.level }
+        : {}),
     });
   }
 

@@ -5,11 +5,13 @@ import { call, resolveConnection, testConnection, type ConnectionMode } from '..
 import {
   DISPLAY_MODES,
   domainOf,
+  glyphFor,
   isSupported,
   parseStates,
   type DisplayMode,
   type HaState,
 } from '../modules/homeassistant/entities.js';
+import { GLYPH_KEYS, isGlyphKey, type GlyphKey } from '../glyphs.js';
 import { parseCalendarList } from '../modules/homeassistant/calendars.js';
 import {
   addHaCalendarSource,
@@ -18,10 +20,12 @@ import {
   readHaCalendarSources,
   readHaSettings,
   readWatched,
+  setReadingGlyph,
   unwatchEntity,
   watchedReadingChoices,
   watchEntity,
   writeHaSettings,
+  type WatchedRow,
 } from '../modules/homeassistant/store.js';
 import { householdSetUp } from '../modules/index.js';
 import { HOME_BLOCK as HOME_MODULE } from '../modules/homeassistant/index.js';
@@ -116,6 +120,71 @@ const addManyBody = z.object({
     .max(50),
   display_mode: optionalText(20),
 });
+
+/**
+ * A reading's picture (P5.3): a key from the vocabulary, or the empty string
+ * for "Automatic". Refused rather than coerced — a key that is not one of
+ * ours is a page from another release, and storing it would be a picture the
+ * wall cannot draw (rule five).
+ */
+const readingGlyphBody = z.object({
+  entity_id: text('An entity', 255),
+  glyph: z.union([z.literal(''), z.enum(GLYPH_KEYS)], { error: () => 'Choose a picture from the list.' }),
+});
+
+/**
+ * What each picture is called on the Readings screen (P5.3).
+ *
+ * Names rather than the drawings, deliberately: a `<select>` of words is one
+ * line, works with no script and reads to a screen reader, where a grid of
+ * thirty-four drawings per reading would be thirteen kilobytes a row on a page
+ * whose job is to be a list — and a drawing beside a reading's name is the icon
+ * beside a heading `admin-icon-rules.test.ts` exists to refuse. Mapped over the
+ * vocabulary, so a glyph added to it without a name here is a type error
+ * rather than an option with no words.
+ */
+const GLYPH_NAMES: Readonly<Record<GlyphKey, string>> = {
+  clear: 'Clear sky',
+  'mostly-clear': 'Mostly clear',
+  'partly-cloudy': 'Partly cloudy',
+  cloudy: 'Cloud',
+  fog: 'Fog',
+  drizzle: 'Drizzle',
+  rain: 'Rain',
+  showers: 'Showers',
+  snow: 'Snow',
+  sleet: 'Sleet',
+  thunderstorm: 'Thunderstorm',
+  wind: 'Wind',
+  temperature: 'Thermometer',
+  humidity: 'Humidity',
+  pressure: 'Pressure dial',
+  battery: 'Battery',
+  power: 'Power',
+  illuminance: 'Light level',
+  door: 'Door',
+  garage: 'Garage',
+  window: 'Window',
+  motion: 'Motion',
+  occupancy: 'Somebody here',
+  moisture: 'Water',
+  smoke: 'Smoke',
+  gas: 'Gas',
+  problem: 'Warning',
+  lock: 'Lock',
+  person: 'Person',
+  light: 'Lamp',
+  switch: 'Power switch',
+  fan: 'Fan',
+  cover: 'Blind',
+  thermostat: 'Thermostat',
+};
+
+/** The sky's twelve, which the picker offers after the house's. */
+const SKY_GLYPHS: ReadonlySet<string> = new Set([
+  'clear', 'mostly-clear', 'partly-cloudy', 'cloudy', 'fog', 'drizzle', 'rain', 'showers', 'snow', 'sleet',
+  'thunderstorm', 'wind',
+]);
 
 const calendarSourceBody = z.object({
   entity_id: text('A calendar', 255),
@@ -982,6 +1051,28 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     return savedRedirect(c, '/admin/home-assistant/readings', 'ha-entity-removed');
   });
 
+  /**
+   * Choose a reading's picture, or put it back to the automatic one (P5.3).
+   *
+   * Stored on the reading, like its label, so every widget on every wall and
+   * every panel draws the same picture for it. A token is a claim: a row that
+   * is no longer watched — a page left open while somebody removed it in
+   * another tab — changed nothing, and is answered with the list rather than
+   * "Picture saved".
+   */
+  app.post('/admin/home-assistant/entities/glyph', async (c: Context) => {
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const chosen = parse(readingGlyphBody, body);
+    if (!chosen.ok) return renderReadings(c, { message: chosen.message }, 400);
+    const changed = setReadingGlyph(
+      deps.db,
+      chosen.value.entity_id,
+      chosen.value.glyph === '' ? null : chosen.value.glyph,
+    );
+    if (!changed) return c.redirect('/admin/home-assistant/readings', 302);
+    return savedRedirect(c, '/admin/home-assistant/readings', 'ha-entity-glyph');
+  });
+
   app.post('/admin/home-assistant/calendars', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const picked = parse(calendarSourceBody, body);
@@ -1612,6 +1703,59 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
   }
 
   /**
+   * A reading's picture, folded away the way a chore's editor is (P5.3).
+   *
+   * The summary says which picture it is in words — "Picture: Lamp", or the
+   * automatic one's name with "(automatic)" — so a household scanning the list
+   * reads the choice without opening anything. Automatic is what Home
+   * Assistant's device class or domain chose (`glyphFor`), worked out from the
+   * cached row the same way the house panel works it out, so the name here is
+   * the picture the wall is drawing.
+   */
+  function readingPicture(row: WatchedRow, label: string): string {
+    let deviceClass: string | null = null;
+    const attributes = safeJson(row.attributes);
+    if (typeof attributes === 'object' && attributes !== null) {
+      const value = (attributes as Record<string, unknown>)['device_class'];
+      if (typeof value === 'string') deviceClass = value;
+    }
+    const automatic = glyphFor({
+      entityId: row.entityId,
+      domain: domainOf(row.entityId),
+      state: row.state ?? '',
+      friendlyName: label,
+      unit: row.unitOfMeasurement,
+      deviceClass,
+      lastChangedAt: null,
+      attributes: {},
+    });
+    const own = isGlyphKey(row.glyph) ? row.glyph : null;
+    const automaticName = automatic === null ? 'none' : GLYPH_NAMES[automatic];
+    const summary = own === null ? `Picture: ${automaticName} (automatic)` : `Picture: ${GLYPH_NAMES[own]}`;
+    const option = (value: string, words: string): string =>
+      `<option value="${escapeHtml(value)}"${(own ?? '') === value ? ' selected' : ''}>${escapeHtml(words)}</option>`;
+    const group = (name: string, keys: readonly GlyphKey[]): string =>
+      `<optgroup label="${escapeHtml(name)}">` + keys.map((key) => option(key, GLYPH_NAMES[key])).join('') + `</optgroup>`;
+    return (
+      `<details class="disclose"><summary>${escapeHtml(summary)}</summary>` +
+      `<form method="post" action="admin/home-assistant/entities/glyph">` +
+      `<input type="hidden" name="entity_id" value="${escapeHtml(row.entityId)}">` +
+      selectField({
+        label: `Picture for ${label}`,
+        name: 'glyph',
+        optionsHtml:
+          option('', `Automatic — ${automaticName}`) +
+          group('In the house', GLYPH_KEYS.filter((key) => !SKY_GLYPHS.has(key))) +
+          group('The sky', GLYPH_KEYS.filter((key) => SKY_GLYPHS.has(key))),
+        hint:
+          'What a Home Assistant widget draws beside it, in the list and on a tile, and on an e-paper ' +
+          'panel. Automatic is the picture for what Home Assistant says it is.',
+      }) +
+      `<button type="submit">Save</button></form></details>`
+    );
+  }
+
+  /**
    * The watched readings, each saying which walls draw it (P1.3). The picker
    * that adds one is `addReadings`, on a page of its own (P2.1).
    */
@@ -1658,7 +1802,8 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
           `<input type="hidden" name="entity_id" value="${escapeHtml(row.entityId)}">` +
           `<button class="ovf-item is-danger" type="submit" ` +
           `aria-label="Remove ${escapeHtml(label)}">Remove…</button></form>` +
-          `</div></details></div>`,
+          `</div></details></div>` +
+          readingPicture(row, label),
         );
       })
       .join('');
