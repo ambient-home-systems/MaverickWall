@@ -4019,6 +4019,13 @@ function boot(): void {
     button.title = label;
     button.setAttribute('aria-label', label);
     button.setAttribute('aria-pressed', one.id === current ? 'true' : 'false');
+    // The name, on the tile itself: a hover tooltip is undiscoverable on the
+    // touchscreen these tiles are mostly chosen on, and twenty-six unlabelled
+    // swatches read as a heap rather than a catalogue.
+    const name = document.createElement('span');
+    name.className = 'le-media-name';
+    name.textContent = one.name;
+    button.appendChild(name);
     button.addEventListener('click', () => {
       record();
       const chosen: Background = { type: 'wallpaper', id: one.id };
