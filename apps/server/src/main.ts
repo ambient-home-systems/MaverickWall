@@ -14,7 +14,8 @@ import { seedDefaultRules } from './api/rules.js';
 import { backfillClassic, reseedClassicForSetUp, retireDefaultWall } from './api/templates.js';
 import { householdSetUp } from './modules/index.js';
 import { createApp, MODULES } from './http/app.js';
-import { defaultDisplayDir } from './http/static.js';
+import { defaultDisplayDir, defaultWallpapersDir } from './http/static.js';
+import { WALLPAPERS } from './wallpapers.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -494,6 +495,23 @@ async function main(): Promise<void> {
     });
   } else {
     console.log(`[boot] display bundle ${displayDir}`);
+  }
+  /*
+   * The wallpapers (plan item P6.1), said out loud for the same reason. A
+   * missing file is not a broken wall — the canvas draws its theme's ground
+   * under a picture that never arrives (rule nine) — so this is a warning and
+   * a line naming the directory, never a refusal to start and never a notice
+   * on every wall in the house for a background somebody may not have chosen.
+   */
+  const wallpapersDir = defaultWallpapersDir();
+  const missingWallpapers = WALLPAPERS.flatMap((w) => [w.thumb, w.small, w.large]).filter(
+    (file) => !existsSync(join(wallpapersDir, file)),
+  );
+  if (missingWallpapers.length > 0) {
+    console.warn(`[boot] ${missingWallpapers.length} wallpaper file(s) missing from ${wallpapersDir}`);
+    console.warn('[boot] set WALLPAPERS_DIR to where the wallpaper JPEGs live');
+  } else {
+    console.log(`[boot] wallpapers ${wallpapersDir}`);
   }
 
   // Take the port back from the holder and wait for it to release the socket,

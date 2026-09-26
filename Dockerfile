@@ -65,6 +65,9 @@ RUN pnpm --filter @maverick-wall/server deploy --prod /out \
  # The bundled emoji artwork (D6, plan item P4.2). Same reason, same pattern —
  # named by EMOJI_DIR below.
  && cp -r apps/server/assets/emoji /out/emoji \
+ # The bundled wallpapers (plan item P6.1). Same reason, same pattern — named
+ # by WALLPAPERS_DIR below.
+ && cp -r apps/server/assets/wallpapers /out/wallpapers \
  # `deploy` copies the whole package, sources and test harness included. None
  # of it is read at runtime and all of it ends up in a layer somebody pulls.
  && rm -rf /out/src /out/test /out/tsconfig*.json /out/vitest.config.ts /out/drizzle.config.ts
@@ -110,7 +113,7 @@ RUN node /prune-orphans.mjs /out
 # later and even in a build log.
 RUN set -e; \
     mkdir -p /tmp/prune-check; \
-    DATA_DIR=/tmp/prune-check DISPLAY_DIR=/out/display FONTS_DIR=/out/fonts EMOJI_DIR=/out/emoji \
+    DATA_DIR=/tmp/prune-check DISPLAY_DIR=/out/display FONTS_DIR=/out/fonts EMOJI_DIR=/out/emoji WALLPAPERS_DIR=/out/wallpapers \
     PORT=8099 MDNS_DISABLE=1 node /out/dist/main.js > /tmp/prune-check.log 2>&1 & \
     pid=$!; \
     ok=0; \
@@ -161,6 +164,9 @@ ENV FONTS_DIR=/app/fonts
 # The bundled emoji artwork (D6, plan item P4.2), copied beside the display
 # bundle above. Named explicitly for the same reason DISPLAY_DIR is.
 ENV EMOJI_DIR=/app/emoji
+# The bundled wallpapers (plan item P6.1), copied beside the display bundle
+# above. Named explicitly for the same reason DISPLAY_DIR is.
+ENV WALLPAPERS_DIR=/app/wallpapers
 
 WORKDIR /app
 COPY --from=build /out /app

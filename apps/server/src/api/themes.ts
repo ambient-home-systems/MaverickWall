@@ -186,7 +186,7 @@ export function mix(foreground: string, background: string, amount: number): str
 }
 
 /** Perceived lightness of a hex colour, 0 (black) to 1 (white). */
-function isLight(hex: string): boolean {
+export function isLight(hex: string): boolean {
   const rgb = parseHex(hex);
   if (rgb === undefined) return false;
   // Rec. 601 luma, good enough to tell paper from slate.

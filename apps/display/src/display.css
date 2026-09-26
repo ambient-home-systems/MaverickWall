@@ -2823,6 +2823,41 @@ body {
   min-width: 0;
 }
 
+/*
+ * The widget ground (plan item P6.3): the theme's own `--panel` behind each
+ * widget, over a wallpaper or anywhere the household asks for it.
+ *
+ * Every contrast guarantee on this wall is measured against a flat ground, a
+ * widget is transparent, and blur stays out (Q4) — so the ground is what puts
+ * text back on the colour its contrast was measured against. `renderFreeform`
+ * stamps `data-ground` on the canvas and `.has-ground` on every leaf box that
+ * does not paint itself; a Card background or a style lane's own `--bg` keeps
+ * what the household chose. `var(--panel)` rather than a colour, so a style
+ * lane that moves `--panel` on one widget moves its ground with it.
+ *
+ * **Soft is a layer, not a colour**, because `--panel` is a token and
+ * `color-mix()` is out under rule two: an alpha cannot be put on a variable.
+ * The layer is painted under the box's content by its own stacking context —
+ * every `.fw` is positioned with an inline `z-index`, so `z-index: -1` here
+ * sits above the box's own background and below everything the widget draws —
+ * and clipped to the box's corners by the `overflow: hidden` `.fw` already
+ * declares. 0.86 is high enough that a picture reads as a texture through it
+ * rather than as a second picture under the words. Solid is the token, opaque.
+ */
+.canvas[data-ground="solid"] .fw.has-ground { background: var(--panel, #1B212A); }
+.canvas[data-ground="soft"] .fw.has-ground::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: -1;
+  background: var(--panel, #1B212A);
+  opacity: 0.86;
+  pointer-events: none;
+}
+
 .fw-empty {
   margin: auto;
   color: var(--muted, #9AA5B2);

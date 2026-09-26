@@ -24,10 +24,18 @@
 import { groupChildren, parentIdOf, topLevelWidgets } from './group-cells.js';
 import { MIN_SIZE } from './placement.js';
 
+/**
+ * A canvas background as the editor holds and posts it, of four kinds. A
+ * wallpaper is its catalogue id alone (plan item P6.1) — the shape the
+ * server's `backgroundSchema` accepts — where the manifest's carries the two
+ * file names the server resolved it to; the editor resolves it the same way,
+ * from the catalogue its bootstrap carries, only to draw the preview.
+ */
 export type CanvasBackground =
   | { type: 'solid'; color: string }
   | { type: 'gradient'; from: string; to: string; angle: number }
-  | { type: 'image'; image: string };
+  | { type: 'image'; image: string }
+  | { type: 'wallpaper'; id: string };
 
 export interface EditorWidget {
   id: string;
@@ -71,7 +79,8 @@ const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));
 
 /**
  * The background as it is *posted*, which is not quite the background as it is
- * held: an image type with no picture chosen yet is "no background".
+ * held: an image type with no picture chosen yet is "no background", and so is
+ * a wallpaper type with none chosen yet.
  *
  * One rule, read by the request body and by the snapshot dirtiness is measured
  * with. Two readings of one value is how a canvas identical to the one the
@@ -81,9 +90,10 @@ const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));
 export function postedBackground(
   background: CanvasBackground | undefined,
 ): CanvasBackground | null {
-  return background !== undefined && !(background.type === 'image' && background.image === '')
-    ? background
-    : null;
+  if (background === undefined) return null;
+  if (background.type === 'image' && background.image === '') return null;
+  if (background.type === 'wallpaper' && background.id === '') return null;
+  return background;
 }
 
 /**

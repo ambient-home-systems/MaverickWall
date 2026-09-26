@@ -314,6 +314,32 @@ describe('saving a layout', () => {
     expect(bad.status).toBe(400);
   });
 
+  it('carries a wallpaper through by id, and refuses one the catalogue does not name (plan P6.1)', async () => {
+    const h = await harness();
+    const ok = await h.saveLayout({
+      mode: 'freeform', aspect: 0.5625,
+      background: { type: 'wallpaper', id: 'dusk' },
+      widgets: [{ id: 'a', type: 'clock', x: 0, y: 0, w: 0.5, h: 0.2, z: 0 }],
+    });
+    expect(ok.status).toBe(200);
+    // Stored as the id alone: the file names are the catalogue's to resolve,
+    // and they change whenever the picture does.
+    const stored = h.db.prepare(`SELECT layout_background AS bg FROM screens WHERE id = 's1'`).get() as { bg: string };
+    expect(JSON.parse(stored.bg)).toEqual({ type: 'wallpaper', id: 'dusk' });
+    const layout = (await (
+      await h.call('/admin/layout/preview.json?screen=s1')
+    ).json()) as { layout: { portrait: { background?: { type: string; id: string; small: string } } } };
+    expect(layout.layout.portrait.background).toMatchObject({ type: 'wallpaper', id: 'dusk' });
+    expect(layout.layout.portrait.background?.small).toMatch(/^dusk-1600\.[0-9a-f]+\.jpg$/);
+
+    const bad = await h.saveLayout({
+      mode: 'freeform', aspect: 0.5625,
+      background: { type: 'wallpaper', id: 'not-one-of-ours' },
+      widgets: [{ id: 'a', type: 'clock', x: 0, y: 0, w: 0.5, h: 0.2, z: 0 }],
+    });
+    expect(bad.status).toBe(400);
+  });
+
   it('uploads a picture, lists it, and carries an image background and widget through (RFC 005 Phase 3b)', async () => {
     const h = await harness();
     const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(64, 7)]);

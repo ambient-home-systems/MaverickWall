@@ -2,6 +2,7 @@ import { z } from '../validation.js';
 import { WIDGET_TYPES } from './manifest.js';
 import { widgetStyleBody } from './widget-style.js';
 import { EMOJI_KEYS } from '../emoji.js';
+import { isWallpaperId } from '../wallpapers.js';
 
 /**
  * A stored image's own name — 64 hex plus a known extension, the shape
@@ -478,8 +479,9 @@ export const widgetConfigBody = laneConfigFields
   .superRefine(startBeforeTarget);
 
 /**
- * A canvas background (RFC 005 Phases 3 and 3b): a solid colour, a two-stop
- * gradient, or a first-party uploaded image.
+ * A canvas background, of four kinds: a solid colour, a two-stop gradient, a
+ * first-party uploaded image (RFC 005 Phases 3 and 3b), or a bundled wallpaper
+ * by its catalogue id (plan item P6.1).
  *
  * Colours are the same `#rrggbb` hex the format controls use, rejected not
  * coerced (rule five). Shared so the editor's save route and the templates validate it
@@ -501,6 +503,17 @@ export const backgroundSchema = z.discriminatedUnion('type', [
   // canvas with it; no external URL, ever (rule three) — it is served from the
   // household's own media store through the SSRF boundary that already exists.
   z.object({ type: z.literal('image'), image: storedImageName }).strict(),
+  // A bundled wallpaper (plan item P6.1), by its id in `wallpapers.ts` and by
+  // nothing else — never a file name, which is the server's to resolve and
+  // which changes whenever the picture does. An id the catalogue does not name
+  // is refused here (rule five); one that stops being named after it was
+  // saved is dropped by `parseBackground` and the canvas draws its theme.
+  z
+    .object({
+      type: z.literal('wallpaper'),
+      id: z.string().max(64).refine(isWallpaperId, 'That is not one of the wallpapers.'),
+    })
+    .strict(),
 ]);
 
 /** The coordinate and size bounds a widget shares wherever it is placed. */

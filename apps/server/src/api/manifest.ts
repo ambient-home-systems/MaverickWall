@@ -20,6 +20,7 @@ import {
 import { canvasGutterStep } from '../gutter.js';
 import { isEinkWall, physicalWall } from '../wall-sizes.js';
 import { wallMotion } from '../wall-motion.js';
+import { isWidgetGround, wallpaperById, type WidgetGround } from '../wallpapers.js';
 import { builtinThemeTokens } from './builtin-themes.js';
 import { resolveStyleTokens, storedStyleLayer, styleLayerOf, type WidgetStyle } from './widget-style.js';
 
@@ -702,13 +703,19 @@ const aspectOf = (value: number, fallback: number): number =>
   Number.isFinite(value) && value > 0 ? value : fallback;
 
 /**
- * A canvas background (RFC 005 Phases 3 and 3b): a solid colour, a two-stop
- * gradient, or a first-party uploaded image by its stored name.
+ * A canvas background, of four kinds: a solid colour, a two-stop gradient, a
+ * first-party uploaded image by its stored name (RFC 005 Phases 3 and 3b), or a
+ * bundled wallpaper (plan item P6.1).
+ *
+ * A wallpaper is stored as its catalogue id alone and leaves here *resolved*:
+ * the id and the two file names `wallpapers.ts` holds for it, so the wall picks
+ * between them by its own pixel size and carries no catalogue of its own.
  */
 export type CanvasBackground =
   | { readonly type: 'solid'; readonly color: string }
   | { readonly type: 'gradient'; readonly from: string; readonly to: string; readonly angle: number }
-  | { readonly type: 'image'; readonly image: string };
+  | { readonly type: 'image'; readonly image: string }
+  | { readonly type: 'wallpaper'; readonly id: string; readonly small: string; readonly large: string };
 
 const HEX6 = /^#[0-9a-fA-F]{6}$/;
 const STORED_IMAGE = /^[a-f0-9]{64}\.(png|jpg|gif|webp)$/;
@@ -746,6 +753,18 @@ export function parseBackground(raw: string | null | undefined): CanvasBackgroun
   }
   if (bg['type'] === 'image' && typeof bg['image'] === 'string' && STORED_IMAGE.test(bg['image'])) {
     return { type: 'image', image: bg['image'] };
+  }
+  /*
+   * A wallpaper, resolved against the catalogue (plan item P6.1). An id it
+   * does not name — a row written by a newer release, or one the set has
+   * since dropped — is no background, and the canvas draws its theme's ground
+   * (rules five and nine): refused rather than guessed at, and never a blank.
+   */
+  if (bg['type'] === 'wallpaper' && typeof bg['id'] === 'string') {
+    const wallpaper = wallpaperById(bg['id']);
+    if (wallpaper !== undefined) {
+      return { type: 'wallpaper', id: wallpaper.id, small: wallpaper.small, large: wallpaper.large };
+    }
   }
   return undefined;
 }
@@ -1199,6 +1218,15 @@ export interface Manifest {
      * image pull for a setting nobody opened.
      */
     readonly motion?: false;
+    /**
+     * What each widget draws behind itself (plan item P6.3): `none`, `soft` or
+     * `solid`, **present only once the household has chosen**. Never chosen is
+     * resolved by the wall per canvas — Soft over a wallpaper, nothing
+     * otherwise — because the default depends on the background and this is
+     * a fact about the screen. Spread for the `motion` reason above: a wall
+     * nobody touched sends the document it always did.
+     */
+    readonly widgetGround?: WidgetGround;
   };
   readonly days: readonly ManifestDay[];
   /** Everyone the wall knows about, so a legend can be drawn. */
@@ -1456,6 +1484,8 @@ export interface BuildManifestInput {
     readonly customCss?: string | null;
     /** Whether this wall may move, as stored; null is "never chosen" (plan P4.3). */
     readonly motion?: number | null;
+    /** What each widget draws behind itself, as stored; null is "never chosen" (P6.3). */
+    readonly widgetGround?: string | null;
   };
   /**
    * Resolve a theme reference to its shape and (for a custom theme) its tokens.
@@ -1977,6 +2007,9 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       !wallMotion(input.screen.motion, input.screen.panelWidthMm, input.screen.panelHeightMm)
         ? { motion: false as const }
         : {}),
+      // The widget ground (P6.3), said only once chosen, and only as a value
+      // this server writes: anything else in the column is "never chosen".
+      ...(isWidgetGround(input.screen?.widgetGround) ? { widgetGround: input.screen.widgetGround } : {}),
     },
     display: {
       todayEvents: clamp(input.household.displayTodayEvents, 1, 20, 8),

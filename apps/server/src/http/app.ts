@@ -28,7 +28,14 @@ import {
 import { DEFAULT_AFTER_SIGN_IN, safeNextPath } from '../auth/next-path.js';
 import { createSetupTokenHolder, registerSetupRoutes, type SetupTokenHolder } from './setup.js';
 import { registerAdminRoutes } from './admin.js';
-import { createStaticFiles, defaultDisplayDir, defaultEmojiDir, defaultFontsDir } from './static.js';
+import {
+  createStaticFiles,
+  defaultDisplayDir,
+  defaultEmojiDir,
+  defaultFontsDir,
+  defaultWallpapersDir,
+} from './static.js';
+import { WALLPAPER_FILE } from '../wallpapers.js';
 import { acceptsGzip, gzipped } from './compress.js';
 import { ingress, ingressPath, isTrustedIngress } from './ingress.js';
 import { effectiveOrigin, isSecureRequest } from './forwarded.js';
@@ -199,6 +206,12 @@ export interface AppDeps {
    * compiled server; `EMOJI_DIR` overrides it in the flattened image.
    */
   readonly emojiDir?: string;
+  /**
+   * Where the bundled wallpapers live (plan item P6.1). Defaults to the
+   * sibling of the compiled server; `WALLPAPERS_DIR` overrides it in the
+   * flattened image.
+   */
+  readonly wallpapersDir?: string;
   /** Where the database and the encryption key live. */
   readonly dataDir: string;
   /**
@@ -406,6 +419,7 @@ export function createApp(deps: AppDeps): Hono {
   const staticFiles = createStaticFiles(deps.displayDir ?? defaultDisplayDir());
   const fontFiles = createStaticFiles(deps.fontsDir ?? defaultFontsDir());
   const emojiFiles = createStaticFiles(deps.emojiDir ?? defaultEmojiDir());
+  const wallpaperFiles = createStaticFiles(deps.wallpapersDir ?? defaultWallpapersDir());
 
   const auth = createAuth({ db: deps.db, secret: deps.auth.secret, baseUrl: deps.auth.baseUrl });
 
@@ -992,6 +1006,8 @@ export function createApp(deps: AppDeps): Hono {
     readonly customCss?: string | null;
     /** Whether this wall may move; null is "never chosen" (plan P4.3). */
     readonly motion?: number | null;
+    /** What each widget draws behind itself; null is "never chosen" (plan P6.3). */
+    readonly widgetGround?: string | null;
   }) => {
     const at = now();
     const household = readHousehold(deps.db);
@@ -1127,6 +1143,8 @@ export function createApp(deps: AppDeps): Hono {
         // As stored; `buildManifest` reads it with the size through
         // `wallMotion` and says so only when the answer is "still".
         motion: screenLike.motion ?? null,
+        // As stored; `buildManifest` says so only once it is chosen.
+        widgetGround: screenLike.widgetGround ?? null,
         theme: screenLike.theme,
         timezone: screenLike.timezone,
         daytimeTheme: screenLike.daytimeTheme,
@@ -1179,6 +1197,7 @@ export function createApp(deps: AppDeps): Hono {
       layoutStyle: screen.layoutStyle,
       customCss: screen.customCss,
       motion: screen.motion,
+      widgetGround: screen.widgetGround,
     });
 
   // The push server, if boot wired one, builds from exactly this — see the dep.
@@ -2079,6 +2098,27 @@ export function createApp(deps: AppDeps): Hono {
     const name = c.req.param('name') ?? '';
     if (!name.endsWith('.svg')) return c.json({ error: 'not-found' }, 404);
     const file = emojiFiles.read(name);
+    if (file === undefined) return c.json({ error: 'not-found' }, 404);
+    return serveWithEtag(c, file, 'public, max-age=31536000, immutable');
+  });
+
+  /*
+   * The bundled wallpapers, on their own path and directory (plan item P6.1).
+   *
+   * The fonts route's own pattern and its year-long immutable cache, which is
+   * honest here for a reason it is not for a font: every name is
+   * content-hashed (`wallpapers.ts`), so an edited picture is a new URL and a
+   * wall can never keep last year's version under this year's name.
+   * `SAFE_NAME` already refuses a slash or a leading dot, and the name has to
+   * be a wallpaper file as well — the second, narrower promise, the emoji
+   * route's `.svg` one: nothing but a picture is ever served from here, and a
+   * JPEG with any other name is not one of ours. Open, like `/assets/*`: a
+   * wallpaper is not the household's data.
+   */
+  app.get('/assets/wallpapers/:name', (c: Context) => {
+    const name = c.req.param('name') ?? '';
+    if (!WALLPAPER_FILE.test(name)) return c.json({ error: 'not-found' }, 404);
+    const file = wallpaperFiles.read(name);
     if (file === undefined) return c.json({ error: 'not-found' }, 404);
     return serveWithEtag(c, file, 'public, max-age=31536000, immutable');
   });
