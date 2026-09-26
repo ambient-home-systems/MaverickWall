@@ -64,6 +64,7 @@ import type { CivilDate } from '@maverick-wall/core';
 
 import { ditherRect } from './dither.js';
 import { DENSITY_STEPS, densitySteps, monthSpans, type MonthSpan } from './month-spans.js';
+import { shiftLabelForms, type ShiftMark } from './shift-style.js';
 import { drawText, measureText, rungStep, type TextOptions, type TypeRung } from './font.js';
 import { Framebuffer } from './framebuffer.js';
 import {
@@ -395,7 +396,23 @@ export function drawUpcomingBox(
  * week start exactly as the month does rather than inventing a second answer
  * to "when does a week begin".
  */
-export function drawWeekBox(fb: Framebuffer, model: EpaperModel, m: EpaperMetrics, box: Box): void {
+/** How a week strip says what is on its days. */
+export interface WeekOptions {
+  /**
+   * The rota's codes in each column's head, after the day's letter and number
+   * (plan item P5.4). Only when the widget asks — on a week the absence of
+   * `showShifts` means off (Q2), and the wall's `shiftsShown` is what decides.
+   */
+  readonly shifts?: boolean;
+}
+
+export function drawWeekBox(
+  fb: Framebuffer,
+  model: EpaperModel,
+  m: EpaperMetrics,
+  box: Box,
+  options: WeekOptions = {},
+): void {
   const row = model.weeks.find((week) => week.some((cell) => cell.isToday)) ?? model.weeks[0];
   if (row === undefined) return;
   const colW = Math.floor(box.w / 7);
@@ -414,7 +431,23 @@ export function drawWeekBox(fb: Framebuffer, model: EpaperModel, m: EpaperMetric
     // The day's head: its letter and its number, inverted for today so the
     // column somebody is standing in front of is findable across a kitchen.
     if (cell.isToday) fb.fillRect(x, box.y, colW, headH, true);
-    const label = `${model.weekdayLabels[c] ?? ''} ${cell.day}`;
+    let label = `${model.weekdayLabels[c] ?? ''} ${cell.day}`;
+    if (options.shifts === true) {
+      /*
+       * The rota's codes after the number, in the longest form the head holds
+       * whole — "S 26 A:D B:N", then "S 26 D N", then the head as it was. Read
+       * against the widest head the strip can draw (`'30'`), so every column
+       * takes the same form and the strip reads as one thing.
+       */
+      const widest = `${model.weekdayLabels[c] ?? ''} 30`;
+      for (const form of shiftLabelForms(cell.shifts, ':')) {
+        const words = asciiTitle(form.join(' '));
+        if (measureText(`${widest} ${words}`, { rung: m.label }) <= colW - 4) {
+          label = `${label} ${words}`;
+          break;
+        }
+      }
+    }
     const lw = measureText(label, { rung: m.label });
     drawText(fb, x + Math.max(2, Math.floor((colW - lw) / 2)), box.y + m.pad, label, {
       rung: m.label,
@@ -456,6 +489,61 @@ export interface MonthOptions {
    * setting with unreadable smudge is worse than one that answers with dots.
    */
   readonly pills?: boolean;
+  /**
+   * Draw the rota beside each day number, as the shift's short code — one per
+   * person, by initial for two ("A:D B:N"), or the codes alone where the line
+   * cannot hold that, or nothing (plan item P5.4). Whichever of the wall's four
+   * looks the widget wears: three of them are colour, so the panel's one look
+   * is the label, and `PANEL_IGNORES` says so beside the control.
+   */
+  readonly shifts?: boolean;
+}
+
+/**
+ * The rota's codes beside a day number, in one bit.
+ *
+ * The rectangle is a function of the cell alone — from the widest numeral the
+ * grid can draw (`'30'`, the same constant `fitNumberRung` sizes the band by)
+ * to the cell's inner edge, at the small rung, bottom-aligned with the numeral
+ * — so the refresh contract holds: two frames at one size and tier draw the
+ * codes into the same rectangle whatever the codes are. What varies is only
+ * the ink inside it. The words are the first form that fits that room whole
+ * (`shiftLabelForms`, the wall's own reading transcribed), or none: a code cut
+ * in half is a different code, which is the rule the cell's names keep too.
+ *
+ * A colon between an initial and its code rather than the wall's middle dot,
+ * because this face is ASCII — the same substitution the shift line makes for
+ * the wall's en dash.
+ */
+function drawCellShifts(
+  fb: Framebuffer,
+  marks: readonly ShiftMark[],
+  m: EpaperMetrics,
+  cell: Box,
+  numRung: TypeRung,
+  ink: boolean,
+  clear: boolean,
+  log?: RegionLog,
+  at?: string,
+): void {
+  const rung = m.small;
+  const left = cell.x + m.cellNumberInset + measureText('30', { rung: numRung }) + m.cellNumberInset;
+  const right = cell.x + cell.w - m.cellNumberInset;
+  const room = right - left;
+  // Bottom-aligned with the numeral, which is a rung taller than the codes.
+  const y = cell.y + m.cellNumberInset + numRung.height - rung.height;
+  note(log, `cell-shift:${at ?? ''}`, left, y, Math.max(0, room), rung.height);
+  if (marks.length === 0 || room <= 0) return;
+  for (const form of shiftLabelForms(marks, ':')) {
+    const text = asciiTitle(form.join(' '));
+    const width = measureText(text, { rung });
+    if (width > room) continue;
+    // Right-aligned to the cell's inner edge, clear of a two-digit number.
+    const x = right - width;
+    if (clear) fb.fillRect(x - 1, y - 1, width + 2, rung.height + 2, false);
+    drawText(fb, x, y, text, { rung, ink });
+    return;
+  }
 }
 
 /** The rolling month grid within a box. */
@@ -651,6 +739,22 @@ export function drawMonthBox(
           fb.fillRect(nx - 1, ny - 1, measureText(num, { rung: numRung }) + 2, numRung.height + 2, false);
         }
         drawText(fb, nx, ny, num, { rung: numRung });
+      }
+      // The rota's codes beside the number, when the widget asks for them —
+      // knocked out of today's fill like the number, and cleared of dither on
+      // a shaded busy day like the number, for the same reasons.
+      if (options.shifts === true) {
+        drawCellShifts(
+          fb,
+          item.shifts,
+          m,
+          { x, y, w: grid.cellW, h: grid.cellH },
+          numRung,
+          !item.isToday,
+          !named && !item.isToday && densityOf(item) > 0,
+          log,
+          `${r}:${c}`,
+        );
       }
       // Today's cell is filled, so its names are knocked out of it exactly as
       // its number is. Drawn in ink they were black on black — invisible on

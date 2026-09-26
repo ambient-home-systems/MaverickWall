@@ -609,14 +609,21 @@ describe('the inspector', () => {
         ).toBe('Compact');
 
         /*
-         * Neither week renderer paints a rota — no `paintShift`, no
-         * `shiftToken`, nothing that could — so "Show work schedules" has done
-         * nothing on a week since the view shipped. It is not offered there.
+         * The week views draw a rota now (plan item P5.4, part 3), so the
+         * switch is offered there too — and it opens **off** on a canvas that
+         * stores no `showShifts`, because on a week the absence means off (Q2):
+         * a week wall hanging before this drew no rota, and reading the absence
+         * the month's way would have lit one up at the upgrade. This assertion
+         * used to hold the count to 0, when neither week renderer painted one.
          */
         expect(
           await editor.locator('.switch:has-text("Show work schedules")').count(),
-          'the week columns were offered a rota colour they do not draw',
-        ).toBe(0);
+          'the week columns were not offered the rota they draw',
+        ).toBe(1);
+        expect(
+          await editor.locator('.switch:has-text("Show work schedules") input').isChecked(),
+          'a week canvas with no `showShifts` opened with the rota on — the absence means off there',
+        ).toBe(false);
 
         seedOneCalendar({ mode: 'skymonth' });
         await editor.goto(`${wall.base}/admin/walls/${screenId}`, { waitUntil: 'load' });

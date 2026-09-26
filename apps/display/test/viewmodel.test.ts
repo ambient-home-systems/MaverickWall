@@ -265,8 +265,9 @@ describe('the horizon', () => {
       ]),
     ]);
     const today = built.horizon.flat().find((cell) => cell.isToday);
-    expect(today?.shiftToken).toBe('--s-day');
-    expect(today?.shiftCode).toBe('D');
+    expect(today?.shifts[0]?.token).toBe('--s-day');
+    expect(today?.shifts[0]?.code).toBe('D');
+    expect(today?.shifts[0]?.initial).toBe('S');
   });
 
   it('colours a rest day too, because it is part of the rotation shape', () => {
@@ -282,9 +283,10 @@ describe('the horizon', () => {
       ]),
     ]);
     const cells = built.horizon.flat();
-    expect(cells.find((cell) => cell.isToday)?.shiftToken).toBe('--s-break');
-    // A day the rota says nothing about stays uncoloured.
-    expect(cells.find((cell) => cell.date === '2026-07-20')?.shiftToken).toBeUndefined();
+    expect(cells.find((cell) => cell.isToday)?.shifts[0]?.token).toBe('--s-break');
+    // A day the rota says nothing about stays uncoloured: no shifts at all,
+    // which is a different fact from a rest day and has to look different.
+    expect(cells.find((cell) => cell.date === '2026-07-20')?.shifts).toEqual([]);
   });
 
   it('says how far through a run of the same shift today is', () => {
@@ -840,9 +842,12 @@ describe('what a horizon cell carries', () => {
 /*
  * Turning the rota's colours off is a widget choice, so there is nothing to
  * assert here — the model always carries the shifts and the renderer decides.
- * What is worth pinning is the shape the renderer is handed, because a horizon
- * cell flattens a day's shifts to *one* and that is the whole of the two-person
- * limitation: `shifts[0]` wins and nothing downstream can see the rest.
+ * What is worth pinning is the shape the renderer is handed. A horizon cell
+ * used to flatten a day's shifts to *one*, and that was the whole of the
+ * two-person limitation: `shifts[0]` won and nothing downstream could see the
+ * rest. It carries everyone now (plan item P5.4), and the assertion below is
+ * what stops a future "simplification" putting the `[0]` back at the source,
+ * where no renderer could get the second person back.
  */
 describe('a day with more than one person on a rota', () => {
   const two = {
@@ -863,11 +868,28 @@ describe('a day with more than one person on a rota', () => {
   } as unknown as ManifestDay;
 
   it('keeps both on the day model, in the order the server sorted them', () => {
-    // The agenda could show both; only the month grid cannot. Asserting this
-    // separately is what stops a future "simplification" dropping the second
-    // person at the source, where nothing could get it back.
+    // The agenda draws one chip per person from this list, so losing the second
+    // here would lose them on every view at once.
     const built = model([two]);
     expect(built.today?.shifts.map((s) => s.personName)).toEqual(['Amy', 'Ben']);
+    expect(built.today?.shifts.map((s) => s.personInitial)).toEqual(['A', 'B']);
+  });
+
+  it('keeps both on the horizon cell too, with a colour, a code and an initial each', () => {
+    /*
+     * The month cell's own `shifts[0]`, removed. A two-worker household's grid
+     * tinted every day in whoever sorted first, so Ben's nights were nowhere on
+     * the month and nothing in the editor could put them there — while the
+     * badge on the same wall drew both. Each entry carries everything a mark
+     * needs (plan item P5.4): the tint's token, the label's code, the dot's
+     * colour and the initial that tells two labels apart.
+     */
+    const built = model([two]);
+    const cell = built.horizon.flat().find((c) => c.date === '2026-07-15');
+    expect(cell?.shifts).toEqual([
+      { token: '--s-day', color: undefined, code: 'D', label: 'Day', initial: 'A' },
+      { token: '--s-night', color: undefined, code: 'N', label: 'Nights', initial: 'B' },
+    ]);
   });
 
   it('offers the badge both people, not whoever sorted first', () => {

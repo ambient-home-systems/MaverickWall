@@ -143,8 +143,11 @@ describe('plain is the clock a panel always drew', () => {
 
   it('did not need the renderer version to move', () => {
     // Nothing stored carries a variant yet, so no panel's pixels change on
-    // upgrade — which is the only thing the version is for.
-    expect(EPAPER_RENDERER_VERSION).toBe(9);
+    // upgrade — which is the only thing the version is for. The version is
+    // 10 now, moved by plan item P5.4 (the rota's code on a calendar widget)
+    // and not by the clock's looks; the plain frames above are still pinned
+    // to the bytes they were, which is the clock's own claim.
+    expect(EPAPER_RENDERER_VERSION).toBe(10);
   });
 });
 

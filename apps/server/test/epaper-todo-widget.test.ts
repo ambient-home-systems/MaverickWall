@@ -196,8 +196,15 @@ describe('the renderer version', () => {
      * already has. A version bump costs every battery panel in the world a full
      * re-download, and one made for a change that moved nothing is that cost
      * paid for nothing.
+     *
+     * It read `toBe(9)` while 9 was the current version. The tick's own claim
+     * is the hashes above — the to-do frames, byte-identical to the renderer
+     * before the tick — and those still hold; the version itself moved to 10
+     * for plan item P5.4, which draws the rota's code on a calendar widget and
+     * is a pixel change on any panel with a rota. So this holds the version to
+     * the one P5.4 stated, and the frames to their hashes.
      */
-    expect(EPAPER_RENDERER_VERSION).toBe(9);
+    expect(EPAPER_RENDERER_VERSION).toBe(10);
   });
 });
 

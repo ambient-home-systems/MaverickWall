@@ -18,6 +18,7 @@
 import { addDays, dayOfWeek, type CivilDate } from '@maverick-wall/core';
 
 import type { Manifest, ManifestDay, ManifestEvent, ManifestPersonShift } from '../api/manifest.js';
+import { markInitial, type ShiftMark } from './shift-style.js';
 
 /**
  * The most of today the model carries, so the *renderer* can decide how much
@@ -114,6 +115,16 @@ export interface EpaperGridCell {
    * span — see `month-spans.ts`, which the wall reads the same way.
    */
   readonly events: readonly EpaperCellEvent[];
+  /**
+   * Everyone's shift on this day, in the household's order — empty when no rota
+   * resolved for it (plan item P5.4). The panel draws them as the shift's short
+   * code beside the day number, whichever colour look the wall wears, because
+   * a wash, a rule and a dot are colour and one bit has none. Every person,
+   * for the reason the wall's `HorizonCell.shifts` is a list: the month cell
+   * read `shifts[0]` while the badge drew everybody, and a two-worker
+   * household got two answers from one wall.
+   */
+  readonly shifts: readonly ShiftMark[];
 }
 
 /** One of a cell's events, as much of it as either month treatment needs. */
@@ -327,6 +338,10 @@ export function buildEpaperModel(manifest: Manifest, options: EpaperViewOptions 
         isToday: date === today,
         inWindow: day !== undefined,
         eventCount: gridEvents.length,
+        shifts: (day?.shifts ?? []).map((shift) => ({
+          initial: markInitial(shift.personName),
+          code: shift.shortCode,
+        })),
         events: [...gridEvents]
           .sort(agendaOrder)
           .slice(0, EPAPER_CELL_TITLES_LIMIT)

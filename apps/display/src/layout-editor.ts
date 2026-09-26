@@ -110,6 +110,7 @@ import {
 } from './countdown.js';
 import { EMOJI_KEYS, emojiNode } from './emoji.js';
 import { TIER_NAMES, type TierName } from './tiers.js';
+import { shiftStyle, shiftsShown } from './shift-style.js';
 import { PALETTE, SWATCH, describeWidget, describeWidgetIn, labelFor } from './widget-labels.js';
 import {
   HOUSE_FIELDS,
@@ -4718,30 +4719,66 @@ function boot(): void {
     }
 
     /*
-     * The rota's colours, on the views that draw them.
+     * The rota, on every view, and in which look (plan item P5.4).
      *
-     * The only toggle in this panel whose *unticked* state is what gets
-     * stored: it has been on since the wall was first drawn, so a household
-     * who arranged a canvas around those colours keeps them by default.
+     * The switch reads `shiftsShown` and writes what that reading means for the
+     * view it is on, so the control and the two renderers cannot disagree about
+     * an absence. On the month and the list the absence has meant *on* since
+     * the wall was first drawn, so a household who arranged a canvas around
+     * those colours keeps them, and only `false` is ever stored for off. On the
+     * week views the absence means *off* (Q2): they drew no rota until this
+     * shipped, so every week wall hanging in a kitchen stores no `showShifts`,
+     * and reading that as on would light up rota colours on all of them at one
+     * upgrade. There the switch starts off and turning it on writes `true`.
+     * Turning it off writes `false` on every view — the household's last word,
+     * so switching a widget's view afterwards keeps what they last chose.
      *
-     * **Not the week columns, at either density.** `renderWeekColumns` and
-     * `renderSkyWeek` paint no rota — no `paintShift`, no `shiftToken`, nothing
-     * that could — so the switch has done nothing there since the week view
-     * shipped. Hiding it is the honest answer for today and nothing more: a
-     * week column *is* a day and the tint is per-day, so drawing the rota there
-     * is a reasonable thing to build. It is a separate decision, because
-     * `showShifts`'s absence means *on* — a week renderer that started painting
-     * would light up rota colours on every week wall already hanging.
+     * Offered on the ink lane, because a panel draws the rota now — the shift's
+     * code beside the numeral, in one bit, whichever look the wall wears — and
+     * whether it does is density, which is the lane's business. The look is
+     * not: three of the four are colour, `PANEL_IGNORES` says so beside it, and
+     * a control for it on the lane would be a control that moves nothing.
      */
-    if (view !== 'week') {
+    const rotaShown = shiftsShown(cfg, view);
+    configPanel.appendChild(
+      switchRow(
+        'Show work schedules',
+        view === 'week' ? 'Marks the days a rota covers, in the column heads.' : 'Marks the days a rota covers.',
+        rotaShown,
+        (checked) => {
+          setConfig(widget, 'showShifts', checked ? (view === 'week' ? true : undefined) : false);
+          // The look is offered only while the rota is drawn, so the panel
+          // follows the switch rather than waiting for the next selection.
+          renderConfigPanel();
+        },
+        'showShifts',
+      ),
+    );
+    if (rotaShown && lane !== 'ink') {
       configPanel.appendChild(
-        switchRow(
-          'Show work schedules',
-          'Colours the days a rota covers.',
-          cfg['showShifts'] !== false,
-          (checked) => setConfig(widget, 'showShifts', checked ? undefined : false),
+        segControl(
+          'Shift style',
+          [
+            ['tint', 'Tint'],
+            ['label', 'Label'],
+            ['edge', 'Edge'],
+            ['dot', 'Dot'],
+          ],
+          shiftStyle(cfg),
+          // The default is stored as an absence, like every default here.
+          (value) => setConfig(widget, 'shiftStyle', value === 'tint' ? undefined : value),
         ),
       );
+      const look = document.createElement('p');
+      look.className = 'hint';
+      look.textContent =
+        {
+          tint: 'The day washed in the shift’s colour, with a rule along its top.',
+          label: 'The shift’s short code beside the date, one per person.',
+          edge: 'A rule along the top of the day, with no wash.',
+          dot: 'A dot beside the date, one per person.',
+        }[shiftStyle(cfg)] + ' Two people on one day are both shown.';
+      configPanel.appendChild(look);
     }
 
     /*

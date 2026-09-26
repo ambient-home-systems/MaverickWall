@@ -72,6 +72,7 @@ const SHELL = [
   '/assets/motion-fixture.js',
   '/assets/orientation.js',
   '/assets/render.js',
+  '/assets/shift-style.js',
   '/assets/store.js',
   '/assets/theme.js',
   '/assets/tiers.js',

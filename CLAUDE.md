@@ -8015,6 +8015,65 @@ for calendar", which timed out at 5s while a second suite run overlapped it
 on a clean worktree of `main`, so it is written down here rather than
 chased.
 
+**The calendar draws a rota in the look the household chooses, for everyone
+on it, on every view (plan item P5.4, parts 1–3).** `shiftStyle` is one enum
+on the widget — `tint` (the wash and the top rule every wall has drawn, and
+so the absence), `label` (the shift's short code in the date line beside the
+numeral), `edge` (the rule alone) and `dot` (a disc per person) — read once,
+for both renderers and the editor, by `apps/display/src/shift-style.ts`,
+which `epaper/shift-style.ts` transcribes and `shift-style-parity.test.ts`
+holds character-identical from the first declaration on. That file also
+carries the one reading this project keeps getting two ways: `shiftsShown`
+reads an absent `showShifts` as *on* for the month and the list, whose
+colours predate the switch, and as *off* for the week views (Q2, built as the
+plan proposed), which drew no rota until now — so no week wall hanging in a
+kitchen lit up at the upgrade, and the editor's switch, offered on every view
+now, opens off on a week and writes `true`. **Two people on one day are both
+drawn**: `HorizonCell.shifts` is a list where it was one token, one code and
+one label — the month cell's own `shifts[0]`, the fault the badge had already
+lost — and the tint's rule becomes segments, the label reads "A·D B·M" by
+initial, the dot draws one each to three, and the agenda's date column
+carries one chip a person ("A · Days", "B · Mids") with the row's rule still
+the first person's. One person in the default look draws exactly what every
+wall drew, and that is the load-bearing sentence: a cell with a second person
+swaps its border for a strip laid where the border was and grows its padding
+by the border it lost (`--hz-pad-top` and `--hz-rule-h`, named beside the
+values they were), so the numeral under it does not move; the label and the
+dots sit on `.hz-top`, the numeral's own line, at the scaffold role, so they
+cost no event its row. `fitShiftLabels` keeps the longest form of a label
+that fits every line in a grid, measured against the widest numeral the grid
+draws (today's padded disc on the compact grid, which the `'30'` probe alone
+called four pixels narrower than it is), and hides the rest — whole or not at
+all, and on the compact week at Classic's landscape width that is not at all,
+where the dot is the look for the box. **The panel draws the code**, whichever
+look the wall wears, because three of the four are colour: `drawMonthBox`
+puts it beside the day number in a rectangle that is a function of the cell
+(`cell-shift:r:c` in the region log, the refresh contract), and `drawWeekBox`
+after the day's letter and number; `showShifts` is in `PANEL_HONOURS` and
+`INK_LANE`, `shiftStyle` in `PANEL_IGNORES` with the sentence, both proved by
+`epaper-ink`'s probes, and `EPAPER_RENDERER_VERSION` is 10 — a panel with a
+calendar widget and a rota moves, the built-in layout and a household with no
+rota do not. Decided by rendering, as the plan asked: a 7.5" cell at the
+built-in proportion holds one person's code and not two, and draws nothing
+rather than a cut code for two. Measured in a real browser at 1080x1920 and
+1920x1080 with two rota workers (`browser-calendar-shift-styles.test.ts`,
+17 tests): every mark's computed colour is a shift's, the label's line is the
+tint's height to within half a pixel, and the grid names the same events with
+the same counts in every look. **`wall-density` and
+`browser-classic-proportions` are unmoved for a wall on defaults**, compared
+as text — every one of their eighteen measurement lines, both blocks of the
+ratchet and every box and run of the Classic wall — against a clean worktree
+of `main`, twice, identical. Twelve mutations were checked and all twelve are
+red. One of them is the fault this shipped with for an hour: `renderCell` took
+its look through a defaulted parameter, and a default is substituted for an
+explicit `undefined`, so a switched-off rota drew as the tint under a legend
+that had correctly gone — found in the editor's preview, and the wall's own
+case is asserted now. Two findings are recorded rather than changed: the
+legend under the month grid is a row the cells get back when the rota is off
+(13 names to 11 at 1920x1080), and a second person's chip is a second line in
+the agenda's date column, which costs the portrait Classic agenda its third
+day. **4569 tests passing and 1 skipped, over 319 files**: calendar 153 over 10 · core 314 over 9 · display 836 over 45 · server 3266 over 255, measured with `pnpm test` and a real Chromium (`MW_BROWSER_EXECUTABLE` naming the provisioned binary, for the revision mismatch S01 recorded) on a clone whose tags had been fetched (`git fetch --tags --unshallow`, which `changelog-shape.test.ts` asks for). Against the 4526 over 315 recorded above, that is +43 tests and +4 files. This change adds four files carrying 40 tests by its own count (`shift-style.test.ts` 10, `shift-style-parity.test.ts` 7, `epaper-shift-label.test.ts` 6, `browser-calendar-shift-styles.test.ts` 17) and one test to `viewmodel.test.ts`, so the arithmetic predicts +41 and the reading says +43 — one more on the display and one more on the server than the diff explains, which is the paragraph above's own warning arriving on schedule and the reason the number here is the reading and not the sum.
+
 ---
 
 ## Open decisions

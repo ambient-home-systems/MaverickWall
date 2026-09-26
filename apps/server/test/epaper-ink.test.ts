@@ -272,6 +272,10 @@ const PROBES: Readonly<Record<string, readonly unknown[]>> = {
   showWeather: [true],
   showWeekNumbers: [true],
   showShifts: [false],
+  // Every look but the default: on a panel all four draw the code (plan item
+  // P5.4), so no value moves ink and `shiftStyle` is proved ignored, while
+  // `showShifts` above takes the code away and is proved honoured.
+  shiftStyle: ['label', 'edge', 'dot'],
   showTimes: [false],
   showLocations: [true],
   people: [['p1']],
