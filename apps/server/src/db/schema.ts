@@ -1882,11 +1882,16 @@ export const haEntityCache = sqliteTable(
     watched: integer('watched', { mode: 'boolean' }).notNull().default(false),
 
     /**
-     * How to draw it.
+     * How to draw it, in the list look.
      *
-     * One widget with four shapes rather than four widgets: the design is
-     * typographic, and a grid of tiles is the Lovelace this integration is
-     * deliberately not competing with.
+     * One widget with four shapes rather than four widgets. This used to end
+     * "a grid of tiles is the Lovelace this integration is deliberately not
+     * competing with", and decision D4 (2026-09-24, plan item P5.3) reversed
+     * the half about tiles: a Home Assistant widget may now wear a tile-card
+     * *look* (`variant: 'tile'`), which reads none of these four shapes —
+     * a tile is always its mark, its name and its state. What did not change
+     * is the half about competing: a tile shows a state and controls nothing
+     * (hard rule 12), so it is Lovelace's look and not Lovelace's job.
      */
     displayMode: text('display_mode', {
       enum: ['value', 'label_value', 'icon_state', 'presence'],
@@ -1900,6 +1905,22 @@ export const haEntityCache = sqliteTable(
      * is what it is. Null means use the friendly name.
      */
     label: text('label'),
+    /**
+     * The picture the household chose for it, when the one its device class
+     * or domain chose is wrong (plan item P5.3) — a key from the first-party
+     * vocabulary (`glyphs.ts`), never an icon name Home Assistant sent and
+     * never a URL. Null means the automatic one, which is every row that
+     * existed before this column, so no reading on any wall changes until a
+     * household picks one.
+     *
+     * Stored like the label and for the same reason: it is the household's
+     * word for a thing in their house, and it must survive every poll. Text
+     * rather than an enum here, because the vocabulary grows by release and a
+     * column enum is a migration per glyph; the key is checked against the
+     * vocabulary where it is written (`admin-ha.ts`) and again where it is read
+     * (`toReading`), so a key a later release retires reads as automatic.
+     */
+    glyph: text('glyph'),
     sortOrder: integer('sort_order', { mode: 'number' }).notNull().default(0),
   },
   (table) => ({

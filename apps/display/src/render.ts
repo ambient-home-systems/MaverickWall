@@ -68,6 +68,9 @@ import {
 import {
   COUNTDOWN_PARTS,
   COUNTDOWN_TIERS,
+  HOUSE_TILE_TIERS,
+  TILE_COLUMN_CH,
+  tileColumnsAt,
   PLAYFUL_COLUMN_CH,
   TODAY_LEDE_FLOOR_EM,
   TODAY_RUNGS,
@@ -89,6 +92,16 @@ import {
   type WidgetTier,
 } from './widget-tiers.js';
 import { adviceLine, type Advice } from './weather-advice.js';
+import {
+  TILE_KEEP,
+  barKeepsEveryTile,
+  barPercent,
+  changedWords,
+  tileOptions,
+  tileTone,
+  tileWords,
+  type TileWord,
+} from './house-tiles.js';
 import {
   PLAYFUL_BOB_MS,
   PLAYFUL_BOB_STEP_MS,
@@ -860,11 +873,16 @@ function playfulColumn(
 /* -------------------------------------------------------------- HOUSE ---- */
 
 /**
- * A few readings from the house, drawn typographically.
+ * A few readings from the house, drawn typographically — the `list` look, and
+ * every Home Assistant widget's default.
  *
- * Four display modes and no tiles. The brief is explicit that this is ambient
- * context on a family calendar rather than a dashboard, and the difference
- * shows up here: a grid of cards would be competing with Lovelace, badly.
+ * Four display modes. This used to add "and no tiles", on the argument that
+ * this is ambient context on a family calendar rather than a dashboard and a
+ * grid of cards would be competing with Lovelace, badly. Decision D4 (plan
+ * item P5.3) took the look and left the argument: `renderHouseTiles` below
+ * draws Home Assistant's tile card for a widget that asks for one, and a tile
+ * still controls nothing — which is the half of "competing with Lovelace" that
+ * was ever about what this wall is for.
  *
  * Note what this function receives — a label, a value, a character. There is
  * no entity id in the model and no way to ask for one. That boundary is what
@@ -929,6 +947,101 @@ const HOUSE_ROW_CLASS: Readonly<Record<HouseField, string>> = {
   label: 'hs-label',
   value: 'hs-value',
 };
+
+/**
+ * What a tile pass decided, for the one draw that follows it. Absent on the
+ * first draw, which says every word the household asked for and draws a bar
+ * wherever one was asked for, so the tier pass has a whole tile to measure.
+ */
+interface TileDraw {
+  /** The words each tile keeps, in draw order. */
+  readonly words?: readonly TileWord[];
+  /** Whether the bar is drawn — asked for, and costing no tile. */
+  readonly bar?: boolean;
+  /** How many tiles sit across. */
+  readonly columns?: number;
+}
+
+/**
+ * The house as tiles (plan item P5.3, decision D4): Home Assistant's tile card,
+ * one per reading, flowing across and down the box.
+ *
+ * Each tile is its mark in a filled circle, coloured by the reading's tone —
+ * `--state-active` for a light that is on, `--state-alert` for a door that is
+ * open, `--state-idle` for a temperature, which is neither — then its name and
+ * its state. The circle's glyph is drawn in the tile's own ground colour, which
+ * clears 4.5:1 against every state colour by construction: the three are
+ * measured against both of a theme's grounds (`paletteTokens`), and contrast
+ * is symmetric.
+ *
+ * **Nothing here is a control.** No toggle, no slider and no tap action — hard
+ * rule 12 allows this wall one write to a house and it is a to-do item — and no
+ * entity picture, which would be an address on the household's Home Assistant
+ * for the wall to fetch. The bar under a light is a picture of the "60%" its
+ * state line already says, drawn and never pressed.
+ *
+ * Separation is the rule's order: space between the tiles, a hairline round
+ * each, a ground step from the canvas, and the theme's `--shadow-card` laid on
+ * top — never the shadow alone, so Blueprint and Swiss, which set none, still
+ * draw tiles a household can tell apart. A widget's style lane may take the
+ * shadow away (`style.shadow`), never add one.
+ */
+function renderHouseTiles(model: DisplayModel, config?: unknown, draw: TileDraw = {}): HTMLElement | undefined {
+  const readings = houseReadingsFor(model.house, config);
+  if (readings.length === 0) return undefined;
+  const options = tileOptions(config);
+  const words = draw.words ?? tileWords(options);
+  const bar = draw.bar ?? options.showBar;
+
+  const grid = el('section', 'house-tiles');
+  grid.setAttribute('data-layout', options.layout);
+  if (draw.columns !== undefined) grid.style.setProperty('--ht-cols', String(draw.columns));
+  for (const reading of readings) {
+    const tile = el('div', reading.stale ? 'ht-tile ht-stale' : 'ht-tile');
+    tile.setAttribute('data-tone', tileTone(reading));
+
+    // The circle is drawn whether or not the vocabulary has a picture for the
+    // reading: its colour is the state from across the room, and a tile with
+    // no circle would be a card with some words in it.
+    const circle = el('span', 'ht-circle');
+    const glyph = reading.glyph === undefined ? null : glyphNode(reading.glyph, 'ht-ico gl');
+    if (glyph !== null) circle.appendChild(glyph);
+    tile.appendChild(circle);
+
+    const text = el('span', 'ht-words');
+    if (words.includes('name')) {
+      const name = el('span', 'ht-name', reading.label);
+      name.setAttribute('data-field', 'name');
+      text.appendChild(name);
+    }
+    if (words.includes('state')) {
+      const state = el('span', 'ht-state', reading.value);
+      state.setAttribute('data-field', 'state');
+      const ago = words.includes('changed') ? changedWords(reading.changedAt, model.now) : undefined;
+      if (ago !== undefined) {
+        const when = el('span', 'ht-ago', ` · ${ago}`);
+        when.setAttribute('data-field', 'changed');
+        state.appendChild(when);
+      }
+      text.appendChild(state);
+    }
+    tile.appendChild(text);
+
+    const level = bar ? barPercent(reading) : undefined;
+    if (level !== undefined) {
+      const track = el('span', 'ht-bar');
+      track.setAttribute('data-field', 'bar');
+      const fill = el('span', 'ht-fill');
+      fill.style.width = `${level}%`;
+      track.appendChild(fill);
+      tile.appendChild(track);
+    }
+    grid.appendChild(tile);
+  }
+
+  if (model.houseNote !== undefined) grid.appendChild(el('div', 'ht-note', model.houseNote));
+  return grid;
+}
 
 /* --------------------------------------------------------------- NEXT ---- */
 
@@ -1757,7 +1870,9 @@ export function renderWidget(
     case 'weather':
       return renderWeather(model, config);
     case 'homeassistant':
-      return renderHouse(model, config);
+      return variantOf('homeassistant', config) === 'tile'
+        ? renderHouseTiles(model, config)
+        : renderHouse(model, config);
     case 'shift':
       return renderShiftWidget(model, config);
     case 'countdown':
@@ -2534,6 +2649,12 @@ function applyWidgetTiers(
       tierCountdown(entry);
       continue;
     }
+    // Home Assistant's `tile` look is a grid of its own markup with its own
+    // table (P5.3); the list keeps `HOUSE_TIERS` below, untouched.
+    if (entry.widget.type === 'homeassistant' && variantOf('homeassistant', entry.widget.config) === 'tile') {
+      tierHouseTiles(entry, model);
+      continue;
+    }
     const look = entry.widget.type === 'weather' ? variantOf('weather', entry.widget.config) : undefined;
     const table = look !== undefined ? (WEATHER_STYLE_TIERS[look] ?? WIDGET_TIERS['weather']) : WIDGET_TIERS[entry.widget.type];
     const primary =
@@ -3097,6 +3218,79 @@ function tierHouse(
     if (rebuilt !== undefined) replaceBody(entry, rebuilt);
   }
   beltItems(entry.box, [...entry.body.querySelectorAll('.hs-item')] as HTMLElement[]);
+}
+
+/**
+ * The house as tiles: how many sit across, what each says, whether the bar
+ * stays, and how many fit (plan item P5.3).
+ *
+ * **Width buys tiles across, and the tier is one tile's.** The columns are the
+ * box's width over `TILE_COLUMN_CH` with the gaps charged, so a box too narrow
+ * for two tiles that can each say what they are and what they are doing draws
+ * one that can; then the tier is read off one tile's own cell and says which
+ * of its words it keeps, in `TILE_KEEP`'s order — the state first.
+ *
+ * **Height buys rows, and the belt is what counts them.** Every row is drawn
+ * and the belt takes off whatever ends past the foot — in whole rows, since a
+ * grid row's tiles share a bottom — so how many fit is read off the glass
+ * rather than divided out of one row's height. That is the rule every table in
+ * `widget-tiers.ts` states one step further, and the step was measured: the
+ * first version divided by the first row, and rows differ — a wrapped name, a
+ * bar under the lamp and none under the thermometer — so it promised tiles the
+ * belt then took back, and kept bars that went with them.
+ *
+ * **The bar costs no tile.** Drawn once without it and once with it, and kept
+ * only when the box shows as many tiles with it as without
+ * (`barKeepsEveryTile`): it says the number the state line already says, so
+ * it is an annotation, and an annotation that took a reading off the wall
+ * would be the wrong trade.
+ *
+ * Rebuilt rather than hidden, the forecast's reason: the words are a tier's
+ * decision about every tile at once.
+ */
+function tierHouseTiles(entry: TieredWidget, model: DisplayModel): void {
+  const config = entry.widget.config;
+  const options = tileOptions(config);
+  const host = entry.body.querySelector('.ht-tile');
+  if (!(host instanceof HTMLElement)) return;
+  const { chPx, emPx } = typeMetrics(host, 'ht-name');
+  if (!(chPx > 0) || !(emPx > 0)) return;
+  const inner = innerBox(entry.box);
+  const columnGap = parseFloat(getComputedStyle(entry.body).columnGap) || 0;
+  const count = entry.body.querySelectorAll('.ht-tile').length;
+
+  const columns = Math.min(count, tileColumnsAt(inner.w, columnGap, chPx, TILE_COLUMN_CH[options.layout]));
+  const cellW = (inner.w - columnGap * (columns - 1)) / columns;
+  const tier = widgetTierFor(HOUSE_TILE_TIERS[options.layout], cellW, inner.h, chPx, emPx);
+  const words = rungsByPriority(tier, tileWords(options), TILE_KEEP);
+
+  /*
+   * One draw, and how many of its tiles end inside the box — counted by the
+   * belt itself, over the drawn rows, rather than by dividing the box by the
+   * first row's height. Rows are not all one height: a name that wraps, or a
+   * bar on the lamps and none on the thermometer, makes one row taller than
+   * the next, and a count read off the first row promised the box tiles the
+   * belt then took away. Measured, that is the only count this pass trusts.
+   */
+  const drawn = (bar: boolean): { readonly shown: number; readonly bars: number } => {
+    const rebuilt = renderHouseTiles(model, config, { words, columns, bar });
+    if (rebuilt !== undefined) replaceBody(entry, rebuilt);
+    const tiles = [...entry.body.querySelectorAll('.ht-tile')] as HTMLElement[];
+    const note = entry.body.querySelector('.ht-note');
+    beltItems(entry.box, note instanceof HTMLElement ? [...tiles, note] : tiles);
+    const shown = tiles.filter((tile) => tile.style.display !== 'none');
+    return { shown: shown.length, bars: shown.filter((tile) => tile.querySelector('.ht-bar') !== null).length };
+  };
+
+  let result = drawn(false);
+  if (options.showBar) {
+    const plain = result;
+    const barred = drawn(true);
+    // Kept only where it costs no tile — `barKeepsEveryTile` states the rule.
+    result = barKeepsEveryTile(barred.shown, plain.shown) ? barred : drawn(false);
+  }
+  stampTier(entry.box, tier, result.shown);
+  stampRungs(entry.box, result.bars > 0 ? [...words, 'bar'] : words);
 }
 
 /**

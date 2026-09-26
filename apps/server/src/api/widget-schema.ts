@@ -199,9 +199,9 @@ const widgetConfigFields = z
      * name). Which type draws which value is `VARIANTS` in
      * `apps/display/src/variants.ts` and its transcription in
      * `epaper/variants.ts`; `variants-parity.test.ts` holds this enum to be
-     * exactly their union. **Only the clock's draw anything yet** — every
-     * other value is stored, accepted and drawn as its type's default until
-     * the session that designs it.
+     * exactly their union. The clock's, the forecast's, the countdown's and
+     * Home Assistant's `tile` (P5.3) draw; the calendar's two are stored,
+     * accepted and drawn as its default until the session that designs them.
      */
     variant: z
       .enum([
@@ -272,6 +272,27 @@ const widgetConfigFields = z
      * then refused would be a choice that cannot be made.
      */
     readings: z.array(z.string().max(255)).max(50).optional(),
+    /*
+     * Home Assistant's `tile` look (plan item P5.3, decision D4) — four
+     * options, every one read by that look alone and every absence exactly
+     * what a tile draws without being asked:
+     *
+     *  - `tileLayout` puts the mark beside the words (`horizontal`, absent) or
+     *    above them (`vertical`).
+     *  - `hideState` leaves the state line off, so a tile is its mark, its
+     *    colour and its name. Absent is off: a tile says what the thing is doing.
+     *  - `showChanged` adds "· 5 min ago" to the state line, from when the state
+     *    last changed. Absent is off. The wall works it out on its own tick; the
+     *    manifest carries the instant, which does not move while the state does
+     *    not.
+     *  - `showBar` draws a read-only bar under a light's brightness, a fan's
+     *    speed or a blind's position — the number the words already say. Absent
+     *    is off. Displayed, never a control: hard rule 12.
+     */
+    tileLayout: z.enum(['horizontal', 'vertical']).optional(),
+    hideState: z.boolean().optional(),
+    showChanged: z.boolean().optional(),
+    showBar: z.boolean().optional(),
     // Countdown — a target date (YYYY-MM-DD); the label rides in `title`.
     target: z
       .string()

@@ -161,6 +161,16 @@ describe('resolution', () => {
     expect(STYLE_INSET_CSS).toHaveLength(5);
   });
 
+  it('can take the theme’s shadow away and can never add one (P5.3)', () => {
+    // The tile look draws the theme's `--shadow-card`; the lane's one say in
+    // it is "none", so a household can switch a widget's shadow off and no
+    // lane can put a literal shadow on a wall an e-ink preset keeps flat.
+    expect(resolveStyleTokens(PANELS, [], { shadow: 'none' })).toEqual({ '--shadow-card': 'none' });
+    expect(widgetStyleBody.safeParse({ shadow: 'none' }).success).toBe(true);
+    expect(widgetStyleBody.safeParse({ shadow: 'soft' }).success).toBe(false);
+    expect(widgetStyleBody.safeParse({ shadow: '0 2px 8px black' }).success).toBe(false);
+  });
+
   it('emits its keys in one order whatever order the lane was written in', () => {
     const a = resolveStyleTokens(PANELS, [], { weight: 'bold', '--ink': '#000000', '--bg': '#FFFFFF' });
     const b = resolveStyleTokens(PANELS, [], { '--bg': '#FFFFFF', '--ink': '#000000', weight: 'bold' });

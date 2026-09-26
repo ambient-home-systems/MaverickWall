@@ -101,6 +101,26 @@ export const STYLE_INSET_CSS: readonly string[] = [
 ];
 
 /**
+ * The card shadow a lane may ask for (plan item P5.3): `none`, and nothing
+ * else. Absent is the theme's own `--shadow-card`.
+ *
+ * **A lane can take a shadow away and never add one.** The shadow is the
+ * theme's token for a reason D8 states: a theme, or an e-ink-sized wall, is
+ * the one place a household with an OLED or e-ink screen switches every
+ * shadow off, and `applyTheme` writes that `none` on the root. A lane that
+ * could say "soft" on its box would outrank the root and put a shadow back on
+ * exactly the screen that asked for none — so the only value is the one that
+ * cannot, and a widget whose tiles or card would rather sit flat says so here.
+ */
+export const STYLE_SHADOWS = ['none'] as const;
+export type StyleShadow = (typeof STYLE_SHADOWS)[number];
+
+/** Shadow to the `--shadow-card` a lane writes on its box. */
+export const STYLE_SHADOW_CSS: Readonly<Record<StyleShadow, string>> = {
+  none: 'none',
+};
+
+/**
  * Which derived tokens depend on which base tokens.
  *
  * What `withTints` and `customTokens` derive, written as the inputs each one
@@ -163,6 +183,7 @@ export interface StyleLayer {
   readonly weight?: StyleWeight;
   readonly tracking?: StyleTracking;
   readonly inset?: number;
+  readonly shadow?: StyleShadow;
 }
 
 const HEX6 = /^#[0-9a-fA-F]{6}$/;
@@ -201,6 +222,8 @@ export function styleLayerOf(value: unknown): StyleLayer | undefined {
   if (typeof inset === 'number' && Number.isInteger(inset) && inset >= 0 && inset <= STYLE_INSET_MAX) {
     out['inset'] = inset;
   }
+  const shadow = raw['shadow'];
+  if (typeof shadow === 'string' && (STYLE_SHADOWS as readonly string[]).includes(shadow)) out['shadow'] = shadow;
   return Object.keys(out).length === 0 ? undefined : (out as StyleLayer);
 }
 
@@ -250,6 +273,7 @@ export function resolveStyleTokens(
     const inset = STYLE_INSET_CSS[own.inset];
     if (inset !== undefined) out['--fw-inset'] = inset;
   }
+  if (own.shadow !== undefined) out['--shadow-card'] = STYLE_SHADOW_CSS[own.shadow];
   return Object.keys(out).length === 0 ? undefined : out;
 }
 

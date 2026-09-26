@@ -117,13 +117,25 @@ describe('which controls a look hides', () => {
      * taking a working setting off the screen is the other half of the rule
      * that an option which does nothing is worse than one not offered. The
      * forecast's five are all designed now (P5.1), and so are the countdown's
-     * six (P5.2); both are stated below.
+     * six (P5.2) and Home Assistant's tile (P5.3); all three are stated below.
      */
-    for (const type of TYPES.filter((one) => one !== 'clock' && one !== 'weather' && one !== 'countdown')) {
+    for (const type of TYPES.filter((one) => !['clock', 'weather', 'countdown', 'homeassistant'].includes(one))) {
       for (const variant of VARIANTS[type]) {
         expect(hiddenByVariant(type, { variant }), `${type}.${variant}`).toEqual([]);
       }
     }
+  });
+
+  it('hides the tile’s four off the list, and the list’s ladder off the tile (P5.3)', () => {
+    // A tile is always its mark, its name and its state, so the ladder moves
+    // nothing on it; the tile's own options move nothing on the list. An
+    // absent look is the list, as a config saved before tiles existed is.
+    const tileKeys = ['tileLayout', 'hideState', 'showChanged', 'showBar'];
+    expect(hiddenByVariant('homeassistant', {})).toEqual(tileKeys);
+    expect(hiddenByVariant('homeassistant', { variant: 'list' })).toEqual(tileKeys);
+    expect(hiddenByVariant('homeassistant', { variant: 'tile' })).toEqual(['fields']);
+    // A clock's look on a Home Assistant box is "not for me": the list.
+    expect(hiddenByVariant('homeassistant', { variant: 'analogue' })).toEqual(tileKeys);
   });
 
   it('hides the occasion picker off `occasion` and the start date off `progress` (P5.2)', () => {

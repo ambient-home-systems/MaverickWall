@@ -69,11 +69,15 @@ let screenId: string;
 const UNDRAWN: readonly VariantType[] = ['homeassistant', 'calendar'];
 /**
  * The looks on those types that *are* designed now, and are measured in their
- * own files instead. Empty since the countdown left `UNDRAWN` (its six are
- * measured in the `browser-countdown-*` files); kept, because the next type to
- * design one look of several is exactly the case it is for.
+ * own files instead. The countdown emptied it when it left `UNDRAWN` (its six
+ * are measured in the `browser-countdown-*` files); Home Assistant's `tile`
+ * (P5.3) is the case it was kept for — one look of several designed — and is
+ * measured in `browser-ha-tile`. The letter moved and the intent did not:
+ * Home Assistant stays in `UNDRAWN`, so its `list`, written out, is still held
+ * here to the box with no look at all, element for element, which is the
+ * "a list widget byte-identical to before" half of that item.
  */
-const DESIGNED: ReadonlySet<string> = new Set<string>();
+const DESIGNED: ReadonlySet<string> = new Set<string>(['homeassistant.tile']);
 
 /** What each type needs to have something to say, so no box is left out. */
 const BASE_CONFIG: Readonly<Record<string, Record<string, unknown>>> = {

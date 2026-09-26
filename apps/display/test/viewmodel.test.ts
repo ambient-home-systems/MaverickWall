@@ -596,9 +596,40 @@ describe('text from somewhere else', () => {
     const after = { note: null, readings: before.readings.map((reading, index) => ({
       ...reading, tone: index === 0 ? 'alert' : 'active', changedAt: 1_787_000_000_000,
     })) };
-    expect(houseFrom(after)).toEqual(houseFrom(before));
+    /*
+     * The letter moved when the tile look was built (P5.3): the model carries
+     * the tone and the time now, because the tile draws them. The intent did
+     * not — every field the list reads is exactly what it was, and the three
+     * new ones are spread only when a server sends them, so a reading from a
+     * server before P5.3 is modelled field for field as it always was.
+     */
+    const listFields = (model: ReturnType<typeof houseFrom>) =>
+      model.readings.map(({ key, label, value, glyph, mode, stale }) => ({ key, label, value, glyph, mode, stale }));
+    expect(listFields(houseFrom(after))).toEqual(listFields(houseFrom(before)));
+    expect(houseFrom(before).readings.map((reading) => Object.keys(reading).sort())).toEqual([
+      ['glyph', 'label', 'mode', 'stale', 'value'],
+      ['glyph', 'label', 'mode', 'stale', 'value'],
+    ]);
+    expect(houseFrom(after).readings.map((reading) => [reading.tone, reading.changedAt])).toEqual([
+      ['alert', 1_787_000_000_000],
+      ['active', 1_787_000_000_000],
+    ]);
     // And the new marks are marks this bundle can draw, not words.
     expect(houseFrom(after).readings.map((reading) => reading.glyph)).toEqual(['lock', 'thermostat']);
+  });
+
+  it('reads a tile’s level only inside 0-100, and a tone only as one of its two words', () => {
+    const shaped = houseFrom({ readings: [
+      { label: 'Lamp', value: 'On · 60%', mode: 'label_value', tone: 'active', level: 60 },
+      { label: 'Fan', value: 'On', mode: 'label_value', tone: 'on', level: 140 },
+      { label: 'Blind', value: 'Open', mode: 'label_value', tone: null, level: '40', changedAt: 'soon' },
+    ] });
+    expect(shaped.readings.map(({ tone, level, changedAt }) => ({ tone, level, changedAt }))).toEqual([
+      { tone: 'active', level: 60, changedAt: undefined },
+      // Refused rather than clamped: 140 is not a level, and "on" is not a tone.
+      { tone: undefined, level: undefined, changedAt: undefined },
+      { tone: undefined, level: undefined, changedAt: undefined },
+    ]);
   });
 
   it('drops a reading that is nothing but invisible characters', () => {
