@@ -1,12 +1,25 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
+  ATTRIBUTE_ALLOWLIST,
+  cachedAttributes,
   domainOf,
   glyphFor,
   isSupported,
   parseStates,
+  pickAttributes,
   readState,
+  SUPPORTED_DOMAINS,
+  toneFor,
+  toReading,
+  type DisplayMode,
+  type HaAttributes,
   type HaState,
+  type ReadingTone,
 } from '../src/modules/homeassistant/entities.js';
+import { isGlyphKey } from '../src/glyphs.js';
 import {
   eventsPath,
   parseCalendarEvents,
@@ -33,6 +46,7 @@ function state(over: Partial<HaState> = {}): HaState {
     unit: null,
     deviceClass: 'door',
     lastChangedAt: NOW - 60_000,
+    attributes: {},
     ...over,
   };
 }
@@ -53,10 +67,25 @@ describe('reading entities', () => {
      * refused rather than offered and useless.
      */
     expect(isSupported('calendar.family')).toBe(false);
-    expect(isSupported('light.kitchen')).toBe(false);
-    // Nothing that could be mistaken for a control surface.
-    expect(isSupported('switch.boiler')).toBe(false);
-    expect(isSupported('lock.front_door')).toBe(false);
+    /*
+     * Seven domains a household can see the state of, since Q8 (P5.3).
+     *
+     * This assertion said the opposite until then — "nothing that could be
+     * mistaken for a control surface" — and the reason it could be reversed is
+     * the reason it was written: a *reading* is a GET of `/api/states`, and a
+     * control is a service call, which hard rule 12 governs and
+     * `ha-write-boundary.test.ts` holds to two to-do members. Watching a lock
+     * puts "Unlocked" on the wall and no way to change it anywhere.
+     */
+    for (const domain of ['light', 'switch', 'input_boolean', 'fan', 'cover', 'lock', 'climate']) {
+      expect(isSupported(`${domain}.thing`), domain).toBe(true);
+    }
+    // And still not the rest of rule 12's list, nor anything else that is a
+    // control and nothing but: these have no state a wall has a use for.
+    for (const domain of ['alarm_control_panel', 'scene', 'script', 'automation', 'camera', 'button']) {
+      expect(isSupported(`${domain}.thing`), domain).toBe(false);
+    }
+    expect(SUPPORTED_DOMAINS).toHaveLength(12);
     expect(domainOf('no-dot-here')).toBe('');
   });
 
@@ -137,6 +166,308 @@ describe('reading entities', () => {
     // picture nobody had drawn. Nothing at all is the honest reading, and it is
     // what lets the renderer give the rung's room back.
     expect(glyphFor(state({ domain: 'sensor', deviceClass: 'unheard-of' }))).toBeNull();
+  });
+});
+
+/**
+ * The tone table, written out as rows before anything asserts about it.
+ *
+ * Table-first because the table *is* the decision (P5.3, D4): each row is one
+ * sentence a household would agree with or not — a door open is worth
+ * noticing, a light on is merely a fact, a temperature is neither — and a row
+ * is where an argument about one of them belongs. `toneFor` is held to every
+ * row, so changing a tone is changing a line here.
+ */
+const TONES: readonly (readonly [
+  domain: string,
+  deviceClass: string | null,
+  state: string,
+  attributes: HaAttributes,
+  tone: ReadingTone | null,
+])[] = [
+  // Openings: open is an alert, closed is idle.
+  ['binary_sensor', 'door', 'on', {}, 'alert'],
+  ['binary_sensor', 'door', 'off', {}, null],
+  ['binary_sensor', 'window', 'on', {}, 'alert'],
+  ['binary_sensor', 'garage_door', 'on', {}, 'alert'],
+  ['binary_sensor', 'opening', 'on', {}, 'alert'],
+  ['binary_sensor', 'opening', 'off', {}, null],
+  // A lock: unlocked is an alert, whichever of the two entities says so.
+  ['binary_sensor', 'lock', 'on', {}, 'alert'],
+  ['binary_sensor', 'lock', 'off', {}, null],
+  ['lock', null, 'unlocked', {}, 'alert'],
+  ['lock', null, 'open', {}, 'alert'],
+  ['lock', null, 'jammed', {}, 'alert'],
+  ['lock', null, 'locked', {}, null],
+  ['lock', null, 'locking', {}, null],
+  ['lock', null, 'unlocking', {}, null],
+  // Hazards.
+  ['binary_sensor', 'moisture', 'on', {}, 'alert'],
+  ['binary_sensor', 'moisture', 'off', {}, null],
+  ['binary_sensor', 'smoke', 'on', {}, 'alert'],
+  ['binary_sensor', 'gas', 'on', {}, 'alert'],
+  ['binary_sensor', 'safety', 'on', {}, 'alert'],
+  ['binary_sensor', 'problem', 'on', {}, 'alert'],
+  ['binary_sensor', 'problem', 'off', {}, null],
+  // Somebody, or something, is here.
+  ['binary_sensor', 'motion', 'on', {}, 'active'],
+  ['binary_sensor', 'motion', 'off', {}, null],
+  ['binary_sensor', 'occupancy', 'on', {}, 'active'],
+  ['binary_sensor', 'presence', 'on', {}, 'active'],
+  ['person', null, 'home', {}, 'active'],
+  ['person', null, 'not_home', {}, null],
+  // A zone the household named is somewhere, and not home.
+  ['person', null, 'School', {}, null],
+  ['device_tracker', null, 'home', {}, 'active'],
+  ['device_tracker', null, 'not_home', {}, null],
+  // Things that are on.
+  ['light', null, 'on', { brightness: 153 }, 'active'],
+  ['light', null, 'off', {}, null],
+  ['switch', 'outlet', 'on', {}, 'active'],
+  ['switch', null, 'off', {}, null],
+  ['fan', null, 'on', { percentage: 40 }, 'active'],
+  ['fan', null, 'off', {}, null],
+  ['input_boolean', null, 'on', {}, 'active'],
+  ['input_boolean', null, 'off', {}, null],
+  ['cover', 'blind', 'open', { current_position: 40 }, 'active'],
+  ['cover', 'blind', 'closed', {}, null],
+  ['cover', 'garage', 'open', {}, 'active'],
+  // A thermostat is active while it is heating or cooling — never for its mode.
+  ['climate', null, 'heat', { hvac_action: 'heating' }, 'active'],
+  ['climate', null, 'cool', { hvac_action: 'cooling' }, 'active'],
+  ['climate', null, 'heat', { hvac_action: 'idle' }, null],
+  ['climate', null, 'heat', {}, null],
+  ['climate', null, 'off', { hvac_action: 'off' }, null],
+  // A reading is neither.
+  ['sensor', 'temperature', '19.4', {}, null],
+  ['sensor', 'power', '1200', {}, null],
+  ['weather', null, 'sunny', {}, null],
+  // A binary sensor the table does not name, or with no class, is neither too:
+  // `on` for "battery" is low, and low battery is not what a tile shouts about.
+  ['binary_sensor', 'battery', 'on', {}, null],
+  ['binary_sensor', null, 'on', {}, null],
+  // Nothing is a tone while Home Assistant does not know.
+  ['light', null, 'unavailable', {}, null],
+  ['binary_sensor', 'door', 'unavailable', {}, null],
+  ['lock', null, 'unknown', {}, null],
+];
+
+describe('the tone table', () => {
+  it.each(TONES)('%s (%s) reading %s %o is %s', (domain, deviceClass, value, attributes, tone) => {
+    expect(toneFor(state({ domain, deviceClass, state: value, attributes }))).toBe(tone);
+  });
+
+  it('covers every domain a wall can watch', () => {
+    // A domain added to the list with no row here would be a tile nobody had
+    // decided the colour of. It would read idle, which is the right *default*,
+    // and a row is still the place that says so on purpose.
+    const tabled = new Set(TONES.map(([domain]) => domain));
+    for (const domain of SUPPORTED_DOMAINS) expect(tabled.has(domain), domain).toBe(true);
+  });
+});
+
+describe('the seven read-only domains, in a household\'s words', () => {
+  const read = (domain: string, value: string, attributes: HaAttributes = {}, deviceClass: string | null = null): string =>
+    readState(state({ domain, state: value, attributes, deviceClass }));
+
+  it('says what a light, a switch and a fan are doing', () => {
+    // 153 of 255 is 60%, which is how a household would say it.
+    expect(read('light', 'on', { brightness: 153 })).toBe('On · 60%');
+    expect(read('light', 'on', { brightness: 255 })).toBe('On · 100%');
+    // A brightness of 1 is a light somebody can see, and "0%" would say not.
+    expect(read('light', 'on', { brightness: 1 })).toBe('On · 1%');
+    expect(read('light', 'on')).toBe('On');
+    expect(read('light', 'off', { brightness: 153 })).toBe('Off');
+    expect(read('switch', 'on')).toBe('On');
+    expect(read('switch', 'off')).toBe('Off');
+    expect(read('input_boolean', 'on')).toBe('On');
+    expect(read('fan', 'on', { percentage: 40 })).toBe('On · 40%');
+    expect(read('fan', 'on')).toBe('On');
+    expect(read('fan', 'off', { percentage: 40 })).toBe('Off');
+  });
+
+  it('says where a blind is, and not for a closed one', () => {
+    expect(read('cover', 'open', { current_position: 40 }, 'blind')).toBe('Open · 40%');
+    expect(read('cover', 'open', {}, 'blind')).toBe('Open');
+    expect(read('cover', 'closing', { current_position: 70 })).toBe('Closing · 70%');
+    // Closed is 0 by definition, so the position would say nothing.
+    expect(read('cover', 'closed', { current_position: 0 })).toBe('Closed');
+  });
+
+  it('says what a lock is', () => {
+    expect(read('lock', 'locked')).toBe('Locked');
+    expect(read('lock', 'unlocked')).toBe('Unlocked');
+    expect(read('lock', 'jammed')).toBe('Jammed');
+  });
+
+  it('says what the heating is doing, then how warm the room is', () => {
+    expect(read('climate', 'heat', { hvac_action: 'heating', current_temperature: 21, temperature: 23 })).toBe(
+      'Heating · 21°',
+    );
+    // The room, never the set point: "Heating · 23°" over a room at 17 would be
+    // describing what the thermostat wants.
+    expect(read('climate', 'heat', { hvac_action: 'idle', current_temperature: 20.5 })).toBe('Idle · 20.5°');
+    // An integration that reports no action falls back to the mode.
+    expect(read('climate', 'heat_cool', { current_temperature: 19.25 })).toBe('Heat cool · 19.3°');
+    expect(read('climate', 'off')).toBe('Off');
+  });
+
+  it('passes a state it has no word for through untouched', () => {
+    // The binary sensor's rule: inventing a word for `unavailable` is a lie.
+    expect(read('light', 'unavailable', { brightness: 153 })).toBe('unavailable');
+    expect(read('climate', 'unknown', { current_temperature: 21 })).toBe('unknown');
+    expect(read('cover', 'stopped', { current_position: 40 })).toBe('stopped');
+  });
+
+  it('names a first-party glyph for each', () => {
+    const glyph = (domain: string, deviceClass: string | null = null): unknown =>
+      glyphFor(state({ domain, deviceClass }));
+    expect(glyph('light')).toBe('light');
+    expect(glyph('switch')).toBe('switch');
+    expect(glyph('switch', 'outlet')).toBe('switch');
+    expect(glyph('input_boolean')).toBe('switch');
+    expect(glyph('fan')).toBe('fan');
+    expect(glyph('cover', 'blind')).toBe('cover');
+    // A cover's device classes say more than its domain does. `garage` is the
+    // cover's spelling; the binary sensor's is `garage_door`.
+    expect(glyph('cover', 'garage')).toBe('garage');
+    expect(glyph('cover', 'door')).toBe('door');
+    expect(glyph('cover', 'window')).toBe('window');
+    expect(glyph('lock')).toBe('lock');
+    expect(glyph('climate')).toBe('thermostat');
+    for (const domain of SUPPORTED_DOMAINS) {
+      const key = glyph(domain);
+      if (key !== null) expect(isGlyphKey(key), domain).toBe(true);
+    }
+  });
+});
+
+describe('the attributes a reading may keep', () => {
+  it('keeps the allowlisted ones and nothing else', () => {
+    const [light, climate] = parseStates(
+      JSON.stringify([
+        {
+          entity_id: 'light.lounge',
+          state: 'on',
+          attributes: {
+            friendly_name: 'Lounge',
+            brightness: 153,
+            rgb_color: [255, 0, 0],
+            entity_picture: '/api/image_proxy/light.lounge?token=secret',
+          },
+        },
+        {
+          entity_id: 'climate.hall',
+          state: 'heat',
+          attributes: {
+            hvac_action: 'heating',
+            current_temperature: 21,
+            temperature: 22,
+            hvac_modes: ['heat', 'off'],
+            access_token: 'nope',
+          },
+        },
+      ]),
+    );
+    expect(light?.attributes).toEqual({ brightness: 153 });
+    expect(climate?.attributes).toEqual({ hvac_action: 'heating', current_temperature: 21, temperature: 22 });
+  });
+
+  it('keeps none for a domain with no allowlist, whatever it sends', () => {
+    // A sensor sending `brightness` is not a light, and its attributes are not
+    // the table's to widen.
+    const [sensor] = parseStates(
+      JSON.stringify([{ entity_id: 'sensor.lux', state: '400', attributes: { brightness: 200, device_class: 'illuminance' } }]),
+    );
+    expect(sensor?.attributes).toEqual({});
+    expect(pickAttributes('switch', { brightness: 1 })).toEqual({});
+  });
+
+  it('refuses a value of the wrong shape rather than coercing it', () => {
+    // Rule five. "153" is not 153, and 300 is not a brightness: turning either
+    // into "On · 100%" would be a confident reading nobody sent.
+    expect(pickAttributes('light', { brightness: '153' })).toEqual({});
+    expect(pickAttributes('light', { brightness: 300 })).toEqual({});
+    expect(pickAttributes('light', { brightness: 12.5 })).toEqual({});
+    expect(pickAttributes('cover', { current_position: -1 })).toEqual({});
+    expect(pickAttributes('climate', { hvac_action: 'Heating <b>now</b>', current_temperature: 'warm' })).toEqual({});
+    expect(pickAttributes('fan', null)).toEqual({});
+    // One refused attribute costs that attribute, not its neighbours.
+    expect(pickAttributes('climate', { hvac_action: 'heating', current_temperature: 'warm' })).toEqual({
+      hvac_action: 'heating',
+    });
+  });
+
+  it('stores a binary sensor exactly as it stored one before the allowlist existed', () => {
+    // Every cache row already hanging reads back unchanged, and every row this
+    // release writes for an old domain is byte-identical to the last release's.
+    expect(cachedAttributes(state({ deviceClass: 'door' }))).toBe('{"device_class":"door"}');
+    expect(cachedAttributes(state({ domain: 'sensor', deviceClass: null }))).toBe('{"device_class":null}');
+    expect(cachedAttributes(state({ domain: 'light', deviceClass: null, attributes: { brightness: 9 } }))).toBe(
+      '{"device_class":null,"brightness":9}',
+    );
+  });
+
+  it('names only the four domains that need one', () => {
+    expect(Object.keys(ATTRIBUTE_ALLOWLIST).sort()).toEqual(['climate', 'cover', 'fan', 'light']);
+  });
+});
+
+describe('a reading, for a tile', () => {
+  const watch = { entityId: 'x.y', label: null, displayMode: 'label_value' as DisplayMode, sortOrder: 0 };
+
+  it('carries its tone and when its state last changed', () => {
+    const reading = toReading(state({ state: 'on', deviceClass: 'door', lastChangedAt: NOW - 300_000 }), watch, NOW, NOW);
+    expect(reading.tone).toBe('alert');
+    expect(reading.changedAt).toBe(NOW - 300_000);
+    expect(toReading(state({ lastChangedAt: null }), watch, NOW, NOW).changedAt).toBeNull();
+  });
+
+  it('never draws a unit twice beside a value that carries its own', () => {
+    const climate = state({
+      domain: 'climate',
+      state: 'heat',
+      deviceClass: null,
+      unit: '°C',
+      attributes: { hvac_action: 'heating', current_temperature: 21 },
+    });
+    expect(toReading(climate, watch, NOW, NOW)).toMatchObject({ value: 'Heating · 21°', unit: null });
+  });
+
+  /**
+   * The list widget draws `label`, `value`, `unit`, `glyph`, `mode` and
+   * `stale`, and picks readings by `key` (P1.3). For every reading it could
+   * already show, those seven must be exactly what they were.
+   *
+   * The fixture is the pre-P5.3 `toReading` *run*, not written down: `main`'s
+   * `entities.ts` from just before this change, compiled beside this one and
+   * walked over every domain, every device class either renderer names and
+   * every state that matters, with its answers kept. So this is a measurement
+   * of what shipped rather than a second opinion about it.
+   */
+  it('gives every reading the last release could show the same seven fields', () => {
+    const fixture = JSON.parse(
+      readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'ha-readings-before-tiles.json'), 'utf8'),
+    ) as {
+      domain: string; state: string; deviceClass: string | null; unit: string | null;
+      label: string | null; mode: DisplayMode; fetchedAt: number;
+      reading: Record<string, unknown>;
+    }[];
+    expect(fixture.length).toBe(222);
+    for (const row of fixture) {
+      const now = Date.parse('2026-08-02T12:00:00Z');
+      const reading = toReading(
+        {
+          entityId: `${row.domain}.thing`, domain: row.domain, state: row.state, friendlyName: 'The thing',
+          unit: row.unit, deviceClass: row.deviceClass, lastChangedAt: now - 300_000, attributes: {},
+        },
+        { entityId: `${row.domain}.thing`, label: row.label, displayMode: row.mode, sortOrder: 0 },
+        row.fetchedAt,
+        now,
+      );
+      const { tone: _tone, changedAt: _changedAt, ...before } = reading;
+      expect(before, JSON.stringify(row)).toEqual(row.reading);
+    }
   });
 });
 

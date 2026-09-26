@@ -133,6 +133,21 @@ and a little of the battery. A panel is now sent one only when something it
 draws has changed. Each panel gets one new picture when you update, and after
 that only when something on it changes.
 
+**The house can show lights, switches, fans, blinds, locks and the
+heating.** On Home Assistant › Readings you can now add a light ("On ·
+60%"), a switch or a helper toggle ("On"), a fan ("On · 40%"), a blind
+("Open · 40%"), a lock ("Unlocked") and a thermostat ("Heating · 21°"), each
+with its own symbol, on the wall and on an e-paper panel. The wall only
+*shows* them: it cannot switch a light on or unlock a door, and nothing about
+connecting Home Assistant lets it. Readings you already have look exactly as
+they did.
+
+**A wall showing Home Assistant readings stops reloading them every half
+minute.** Every poll of Home Assistant sent every wall, and every e-paper
+panel showing a Home Assistant widget, a fresh copy of the page even when
+nothing in the house had changed. Now they get a new copy only when something
+they show has changed, which matters most for an e-paper panel on a battery.
+
 ## 0.67.0
 
 **Grouping widgets now does what you would expect.** Press **Group** on two

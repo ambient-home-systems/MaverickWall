@@ -871,8 +871,9 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
         {
           message: 'Choose an entity from the list.',
           suggestion:
-            'Sensors, binary sensors, weather, people and device trackers. ' +
-            'Anything else is not a reading a wall can show.',
+            'Sensors, binary sensors, weather, people and device trackers, and the ' +
+            'state of lights, switches, helper toggles, fans, blinds, locks and ' +
+            'thermostats. Anything else is not a reading a wall can show.',
         },
         400,
       );

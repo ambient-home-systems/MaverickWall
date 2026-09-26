@@ -581,6 +581,26 @@ describe('text from somewhere else', () => {
     expect(readings[1]?.key).toBeUndefined();
   });
 
+  it('models a reading exactly as before when it carries a tone and when it changed', () => {
+    /*
+     * P5.3 added `tone` and `changedAt` to every reading for the tile look and
+     * took the panel's `fetchedAt` away. The list draws from this model and
+     * nothing else, so the model must not move: a server one release ahead
+     * costs the list nothing, and a list on a wall that never asked for tiles
+     * is the list it was.
+     */
+    const before = { fetchedAt: 1, note: null, readings: [
+      { label: 'Front door', value: 'Unlocked', unit: null, glyph: 'lock', mode: 'icon_state', stale: false },
+      { label: 'Hallway', value: 'Heating · 21°', unit: null, glyph: 'thermostat', mode: 'label_value', stale: true },
+    ] };
+    const after = { note: null, readings: before.readings.map((reading, index) => ({
+      ...reading, tone: index === 0 ? 'alert' : 'active', changedAt: 1_787_000_000_000,
+    })) };
+    expect(houseFrom(after)).toEqual(houseFrom(before));
+    // And the new marks are marks this bundle can draw, not words.
+    expect(houseFrom(after).readings.map((reading) => reading.glyph)).toEqual(['lock', 'thermostat']);
+  });
+
   it('drops a reading that is nothing but invisible characters', () => {
     // A label of zero-width marks is a label a household cannot see and cannot
     // tell apart from the one next to it.

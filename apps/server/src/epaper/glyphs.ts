@@ -8,7 +8,7 @@
  *
  * ## Why these are redrawn rather than rasterised
  *
- * `apps/display/src/glyphs.ts` holds the same twenty-nine silhouettes as paths
+ * `apps/display/src/glyphs.ts` holds the same thirty-four silhouettes as paths
  * on a 24 grid, and the obvious thing is to fill those paths at 12x12 and keep
  * the answer. It was tried first, and it is the brand mark's lesson exactly:
  * `lit-cell-small.svg` is a five-column *redraw* because below about 20px a
@@ -455,6 +455,83 @@ const CELLS: Readonly<Record<GlyphKey, readonly string[]>> = {
     '..########..',
     '.##########.',
     '.##########.',
+    '.##########.',
+    '............',
+  ],
+  // A shade and the bulb under it, a pixel of air between them so the bulb
+  // reads as a bulb and not as the point of an arrow.
+  light: [
+    '.....##.....',
+    '.....##.....',
+    '....####....',
+    '...######...',
+    '..########..',
+    '.##########.',
+    '.##########.',
+    '............',
+    '....####....',
+    '.....##.....',
+    '............',
+    '............',
+  ],
+  // The broken ring and the bar.
+  switch: [
+    '.....##.....',
+    '.....##.....',
+    '..#..##..#..',
+    '.##..##..##.',
+    '##...##...##',
+    '##........##',
+    '##........##',
+    '##........##',
+    '.##......##.',
+    '..########..',
+    '...######...',
+    '............',
+  ],
+  // Three blades, as on the wall. Four made a pinwheel whose arms read as
+  // hooks at this size, which is a symbol a wall must never draw.
+  fan: [
+    '............',
+    '.##.....####',
+    '####...####.',
+    '#####..###..',
+    '.#######....',
+    '....####....',
+    '.....##.....',
+    '....####....',
+    '...#####....',
+    '...#####....',
+    '....###.....',
+    '............',
+  ],
+  // Head rail, slats, and the cord with its pull.
+  cover: [
+    '............',
+    '############',
+    '############',
+    '.########.#.',
+    '..........#.',
+    '.########.#.',
+    '..........#.',
+    '.########.#.',
+    '..........#.',
+    '.########.#.',
+    '.........###',
+    '............',
+  ],
+  // A frame and a dial, its marker a two-pixel notch.
+  thermostat: [
+    '............',
+    '.##########.',
+    '.#........#.',
+    '.#..#..#..#.',
+    '.#.##..##.#.',
+    '.#.######.#.',
+    '.#.######.#.',
+    '.#.######.#.',
+    '.#..####..#.',
+    '.#........#.',
     '.##########.',
     '............',
   ],

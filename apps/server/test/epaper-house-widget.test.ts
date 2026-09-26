@@ -156,6 +156,41 @@ describe('the house widget on a panel', () => {
     expect(bitsOf(filtered)).toEqual(bitsOf(frameOf(manifestOf([kitchen]), {})));
   });
 
+  /**
+   * P5.3 gave every reading a `tone` and a `changedAt` for the tile look, and
+   * took the panel's `fetchedAt` away. The list draws none of the three, so
+   * adding the first two and removing the third must leave this frame exactly
+   * as it was — bit for bit, with a glyph drawn and without.
+   */
+  it('draws the same frame whether or not a reading carries a tone and when it changed', () => {
+    const plain = [
+      { label: 'Front door', value: 'Locked', mode: 'icon_state', glyph: 'lock' },
+      { label: 'Kitchen', value: '19.4 C', mode: 'label_value', glyph: 'temperature' },
+    ];
+    const toned = plain.map((entry, index) => ({
+      ...entry,
+      tone: index === 0 ? 'alert' : null,
+      changedAt: 1_787_000_000_000 + index,
+    }));
+    const before = manifestOf(plain as unknown as Reading[]);
+    const after = manifestOf(toned as unknown as Reading[]);
+    (after as unknown as { panels: Record<string, unknown> }).panels = { home: { readings: toned, note: null } };
+    for (const config of [{}, { fields: ['icon', 'label', 'value'] }, { fields: ['value'] }]) {
+      expect(bitsOf(frameOf(after, config))).toEqual(bitsOf(frameOf(before, config)));
+    }
+  });
+
+  it('draws the five new marks, one each and none the same', () => {
+    // `icon_state` leads with the mark, so a frame per glyph differs only by
+    // the drawing — which is what says each of them reaches the glass at all.
+    const frames = ['light', 'switch', 'fan', 'cover', 'thermostat', 'lock'].map((glyph) =>
+      bitsOf(frameOf(manifestOf([{ label: 'Thing', value: 'On', mode: 'icon_state', glyph } as unknown as Reading]), {})),
+    );
+    const none = bitsOf(frameOf(manifestOf([{ label: 'Thing', value: 'On', mode: 'icon_state' } as unknown as Reading]), {}));
+    for (const frame of frames) expect(frame).not.toEqual(none);
+    expect(new Set(frames.map((frame) => frame.join(''))).size).toBe(frames.length);
+  });
+
   it('says so plainly when there is nothing to read', () => {
     const empty = bitsOf(frameOf(manifestOf([]), {}));
     expect(bitsOf(frameOf(manifestOf([kitchen]), { readings: ['Nobody'] }))).toEqual(empty);

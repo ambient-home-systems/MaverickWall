@@ -44,8 +44,25 @@ export function inDays(offset: number): string {
  *
  * Includes one entity from an unsupported domain, because filtering it is a
  * behaviour rather than an accident, and one with no device class.
+ *
+ * **Every stamp is relative to `at`, and the fake passes the moment it was
+ * stood up** — not the moment of each request. `last_changed` is the instant a
+ * state last changed, and on a real Home Assistant it does not move between two
+ * polls of a door that stayed open; a fake that restamped it on every request
+ * could not tell a manifest that moves with the house from one that moves with
+ * the clock, which is the whole of what P5.3's `changedAt` promises. The
+ * kitchen's own stamp is passed separately because the fake moves it when a
+ * test changes the temperature, as Home Assistant would.
  */
-export function statesBody(kitchen = '19.4', freezerChangedAt = new Date(Date.now() - 9 * 60_000)): string {
+export function statesBody(
+  kitchen = '19.4',
+  at = Date.now(),
+  kitchenChangedAt = at - 120_000,
+): string {
+  const stamp = (ms: number): { last_changed: string; last_updated: string } => ({
+    last_changed: new Date(ms).toISOString(),
+    last_updated: new Date(ms).toISOString(),
+  });
   return JSON.stringify([
     {
       entity_id: 'sensor.kitchen_temperature',
@@ -55,26 +72,33 @@ export function statesBody(kitchen = '19.4', freezerChangedAt = new Date(Date.no
         device_class: 'temperature',
         friendly_name: 'Kitchen temperature',
       },
-      last_changed: new Date(Date.now() - 120_000).toISOString(),
-      last_updated: new Date(Date.now() - 120_000).toISOString(),
+      ...stamp(kitchenChangedAt),
       context: { id: '01H', parent_id: null, user_id: null },
     },
     {
+      // Open nine minutes, which the interrupt tests' five- and thirty-minute
+      // waits sit either side of.
       entity_id: 'binary_sensor.freezer_door',
       state: 'on',
       attributes: { device_class: 'door', friendly_name: 'Freezer door' },
-      last_changed: freezerChangedAt.toISOString(),
-      last_updated: freezerChangedAt.toISOString(),
+      ...stamp(at - 9 * 60_000),
       context: { id: '01J', parent_id: null, user_id: null },
     },
     {
       entity_id: 'binary_sensor.under_sink',
       state: 'off',
       attributes: { device_class: 'moisture', friendly_name: 'Under the sink' },
-      last_changed: new Date(Date.now() - 86_400_000).toISOString(),
-      last_updated: new Date(Date.now() - 86_400_000).toISOString(),
+      ...stamp(at - 86_400_000),
       context: { id: '01K', parent_id: null, user_id: null },
     },
+    /*
+     * The seven read-only domains (Q8, P5.3), each carrying attributes a real
+     * integration sends and the cache must *not* keep beside the one or three
+     * it may. `entity_picture` is the sharp one: it is a path on the
+     * household's own Home Assistant with a token in its query string, which
+     * is a Home Assistant address and a credential in one attribute.
+     */
+    ...READ_ONLY_DOMAINS.map((entity) => ({ ...entity, ...stamp(at - 30 * 60_000) })),
     {
       // Not a reading. Must never reach the picker or the wall.
       entity_id: 'automation.morning_routine',
@@ -91,6 +115,92 @@ export function statesBody(kitchen = '19.4', freezerChangedAt = new Date(Date.no
     ...Object.keys(TODO_LISTS).map((entityId) => todoStateBody(entityId)),
   ]);
 }
+
+/** The markers the cache must never hold — see `READ_ONLY_DOMAINS`. */
+export const UNLISTED_ATTRIBUTE_MARKERS = [
+  'entity_picture',
+  'picture-token-that-must-not-travel',
+  'rgb_color',
+  'effect_list',
+  'preset_mode',
+  'current_tilt_position',
+  'changed_by',
+  'Keypad 3',
+  'hvac_modes',
+  'target_temp_step',
+] as const;
+
+const READ_ONLY_DOMAINS: readonly {
+  entity_id: string;
+  state: string;
+  attributes: Record<string, unknown>;
+  context: { id: string; parent_id: null; user_id: null };
+}[] = [
+  {
+    entity_id: 'light.living_room',
+    state: 'on',
+    attributes: {
+      friendly_name: 'Living room',
+      brightness: 153,
+      color_mode: 'rgb',
+      rgb_color: [255, 200, 120],
+      effect_list: ['colorloop', 'random'],
+      entity_picture: '/api/image_proxy/light.living_room?token=picture-token-that-must-not-travel',
+      supported_features: 44,
+    },
+    context: { id: '01P', parent_id: null, user_id: null },
+  },
+  {
+    entity_id: 'switch.kettle',
+    state: 'off',
+    attributes: { friendly_name: 'Kettle', device_class: 'outlet' },
+    context: { id: '01Q', parent_id: null, user_id: null },
+  },
+  {
+    entity_id: 'input_boolean.guest_mode',
+    state: 'on',
+    attributes: { friendly_name: 'Guest mode', editable: true, icon: 'mdi:account' },
+    context: { id: '01R', parent_id: null, user_id: null },
+  },
+  {
+    entity_id: 'fan.bedroom',
+    state: 'on',
+    attributes: { friendly_name: 'Bedroom fan', percentage: 40, preset_mode: 'sleep', percentage_step: 20 },
+    context: { id: '01S', parent_id: null, user_id: null },
+  },
+  {
+    entity_id: 'cover.kitchen_blind',
+    state: 'open',
+    attributes: {
+      friendly_name: 'Kitchen blind',
+      device_class: 'blind',
+      current_position: 40,
+      current_tilt_position: 10,
+    },
+    context: { id: '01T', parent_id: null, user_id: null },
+  },
+  {
+    entity_id: 'lock.front_door',
+    state: 'unlocked',
+    attributes: { friendly_name: 'Front door lock', changed_by: 'Keypad 3', code_format: '^\\d{4}$' },
+    context: { id: '01U', parent_id: null, user_id: null },
+  },
+  {
+    entity_id: 'climate.hallway',
+    state: 'heat',
+    attributes: {
+      friendly_name: 'Hallway',
+      hvac_action: 'heating',
+      current_temperature: 21,
+      temperature: 21.5,
+      hvac_modes: ['off', 'heat', 'auto'],
+      target_temp_step: 0.5,
+      min_temp: 7,
+      max_temp: 35,
+    },
+    context: { id: '01V', parent_id: null, user_id: null },
+  },
+];
 
 /**
  * The lists this house has, and what they can do.
@@ -189,6 +299,11 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
     close: async () => {},
   };
 
+  // The moment this house was stood up; every stamp in it is relative to this.
+  const born = Date.now();
+  let lastKitchen = state.kitchen;
+  let kitchenChangedAt = born - 120_000;
+
   const server = createServer((request: IncomingMessage, response: ServerResponse) => {
     const url = request.url ?? '';
     state.paths.push(url);
@@ -220,7 +335,15 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
         }),
       );
     }
-    if (url === '/api/states') return json(statesBody(state.kitchen));
+    if (url === '/api/states') {
+      // `last_changed` moves when the state does and at no other time — the
+      // kitchen's included, when a test changes the temperature.
+      if (state.kitchen !== lastKitchen) {
+        lastKitchen = state.kitchen;
+        kitchenChangedAt = Date.now();
+      }
+      return json(statesBody(state.kitchen, born, kitchenChangedAt));
+    }
     // One list's own state — `supported_features` lives here and nowhere else,
     // since `get_items` does not return it. A list this house has not got is a
     // 404 with Home Assistant's own sentence, which is what a list deleted on

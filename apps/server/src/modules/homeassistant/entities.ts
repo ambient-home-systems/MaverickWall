@@ -10,10 +10,17 @@ import { haReadingHandle } from '../../api/manifest.js';
  * a screenshot.
  *
  * The scope guardrail from the brief lives here in practice: this is a small
- * number of readings as ambient context, drawn typographically. It is not a
- * tile grid and it is not a card ecosystem. Lovelace exists, it is mature, and
- * a family calendar that happens to know the indoor temperature is a different
+ * number of readings as ambient context. Lovelace exists, it is mature, and a
+ * family calendar that happens to know the indoor temperature is a different
  * product from a dashboard.
+ *
+ * What changed on 2026-09-24 is the *look* and not the reach. Decision D4
+ * (`docs/plan-2026-09-household-review.md`, P5.3) adopts a Home Assistant
+ * tile-card look for a wall that wants one, which is why a reading now carries
+ * a `tone` and a `changedAt` — a tile's circle is coloured by the first and its
+ * "5 min ago" is read off the second. Hard rule 12 is untouched: a tile shows a
+ * state and controls nothing, and the wall still receives a resolved value and
+ * never an entity id, an attribute, the token or the address.
  */
 
 /**
@@ -30,6 +37,24 @@ export const SUPPORTED_DOMAINS = [
   'weather',
   'person',
   'device_tracker',
+  /*
+   * Seven domains a household can *see* the state of, read-only (Q8, P5.3).
+   *
+   * Every one of them is also a domain Home Assistant can *control*, and that
+   * is exactly why the sentence above matters here: reading a state is a GET of
+   * `/api/states`, which this module has always made, and hard rule 12 governs
+   * service calls. Watching `lock.front_door` puts "Unlocked" on the wall; it
+   * gives the wall, or this process, no new way to change it. `HA_SERVICES`
+   * stays exactly its two to-do members, and `ha-write-boundary.test.ts` is
+   * what says so.
+   */
+  'light',
+  'switch',
+  'input_boolean',
+  'fan',
+  'cover',
+  'lock',
+  'climate',
 ] as const;
 
 /*
@@ -69,6 +94,105 @@ export interface HaState {
   readonly deviceClass: string | null;
   /** Epoch milliseconds, or null when Home Assistant did not say. */
   readonly lastChangedAt: number | null;
+  /** The allowlisted attributes and nothing else — see `ATTRIBUTE_ALLOWLIST`. */
+  readonly attributes: HaAttributes;
+}
+
+/**
+ * The attributes a reading may use, per domain, and nothing beyond them.
+ *
+ * The cache used to store one attribute, `device_class`, because that was all
+ * a binary sensor needed to read "Open" rather than "on". The seven domains Q8
+ * added each need one or three more to say what a tile says — a light's
+ * brightness, a blind's position, what the heating is doing — and the tempting
+ * shortcut is to cache the whole attributes object and read what is wanted
+ * later. That would put an arbitrary integration's every field into a table a
+ * backup carries and a diagnostics export sits beside: `entity_picture` is a
+ * URL on the household's own Home Assistant, `rgb_color` is harmless until an
+ * integration puts something that is not in the same object, and a camera
+ * integration's `access_token` is an attribute too. So it is an allowlist, read
+ * at the one place a state enters (`parseStates`) *and* at the one place it
+ * leaves the cache (`pickAttributes` again, in `stateFrom`), and a key that is
+ * not named here never reaches either side.
+ *
+ * `device_class` is not in this table because every domain keeps it, as it
+ * always has.
+ */
+export const ATTRIBUTE_ALLOWLIST: Readonly<Partial<Record<SupportedDomain, readonly AttributeKey[]>>> = {
+  light: ['brightness'],
+  cover: ['current_position'],
+  climate: ['current_temperature', 'temperature', 'hvac_action'],
+  fan: ['percentage'],
+};
+
+export type AttributeKey =
+  | 'brightness'
+  | 'current_position'
+  | 'current_temperature'
+  | 'temperature'
+  | 'hvac_action'
+  | 'percentage';
+
+export type HaAttributes = Readonly<Partial<{
+  /** Home Assistant's 0-255, not a percentage. */
+  brightness: number;
+  /** 0-100, where 100 is fully open. */
+  current_position: number;
+  current_temperature: number;
+  /** The set point. */
+  temperature: number;
+  /** What the device is doing (`heating`), as distinct from its mode (`heat`). */
+  hvac_action: string;
+  /** 0-100. */
+  percentage: number;
+}>>;
+
+/**
+ * One schema per allowlisted attribute, and each refuses rather than coerces.
+ *
+ * A brightness of `"153"` or `300` is an integration being wrong, and turning
+ * it into a number or clamping it would put a confident "On · 100%" on the wall
+ * over a value nobody sent. A refused attribute is an absent one: the reading
+ * still draws, it just draws "On" — the same trade `attributeValue` makes for a
+ * friendly name, and the same reason one bad field must not cost the entity.
+ */
+const ATTRIBUTE_SCHEMAS: Readonly<Record<AttributeKey, z.ZodType<number | string>>> = {
+  brightness: z.number().int().min(0).max(255),
+  current_position: z.number().int().min(0).max(100),
+  current_temperature: z.number().finite().min(-100).max(200),
+  temperature: z.number().finite().min(-100).max(200),
+  hvac_action: z.string().regex(/^[a-z_]{1,32}$/),
+  percentage: z.number().finite().min(0).max(100),
+};
+
+/**
+ * The allowlisted attributes of one entity, from whatever object arrived.
+ *
+ * Total: an unknown domain, a non-object, and an object with none of the keys
+ * all answer `{}`. Used on the way in from Home Assistant and again on the way
+ * out of the cache, so a row written by an older release — or by hand — cannot
+ * carry anything onward that this table does not name.
+ */
+export function pickAttributes(domain: string, raw: unknown): HaAttributes {
+  const allowed = (ATTRIBUTE_ALLOWLIST as Readonly<Record<string, readonly AttributeKey[]>>)[domain];
+  if (allowed === undefined || typeof raw !== 'object' || raw === null) return {};
+  const picked: Record<string, number | string> = {};
+  for (const key of allowed) {
+    const shaped = ATTRIBUTE_SCHEMAS[key].safeParse((raw as Record<string, unknown>)[key]);
+    if (shaped.success) picked[key] = shaped.data;
+  }
+  return picked as HaAttributes;
+}
+
+/**
+ * What the cache's `attributes` column holds for one state.
+ *
+ * `device_class` first and always, so a reading from a domain with no
+ * allowlist is stored exactly as it was before the allowlist existed —
+ * `{"device_class":"door"}`, byte for byte.
+ */
+export function cachedAttributes(state: HaState): string {
+  return JSON.stringify({ device_class: state.deviceClass, ...state.attributes });
 }
 
 export function domainOf(entityId: string): string {
@@ -103,6 +227,8 @@ const haState = z.looseObject({
   entity_id: z.string().min(1),
   state: z.string().catch(''),
   last_changed: z.string().optional(),
+  // Loose, so the allowlisted attributes are still here for `pickAttributes`
+  // to read — and only for that: nothing downstream sees this object.
   attributes: z
     .looseObject({
       friendly_name: attributeValue,
@@ -143,6 +269,7 @@ export function parseStates(body: string): HaState[] {
       unit: record.attributes.unit_of_measurement,
       deviceClass: record.attributes.device_class,
       lastChangedAt: Number.isFinite(changed) ? changed : null,
+      attributes: pickAttributes(domainOf(record.entity_id), record.attributes),
     });
   }
   return states;
@@ -196,7 +323,20 @@ export function glyphFor(state: HaState): GlyphKey | null {
   }
   if (state.domain === 'person' || state.domain === 'device_tracker') return 'person';
   if (state.domain === 'weather') return 'cloudy';
-  return null;
+  // The seven read-only domains (Q8). A cover's device class has already
+  // answered above when it is a door or a window; `garage` is a *cover* device
+  // class, where the binary sensor's is `garage_door`, so it is named here.
+  const byDomain: Readonly<Record<string, GlyphKey>> = {
+    light: 'light',
+    switch: 'switch',
+    // A helper toggle is a switch nobody wired to anything, and reads as one.
+    input_boolean: 'switch',
+    fan: 'fan',
+    cover: state.deviceClass === 'garage' ? 'garage' : 'cover',
+    lock: 'lock',
+    climate: 'thermostat',
+  };
+  return byDomain[state.domain] ?? null;
 }
 
 /**
@@ -221,6 +361,9 @@ export function readState(state: HaState): string {
     return state.state;
   }
 
+  const own = readOwnDomain(state);
+  if (own !== undefined) return own;
+
   if (state.domain !== 'binary_sensor') return state.state;
 
   const pairs: Readonly<Record<string, readonly [string, string]>> = {
@@ -243,6 +386,157 @@ export function readState(state: HaState): string {
   if (pair === undefined) return state.state === 'on' ? 'On' : state.state === 'off' ? 'Off' : state.state;
   return state.state === 'on' ? pair[0] : state.state === 'off' ? pair[1] : state.state;
 }
+
+/** First letter up, underscores to spaces — `heat_cool` is "Heat cool". */
+function word(raw: string): string {
+  const spaced = raw.replace(/_/g, ' ');
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+/** A reading's number, to one place and no trailing `.0`. */
+function figure(value: number): string {
+  const rounded = Math.round(value * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+/** The words a wall may pass on as they are; anything else is the raw state. */
+const OWN_WORDS: Readonly<Record<string, readonly string[]>> = {
+  light: ['on', 'off'],
+  switch: ['on', 'off'],
+  input_boolean: ['on', 'off'],
+  fan: ['on', 'off'],
+  cover: ['open', 'closed', 'opening', 'closing'],
+  lock: ['locked', 'unlocked', 'locking', 'unlocking', 'jammed', 'open', 'opening'],
+  climate: ['off', 'heat', 'cool', 'heat_cool', 'auto', 'dry', 'fan_only'],
+};
+
+/**
+ * The seven read-only domains (Q8), in a household's words, or `undefined` for
+ * a domain this does not speak for.
+ *
+ * Each says what a tile card says: "On · 60%", "Open · 40%", "Heating · 21°".
+ * A state outside the domain's own vocabulary — `unavailable`, `unknown`, a
+ * value an integration invented — is passed through untouched, for the reason
+ * the binary sensor's `unavailable` is: inventing a word for it would be a lie.
+ * And an attribute is appended only when it arrived and survived its schema,
+ * so a light whose integration reports no brightness reads "On" rather than
+ * "On · 0%".
+ */
+function readOwnDomain(state: HaState): string | undefined {
+  const words = OWN_WORDS[state.domain];
+  if (words === undefined) return undefined;
+  if (!words.includes(state.state)) return state.state;
+  const { attributes } = state;
+
+  switch (state.domain) {
+    case 'light': {
+      const level = attributes.brightness;
+      // 0-255 to a percentage, and never "0%" for a light that is on: a
+      // brightness of 1 is a light somebody can see.
+      if (state.state !== 'on' || level === undefined || level === 0) return word(state.state);
+      return `On · ${Math.max(1, Math.round((level / 255) * 100))}%`;
+    }
+    case 'fan': {
+      const speed = attributes.percentage;
+      if (state.state !== 'on' || speed === undefined || speed === 0) return word(state.state);
+      return `On · ${Math.round(speed)}%`;
+    }
+    case 'cover': {
+      // A closed blind is at 0 by definition, so its position says nothing.
+      const at = attributes.current_position;
+      if (state.state === 'closed' || at === undefined) return word(state.state);
+      return `${word(state.state)} · ${at}%`;
+    }
+    case 'climate': {
+      /*
+       * What it is *doing* before what it is *set to*.
+       *
+       * The state is the mode — `heat` means "allowed to heat" — and
+       * `hvac_action` is whether it is heating right now, which is the thing a
+       * household standing in a cold hallway wants to know. The mode is the
+       * fallback for an integration that reports no action. The temperature is
+       * the room's rather than the set point: a tile reading "Heating · 21°"
+       * over a room at 17 would be describing the thermostat's wishes.
+       */
+      const doing = attributes.hvac_action;
+      const lead = doing !== undefined ? word(doing) : word(state.state);
+      const room = attributes.current_temperature;
+      return room === undefined ? lead : `${lead} · ${figure(room)}°`;
+    }
+    default:
+      return word(state.state);
+  }
+}
+
+/**
+ * How a tile should colour a reading: something is on, something is wrong, or
+ * neither.
+ *
+ * `active` and `alert` are two different claims and the table keeps them
+ * apart. A light being on is `active` — a fact, drawn in the accent. A door
+ * being open is `alert`, because the reason anybody puts a door on a wall is to
+ * be told when it is. Everything a table does not name is `null`, which is the
+ * idle tile and the honest answer for a temperature: 19.4 °C is not on or off.
+ */
+export type ReadingTone = 'active' | 'alert';
+
+/** A binary sensor's device class, when `on`. */
+const BINARY_TONES: Readonly<Record<string, ReadingTone>> = {
+  door: 'alert',
+  window: 'alert',
+  garage_door: 'alert',
+  opening: 'alert',
+  // `on` for a lock class means unlocked — `readState` says "Unlocked".
+  lock: 'alert',
+  moisture: 'alert',
+  smoke: 'alert',
+  gas: 'alert',
+  safety: 'alert',
+  problem: 'alert',
+  motion: 'active',
+  occupancy: 'active',
+  presence: 'active',
+};
+
+/** A domain, and the states of it that carry a tone. */
+const DOMAIN_TONES: Readonly<Record<string, Readonly<Record<string, ReadingTone>>>> = {
+  /*
+   * "Unlocked is alert", read as the lock entity's *states*: `open` is a lock
+   * whose latch is drawn back, which is more unlocked than unlocked, and
+   * `jammed` is a lock that cannot say it is locked. `locking` and `unlocking`
+   * last a second and carry no tone.
+   */
+  lock: { unlocked: 'alert', open: 'alert', jammed: 'alert' },
+  person: { home: 'active' },
+  device_tracker: { home: 'active' },
+  light: { on: 'active' },
+  switch: { on: 'active' },
+  fan: { on: 'active' },
+  input_boolean: { on: 'active' },
+  cover: { open: 'active' },
+};
+
+/** What a thermostat is doing that makes it `active`. Its mode never does. */
+const CLIMATE_ACTIVE: readonly string[] = ['heating', 'cooling'];
+
+export function toneFor(state: HaState): ReadingTone | null {
+  if (state.domain === 'binary_sensor') {
+    if (state.state !== 'on' || state.deviceClass === null) return null;
+    return BINARY_TONES[state.deviceClass] ?? null;
+  }
+  if (state.domain === 'climate') {
+    const doing = state.attributes.hvac_action;
+    return doing !== undefined && CLIMATE_ACTIVE.includes(doing) ? 'active' : null;
+  }
+  return DOMAIN_TONES[state.domain]?.[state.state] ?? null;
+}
+
+/**
+ * Domains whose value already carries its own unit — a percentage, a degree —
+ * so a `unit_of_measurement` an integration happened to set would be drawn
+ * twice ("Heating · 21° °C").
+ */
+const VALUE_CARRIES_UNIT: readonly string[] = ['light', 'fan', 'cover', 'climate'];
 
 /**
  * One reading, as the display receives it.
@@ -268,6 +562,19 @@ export interface EntityReading {
   readonly mode: DisplayMode;
   /** True when this reading is older than the wall should quietly trust. */
   readonly stale: boolean;
+  /** `toneFor`'s answer: how a tile colours this reading, or `null` for idle. */
+  readonly tone: ReadingTone | null;
+  /**
+   * When the *state* last changed, in epoch milliseconds, or `null` when Home
+   * Assistant did not say.
+   *
+   * Home Assistant's `last_changed`, which moves only when the state does —
+   * not `last_updated`, which moves on every attribute. That is what lets a
+   * tile say "Open · 5 min ago" and still leave the manifest's ETag alone for
+   * as long as the door stays open: the wall works out the "5 min ago" on its
+   * own tick, and the document carries the instant, which does not move.
+   */
+  readonly changedAt: number | null;
 }
 
 export interface WatchedEntity {
@@ -288,9 +595,11 @@ export function toReading(state: HaState, watch: WatchedEntity, fetchedAt: numbe
     value: readState(state),
     // Duplicating the unit into the value would double it up in `value` mode,
     // where the whole point is that the unit is the only context there is.
-    unit: state.unit,
+    unit: VALUE_CARRIES_UNIT.includes(state.domain) ? null : state.unit,
     glyph: glyphFor(state),
     mode,
     stale: now - fetchedAt > STALE_AFTER_MS,
+    tone: toneFor(state),
+    changedAt: state.lastChangedAt,
   };
 }

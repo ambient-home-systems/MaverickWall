@@ -14,7 +14,7 @@ export const entry: CatalogEntry = {
     'program (node server.mjs) you start yourself, so Install asks for that ' +
     'program’s address. For a countdown on your wall, use the built-in ' +
     'Countdown widget instead — this is the reference a module author copies.',
-  // The glyph vocabulary is twenty-nine drawings and has no hourglass, and
+  // The glyph vocabulary is thirty-four drawings and has no hourglass, and
   // `glyph` is required of every entry regardless — the gauge is the nearest
   // thing in the closed set that reads as a dial counting down, and it is
   // what the schema keeps on file even though `emoji` below is what the card
