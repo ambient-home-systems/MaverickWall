@@ -16,6 +16,10 @@
 
 ## Unreleased
 
+Wallpapers now show their name on the tile itself, and the picker has more
+room to show them properly — no more squinting at unlabelled little squares
+behind a dropdown.
+
 ## 0.68.0
 
 **A wall can have a wallpaper.** Open a wall's layout, press **Layout**, and
