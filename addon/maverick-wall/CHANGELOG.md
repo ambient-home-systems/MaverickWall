@@ -16,6 +16,34 @@
 
 ## Unreleased
 
+**A wall's settings split "Appearance" into Design and Look, and each wall on
+the Walls list now says what it looks like.** Design holds the starting-layout
+gallery, spacing and any timed layouts; **Look** is new, and holds the wall's
+shared theme, a link to edit each everyday background, and any wall-wide
+widget style overrides. The Walls list shows a second line under each wall's
+status — its theme, whether a daytime theme is scheduled, or, for an e-paper
+panel, whether it draws its built-in view, its own layout, or follows a wall.
+
+**"Start from a template" is now "Choose a starter design," and it's honest
+about what it replaces.** It always replaces both the portrait and landscape
+layouts and their backgrounds, and some designs change the wall's theme too —
+each one now says so before you use it, both in the gallery and in the
+confirmation you get when applying one to a wall you already have. Picking a
+different theme than the one a design suggests is still allowed; the page
+just asks you to check that its text still reads clearly over that design's
+background.
+
+**A following e-paper panel's page is clearer about what "following" means.**
+Its layout picker now reads "Built-in view — ready to use," "Own layout —
+arrange it here," and "Follow *wall name* — everyday layout," and a line above
+it says which one is active right now. A panel never receives the wall's
+wallpaper, theme, or timed layouts — only its everyday widget arrangement —
+and the page says so plainly rather than leaving it to be discovered.
+
+**There's a new "Walls and designs" page under the docs.** It walks through
+browser wall layouts and backgrounds, e-paper sources, and how themes are
+shared across walls, all in one place.
+
 ## 0.69.0
 
 Wallpapers now show their name on the tile itself, and the picker has more
