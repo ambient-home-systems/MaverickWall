@@ -99,6 +99,7 @@ import {
 } from './omission.js';
 import { inspectorView } from './inspector.js';
 import { previewReadingKeys } from './widget-options.js';
+import { tileOptions } from './house-tiles.js';
 import {
   OCCASIONS,
   OCCASION_LABELS,
@@ -4618,7 +4619,7 @@ function boot(): void {
     section.appendChild(
       switchRow(
         'Inherit the wall’s theme',
-        'Colours, faces, weight, tracking and inset follow the wall. Off, this widget keeps its own.',
+        'Colours, faces, weight, tracking, inset and shadow follow the wall. Off, this widget keeps its own.',
         inheriting,
         (checked) => {
           if (checked) {
@@ -4752,6 +4753,22 @@ function boot(): void {
         insetNames.slice(0, STYLE_INSET_MAX + 1).map((name, step) => [String(step), name] as const),
         String(typeof own?.inset === 'number' ? own.inset : STYLE_INSET_MAX),
         (value) => setStyleMany(targets, 'inset', Number(value)),
+      ),
+    );
+    /*
+     * The card shadow (P5.3): the theme's, or none. A lane can take a shadow
+     * away and never add one — `STYLE_SHADOWS` says why — so there is no
+     * "Soft" here to put a shadow back on an e-ink wall that asked for none.
+     */
+    section.appendChild(
+      segControl(
+        'Shadow',
+        [
+          ['theme', 'The theme’s'],
+          ['none', 'None'],
+        ],
+        own?.shadow === 'none' ? 'none' : 'theme',
+        (value) => setStyleMany(targets, 'shadow', value === 'none' ? 'none' : undefined),
       ),
     );
   }
@@ -5551,6 +5568,70 @@ function boot(): void {
     note.textContent = 'None ticked shows them all.';
     note.dataset['cfgKey'] = 'readings';
     configPanel.appendChild(note);
+
+    /*
+     * The tile look's four (plan item P5.3), each written as an absence when
+     * it is the default, so a tile nobody has touched stores only its look.
+     * `VARIANT_HIDES` takes all four off the list look, and the ladder below
+     * off the tile look: a tile is always its mark, its name and its state.
+     */
+    const tile = tileOptions(cfg);
+    configPanel.appendChild(
+      segControl(
+        'Tiles',
+        [
+          ['horizontal', 'Picture beside'],
+          ['vertical', 'Picture above'],
+        ],
+        tile.layout,
+        (value) => setConfig(widget, 'tileLayout', value === 'horizontal' ? undefined : value),
+        'tileLayout',
+      ),
+    );
+    configPanel.appendChild(
+      switchRow(
+        'Show the state',
+        'What it is doing — “Open”, “19.4 °C”. Off, a tile is its picture, its colour and its name.',
+        !tile.hideState,
+        (on) => setConfig(widget, 'hideState', on ? undefined : true),
+        'hideState',
+      ),
+    );
+    configPanel.appendChild(
+      switchRow(
+        'When it changed',
+        '“Open · 5 min ago” on the state line, kept up to date by the wall as the minutes pass.',
+        tile.showChanged,
+        (on) => setConfig(widget, 'showChanged', on ? true : undefined),
+        'showChanged',
+      ),
+    );
+    configPanel.appendChild(
+      switchRow(
+        'Level bar',
+        'A bar under a light’s brightness, a fan’s speed or a blind’s position — the number its state ' +
+          'already says. Only where it costs no tile.',
+        tile.showBar,
+        (on) => setConfig(widget, 'showBar', on ? true : undefined),
+        'showBar',
+      ),
+    );
+    /*
+     * The widget's help (P5.3), on the tile look alone because that is the
+     * look a household arrives at from Home Assistant's own tile card, which
+     * toggles a light when pressed. Keyed to `tileLayout` so it goes where the
+     * tile's controls go.
+     */
+    const help = document.createElement('p');
+    help.className = 'hint';
+    help.dataset['cfgKey'] = 'tileLayout';
+    help.textContent =
+      'A tile shows what a thing is doing and changes nothing. There are no switches to press, no ' +
+      'sliders and nothing to tap, because this wall is never allowed to change anything in your ' +
+      'house. And there are no Home Assistant device pictures — the wall would have to fetch them ' +
+      'from Home Assistant, and it is never given its address. Choose a reading’s picture on the ' +
+      'Readings screen.';
+    configPanel.appendChild(help);
 
     // What each of those readings says. Its default is per entity rather than
     // per widget, which the ladder's own hint explains.

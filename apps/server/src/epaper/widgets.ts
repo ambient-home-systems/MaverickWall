@@ -1607,6 +1607,10 @@ interface EpaperReading {
   readonly value: string;
   readonly mode: string;
   readonly glyph: GlyphKey | undefined;
+  /** A tile's disc is filled for these two (P5.3); anything else is idle. */
+  readonly tone: 'active' | 'alert' | undefined;
+  /** A light's brightness, a fan's speed or a blind's position, 0-100. */
+  readonly level: number | undefined;
 }
 
 function houseReadings(panel: unknown): EpaperReading[] {
@@ -1616,7 +1620,10 @@ function houseReadings(panel: unknown): EpaperReading[] {
   const out: EpaperReading[] = [];
   for (const entry of raw) {
     if (entry === null || typeof entry !== 'object') continue;
-    const row = entry as { key?: unknown; label?: unknown; value?: unknown; mode?: unknown; glyph?: unknown };
+    const row = entry as {
+      key?: unknown; label?: unknown; value?: unknown; mode?: unknown; glyph?: unknown; tone?: unknown;
+      level?: unknown;
+    };
     if (typeof row.label !== 'string' || typeof row.value !== 'string') continue;
     out.push({
       key: typeof row.key === 'string' ? row.key : undefined,
@@ -1624,6 +1631,10 @@ function houseReadings(panel: unknown): EpaperReading[] {
       value: asciiTitle(row.value),
       mode: typeof row.mode === 'string' ? row.mode : 'label_value',
       glyph: isGlyphKey(row.glyph) ? row.glyph : undefined,
+      tone: row.tone === 'active' || row.tone === 'alert' ? row.tone : undefined,
+      // Refused rather than clamped, the wall's rule: a level outside 0-100
+      // is a server being wrong, not a bar to draw full.
+      level: typeof row.level === 'number' && row.level >= 0 && row.level <= 100 ? row.level : undefined,
     });
   }
   return out;
@@ -1656,6 +1667,10 @@ function drawHouse(fb: Framebuffer, m: EpaperMetrics, box: Box, panel: unknown, 
   const cap = config['count'];
   if (typeof cap === 'number' && Number.isFinite(cap) && cap >= 1) {
     readings = readings.slice(0, Math.trunc(cap));
+  }
+  if (variantOf('homeassistant', config) === 'tile') {
+    drawHouseTiles(fb, m, box, readings, config);
+    return;
   }
 
   /*
@@ -1720,6 +1735,154 @@ function drawHouse(fb: Framebuffer, m: EpaperMetrics, box: Box, panel: unknown, 
     const text = fit(line.text, textWidth, { rung });
     drawText(fb, left, y + Math.floor((rowH - m.widget.linePad - textH) / 2), text, { rung });
     y += rowH;
+  }
+}
+
+/**
+ * The house as tiles, on one bit (plan item P5.3, decision D4).
+ *
+ * Each reading is an outlined rounded box holding a disc, its name and its
+ * state — the wall's tile with its colour taken out, because the panel has
+ * none. **The disc is the tone**: filled, with the mark knocked out of it, for
+ * a reading that is `active` (a light on) or `alert` (a door open), and a ring
+ * with the mark inked inside it for one that is neither. So the thing the
+ * wall's circle says in colour — "something here is on" — is said in the one
+ * way a still bit can say it, at a glance from a doorway.
+ *
+ * Honoured from the wall: `tileLayout` (the disc beside the words or above
+ * them), `hideState`, and `showBar`, drawn as a hairline track with the level
+ * filled in solid. **Not honoured: `showChanged`.** A panel shows a frame for
+ * as long as an hour, so "5 min ago" would be wrong within the minute — and
+ * redrawing it to stay true would refresh a battery panel every minute, which
+ * is the churn P3.5 took out of every frame. `PANEL_IGNORES` says so beside the
+ * switch.
+ *
+ * **Every rectangle is a function of the box and the number of readings**, the
+ * refresh contract `render.ts` states: a tile's width comes from a character
+ * budget (`TILE_TEXT_CHARS`) rather than from any reading's words, and the
+ * words are fitted into the rectangle they are given — truncation changes the
+ * ink inside a tile and can never move one.
+ */
+/*
+ * Ten, because that is "Front door" and "Back door", measured on a frame: at
+ * seven the budget drew them "Front do" and "Back doo", and a name cut short is
+ * a different name. A box too narrow for ten a tile draws fewer tiles, each
+ * saying the whole of what it is.
+ */
+const TILE_TEXT_CHARS = 10;
+
+function drawHouseTiles(
+  fb: Framebuffer,
+  m: EpaperMetrics,
+  box: Box,
+  readings: readonly EpaperReading[],
+  config: Config,
+): void {
+  const vertical = str(config, 'tileLayout') === 'vertical';
+  const hideState = config['hideState'] === true;
+  const showBar = config['showBar'] === true;
+  const pad = Math.max(2, Math.round(m.widget.inset / 2));
+  const gap = m.widget.inset;
+  const scale = glyphScaleFor(m.bodyGlyph);
+  const glyphPx = glyphHeight(scale);
+  const disc = glyphPx + 2 * pad;
+  const nameRung = m.body;
+  const stateRung = m.small;
+  const barH = Math.max(2, Math.round(stateRung.height / 3));
+  const textH = nameRung.height + (hideState ? 0 : m.widget.linePad + stateRung.height);
+  const textW = measureText('0'.repeat(TILE_TEXT_CHARS), { rung: nameRung });
+  const anyBar = showBar && readings.some((reading) => reading.level !== undefined);
+  const barRow = anyBar ? pad + barH : 0;
+  const tileH = vertical
+    ? pad * 2 + disc + pad + textH + barRow
+    : pad * 2 + Math.max(disc, textH) + barRow;
+  const minW = vertical ? pad * 2 + Math.max(disc, textW) : pad * 2 + disc + pad + textW;
+
+  const columns = Math.max(1, Math.min(readings.length, Math.floor((box.w + gap) / (minW + gap))));
+  const rows = Math.max(1, Math.floor((box.h + gap) / (tileH + gap)));
+  const shown = Math.min(readings.length, columns * rows);
+  const tileW = Math.floor((box.w - gap * (columns - 1)) / columns);
+
+  for (let index = 0; index < shown; index++) {
+    const reading = readings[index] as EpaperReading;
+    const x = box.x + (index % columns) * (tileW + gap);
+    const y = box.y + Math.floor(index / columns) * (tileH + gap);
+    outlineRounded(fb, x, y, tileW, tileH, pad);
+
+    const inner = tileW - pad * 2;
+    const bodyH = tileH - pad * 2 - barRow;
+    const discX = vertical ? x + Math.floor((tileW - disc) / 2) : x + pad;
+    const discY = vertical ? y + pad : y + pad + Math.floor((bodyH - disc) / 2);
+    const filled = reading.tone !== undefined;
+    drawDisc(fb, discX, discY, disc, filled);
+    if (reading.glyph !== undefined) {
+      drawGlyph(fb, discX + pad, discY + pad, reading.glyph, scale, !filled);
+    }
+
+    const wordsX = vertical ? x + pad : discX + disc + pad;
+    const wordsW = vertical ? inner : x + tileW - pad - wordsX;
+    let wordsY = vertical ? discY + disc + pad : y + pad + Math.floor((bodyH - textH) / 2);
+    const place = (text: string, rung: TypeRung): void => {
+      const fitted = fit(text, Math.max(1, wordsW), { rung });
+      const w = measureText(fitted, { rung });
+      const left = vertical ? x + Math.floor((tileW - w) / 2) : wordsX;
+      drawText(fb, left, wordsY, fitted, { rung });
+      wordsY += rung.height + m.widget.linePad;
+    };
+    place(reading.label, nameRung);
+    if (!hideState) place(reading.value, stateRung);
+
+    if (anyBar && reading.level !== undefined) {
+      const barY = y + tileH - pad - barH;
+      fb.strokeRect(x + pad, barY, inner, barH);
+      const filledW = Math.round((inner * reading.level) / 100);
+      if (filledW > 0) fb.fillRect(x + pad, barY, filledW, barH);
+    }
+  }
+}
+
+/**
+ * A one-pixel outline with rounded corners, rasterised by asking of each
+ * corner pixel's centre whether it falls on the arc — the way `ringAround`
+ * rings a date, and crisp at one bit for the same reason.
+ */
+function outlineRounded(fb: Framebuffer, x: number, y: number, w: number, h: number, radius: number): void {
+  const r = Math.max(1, Math.min(radius, Math.floor(w / 2), Math.floor(h / 2)));
+  fb.hLine(x + r, x + w - 1 - r, y);
+  fb.hLine(x + r, x + w - 1 - r, y + h - 1);
+  fb.vLine(y + r, y + h - 1 - r, x);
+  fb.vLine(y + r, y + h - 1 - r, x + w - 1);
+  const corners: readonly (readonly [number, number, number, number])[] = [
+    [x, y, x + r, y + r],
+    [x + w - r, y, x + w - r, y + r],
+    [x, y + h - r, x + r, y + h - r],
+    [x + w - r, y + h - r, x + w - r, y + h - r],
+  ];
+  for (const [left, top, cx, cy] of corners) {
+    for (let py = top; py < top + r; py++) {
+      for (let px = left; px < left + r; px++) {
+        const d = Math.hypot(px + 0.5 - cx, py + 0.5 - cy);
+        if (d <= r && d > r - 1) fb.set(px, py);
+      }
+    }
+  }
+}
+
+/**
+ * A tile's disc: solid, or a ring one stroke wide, `size` pixels across with
+ * its top-left at (x, y). Solid is a reading that is on or wrong; a ring is
+ * one that is neither.
+ */
+function drawDisc(fb: Framebuffer, x: number, y: number, size: number, solid: boolean): void {
+  const r = size / 2;
+  const cx = x + r;
+  const cy = y + r;
+  const stroke = Math.max(1, Math.round(size / 16));
+  for (let py = y; py < y + size; py++) {
+    for (let px = x; px < x + size; px++) {
+      const d = Math.hypot(px + 0.5 - cx, py + 0.5 - cy);
+      if (d <= r && (solid || d > r - stroke)) fb.set(px, py);
+    }
   }
 }
 
@@ -2084,7 +2247,12 @@ export type PanelInput =
       readonly current?: EpaperCurrent;
     }
   | { readonly kind: 'todo'; readonly list: TodoRead | undefined }
-  | { readonly kind: 'panel'; readonly panel: unknown };
+  | {
+      readonly kind: 'panel';
+      readonly panel: unknown;
+      /** Home Assistant's `tile` look, which reads the same slice differently. */
+      readonly look?: 'tile';
+    };
 
 const NO_INPUT: PanelInput = { kind: 'none' };
 
@@ -2119,8 +2287,21 @@ export function panelInput(type: string, manifest: Manifest, config: Config): Pa
     }
     case 'chores':
       return { kind: 'panel', panel: panels['chores'] };
-    case 'homeassistant':
-      return { kind: 'panel', panel: panels['home'] ?? panels['homeassistant'] };
+    case 'homeassistant': {
+      const panel = panels['home'] ?? panels['homeassistant'];
+      /*
+       * The same slice either way, and the look named beside it on a tile
+       * (P5.3). A widget saved with `variant: 'tile'` before the panel could
+       * draw one drew the list; it draws tiles now, from an unchanged config
+       * and an unchanged slice — so without the look in its input its frame
+       * would keep the old ETag and a panel holding the list would be told
+       * nothing had moved. Named on the tile alone, so every list panel hashes
+       * exactly what it hashed and nothing refreshes that did not change.
+       */
+      return variantOf('homeassistant', config) === 'tile'
+        ? { kind: 'panel', panel, look: 'tile' }
+        : { kind: 'panel', panel };
+    }
     case 'external': {
       const mod = str(config, 'module');
       return { kind: 'panel', panel: mod !== undefined ? panels[mod] : undefined };

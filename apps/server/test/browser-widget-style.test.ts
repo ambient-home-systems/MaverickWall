@@ -438,7 +438,9 @@ describe('the inspector', () => {
           expect(seeded[token], `${token} seeded from the theme`).toBe(value.toLowerCase());
         }
         expect(await page.locator('.le-style select[data-token="--disp"]').inputValue()).toBe('');
-        expect(await page.locator('.le-style .seg button.on').allTextContents()).toEqual(['Regular', 'Normal', 'Normal']);
+        // Weight, tracking, inset, and the shadow (P5.3) left on the theme's:
+        // the lane can take a shadow away and never adds one.
+        expect(await page.locator('.le-style .seg button.on').allTextContents()).toEqual(['Regular', 'Normal', 'Normal', 'The theme’s']);
         // Nothing was written by the switch alone: the stored truth is still no lane.
         expect(await page.locator('#savebar button[data-action="save"]').isDisabled()).toBe(true);
         // The theme builder's guidance is here too, and Panels reads fine.

@@ -140,6 +140,11 @@ export const SAVED_MESSAGES = {
   'ha-entity-added': 'Reading added. No wall shows it yet — a wall needs a Home Assistant widget.',
   'ha-entity-added-shown': 'Reading added — it is on the wall on its next refresh.',
   'ha-entity-removed': 'Reading removed.',
+  // A reading's picture (P5.3). Says what was saved and nothing about a wall:
+  // whether any wall draws the reading is its row's tag to say, and a strip
+  // promising a wall over a house with no Home Assistant widget would be
+  // P1.3's fault one sentence along.
+  'ha-entity-glyph': 'Picture saved.',
   'ha-calendar-added': 'Calendar added.',
   'ha-rule-added': 'Rule added.',
   'ha-rule-removed': 'Rule removed.',

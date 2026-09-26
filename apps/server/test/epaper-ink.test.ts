@@ -110,6 +110,17 @@ function manifest(): Manifest {
           { label: 'Front door', value: 'Locked', glyph: 'lock', mode: 'label_value' },
           { label: 'Kitchen', value: '19.4 C', glyph: 'temperature', mode: 'label_value' },
           { label: 'Garage', value: 'Open', icon: 'garage', mode: 'label_value' },
+          /*
+           * A lamp that is on, at a level, and changed a while ago (P5.3): the
+           * reading a tile's filled disc, its bar and its "5 min ago" are for.
+           * Without one, `showBar` could not be proved to move ink and
+           * `showChanged` could not be proved to move none — a switch probed
+           * against a house with nothing for it to draw proves nothing.
+           */
+          {
+            label: 'Lamp', value: 'On * 60%', glyph: 'light', mode: 'label_value', tone: 'active', level: 60,
+            changedAt: Date.UTC(2026, 7, 22, 15, 25, 0),
+          },
         ],
         fetchedAt: 1,
       },
@@ -242,6 +253,18 @@ const KEY_BASES: Readonly<Record<string, Readonly<Record<string, readonly Record
     from: [{ target: '2026-12-25', variant: 'progress', from: '2026-08-01' }],
     occasion: [{ target: '2026-12-25', variant: 'occasion', occasion: 'christmas' }],
   },
+  /*
+   * The tile's four (P5.3) move ink on the `tile` look alone — probed from a
+   * list base only, every one of them would "prove" itself ignored. And
+   * `showChanged` is probed there too, on a reading that carries a time, and
+   * is proved to move none: that is what `PANEL_IGNORES` says of it.
+   */
+  homeassistant: {
+    tileLayout: [{ variant: 'tile' }],
+    hideState: [{ variant: 'tile' }],
+    showBar: [{ variant: 'tile' }],
+    showChanged: [{ variant: 'tile' }, { variant: 'tile', showBar: true }],
+  },
 };
 
 /** Values that would visibly change a widget that reads the key at all. */
@@ -304,6 +327,11 @@ const PROBES: Readonly<Record<string, readonly unknown[]>> = {
   showLow: [false],
   showIcon: [false],
   readings: [['Kitchen']],
+  // Home Assistant's tile look (P5.3): every non-default value of each.
+  tileLayout: ['vertical'],
+  hideState: [true],
+  showChanged: [true],
+  showBar: [true],
   target: ['2027-01-01'],
   // The countdown's words, picture and confetti (plan item P5.2).
   unitWords: ['sleeps'],
@@ -344,6 +372,8 @@ const PROBES: Readonly<Record<string, readonly unknown[]>> = {
   'style.weight': ['bold'],
   'style.tracking': ['wide'],
   'style.inset': [0, 2],
+  // The lane's one shadow value (P5.3), which a panel draws no more than any other.
+  'style.shadow': ['none'],
   /*
    * A fallback (RFC 014 §5.3): draws where the widget has nothing to say, which
    * under `NOTHING_SET_UP` is every type that can be left out — and nowhere
@@ -586,8 +616,8 @@ describe('a Look, value by value', () => {
       }
     }
     // The countdown joined in P5.2, with the page, the ticket, the bar and the
-    // month as still frames.
-    expect(Object.keys(PANEL_LOOKS).sort()).toEqual(['clock', 'countdown', 'weather']);
+    // month as still frames — and Home Assistant in P5.3, with its tiles.
+    expect(Object.keys(PANEL_LOOKS).sort()).toEqual(['clock', 'countdown', 'homeassistant', 'weather']);
   });
 
   it('draws a forecast’s range as bars, and its colour as the strip (plan item P5.1)', () => {

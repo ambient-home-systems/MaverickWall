@@ -130,6 +130,26 @@ export const STYLE_INSET_CSS: readonly string[] = [
 ];
 
 /**
+ * The card shadow a lane may ask for (plan item P5.3): `none`, and nothing
+ * else. Absent is the theme's own `--shadow-card`.
+ *
+ * **A lane can take a shadow away and never add one.** The shadow is the
+ * theme's token for a reason D8 states: a theme, or an e-ink-sized wall, is
+ * the one place a household with an OLED or e-ink screen switches every
+ * shadow off, and `applyTheme` writes that `none` on the root. A lane that
+ * could say "soft" on its box would outrank the root and put a shadow back on
+ * exactly the screen that asked for none — so the only value is the one that
+ * cannot, and a widget whose tiles or card would rather sit flat says so here.
+ */
+export const STYLE_SHADOWS = ['none'] as const;
+export type StyleShadow = (typeof STYLE_SHADOWS)[number];
+
+/** Shadow to the `--shadow-card` a lane writes on its box. */
+export const STYLE_SHADOW_CSS: Readonly<Record<StyleShadow, string>> = {
+  none: 'none',
+};
+
+/**
  * Which derived tokens depend on which base tokens.
  *
  * What `withTints` and `customTokens` derive, written as the inputs each one
@@ -190,8 +210,8 @@ export const STYLE_DERIVED: readonly { readonly token: string; readonly from: re
  * The lane's shape: the theme's own colour and font tokens, **picked**, all
  * optional — so a colour that is not a `#rrggbb` is refused by the same rule
  * with the same message a theme's is, for ever, and a font stack outside
- * `FONTS` is refused for the reason it is on a theme — plus three enums the
- * tables above map. `.strict()` as everywhere: an unknown key is a 400 and
+ * `FONTS` is refused for the reason it is on a theme — plus the enums the
+ * tables above map (weight, tracking, inset, and since P5.3 the shadow). `.strict()` as everywhere: an unknown key is a 400 and
  * never a silently dropped option (rule five). `--radius` is deliberately not
  * picked, and `style` is not among the ink lane's picked keys, so `ink.style`
  * is a rejected key rather than a second lane nobody designed.
@@ -212,6 +232,7 @@ export const widgetStyleBody = themeTokensSchema
     weight: z.enum(STYLE_WEIGHTS).optional(),
     tracking: z.enum(STYLE_TRACKINGS).optional(),
     inset: z.number().int().min(0).max(STYLE_INSET_MAX).optional(),
+    shadow: z.enum(STYLE_SHADOWS).optional(),
   })
   .strict();
 
@@ -299,5 +320,6 @@ export function resolveStyleTokens(
     const inset = STYLE_INSET_CSS[own.inset];
     if (inset !== undefined) out['--fw-inset'] = inset;
   }
+  if (own.shadow !== undefined) out['--shadow-card'] = STYLE_SHADOW_CSS[own.shadow];
   return Object.keys(out).length === 0 ? undefined : out;
 }

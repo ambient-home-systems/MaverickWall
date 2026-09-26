@@ -557,6 +557,12 @@ export function drawGlyph(
   y: number,
   key: unknown,
   scale: GlyphScale,
+  /**
+   * `false` clears rather than inks, for a mark knocked out of a filled
+   * ground — a Home Assistant tile's disc (P5.3). Defaulted, so every caller
+   * that draws ink on paper is the draw it always was.
+   */
+  ink = true,
 ): boolean {
   const cell = glyphCell(key);
   if (cell === undefined) return false;
@@ -568,7 +574,7 @@ export function drawGlyph(
       if (line[col] !== '#') continue;
       for (let dy = 0; dy < scale; dy++) {
         for (let dx = 0; dx < scale; dx++) {
-          fb.set(left + col * scale + dx, top + row * scale + dy, true);
+          fb.set(left + col * scale + dx, top + row * scale + dy, ink);
         }
       }
     }

@@ -202,6 +202,47 @@ describe('upgrading a database that is already in use', () => {
     db.close();
   });
 
+  it('carries a watched reading through 0055 with its label and no picture of its own (P5.3)', () => {
+    /*
+     * The per-reading picture is one `ALTER TABLE ADD COLUMN` — generated,
+     * then read, never a recreate — so a reading a household already renamed
+     * must come out the other side with its label, its place and its shape
+     * untouched, and `glyph` null. Null is "the automatic one", which is what
+     * every reading drew before the column existed: a wall's list does not
+     * change at the image pull, and nor does its manifest.
+     */
+    const db = new Database(':memory:');
+    const entries = journal();
+    for (const entry of entries.filter((entry) => entry.tag < '0055')) apply(db, entry.tag);
+
+    db.prepare(
+      `INSERT INTO ha_entity_cache (entity_id, state, watched, display_mode, label, sort_order, fetched_at)
+       VALUES ('binary_sensor.front_door', 'on', 1, 'icon_state', 'Front door', 3, 1)`,
+    ).run();
+
+    for (const entry of entries.filter((entry) => entry.tag >= '0055')) apply(db, entry.tag);
+
+    expect(
+      db
+        .prepare(
+          `SELECT entity_id, state, watched, display_mode, label, sort_order, glyph
+             FROM ha_entity_cache`,
+        )
+        .all(),
+    ).toEqual([
+      {
+        entity_id: 'binary_sensor.front_door',
+        state: 'on',
+        watched: 1,
+        display_mode: 'icon_state',
+        label: 'Front door',
+        sort_order: 3,
+        glyph: null,
+      },
+    ]);
+    db.close();
+  });
+
   it('leaves a screen that is already hung with no size and no reading distance (0037)', () => {
     /*
      * The two facts that size type arrive on a table full of screens.

@@ -41,6 +41,8 @@ interface WatchRow {
   readonly label: string | null;
   readonly displayMode: string;
   readonly sortOrder: number;
+  /** The household's own picture (P5.3), or null for the automatic one. */
+  readonly glyph: string | null;
   readonly state: string | null;
   readonly friendlyName: string | null;
   readonly unit: string | null;
@@ -123,7 +125,7 @@ export async function fetchCalendarEntities(
 }
 
 const SELECT_WATCHED = `SELECT entity_id AS entityId, label, display_mode AS displayMode,
-          sort_order AS sortOrder, state, friendly_name AS friendlyName,
+          sort_order AS sortOrder, glyph, state, friendly_name AS friendlyName,
           unit_of_measurement AS unit, last_changed_at AS lastChangedAt,
           fetched_at AS fetchedAt, attributes
      FROM ha_entity_cache WHERE watched = 1
@@ -182,6 +184,7 @@ export const haModule: PanelModule = {
           label: row.label,
           displayMode: modeOf(row.displayMode),
           sortOrder: row.sortOrder,
+          glyph: row.glyph,
         },
         row.fetchedAt,
         context.now,

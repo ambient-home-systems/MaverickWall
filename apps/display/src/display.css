@@ -1177,13 +1177,18 @@ body {
 /* --- THE HOUSE -------------------------------------------------------- */
 
 /*
- * A few readings, and deliberately not a dashboard.
+ * A few readings, and deliberately not a dashboard — the `list` look, which is
+ * every Home Assistant widget's default.
  *
- * The same strip shape as the forecast rather than a grid of tiles: this is
- * ambient context beside a calendar, and Home Assistant already has a
- * dashboard that is better than anything that would fit here. Flex rather
- * than a fixed column count, because a household picks how many readings
- * there are and five equal columns holding two of them looks broken.
+ * The same strip shape as the forecast: this is ambient context beside a
+ * calendar, and Home Assistant already has a dashboard that is better than
+ * anything that would fit here. This used to say "rather than a grid of
+ * tiles" as well, and decision D4 (plan item P5.3) reversed that half: a
+ * widget may wear Home Assistant's tile card (`.house-tiles`, below). What
+ * stands is the other half — a tile shows a state and controls nothing, so it
+ * is Lovelace's look on the wall and never Lovelace's job. Flex rather than a
+ * fixed column count, because a household picks how many readings there are
+ * and five equal columns holding two of them looks broken.
  */
 .house {
   display: flex;
@@ -1211,6 +1216,141 @@ body {
 .hs-note {
   flex: 1 0 100%;
   padding-top: var(--s2);
+  font-size: 1.2rem;
+  color: var(--faint);
+}
+
+/*
+ * The `tile` look (plan item P5.3, decision D4): Home Assistant's tile card,
+ * one per reading — its mark in a filled circle coloured by what the thing is
+ * doing, its name, and its state.
+ *
+ * **A grid whose column count the box decides.** `--ht-cols` is written by the
+ * tier pass from the box's width (`HOUSE_TILE_TIERS`, `TILE_COLUMN_CH`); tiles
+ * flow across and down, and nothing is scaled — a box that cannot hold a
+ * tile's words draws fewer of them, and one that cannot hold another row draws
+ * fewer tiles. `em` inside a tile is the name's role, so the circle, the glyph
+ * and the bar are lengths in the size a household reads the name at: on a
+ * measured wall that is the event role's angle at their eye.
+ *
+ * **Separated in the rule's order**: space between the tiles, a hairline round
+ * each, and a ground step — the tile is the theme's `--bg` on a canvas that
+ * paints `--panel` — with the theme's `--shadow-card` laid on top (decision
+ * D8). Never the shadow alone, so Blueprint and Swiss, which set none, and an
+ * e-ink-sized wall, which sets none, still draw tiles a household can tell
+ * apart. A widget's style lane may set the shadow to none on its own box
+ * (`style.shadow`); it can never grow one.
+ *
+ * **The circle is the tone and the glyph is the ground.** `--state-active`,
+ * `--state-alert` and `--state-idle` are each held to 4.5:1 against both of a
+ * theme's grounds (`paletteTokens`), and contrast is symmetric — so a glyph in
+ * the tile's own `--bg` on any of the three is legible by construction rather
+ * than by a colour chosen here.
+ *
+ * `line-height` is a number throughout, for the reason `.wx`'s neighbours
+ * give: `normal` is a property of the face file, and a tile a pixel taller
+ * when a font lands is a row count that changes on its own.
+ */
+.house-tiles {
+  display: grid;
+  grid-template-columns: repeat(var(--ht-cols, 1), minmax(0, 1fr));
+  gap: var(--s2);
+  align-content: start;
+  flex: 0 0 auto;
+  font-size: var(--t-wall-event, 1.5rem);
+  line-height: 1.15;
+}
+.ht-tile {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas: "circle words" "bar bar";
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+  padding: var(--s2);
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius, 0.4rem);
+  box-shadow: var(--shadow-card, none);
+}
+.house-tiles[data-layout="vertical"] .ht-tile {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "circle" "words" "bar";
+  justify-items: center;
+  text-align: center;
+}
+.ht-tile[data-tone="active"] {
+  --ht-tone: var(--state-active);
+}
+.ht-tile[data-tone="alert"] {
+  --ht-tone: var(--state-alert);
+}
+.ht-tile[data-tone="idle"] {
+  --ht-tone: var(--state-idle);
+}
+.ht-circle {
+  grid-area: circle;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.2em;
+  height: 2.2em;
+  border-radius: 50%;
+  background: var(--ht-tone);
+  color: var(--bg);
+}
+.ht-ico { width: 1.3em; height: 1.3em; }
+.ht-words {
+  grid-area: words;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.house-tiles[data-layout="vertical"] .ht-words { align-items: center; }
+/* A name wraps at a word rather than being cut: "Year 6…" is a different
+   string, and so is "Living ro…". The row it lands in grows, and the tier
+   pass counts rows off the drawn tiles, so a wrapped name costs a row and
+   never a clipped one. */
+.ht-name {
+  font-size: var(--t-wall-event, 1.5rem);
+  font-weight: 600;
+  color: var(--ink);
+  overflow-wrap: break-word;
+}
+.ht-state {
+  font-size: var(--t-wall-time, 1.3rem);
+  color: var(--ink);
+  overflow-wrap: break-word;
+}
+/* When it changed is a detail of the state, quieter than it, and never split
+   across a line: "5 min" over "ago" reads as two facts. */
+.ht-ago { color: var(--muted); white-space: nowrap; }
+/* A reading nobody has been able to refresh is dimmed rather than removed,
+   the list's rule: a faded state says "this is old". */
+.ht-stale .ht-state { color: var(--muted); }
+/* The bar: a track in the rule colour and the number the state line says,
+   in the tile's tone. Displayed and never pressed — there is nothing here a
+   finger could drag (hard rule 12). */
+.ht-bar {
+  grid-area: bar;
+  justify-self: stretch;
+  position: relative;
+  height: 0.3em;
+  border-radius: 0.15em;
+  background: var(--rule);
+  overflow: hidden;
+}
+.ht-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: inherit;
+  background: var(--ht-tone);
+}
+.ht-note {
+  grid-column: 1 / -1;
+  padding-top: var(--s1);
   font-size: 1.2rem;
   color: var(--faint);
 }

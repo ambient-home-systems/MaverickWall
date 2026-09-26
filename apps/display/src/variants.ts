@@ -15,14 +15,15 @@
  * its default, the same way a Weather widget reads a shift field in `fields`
  * as nothing to do with it.
  *
- * **The clock's variants and all five of the forecast's draw; the rest do
- * not yet.** The other lists are the values the plan names, added ahead of
- * their drawings so the schema, the editor and the panel's honours tables
- * have one shape to grow into; every renderer draws its type's default for
- * every one of them until the session that designs it (P5.2–P5.4).
+ * **The clock's, the forecast's, the countdown's and Home Assistant's tile
+ * draw; the calendar's two do not yet.** Those are the values the plan names,
+ * added ahead of their drawings so the schema, the editor and the panel's
+ * honours tables have one shape to grow into; every renderer draws the
+ * calendar's default for both until the session that designs them (P5.4).
  * `browser-widget-looks.test.ts` holds the wall to that and
- * `epaper-ink.test.ts` holds the panel to it; the designed forecasts are
- * measured in `browser-weather-range`, `-colour`, `-today` and `-playful`.
+ * `epaper-ink.test.ts` holds the panel to it; the designed looks are measured
+ * in `browser-weather-range`, `-colour`, `-today` and `-playful`, the
+ * `browser-countdown-*` files and `browser-ha-tile`.
  *
  * Pure, with no DOM, for the reason `widget-options.ts`, `ink.ts` and
  * `ladder.ts` are: the renderer builds nodes and does no thinking, and there is
@@ -177,7 +178,15 @@ export const VARIANT_HIDES: {
     progress: ['occasion'],
     month: ['occasion', 'from'],
   },
-  homeassistant: { list: [], tile: [] },
+  // A tile is always its mark, its name and its state, so the list's ladder —
+  // which of those three a reading says, and in what order — is a control
+  // that moves nothing on it; the tile's own four options are the list's
+  // nothing in return (P5.3). The help that says what a tile deliberately
+  // cannot do rides on `tileLayout` and goes with it.
+  homeassistant: {
+    list: ['tileLayout', 'hideState', 'showChanged', 'showBar'],
+    tile: ['fields'],
+  },
   calendar: { '': [], planner: [], bold: [] },
 };
 

@@ -8095,6 +8095,91 @@ plus one row `motion.test.ts` generates for every module in `main.ts`'s import
 graph, which `wallpaper.ts` now is. No ratchet baseline moved and none was
 asked to: nothing changes on a wall with no wallpaper.
 
+**The Home Assistant widget has a `tile` look, and the look is Lovelace's while
+the job is not (plan item P5.3, decision D4, session S19).** Each reading is a
+rounded tile: its picture in a filled circle coloured by what the thing is
+doing — `--state-active`, `--state-alert` or `--state-idle`, from the server's
+tone, with the mark knocked out in `--bg` — then its name, then its state with
+the unit, optionally "· 5 min ago" and optionally a bar for a light's
+brightness, a fan's speed or a blind's position. A tile shows a state and
+controls nothing: no toggle, no slider, no tap action, and no Home Assistant
+device picture, because a picture is an address on the household's Home
+Assistant and the wall is never given one. The widget's help in the editor
+says both, and the four places that said the widget was "not competing with
+Lovelace" (`haEntityCache.displayMode`, the `entities.ts` header, `renderHouse`
+and the `.house` rule) now say what D4 changed and what it did not. The list
+look is untouched: its `outerHTML` on a paired wall is identical with and
+without the tone, time and level a tile reads, and its panel frames are
+byte-identical to hashes taken on a clean worktree of `3b2aab2`.
+
+**The box decides, the way every other widget's does.** `HOUSE_TILE_TIERS` is
+in `ch` and `em` of the name's role, one table per layout (the picture beside
+the words or above them). A column opens exactly where a tile can say its name
+and its state (`TILE_COLUMN_CH` is T1's width), the gaps between columns are
+charged, and a narrow tile gives up when-it-changed first, then the name, and
+keeps the state — `HOUSE_TIERS`' argument one look along, since a thermometer
+whose tile says "Kitchen" and not "19.4 °C" has said nothing its colour could
+not. Tiles flow and nothing is scaled. "5 min ago" is worked out on every
+fifteen-second draw from the instant the manifest carries, floored like
+`describeAge`, and the browser test watches it move from 7 to 10 minutes with
+every manifest request aborted. **A bar never costs a tile**: the pass draws
+the box without bars and with them, counts what the belt leaves visible each
+way, and keeps the bars only if the counts agree. The first version divided the
+box by one row's height, and a row is not one height, so it kept bars the belt
+then took away together with their tiles; that fault was found by a mutation
+("always keep the bar") that stayed green. The card sits on `--bg` with a
+hairline and the theme's `--shadow-card`, and the style lane can set the shadow
+to `none` and can never add one (`STYLE_SHADOWS`, in the parity block).
+
+**A reading can have its own picture, chosen on the Readings screen**
+(migration `0055`, `ha_entity_cache.glyph`: one generated `ADD COLUMN`, read,
+walked by `migration-upgrade`). It is stored beside the label and drawn by
+every look on both media. Null is the automatic picture, so no reading's
+picture changes at upgrade. Re-adding a reading resets it, a picture outside
+the vocabulary is refused with a sentence, and the saved strip says "Picture
+saved." rather than claiming a wall draws it (P1.3's rule). The level is
+`levelFor`, sent only where the state's own words carry the same percentage,
+and refused outside 0–100 on the server, in the model and on the panel rather
+than clamped. `homeassistant.test.ts` asks the rule-12 boundary again with tile
+widgets on both canvases, every option set and a chosen picture: no entity id,
+no token, no address.
+
+**The panel draws tiles as outlined rounded boxes**, with the circle filled
+and the mark knocked out for active and alert, and ringed for idle. On one bit
+alert and active are the same picture, and that is recorded rather than hidden.
+The panel draws the bar as a track and a fill. `variant`, `tileLayout`,
+`hideState` and `showBar` are in `PANEL_HONOURS.homeassistant`, with the tile in
+`PANEL_LOOKS` and `variant` in `INK_LANE`. `showChanged` is in `PANEL_IGNORES`
+with its reason (a panel shows one picture for up to an hour), and so is
+`style.shadow`. `epaper-ink` proves each of them by rendering. A stored tile
+config's `panelInput` carries `look: 'tile'`, so a tile panel gets a new frame
+ETag while `EPAPER_RENDERER_VERSION` stays where it was: no list frame moves.
+
+**Twenty-four mutations were checked and all are red**: fifteen on the wall,
+each on a rebuilt bundle, eight on the panel and one on the server. Three were
+green at first and are red now only because the tests grew. The first is the
+bar-always-kept mutation above. The second is a bar drawn at half its level on
+the panel, where the test first measured from the tile's edge rather than the
+drawn track. The third is a panel tile sized from its widest name. A sixteenth
+wall mutation, tiles hidden by the belt alone, is not counted, because the
+rewrite removed the code it mutated. `wall-density` and
+`browser-classic-proportions` are green with no baseline moved, since Classic
+has no Home Assistant widget. **Still unproven where it counts:** no real Home
+Assistant, no kitchen wall and no photographed panel has shown a tile.
+
+**4604 tests passing and 1 skipped, over 322 files**: calendar 153 over 10 ·
+core 314 over 9 · display 846 over 46 · server 3291 over 257. Measured with
+`pnpm test` and a real Chromium (`MW_BROWSER_EXECUTABLE`) on a clone whose tags
+had been fetched, after merging `main` at #302, whose own migration took the
+number 0054 and moved this one to 0055. Against 4562 over 319 above, that is
++42 and +3, and it is this change's own count. On the display, `house-tiles`
+adds 12, `variants` and `viewmodel` one each, and `motion` one generated row
+for `house-tiles.ts`, which is now in `main.ts`'s import graph. On the server,
+`browser-ha-tile` adds 11 and `epaper-house-tiles` 12, `homeassistant` 2,
+`migration-upgrade` 1 and `widget-style` 1. One existing assertion changed its
+letter: `browser-widget-style` lists the lane's segments, and the lane now has
+a fourth.
+
 **The calendar draws a rota in the look the household chooses, for everyone
 on it, on every view (plan item P5.4, parts 1–3).** `shiftStyle` is one enum
 on the widget — `tint` (the wash and the top rule every wall has drawn, and
@@ -8152,7 +8237,7 @@ case is asserted now. Two findings are recorded rather than changed: the
 legend under the month grid is a row the cells get back when the rota is off
 (13 names to 11 at 1920x1080), and a second person's chip is a second line in
 the agenda's date column, which costs the portrait Classic agenda its third
-day. **4569 tests passing and 1 skipped, over 319 files**: calendar 153 over 10 · core 314 over 9 · display 836 over 45 · server 3266 over 255, measured with `pnpm test` and a real Chromium (`MW_BROWSER_EXECUTABLE` naming the provisioned binary, for the revision mismatch S01 recorded) on a clone whose tags had been fetched (`git fetch --tags --unshallow`, which `changelog-shape.test.ts` asks for). Against the 4526 over 315 recorded above, that is +43 tests and +4 files. This change adds four files carrying 40 tests by its own count (`shift-style.test.ts` 10, `shift-style-parity.test.ts` 7, `epaper-shift-label.test.ts` 6, `browser-calendar-shift-styles.test.ts` 17) and one test to `viewmodel.test.ts`, so the arithmetic predicts +41 and the reading says +43 — one more on the display and one more on the server than the diff explains, which is the paragraph above's own warning arriving on schedule and the reason the number here is the reading and not the sum. **Measured again on the tree after `main` was merged in**, which had taken the wallpapers (P6.1 and P6.4, the paragraph above this one) meanwhile: **4605 passing and 1 skipped, over 323 files** — calendar 153 over 10 · core 314 over 9 · display 843 over 46 · server 3295 over 258 — with every file green and nothing timed out. That is 4526 + 36 + 43, the two paragraphs' own deltas summed, so the arithmetic and the reading agree, which is recorded as the observation it is.
+day. **4569 tests passing and 1 skipped, over 319 files**: calendar 153 over 10 · core 314 over 9 · display 836 over 45 · server 3266 over 255, measured with `pnpm test` and a real Chromium (`MW_BROWSER_EXECUTABLE` naming the provisioned binary, for the revision mismatch S01 recorded) on a clone whose tags had been fetched (`git fetch --tags --unshallow`, which `changelog-shape.test.ts` asks for). Against the 4526 over 315 recorded above, that is +43 tests and +4 files. This change adds four files carrying 40 tests by its own count (`shift-style.test.ts` 10, `shift-style-parity.test.ts` 7, `epaper-shift-label.test.ts` 6, `browser-calendar-shift-styles.test.ts` 17) and one test to `viewmodel.test.ts`, so the arithmetic predicts +41 and the reading says +43 — one more on the display and one more on the server than the diff explains, which is the paragraph above's own warning arriving on schedule and the reason the number here is the reading and not the sum. **Measured again on the tree after `main` was merged in, twice**, because `main` took two items while this one was being verified: after the wallpapers (P6.1 and P6.4) it read 4605 passing and 1 skipped over 323 files, and after the Home Assistant tiles (P5.3) as well — the paragraph above this one — **4647 passing and 1 skipped, over 326 files**: calendar 153 over 10 · core 314 over 9 · display 858 over 47 · server 3322 over 260, every file green and nothing timed out. Both readings are the paragraphs' own deltas summed (4526 + 36 + 43, then + 42), so the arithmetic and the reading agree, which is recorded as the observation it is.
 
 ---
 
