@@ -434,6 +434,15 @@ const ignoredOn = (type: string, key: string): boolean =>
  * `draws every key … is said to honour` still asks it of the clock.
  */
 const ASKED_BY_VALUE: ReadonlySet<string> = new Set(['variant']);
+/**
+ * The comfortable month's four looks (plan item P5.4), asked in bodies of
+ * their own. Each is probed on the calendar's month base — the dearest frame
+ * this file draws — and adding them to the one "draws nothing else" body took
+ * it from about 2.2s to 3.2s in isolation and past 5s on a CI runner with the
+ * browser suite beside it, which is the timeout the style lane was split out
+ * for. Same cure, same reason: the render cost is real and fixed.
+ */
+const MONTH_LOOKS: ReadonlySet<string> = new Set(['todayStyle', 'monthHeading', 'eventMark', 'gridLines']);
 /*
  * Every stored option, one level down into the style lane: `style` itself is
  * not a setting a panel can honour or ignore as one thing — its `inset` moves
@@ -481,7 +490,17 @@ describe('what a panel honours, checked against the panel', () => {
     const honoured = new Set(PANEL_HONOURS[type] ?? []);
     const unhonoured = SCHEMA_KEYS.filter((key) => !honoured.has(key));
     it(`draws nothing else for ${type}`, () => {
-      for (const key of unhonoured.filter((key) => !key.startsWith('style.') && !ASKED_BY_VALUE.has(key))) {
+      for (const key of unhonoured.filter(
+        (key) => !key.startsWith('style.') && !ASKED_BY_VALUE.has(key) && !MONTH_LOOKS.has(key),
+      )) {
+        expect(movesInk(type, key), `${type}.${key} moves ink but is not in PANEL_HONOURS`).toBe(
+          false,
+        );
+      }
+    });
+
+    it(`draws nothing else from the month's looks for ${type}`, () => {
+      for (const key of unhonoured.filter((key) => MONTH_LOOKS.has(key))) {
         expect(movesInk(type, key), `${type}.${key} moves ink but is not in PANEL_HONOURS`).toBe(
           false,
         );
@@ -533,7 +552,17 @@ describe('what a panel cannot honour, and says so', () => {
        * one of these did move ink, a household would be told a setting is
        * ignored while watching it work.
        */
-      for (const entry of PANEL_IGNORES.filter((one) => isAbout(one, type) && !ASKED_BY_VALUE.has(one.key))) {
+      for (const entry of PANEL_IGNORES.filter(
+        (one) => isAbout(one, type) && !ASKED_BY_VALUE.has(one.key) && !MONTH_LOOKS.has(one.key),
+      )) {
+        expect(movesInk(type, entry.key), `${type}.${entry.key} is ignored but moves ink`).toBe(
+          false,
+        );
+      }
+    });
+
+    it(`draws none of the month's looks it ignores, on ${type}`, () => {
+      for (const entry of PANEL_IGNORES.filter((one) => isAbout(one, type) && MONTH_LOOKS.has(one.key))) {
         expect(movesInk(type, entry.key), `${type}.${entry.key} is ignored but moves ink`).toBe(
           false,
         );
