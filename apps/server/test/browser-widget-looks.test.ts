@@ -60,13 +60,15 @@ let screenId: string;
 
 /**
  * The types with looks the wall does not draw yet: every type's but the
- * clock's, the forecast's and the countdown's. The forecast left this list
+ * clock's, the forecast's, the countdown's and the calendar's. The calendar
+ * left it when P5.4 designed `planner` and `bold`, which are measured in
+ * `browser-calendar-looks`. The forecast left this list
  * when P5.1 designed the last two of its five (`today` and `playful`), and the
  * countdown when P5.2's second half designed `occasion`, `progress` and
  * `month`; their rows stay on the canvas below, so every other row keeps the
  * box it was measured in.
  */
-const UNDRAWN: readonly VariantType[] = ['homeassistant', 'calendar'];
+const UNDRAWN: readonly VariantType[] = ['homeassistant'];
 /**
  * The looks on those types that *are* designed now, and are measured in their
  * own files instead. The countdown emptied it when it left `UNDRAWN` (its six

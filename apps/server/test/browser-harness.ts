@@ -305,6 +305,12 @@ export interface FeedEvent {
    * the same way, and it is only meaningful beside `from`/`to`.
    */
   readonly toDay?: number;
+  /**
+   * Where it is, as the feed's `LOCATION` — for the agenda's "Show locations"
+   * (plan item P5.4). Absent writes no line, so every existing fixture sends
+   * the bytes it always sent.
+   */
+  readonly location?: string;
 }
 
 export interface Installation {
@@ -972,10 +978,11 @@ function icsBody(
 ): string {
   const stamp = (days: number): string => fixtureDate(zone, days, new Date(at));
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Maverick Wall tests//EN'];
-  events.forEach(({ title, day, from, to, days, toDay }, index) => {
+  events.forEach(({ title, day, from, to, days, toDay, location }, index) => {
     // Unique per feed as well as per event: two calendars sharing a UID is one
     // calendar as far as any deduplication downstream is concerned.
     lines.push('BEGIN:VEVENT', `UID:e${index}${salt}@browser-test`, `SUMMARY:${title}`);
+    if (location !== undefined) lines.push(`LOCATION:${location}`);
     if (from === undefined || to === undefined) {
       // DTEND is exclusive: an all-day event covering `days` days ends on the
       // day *after* the last one it is on, so a one-day event on the 15th ends

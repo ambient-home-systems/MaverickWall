@@ -74,6 +74,8 @@ const SHELL = [
   '/assets/orientation.js',
   '/assets/render.js',
   '/assets/shift-style.js',
+  '/assets/calendar-filter.js',
+  '/assets/calendar-looks.js',
   '/assets/store.js',
   '/assets/theme.js',
   '/assets/tiers.js',

@@ -65,6 +65,7 @@ import type { CivilDate } from '@maverick-wall/core';
 import { ditherRect } from './dither.js';
 import { DENSITY_STEPS, densitySteps, monthSpans, type MonthSpan } from './month-spans.js';
 import { shiftLabelForms, type ShiftMark } from './shift-style.js';
+import { keepCalendars } from './calendar-filter.js';
 import { drawText, measureText, rungStep, type TextOptions, type TypeRung } from './font.js';
 import { Framebuffer } from './framebuffer.js';
 import {
@@ -497,6 +498,12 @@ export interface MonthOptions {
    * is the label, and `PANEL_IGNORES` says so beside the control.
    */
   readonly shifts?: boolean;
+  /**
+   * The calendars to draw, by source id — empty or absent is every one (plan
+   * item P5.4). The wall's month honours the widget's "Which calendars" and a
+   * panel following it must draw the same month.
+   */
+  readonly calendars?: readonly string[];
 }
 
 /**
@@ -549,12 +556,23 @@ function drawCellShifts(
 /** The rolling month grid within a box. */
 export function drawMonthBox(
   fb: Framebuffer,
-  model: EpaperModel,
+  source: EpaperModel,
   m: EpaperMetrics,
   box: Box,
   options: MonthOptions = {},
   log?: RegionLog,
 ): void {
+  /*
+   * Only the calendars the widget keeps, read the way the wall reads them
+   * (`calendar-filter.ts`, transcribed) — before anything is counted, spanned
+   * or drawn, so a bar, a name and a "+N" all describe the same month. An
+   * empty selection is every calendar and hands back the model untouched.
+   */
+  const calendars = options.calendars ?? [];
+  const model: EpaperModel =
+    calendars.length === 0
+      ? source
+      : { ...source, weeks: source.weeks.map((week) => week.map((cell) => keepCalendars(cell, calendars))) };
   note(log, 'month', box.x, box.y, box.w, box.h);
   const weeks = model.weeks.length;
   const labelH = m.monthHeadH;

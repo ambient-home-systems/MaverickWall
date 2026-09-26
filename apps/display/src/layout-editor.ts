@@ -21,6 +21,7 @@ import { ADMIN_WALLPAPER_BASE } from './wallpaper.js';
 import { buildModel, type DisplayModel } from './viewmodel.js';
 import { applyTheme, themeTokens } from './theme.js';
 import {
+  lookLane,
   resolveStyleTokens,
   setStyleValue,
   styleLayerOf,
@@ -113,6 +114,7 @@ import {
 import { EMOJI_KEYS, emojiNode } from './emoji.js';
 import { TIER_NAMES, type TierName } from './tiers.js';
 import { shiftStyle, shiftsShown } from './shift-style.js';
+import { drawsRows, monthLooks, type MonthLooks, type MonthTreatment } from './calendar-looks.js';
 import { PALETTE, SWATCH, describeWidget, describeWidgetIn, labelFor } from './widget-labels.js';
 import {
   HOUSE_FIELDS,
@@ -2146,7 +2148,15 @@ function boot(): void {
        * widget down — against the same base the seeded controls read.
        */
       const own = styleLayerOf(w.config?.['style']);
-      const tokens = resolveStyleTokens(styleBase(), styleContext(), own);
+      // A calendar's look is a lane under the widget's own, resolved as the
+      // server resolves it (`lookLane`, in the parity block).
+      const context = styleContext();
+      const base = styleBase();
+      const inkOf = (layer: StyleLayer | undefined): string | undefined =>
+        typeof layer?.['--ink'] === 'string' ? (layer['--ink'] as string) : undefined;
+      const look = lookLane(w.type, w.config?.['variant'], inkOf(own) ?? inkOf(context[0]) ?? base['--ink']);
+      const lane: StyleLayer | undefined = look === undefined ? own : { ...look, ...(own ?? {}) };
+      const tokens = resolveStyleTokens(base, context, lane);
       return tokens === undefined ? placed : { ...placed, styleTokens: tokens };
     });
 
@@ -5082,11 +5092,20 @@ function boot(): void {
           'cellEvents',
         ),
       );
+      buildMonthLooks(widget, cfg, current);
     }
 
-    // Which calendars to show — for the week columns and the agenda, where
-    // filtering means something; the month grid is a whole month at a glance.
-    if (view === 'week') {
+    /*
+     * Which calendars to show — on every view now (plan item P5.4, part 5).
+     *
+     * It was offered on the week and the agenda alone, on the argument that the
+     * month is a whole month at a glance — and the comfortable month ignored it
+     * on both renderers while the compact one read it, so one stored value drew
+     * two months on one wall. Both month densities and a following panel apply
+     * it now through one reading (`calendar-filter.ts`). The household-wide
+     * "Show on the calendar grid" on each calendar still applies first.
+     */
+    if (view === 'week' || view === 'month') {
       const which = cfgField('Calendars to show', 'calendars');
       which.appendChild(
         checkList(
@@ -5145,7 +5164,108 @@ function boot(): void {
           (checked) => setConfig(widget, 'showWeather', checked ? true : undefined),
         ),
       );
+
+      // Where each event is, after its title (plan item P5.4, part 6). Off
+      // unless asked for, so no agenda already hanging changes; and drawn
+      // only where it fits on the title's last line, which the hint says,
+      // because a place that silently appears on some events and not others
+      // would otherwise read as missing data.
+      configPanel.appendChild(
+        switchRow(
+          'Show locations',
+          'After the title, where it fits on the same line.',
+          cfg['showLocations'] === true,
+          (checked) => setConfig(widget, 'showLocations', checked ? true : undefined),
+          'showLocations',
+        ),
+      );
     }
+  }
+
+  /**
+   * The comfortable month's looks (plan item P5.4): today, the heading, the
+   * event mark and the rules.
+   *
+   * Each segment shows the look this month draws now, which with nothing
+   * stored is its cell treatment's own — a ring and no heading on the flat-text
+   * month, an accent numeral and a large heading on the Swiss one — and a
+   * choice is stored only when it differs from that, so the treatment's own
+   * look is always an absence (`monthLooks` resolves it, and is what the wall
+   * reads). The mark and the rules are offered only on the two treatments that
+   * draw rows and a structure of rules; pills and dots read neither.
+   *
+   * Not on the ink lane: a panel's month is its own one-bit drawing and reads
+   * none of the four, and `PANEL_IGNORES` says so beside each — which the lane
+   * shows against the settings the wall has, because these carry their keys.
+   */
+  function buildMonthLooks(widget: Widget, cfg: Record<string, unknown>, treatment: MonthTreatment): void {
+    if (lane === 'ink') return;
+    const looks = monthLooks(cfg, treatment);
+    const store = (key: string, value: string, field: keyof MonthLooks): void => {
+      const own = monthLooks({ ...cfg, [key]: undefined }, treatment)[field];
+      setConfig(widget, key, value === own ? undefined : value);
+    };
+    configPanel.appendChild(
+      segControl(
+        'Today',
+        [
+          ['ring', 'Ring'],
+          ['fill', 'Fill'],
+          ['numeral', 'Numeral'],
+        ],
+        looks.today,
+        (value) => store('todayStyle', value, 'today'),
+        'todayStyle',
+      ),
+    );
+    configPanel.appendChild(
+      segControl(
+        'Month heading',
+        [
+          ['large', 'Large'],
+          ['small', 'Small'],
+          ['hidden', 'Hidden'],
+        ],
+        looks.heading,
+        (value) => store('monthHeading', value, 'heading'),
+        'monthHeading',
+      ),
+    );
+    if (looks.heading !== 'hidden') {
+      // Said where it is chosen: a heading is the one look that spends room,
+      // and it spends it on the grid's rows.
+      const cost = document.createElement('p');
+      cost.className = 'hint';
+      cost.dataset['cfgKey'] = 'monthHeading';
+      cost.textContent = 'The heading takes a line from the grid, so a small box may name fewer events.';
+      configPanel.appendChild(cost);
+    }
+    if (!drawsRows(treatment)) return;
+    configPanel.appendChild(
+      segControl(
+        'Event marks',
+        [
+          ['dot', 'Dot'],
+          ['bar', 'Bar'],
+          ['text', 'Coloured text'],
+        ],
+        looks.mark,
+        (value) => store('eventMark', value, 'mark'),
+        'eventMark',
+      ),
+    );
+    configPanel.appendChild(
+      segControl(
+        'Lines',
+        [
+          ['week', 'Week rules'],
+          ['none', 'None'],
+        ],
+        looks.rules,
+        (value) => store('gridLines', value, 'rules'),
+        'gridLines',
+      ),
+    );
   }
 
   /**

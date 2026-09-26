@@ -8306,6 +8306,123 @@ legend under the month grid is a row the cells get back when the rota is off
 the agenda's date column, which costs the portrait Classic agenda its third
 day. **4569 tests passing and 1 skipped, over 319 files**: calendar 153 over 10 · core 314 over 9 · display 836 over 45 · server 3266 over 255, measured with `pnpm test` and a real Chromium (`MW_BROWSER_EXECUTABLE` naming the provisioned binary, for the revision mismatch S01 recorded) on a clone whose tags had been fetched (`git fetch --tags --unshallow`, which `changelog-shape.test.ts` asks for). Against the 4526 over 315 recorded above, that is +43 tests and +4 files. This change adds four files carrying 40 tests by its own count (`shift-style.test.ts` 10, `shift-style-parity.test.ts` 7, `epaper-shift-label.test.ts` 6, `browser-calendar-shift-styles.test.ts` 17) and one test to `viewmodel.test.ts`, so the arithmetic predicts +41 and the reading says +43 — one more on the display and one more on the server than the diff explains, which is the paragraph above's own warning arriving on schedule and the reason the number here is the reading and not the sum. **Measured again on the tree after `main` was merged in, three times**, because `main` took three items while this one was being verified: after the wallpapers (P6.1 and P6.4) it read 4605 passing and 1 skipped over 323 files; after the Home Assistant tiles (P5.3) 4647 over 326; and after the twenty-six wallpapers (P6.2 and P6.3, the paragraph above this one) **4678 passing and 1 skipped, over 327 files**: calendar 153 over 10 · core 314 over 9 · display 859 over 47 · server 3352 over 261, every file green and nothing timed out. Each reading is the paragraphs' own deltas summed onto the one before — and the third needs a word, because the paragraph above records 4593 over 320, which is *lower* than the tiles' 4604: it was measured at `37aee96`, on a branch that had taken #302 and not yet #305, so its delta is +31 and +1 against 4562 over 319 and not against the figure that precedes it on this page, so the arithmetic and the reading agree, which is recorded as the observation it is.
 
+
+**The comfortable month has four more looks, the calendar's two variants draw,
+the month honours "Which calendars" on both renderers, and the agenda can say
+where an event is (plan item P5.4, parts 4–6).** `todayStyle` (ring, fill,
+numeral), `monthHeading` (large, small, hidden), `eventMark` (dot, bar,
+coloured text) and `gridLines` (week rules, none) are resolved once by
+`apps/display/src/calendar-looks.ts`, and **absence is each cell treatment's
+own look**, because the flat-text month and the Swiss month were designed with
+opposite answers to all four questions: a ring, no heading, a dot and no rule
+against an accent numeral, a large heading, a dot and a hairline. So "week
+rules (the default)" is true of the Swiss month only — the flat-text month has
+never drawn a week rule, and a rule there is a new look a household asks for
+rather than a default taken away. A look lands on the grid as a class only when
+it differs from its treatment's, so a month on its own looks carries no new
+class and no new markup, and the editor stores a choice only when it differs
+too. The mark and the rules are the flat-text and Swiss treatments' alone
+(pills and dots draw no rows); the compact month keeps its own grammar and
+reads none of the four. Full grid lines and weekend shading are not built
+(Q1, as proposed). The e-paper panel reads none of the four either, and each
+is a scoped `PANEL_IGNORES` note that `epaper-ink.test.ts` proves by setting it.
+
+**Nothing but the heading costs an event its row, and each is measured to say
+so rather than argued.** Today's fill is a ground behind the numeral with
+horizontal padding only; the Swiss ring is drawn *outside* the cell, because a
+Swiss cell has no left padding and an inset ring would lie on the words; a bar
+is 0.22rem against the dot's 0.42 and its gap, and coloured text has no mark at
+all; the flat-text week rule is an absolutely positioned grid item across the
+row, like a span bar, centred in the gap above the week; the Swiss "none"
+empties the colour of a border the cell keeps. Coloured text is the calendar's
+hue mixed toward the ink until it clears 4.5:1 on both grounds
+(`readableHue`, the designed styles' own loop), taken after the grid is in the
+document because the grounds are whatever the theme, the daylight switch and
+the widget's lane resolved on that box. **The heading is the exception and is
+recorded, not hidden**: it spends a line of the grid on the month's name, and
+on the shipped Classic wall that is one name at 1080x1920 (15 to 14) and none
+at 1920x1080; the editor says so beside the control, the test pins it at "at
+most one", and hiding the Swiss heading is the one choice that gives room.
+
+**`planner` and `bold` are lanes, not stylesheets.** `lookLane` sits in the
+style tables' parity block (`widget-style.ts`, both bundles) and the server
+lays it *under* the widget's own lane: the planner is Paper Almanac's eleven
+colours and Fraunces, so the scaffold ink, the tints and every designed colour
+are re-derived against the paper by the derivation a custom theme goes
+through — a paper box on a dark wall whose numerals were measured against the
+dark wall would be the invisible numeral that derivation exists to prevent —
+and a household's own accent still wins token by token. Bold's rule is the ink
+the box draws in, under whichever theme is showing, and its face is Roboto
+Flex, because Oswald, Space Grotesk and Fraunces stop at 700 and asking them
+for 900 would draw the same glyphs. Both default the month to week rules. The
+stylesheet adds only what a token cannot say — the numerals' face where a
+treatment names its own, and their weight — keyed on `cal-planner`/`cal-bold`
+on the widget's section, which every view carries. An unstyled calendar with
+no look sends the row it always sent.
+
+**The month filter needed a model change, and the count is why.** A cell
+carries a slim list of events and the day's true total beside it; filtering the
+list alone would leave "+N" counting calendars the household took off, and a
+day with more events than the list carries could not be counted at all. So
+`HorizonCell` and `EpaperGridCell` carry `sourceCounts`, and
+`calendar-filter.ts` — transcribed into `epaper/calendar-filter.ts`, held by
+`calendar-filter-parity.test.ts` — sums the kept calendars' totals. Measured
+the strongest way available: a month filtered to one calendar draws exactly
+the month of a household whose other calendars are off the grid, names, "+N",
+row colours and bars, on the wall at both sizes and on the panel byte for byte.
+It is offered on the Month view now at both densities (the compact month had
+read it all along while the comfortable one did not — one stored value, two
+months on one wall). `showLocations` draws the place after the title in the
+quiet ink, **only where it leaves the entry's height unchanged**
+(`fitLocations`, measured both ways), so every agenda entry keeps its
+rectangle; `showTimes` stays accepted and read by nothing, on both renderers,
+and stays in the `.strict()` schema so no stored config is refused. The panel's
+agenda row is one line and draws no place, which its note now says.
+
+**Twenty mutations were checked and nineteen are red**, each on a rebuilt
+bundle. The green one is worth its line: removing the first of `fitLocations`'
+two call sites left the long place hidden, because the agenda's redraw fits
+again — so the body was mutated instead (keep every place) and that is red.
+`wall-density` and `browser-classic-proportions` were run on a clean worktree
+of `main` and on this branch with every measurement they take written out —
+twenty-four lines — and the two sets are identical as text; no baseline moved.
+**Not changed and noted:** a panel's *week* view still ignores "Which
+calendars" while the wall's week honours it, which is the same divergence one
+view along and outside this item.
+
+**The first two CI runs went red on this diff, and correctly.** `epaper-ink`'s
+"draws nothing else for calendar" probes every unhonoured key on the month
+grid, the dearest frame the file draws, and the four new keys took that one
+body from about 2.7s to 3.2s in isolation and past its 5s timeout on a CI
+runner beside the browser suite — the file's own recorded failure, for the
+style lane, arriving again. Moving the month's looks into bodies of their own
+brought it back to `main`'s own 2.5–2.9s, measured on a clean worktree of
+`main` beside it, **and the second run timed out anyway**: a body at half its
+limit on an idle laptop is a body one busy shard from red, on `main` too. So
+the calendar's two heaviest bodies are split further — "draws nothing else" in
+thirds by schema position, "draws none of them" in halves — and every one is
+under 1.3s in isolation; taking `count` out of `PANEL_HONOURS.calendar` still
+turns a part red, so the split did not blind it. The second run also read
+`browser-weather-today`'s glow phase at 328ms against a 300ms tolerance, a file
+this diff does not touch; it passed 3 of 3 alone and on the first and third
+runs, and is recorded here rather than chased.
+
+**4779 tests passing and 1 skipped, over 332 files**: calendar 153 over 10 ·
+core 314 over 9 · display 873 over 49 · server 3439 over 264. Measured with
+`pnpm test` and a real Chromium (`MW_BROWSER_EXECUTABLE`, for the revision
+mismatch S01 recorded) on a clone whose tags had been fetched. Against the 4678
+over 327 recorded above, that is +101 and +5: on the display two new files of
+12 tests plus two rows `motion.test.ts` generates for the two new modules in
+`main.ts`'s import graph; on the server three new files of 27 tests
+(`calendar-filter-parity`, `epaper-month-filter`, `browser-calendar-looks`)
+and four in `widget-style.test.ts`, which is +31 where the first reading said
++32 — one test more than this diff explains, which is the paragraph above's
+own warning arriving once more and the reason the number here is the reading.
+The splits above add five bodies per widget type over eleven types, and the
+last full run read 3439: +55 on the first reading, which agrees.
+**Still unproven where it counts:** nobody has looked at a planner month on a
+kitchen wall or picked a look on a real phone.
+
 ---
 
 ## Open decisions
