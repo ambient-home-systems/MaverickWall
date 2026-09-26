@@ -38,6 +38,10 @@ months.
 
 > **Under active development.** Pre-1.0: it works, and it is not finished.
 > [Honest limitations](#honest-limitations) says what is unproven.
+>
+> New to this release? [What's new](docs/whats-new.md) walks through the
+> latest features — wallpapers, weather looks, Home Assistant device tiles —
+> and where to find each one in the admin.
 
 ```bash
 docker run -d -v maverick-wall:/data -p 8080:8080 ghcr.io/ambient-home-systems/maverick-wall
