@@ -5,6 +5,7 @@ the end of the afternoon.
 
 - [Install](install.md) — Docker, compose, and the Home Assistant add-on
 - [First run](first-run.md) — the wizard, and pairing your first screen
+- [Walls and designs](walls.md) — layouts, backgrounds, themes, and e-paper sources
 - [Kiosk devices](kiosk.md) — Google TV, Fire tablet, Raspberry Pi
 - [Exposing this safely](exposing-safely.md) — read before you port-forward
 - [Backup and restore](backup.md)

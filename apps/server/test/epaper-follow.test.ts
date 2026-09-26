@@ -401,7 +401,7 @@ describe('the panel’s design page while it follows', () => {
     const html = await (await h.call(`${B}/admin/epaper/${p.id}/design`)).text();
     const form = html.slice(
       html.indexOf(`action="admin/epaper/${p.id}/source"`),
-      html.indexOf('Use this</button>'),
+      html.indexOf('Change what panel shows</button>'),
     );
     expect(form).not.toContain('class="row"');
     // And the field it belongs to is in the slice, so the slice is the form.

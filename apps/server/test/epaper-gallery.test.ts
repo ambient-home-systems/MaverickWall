@@ -150,13 +150,15 @@ describe('a panel’s template gallery', () => {
     const h = await harness();
     const panel = await addPanel(h, 'Kitchen panel');
     const html = await gallery(h, panel);
-    // The exact sentence the wall gallery draws from a card's `theme`.
-    expect(html).not.toContain('Looks best in');
+    // A panel has no theme to change when a design is applied.
+    expect(html).not.toContain('Changes this wall’s theme');
 
     // And a *wall's* gallery still draws it — otherwise this passes by having
     // removed the line everywhere, which is a different change. A real wall,
     // since the shared Default one is retired.
-    expect(await gallery(h, await addWall(h, 'Living room wall'))).toContain('Looks best in');
+    const wallHtml = await gallery(h, await addWall(h, 'Living room wall'));
+    expect(wallHtml).toContain('Changes this wall’s theme');
+    expect(wallHtml).not.toContain('Kitchen panel</option>');
   });
 
   it('goes back to the panel’s design page, not to a wall page', async () => {

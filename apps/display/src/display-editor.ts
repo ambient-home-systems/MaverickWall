@@ -135,6 +135,27 @@ function boot(): void {
   if (savedCategory !== null && savedCategory !== '' && catTabs.some((t) => catOf(t) === savedCategory)) {
     selectCategory(savedCategory, true, false);
   }
+  // Links from the theme library and a following panel should land on the
+  // control they name, even when this browser last left a different mode open.
+  if (location.hash === '#look' && catTabs.some((t) => catOf(t) === 'look')) {
+    selectMode('settings');
+    selectCategory('look', true, false);
+  } else if (location.hash === '#layout') {
+    selectMode('layout');
+  }
+
+  // A background is edited on its canvas, but people also look for it under
+  // Look. These shortcuts open the existing control rather than making a
+  // second form with a second interpretation of the stored background.
+  for (const shortcut of document.querySelectorAll<HTMLButtonElement>('[data-open-background]')) {
+    shortcut.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const orientation = shortcut.dataset['openBackground'];
+      if (orientation !== 'portrait' && orientation !== 'landscape') return;
+      selectMode('layout');
+      window.dispatchEvent(new CustomEvent('mw:open-background', { detail: { orientation } }));
+    });
+  }
 
   // ---- progressive disclosure -------------------------------------------
 

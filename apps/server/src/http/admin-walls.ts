@@ -12,6 +12,8 @@ import { confirmDestroyPage, errorBlock, escapeHtml, icon, page } from './html.j
 import { ago, presence, presenceDot, type Presence } from './presence.js';
 import { readSaved, savedRedirect } from './saved.js';
 import { selfHref } from './self.js';
+import { FALLBACK_THEME, readThemes } from '../api/themes.js';
+import { LEGACY_THEME_ALIASES, themeName } from './theme-cards.js';
 
 /**
  * The Walls list (RFC 016 phase 1).
@@ -81,6 +83,7 @@ function wallCard(
   status: string,
   p: Presence,
   trail: string,
+  design: string,
 ): string {
   return card(
     `<div class="wall-head">` +
@@ -88,7 +91,8 @@ function wallCard(
       `<div class="rname"><a class="wall-link" href="${href}">${escapeHtml(name)}</a>` +
       ` ${tag(kind)}` +
       `</div>` +
-      `<div class="sub">${status}</div></div>` +
+      `<div class="sub">${status}</div>` +
+      `<div class="sub">${escapeHtml(design)}</div></div>` +
       trail +
       `</div>`,
     { tone: p.state === 'unpaired' ? 'warn' : 'neutral', className: 'wall-card' },
@@ -130,7 +134,7 @@ function unpairedControl(screen: AdminScreenRow): string {
 }
 
 /** A browser wall: its page holds status, pairing, settings and layout together. */
-function displayListCard(screen: AdminScreenRow, p: Presence): string {
+function displayListCard(screen: AdminScreenRow, p: Presence, design: string): string {
   return wallCard(
     `admin/walls/${encodeURIComponent(screen.id)}`,
     screen.name,
@@ -138,6 +142,7 @@ function displayListCard(screen: AdminScreenRow, p: Presence): string {
     seenLine(p) + (screen.appVersion === null ? '' : ` · ${escapeHtml(screen.appVersion)}`),
     p,
     p.state === 'unpaired' ? unpairedControl(screen) : openGo,
+    design,
   );
 }
 
@@ -148,7 +153,7 @@ function displayListCard(screen: AdminScreenRow, p: Presence): string {
  * geometry stays on the status line because it is the one fact that tells
  * two panels apart, where two browser walls are told apart by their names.
  */
-function epaperListCard(screen: AdminScreenRow, p: Presence): string {
+function epaperListCard(screen: AdminScreenRow, p: Presence, design: string): string {
   return wallCard(
     `admin/epaper/${encodeURIComponent(screen.id)}/design`,
     screen.name,
@@ -159,6 +164,7 @@ function epaperListCard(screen: AdminScreenRow, p: Presence): string {
       (screen.lanOnly === 1 ? ' · LAN only' : ''),
     p,
     p.state === 'unpaired' ? unpairedControl(screen) : openGo,
+    design,
   );
 }
 
@@ -336,11 +342,28 @@ export function displaysPage(c: Context, deps: AdminDeps, error?: string): strin
   const all = readAdminScreens(deps.db);
   const active = all.filter((screen) => screen.revokedAt === null);
   const revoked = all.filter((screen) => screen.revokedAt !== null);
+  const customThemes = new Map(readThemes(deps.db).map((theme) => [`custom:${theme.id}`, theme.name]));
+  const names = new Map(active.map((screen) => [screen.id, screen.name]));
+  const designFor = (screen: AdminScreenRow): string => {
+    if (screen.kind === 'epaper') {
+      if (screen.layoutMode === 'follow') {
+        return `Follows ${names.get(screen.layoutFollows ?? '') ?? 'a wall that is no longer there'} · everyday layout`;
+      }
+      return screen.layoutMode === 'freeform' ? 'Own layout · black and white' : 'Built-in view · black and white';
+    }
+    const ref = screen.theme ?? FALLBACK_THEME;
+    const missingCustom = ref.startsWith('custom:') && !customThemes.has(ref);
+    const name = customThemes.get(ref) ?? themeName(missingCustom ? FALLBACK_THEME : LEGACY_THEME_ALIASES[ref] ?? ref);
+    return `Theme: ${name}${missingCustom ? ' · saved theme missing' : ''}` +
+      (screen.daytimeTheme === null ? '' : ' · daytime theme scheduled');
+  };
 
   // One reading per wall, shared by its card and by the summary line.
   const walls = active.map((screen) => ({ screen, p: presence(screen, at) }));
   const cardFor = (w: { screen: AdminScreenRow; p: Presence }): string =>
-    w.screen.kind === 'epaper' ? epaperListCard(w.screen, w.p) : displayListCard(w.screen, w.p);
+    w.screen.kind === 'epaper'
+      ? epaperListCard(w.screen, w.p, designFor(w.screen))
+      : displayListCard(w.screen, w.p, designFor(w.screen));
 
   /*
    * One door (P2.2). The two kinds of wall used to be two buttons under the

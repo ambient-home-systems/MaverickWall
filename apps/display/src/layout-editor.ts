@@ -1374,6 +1374,14 @@ function boot(): void {
     event.stopPropagation();
     setCanvasOpen(!canvasOpen);
   });
+  window.addEventListener('mw:open-background', (event) => {
+    if (epaperHost) return;
+    const orientation = (event as CustomEvent<{ orientation?: string }>).detail?.orientation;
+    if (orientation !== 'portrait' && orientation !== 'landscape') return;
+    switchCanvas(orientation, null);
+    setCanvasOpen(true);
+    backgroundPanel.querySelector<HTMLSelectElement>('select')?.focus();
+  });
   // Click outside a popover (and off its button) closes it; so does Escape,
   // which then hands focus back to the button that opened it.
   document.addEventListener('click', (event) => {

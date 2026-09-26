@@ -111,6 +111,29 @@ async function seedMorning(wall: Installation, id: string): Promise<void> {
 }
 
 describe('a named canvas in the editor', () => {
+  it('opens the everyday background from Look, even after editing a timed layout', async () => {
+    const wall = await fresh();
+    const id = await wall.pairWall('Editor wall');
+    applyTemplate(wall.db, id, CLASSIC_TEMPLATE);
+    await seedMorning(wall, id);
+    const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+    try {
+      const page = await context.newPage();
+      await openEditor(wall, page, id);
+      await slotTab(page, 'morning').click();
+      await page.locator('[data-mode="settings"]').click();
+      await page.locator('[data-wset="look"]').click();
+      await page.locator('[data-open-background="landscape"]').click();
+      expect(await page.locator('[data-mode="layout"]').getAttribute('aria-selected')).toBe('true');
+      expect(await page.locator('.le-orient-btn:has-text("Landscape")').getAttribute('aria-pressed')).toBe('true');
+      expect(await slotTab(page, 'Everyday').getAttribute('aria-selected')).toBe('true');
+      expect(await page.locator('.le-canvas-pop').isVisible()).toBe(true);
+      expect(await page.locator('.le-bg select').evaluate((element) => document.activeElement === element)).toBe(true);
+    } finally {
+      await context.close();
+    }
+  }, SLOW);
+
   it(
     'keeps an edit on one slot dirty across a switch, clears it on undo, and saves both slots',
     async () => {

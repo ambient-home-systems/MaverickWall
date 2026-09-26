@@ -263,6 +263,12 @@ describe('creating a wall', () => {
           expect((await themeState(page)).filter((one) => one.checked).map((one) => one.value)).toEqual([
             'panels',
           ]);
+          expect(await page.locator('[data-template-effect]').textContent()).toContain(
+            'Your chosen theme will be used instead; the design’s background remains.',
+          );
+          expect(await page.locator('.tpl-thumb[data-tpl="sky-week"]').evaluate(
+            (thumb) => thumb.shadowRoot?.querySelector('[data-theme]')?.getAttribute('data-theme'),
+          )).toBe('panels');
           await Promise.all([
             page.waitForURL(/\/admin\/walls\/[^/]+\/pair/, { timeout: 20_000 }),
             page.locator('.addbar button[type="submit"]').click(),

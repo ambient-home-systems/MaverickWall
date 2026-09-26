@@ -357,7 +357,7 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
        * what this page says depends on the link.
        */
       const tags = usage.screens
-        .map((wall) => tag(wall.name, 'neutral', `admin/walls/${encodeURIComponent(wall.id)}`))
+        .map((wall) => tag(wall.name, 'neutral', `admin/walls/${encodeURIComponent(wall.id)}#look`))
         .join('');
       const id = choice.ref.startsWith('custom:') ? choice.ref.slice('custom:'.length) : '';
       const actions =
@@ -386,9 +386,9 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
       saved: readSaved(c),
       action: { label: 'Add a theme', href: 'admin/themes/new' },
       intro:
-        'Every colour scheme a wall can draw — the ones that ship, and the ones ' +
-        'you build. Each wall chooses a theme on the wall’s own page, and the ' +
-        'tags below open it.',
+        'This is the shared theme library. Editing a theme changes every wall ' +
+        'wearing it; choosing a theme for one wall happens on that wall’s Look page. ' +
+        'The tags below show the affected walls and open each one.',
       body:
         (error === undefined ? '' : errorBlock(error)) +
         section(
