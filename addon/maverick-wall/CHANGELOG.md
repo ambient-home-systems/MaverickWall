@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.68.0
+
 **A wall can have a wallpaper.** Open a wall's layout, press **Layout**, and
 choose **Wallpaper** under Background: a row of pictures drawn to suit your
 wall's theme, dark ones for a dark theme and light ones for a light one, with
