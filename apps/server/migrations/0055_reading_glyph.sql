@@ -1,0 +1,1 @@
+ALTER TABLE `ha_entity_cache` ADD `glyph` text;

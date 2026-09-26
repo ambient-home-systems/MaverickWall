@@ -700,6 +700,89 @@ export const HOUSE_TIERS: readonly WidgetTier[] = [
 ];
 
 /**
+ * The house as **tiles** (plan item P5.3, decision D4): each reading its mark
+ * in a filled circle, its name and its state, the way Home Assistant's own
+ * tile card draws one — and controlling nothing.
+ *
+ * **Primary role: the tile's name** (`.ht-name`), as the plan states: the one
+ * run every tile of every reading carries at the same size, where the state is
+ * a unit and a number that change width with the house.
+ *
+ * **Width buys tiles across, and the table is about one tile.** A grid of
+ * tiles is a strip in two directions: how many sit across is the box's width
+ * over `TILE_COLUMN_CH` — the width below which a tile is not worth drawing,
+ * which is the width at which it can hold its name and its state — and how
+ * many rows fit is the box's height over one drawn tile, measured rather than
+ * divided out of a declared height, the rule every table here states. The tier
+ * is then read off one tile's own cell, and says which of its words it keeps
+ * (`TILE_KEEP`: the state, then the name, then when it changed).
+ *
+ * Horizontal, the mark beside the words:
+ *
+ *     tier        needs (one tile)   rungs  what one tile says
+ *     T0 State    10ch x 2.4em       1      the mark and the state
+ *     T1 Named    15ch x 2.4em       2      and the name
+ *     T2 Timed    22ch x 2.4em       3      and when it changed
+ *
+ * Vertical, the mark above the words:
+ *
+ *     tier        needs (one tile)   rungs  what one tile says
+ *     T0 State     7ch x 3.6em       1      the mark and the state
+ *     T1 Named     9ch x 4.6em       2      and the name
+ *     T2 Timed    16ch x 4.6em       3      and when it changed
+ *
+ * **Height is nearly free across the horizontal rungs, and that is the look's
+ * shape rather than a slack table**: the name and the state are two lines
+ * beside a circle that is taller than both, so a word more costs width and not
+ * height. Vertical stacks them, so the name is a line of height as well.
+ * Summed in `em` and `ch` of the name role from a drawn tile — see
+ * `browser-ha-tile.test.ts`, which holds the table to the drawing by asserting
+ * that the belt never has a tile to hide in a box the table said would hold it.
+ *
+ * **The bar is not a rung.** It is a picture of a number the state already
+ * says, so it is an annotation, and it is kept only where it costs no tile
+ * (`barKeepsEveryTile`) — never traded for a word, never traded for a row.
+ */
+export const HOUSE_TILE_TIERS: Readonly<Record<'horizontal' | 'vertical', readonly WidgetTier[]>> = {
+  horizontal: [
+    { tier: 'T0', minCh: 14, minEm: 2.8, items: 1, rungs: 1 },
+    { tier: 'T1', minCh: 20, minEm: 2.8, items: 1, rungs: 2 },
+    { tier: 'T2', minCh: 24, minEm: 2.8, items: 1, rungs: 3 },
+  ],
+  vertical: [
+    { tier: 'T0', minCh: 9, minEm: 4.0, items: 1, rungs: 1 },
+    { tier: 'T1', minCh: 13, minEm: 5.2, items: 1, rungs: 2 },
+    { tier: 'T2', minCh: 17, minEm: 5.2, items: 1, rungs: 3 },
+  ],
+};
+
+/**
+ * The width one tile needs before another is drawn beside it, in `ch` of the
+ * name role — T1's, for `WEATHER_COLUMN_CH`'s reason: this is the width below
+ * which a tile has stopped being worth drawing, and that is the width at which
+ * it can say what it is *and* what it is doing. Narrower than that, a box draws
+ * fewer tiles, each saying more, rather than more tiles saying one word each.
+ */
+export const TILE_COLUMN_CH: Readonly<Record<'horizontal' | 'vertical', number>> = {
+  horizontal: 20,
+  vertical: 13,
+};
+
+/**
+ * How many tiles sit across a box this wide, with `gap` between each two.
+ *
+ * `columnsAt` with the gutter charged, because tiles are separate objects
+ * with room between them where a forecast's columns share one strip: `n` tiles
+ * cost `n` widths and `n - 1` gaps, and dividing the box by the width alone
+ * promises a tile the gaps have already spent. Never fewer than one.
+ */
+export function tileColumnsAt(innerW: number, gap: number, chPx: number, columnCh: number): number {
+  if (!(innerW > 0) || !(chPx > 0) || !(columnCh > 0)) return 1;
+  const between = gap > 0 ? gap : 0;
+  return Math.max(1, Math.floor((innerW + between) / (columnCh * chPx + between) + WIDGET_TIER_EPSILON));
+}
+
+/**
  * A note the household typed: lines of one thing, and no ladder at all.
  *
  * **Primary role: the line** (`.nt-line`). `rungs` is `0` throughout, which the

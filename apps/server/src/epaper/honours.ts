@@ -80,7 +80,14 @@ export const PANEL_HONOURS: Readonly<Record<string, readonly string[]>> = {
   // `variant` since P5.1: `range` is drawn as black bars. The panel honours
   // the key and falls back per value — `PANEL_LOOKS` says which values.
   weather: ['title', 'showTitle', 'count', 'fields', 'showLow', 'showIcon', 'variant', STYLE_INSET, WHEN_EMPTY],
-  homeassistant: ['title', 'showTitle', 'count', 'fields', 'readings', STYLE_INSET, WHEN_EMPTY],
+  // `variant` since P5.3: the `tile` look is drawn as outlined boxes with a
+  // disc filled for a reading that is on or wrong, and `tileLayout`,
+  // `hideState` and `showBar` are the tile's own. `showChanged` is not —
+  // `PANEL_IGNORES` says why.
+  homeassistant: [
+    'title', 'showTitle', 'count', 'fields', 'readings', 'variant', 'tileLayout', 'hideState', 'showBar',
+    STYLE_INSET, WHEN_EMPTY,
+  ],
   external: ['title', 'showTitle', 'count', 'module', STYLE_INSET],
   // `variant` and `unitWords` since P5.2: `page`, `ticket`, `progress` and
   // `month` are drawn as still frames, and "sleeps" is words. `PANEL_LOOKS`
@@ -129,7 +136,10 @@ export const INK_LANE: Readonly<Record<string, readonly string[]>> = {
   // The Look, since P5.1 — offered as `INK_LOOKS` narrows it: a panel may
   // take the range where its wall wears the strip, which is density and shape.
   weather: ['count', 'fields', 'variant'],
-  homeassistant: ['readings', 'fields', 'count'],
+  // The Look, since P5.3: a panel may draw tiles where its wall draws the
+  // list, or the other way round — shape, which is what the lane is for. The
+  // tile's own options stay with the wall's settings.
+  homeassistant: ['readings', 'fields', 'count', 'variant'],
   external: ['count'],
   notes: ['align'],
   // The Look and the words, since P5.2: a panel may draw the page where its
@@ -173,6 +183,9 @@ export const PANEL_LOOKS: Readonly<Record<string, readonly string[]>> = {
   // (P5.2). `occasion` is drawn as the number: its colours, motif and scene
   // are three things one still bit has none of.
   countdown: ['page', 'ticket', 'progress', 'month'],
+  // Tiles, as outlined boxes with the disc filled for a reading that is on or
+  // wrong (P5.3) — the one colour a tile has, said in the one way a bit can.
+  homeassistant: ['tile'],
 };
 
 /**
@@ -284,9 +297,10 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
   },
   /*
    * A widget's Look (plan item P4.1), on every type that has looks but the
-   * clock, the forecast and the countdown. The clock's three are drawn on one
-   * bit and are in `PANEL_HONOURS`, and so is the forecast's key since P5.1
-   * and the countdown's since P5.2 (`PANEL_LOOKS`);
+   * clock, the forecast, the countdown and Home Assistant. The clock's three
+   * are drawn on one bit and are in `PANEL_HONOURS`, and so is the forecast's
+   * key since P5.1, the countdown's since P5.2 and Home Assistant's since P5.3
+   * (`PANEL_LOOKS`);
    * every other type's looks were added to the enum before any of them was
    * designed, and each type's panel draw reads none of them — it draws the
    * type's default, which is also exactly what the wall draws for them until
@@ -295,12 +309,6 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
    * widget's panel draws instead, and `epaper-ink.test.ts` probes every value
    * the schema holds on each type to keep both true.
    */
-  {
-    key: 'variant',
-    types: ['homeassistant'],
-    label: 'Look',
-    why: 'a panel draws the readings as a list, whichever look is chosen.',
-  },
   {
     key: 'variant',
     types: ['calendar'],
@@ -332,6 +340,18 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
     key: 'occasion',
     label: 'Occasion',
     why: 'a panel draws the occasion as the plain number: its colours, picture and moving scene are the wall’s alone.',
+  },
+  /*
+   * A tile's "5 min ago" (plan item P5.3). A panel shows one frame for as long
+   * as an hour, so the words would be wrong within the minute — and keeping
+   * them true would refresh a battery panel every minute, the churn P3.5 took
+   * out of every frame. `epaper-ink.test.ts` proves it moves no ink from a
+   * tile base whose reading carries a time.
+   */
+  {
+    key: 'showChanged',
+    label: 'When it changed',
+    why: 'a panel shows one picture for up to an hour, so “5 min ago” would be wrong within the minute.',
   },
   { key: 'showTimes', label: 'Event times', why: 'the panel draws the title alone in a cell.' },
   {
@@ -393,6 +413,13 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
     key: 'style.tracking',
     label: 'Tracking',
     why: 'the panel’s alphabet has one advance per face.',
+  },
+  // A lane's shadow (P5.3) can only ever be none, and a panel draws no
+  // shadow for anything — the `shadow` note's reason, one level down.
+  {
+    key: 'style.shadow',
+    label: 'Shadow',
+    why: 'a shadow needs a grey the panel does not have.',
   },
   /*
    * The widget's own CSS (RFC 014 §7, precondition 3), with the sentence the

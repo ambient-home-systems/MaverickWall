@@ -142,13 +142,17 @@ export interface WatchedRow {
   readonly friendlyName: string | null;
   readonly unitOfMeasurement: string | null;
   readonly fetchedAt: number;
+  /** The household's own picture (P5.3), or null for the automatic one. */
+  readonly glyph: string | null;
+  /** The cached attributes JSON, which the Readings screen reads a device class out of. */
+  readonly attributes: string | null;
 }
 
 export function readWatched(db: SqliteDatabase): WatchedRow[] {
   return db
     .prepare(
       `SELECT entity_id AS entityId, label, display_mode AS displayMode,
-              sort_order AS sortOrder, watched, state,
+              sort_order AS sortOrder, watched, state, glyph, attributes,
               friendly_name AS friendlyName,
               unit_of_measurement AS unitOfMeasurement, fetched_at AS fetchedAt
          FROM ha_entity_cache
@@ -202,7 +206,12 @@ export function watchEntity(db: SqliteDatabase, input: WatchInput): void {
        VALUES (?, ?, ?, ?, 1, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM ha_entity_cache), ?)
        ON CONFLICT(entity_id) DO UPDATE SET
          watched = 1, label = excluded.label, display_mode = excluded.display_mode,
-         friendly_name = excluded.friendly_name`,
+         friendly_name = excluded.friendly_name,
+         -- The picture goes back to the automatic one, the way the label goes
+         -- back to whatever the add form said: a reading added again starts
+         -- from what it was added with, not from a choice made about it once
+         -- and since removed (P5.3).
+         glyph = NULL`,
     ).run(input.entityId, input.friendlyName, input.label, input.displayMode, at);
 
     ensureBlock(db);
@@ -231,6 +240,22 @@ function ensureBlock(db: SqliteDatabase): void {
   db.prepare(
     `UPDATE household_settings SET display_blocks = ?, updated_at = ? WHERE id = 'singleton'`,
   ).run(blocks.join(','), Date.now());
+}
+
+/**
+ * Choose a watched reading's picture, or put it back to the automatic one
+ * (`null`) — plan item P5.3. Only a watched row: a row kept for a rule and not
+ * drawn is nothing a household can see a picture on.
+ *
+ * The key is checked against the vocabulary by the caller's schema; this
+ * stores what it is handed. Says whether a reading was there to change, so the
+ * handler can tell a stale page from a save.
+ */
+export function setReadingGlyph(db: SqliteDatabase, entityId: string, glyph: string | null): boolean {
+  const changed = db
+    .prepare('UPDATE ha_entity_cache SET glyph = ? WHERE entity_id = ? AND watched = 1')
+    .run(glyph, entityId);
+  return changed.changes > 0;
 }
 
 /**

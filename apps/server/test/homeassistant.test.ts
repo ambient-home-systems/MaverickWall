@@ -67,6 +67,7 @@ interface ManifestShape {
   readonly display: { readonly blocks: string[] };
   readonly screen: { readonly allowDismiss: boolean };
   readonly panels: Record<string, unknown>;
+  readonly layout: Record<'portrait' | 'landscape', { readonly widgets: { config?: Record<string, unknown> }[] }>;
   readonly interrupts: {
     ruleId: string;
     key: string;
@@ -772,6 +773,108 @@ describe('readings on the wall', () => {
     // Reading every one of those was a GET. Hard rule 12 is about POSTs, and
     // this poll made none.
     expect(ha.posts).toEqual([]);
+  });
+
+  it('sends tiles a level and a chosen picture, and still no entity id, token or address', async () => {
+    /*
+     * The tile look (P5.3) is the one that reads the most: a tone, when the
+     * state changed, the bar's level and — if the household chose one on the
+     * Readings screen — its own picture. So this is where the boundary is
+     * asked again, with tile widgets placed on both canvases naming their
+     * readings by entity id, every tile option set, and a picture chosen
+     * through the real form.
+     */
+    const h = await harness();
+    const ha = await fakeHomeAssistant();
+    await connect(h, ha);
+    await watchReadOnly(h);
+    await h.pollHa();
+    const chosen = await h.form('/admin/home-assistant/entities/glyph', { entity_id: 'switch.kettle', glyph: 'power' });
+    expect(chosen.status).toBe(302);
+    expect(chosen.headers.get('location')).toContain('saved=ha-entity-glyph');
+    for (const orientation of ['portrait', 'landscape'] as const) {
+      replaceLayout(h.db, 'wall', orientation, {
+        mode: 'freeform',
+        aspect: orientation === 'landscape' ? 1.7778 : 0.5625,
+        widgets: [
+          {
+            id: `tiles-${orientation}`, type: 'homeassistant', x: 0, y: 0, w: 1, h: 1, z: 0,
+            config: {
+              variant: 'tile', tileLayout: 'vertical', showChanged: true, showBar: true, hideState: false,
+              readings: ['light.living_room', 'switch.kettle', 'fan.bedroom'],
+              ink: { readings: ['cover.kitchen_blind'] },
+            },
+          },
+        ],
+        background: null,
+      });
+    }
+
+    const manifest = await h.manifest();
+    const document = JSON.stringify(manifest);
+    for (const entityId of READ_ONLY) expect(document).not.toContain(entityId);
+    expect(document).not.toContain(TOKEN);
+    expect(document).not.toContain(ha.base);
+    expect(document).not.toContain('127.0.0.1');
+    for (const marker of UNLISTED_ATTRIBUTE_MARKERS) expect(document).not.toContain(marker);
+
+    const panel = manifest.panels['home'] as {
+      readings: { label: string; value: string; glyph: string; level?: number; changedAt: number | null }[];
+    };
+    const by = new Map(panel.readings.map((reading) => [reading.label, reading]));
+    // A level exactly where the words carry a percentage, and the same number.
+    expect(by.get('Living room')).toMatchObject({ value: 'On · 60%', level: 60 });
+    expect(by.get('Bedroom fan')).toMatchObject({ value: 'On · 40%', level: 40 });
+    expect(by.get('Kitchen blind')).toMatchObject({ value: 'Open · 40%', level: 40 });
+    for (const label of ['Kettle', 'Guest mode', 'Front door lock', 'Hallway']) {
+      expect(by.get(label), label).toBeDefined();
+      expect('level' in by.get(label)!, `${label} carries a level its words do not`).toBe(false);
+    }
+    // The household's picture, on every look; the thermostat keeps its own.
+    expect(by.get('Kettle')!.glyph).toBe('power');
+    expect(by.get('Hallway')!.glyph).toBe('thermostat');
+    // The tile options travel as they are; the readings as handles.
+    for (const orientation of ['portrait', 'landscape'] as const) {
+      const tile = manifest.layout[orientation].widgets.find((widget) => widget.config?.['variant'] === 'tile');
+      expect(tile?.config, orientation).toMatchObject({ tileLayout: 'vertical', showChanged: true, showBar: true });
+    }
+    expect(ha.posts).toEqual([]);
+  });
+
+  it('chooses a reading’s picture on the Readings screen, refuses one that is not ours, and puts it back', async () => {
+    const h = await harness();
+    const ha = await fakeHomeAssistant();
+    await connect(h, ha);
+    await watchReadOnly(h);
+    await h.pollHa();
+    const page = async (): Promise<string> => (await h.call('/admin/home-assistant/readings')).text();
+    // Automatic first, named for what Home Assistant says the thing is.
+    expect(await page()).toContain('Picture: Power switch (automatic)');
+    const kettle = (): unknown =>
+      (h.db.prepare(`SELECT glyph FROM ha_entity_cache WHERE entity_id = 'switch.kettle'`).get() as { glyph: unknown }).glyph;
+
+    expect((await h.form('/admin/home-assistant/entities/glyph', { entity_id: 'switch.kettle', glyph: 'power' })).status).toBe(302);
+    expect(kettle()).toBe('power');
+    expect(await page()).toContain('Picture: Power</summary>');
+
+    // Not a key of ours: refused with a sentence, and nothing stored.
+    const refused = await h.form('/admin/home-assistant/entities/glyph', { entity_id: 'switch.kettle', glyph: 'mdi:kettle' });
+    expect(refused.status).toBe(400);
+    expect(await refused.text()).toContain('Choose a picture from the list.');
+    expect(kettle()).toBe('power');
+
+    // A reading nobody watches changed nothing, and is not told it did.
+    const stale = await h.form('/admin/home-assistant/entities/glyph', { entity_id: 'sensor.nobody', glyph: 'door' });
+    expect(stale.status).toBe(302);
+    expect(stale.headers.get('location') ?? '').not.toContain('saved=');
+
+    // Automatic again is the empty choice, stored as nothing.
+    await h.form('/admin/home-assistant/entities/glyph', { entity_id: 'switch.kettle', glyph: '' });
+    expect(kettle()).toBeNull();
+    // And adding a reading again starts it from what it was added with.
+    await h.form('/admin/home-assistant/entities/glyph', { entity_id: 'switch.kettle', glyph: 'power' });
+    await h.form('/admin/home-assistant/entities', { entity_id: 'switch.kettle', label: '', display_mode: 'label_value' });
+    expect(kettle()).toBeNull();
   });
 
   it('never lets an attribute the allowlist does not name reach the cache', async () => {
