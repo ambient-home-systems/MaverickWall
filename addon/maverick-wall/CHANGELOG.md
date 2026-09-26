@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.69.0
+
 Wallpapers now show their name on the tile itself, and the picker has more
 room to show them properly — no more squinting at unlabelled little squares
 behind a dropdown.
