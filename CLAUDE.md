@@ -8600,6 +8600,15 @@ Nine mutations were checked on a rebuilt bundle, and all nine turn
 - the caution on every tile;
 - the naive possessive.
 
+**4806 tests passing and 1 skipped, over 333 files**, every file green:
+calendar 153 over 10 · core 314 over 9 · display 890 over 50 · server 3449 over
+264. Measured with `pnpm test` and a real Chromium (`MW_BROWSER_EXECUTABLE`) at
+02:05 on a Sunday in London. Against the 4805 recorded above, that is this
+change's one new test in `browser-wallpaper`; the other assertions it added sit
+in tests that already existed. The four tests that were red at 00:30 on the
+same Sunday are green, which is the fixture fix measured on the day it was
+written for.
+
 **Still unproven where it counts:** it was measured at 390px and 1440px in
 headless Chromium, and nobody has looked at it on the phone the report came
 from.
