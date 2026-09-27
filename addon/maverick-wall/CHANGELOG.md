@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.72.0
+
 **Timed layouts, and their hours, are all in one menu now.** The button at
 the start of the layout editor's toolbar names the layout you are arranging —
 **Everyday ▾** — and opens a menu listing every layout with when it shows.
