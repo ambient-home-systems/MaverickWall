@@ -370,8 +370,6 @@ function boot(): void {
     readonly categoryName: string;
     /** The built-in themes it is drawn for, as the server names them. */
     readonly themes: readonly string[];
-    /** Bright enough to burn in: the picker says "not for OLED screens". */
-    readonly oled: boolean;
     readonly focal?: { readonly x: number; readonly y: number };
   }
   let wallpapers: readonly WallpaperChoice[] = [];
@@ -556,7 +554,6 @@ function boot(): void {
             (key) => typeof (one as Record<string, unknown>)[key] === 'string',
           ) &&
           Array.isArray((one as { themes?: unknown }).themes) &&
-          typeof (one as { oled?: unknown }).oled === 'boolean' &&
           ((one as { tone?: unknown }).tone === 'light' || (one as { tone?: unknown }).tone === 'dark'),
       );
     }
@@ -4505,10 +4502,14 @@ function boot(): void {
   /**
    * One wallpaper's tile. Its accessible name carries what the picker knows
    * about it beyond the picture: which theme it is drawn for when that is not
-   * this wall's, the theme it sits best under, and "not for OLED screens" on
-   * a bright one (P6.3) — a static light picture is the burn-in the shadow
-   * rule was written about, and a household with an OLED television is told
-   * on the tile rather than after a year.
+   * this wall's, and otherwise the themes it sits best under.
+   *
+   * It says nothing about OLED screens, deliberately. It used to mark every
+   * bright picture "not for OLED screens", on the tile and in its name; that
+   * was true of all twelve light ones and so told no tile from its
+   * neighbour, and a static calendar is not a thing to hang on an OLED panel
+   * whatever is behind it. The notice belongs where a household chooses a
+   * screen, not on each picture.
    *
    * **Nothing is laid over the picture.** The name used to sit on a dark band
    * across its foot and the OLED caution was an `::after` across its top — and
@@ -4516,22 +4517,20 @@ function boot(): void {
    * stretches, gave that pseudo its size and its `translate(-50%, -50%)`, so
    * every bright tile drew a blank grey square over a quarter of its picture
    * with the words pushed out of sight. A household choosing between five pale
-   * papers was shown half of each. The words go under the picture now, where
-   * nothing can collide with them, and the picture is cropped to the
+   * papers was shown half of each. The name goes under the picture now, where
+   * nothing can collide with it, and the picture is cropped to the
    * orientation being arranged and centred on its focal point — the part of
    * it this wall will actually show.
    */
-  function wallpaperTile(one: WallpaperChoice, current: string, noteOled: boolean): HTMLElement {
+  function wallpaperTile(one: WallpaperChoice, current: string): HTMLElement {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'le-wp-tile' + (one.id === current ? ' is-on' : '');
     button.dataset['wallpaper'] = one.id;
     button.dataset['category'] = one.category;
-    if (one.oled) button.dataset['oled'] = 'no';
     const notes: string[] = [];
     if (one.tone !== wallTone) notes.push(`drawn for a ${one.tone} theme`);
     else if (one.themes.length > 0) notes.push(`suits ${one.themes.map(themeLabel).join(', ')}`);
-    if (one.oled) notes.push('not for OLED screens');
     const label = notes.length === 0 ? one.name : `${one.name} — ${notes.join('; ')}`;
     button.title = label;
     button.setAttribute('aria-label', label);
@@ -4546,14 +4545,6 @@ function boot(): void {
     name.className = 'le-wp-name';
     name.textContent = one.name;
     button.append(picture, name);
-    // Said on the tile only where it tells one picture from its neighbours;
-    // when every picture shown is bright the picker says it once, above them.
-    if (one.oled && noteOled) {
-      const note = document.createElement('span');
-      note.className = 'le-wp-note';
-      note.textContent = 'Not for OLED';
-      button.appendChild(note);
-    }
     button.addEventListener('click', () => {
       record();
       const chosen: Background = { type: 'wallpaper', id: one.id };
@@ -4734,21 +4725,12 @@ function boot(): void {
     const shown = wallpapers.filter(
       (one) => showAllWallpapers || one.tone === wallTone || one.id === current,
     );
-    /*
-     * A light wallpaper is bright enough to burn into an OLED screen (P6.3),
-     * and every light one is — so on a light wall every tile carried the same
-     * caution, which says nothing about any one of them. Said once here when
-     * it is true of all of them; on the tiles only when it tells them apart.
-     */
-    const allBright = shown.length > 0 && shown.every((one) => one.oled);
     if (wallpapers.length > 0) {
       const lead = document.createElement('p');
       lead.className = 'hint le-wp-lead';
-      lead.textContent =
-        (showAllWallpapers
-          ? `Every wallpaper, including the ones drawn for ${otherTone} themes.`
-          : `Drawn for ${wallTone} themes like ${wallThemeName}.`) +
-        (allBright ? ' Pictures this bright are not for OLED screens, where a still image can burn in.' : '');
+      lead.textContent = showAllWallpapers
+        ? `Every wallpaper, including the ones drawn for ${otherTone} themes.`
+        : `Drawn for ${wallTone} themes like ${wallThemeName}.`;
       wrap.appendChild(lead);
     }
 
@@ -4782,7 +4764,7 @@ function boot(): void {
       section.setAttribute('aria-labelledby', head.id);
       const grid = document.createElement('div');
       grid.className = 'le-wp-grid';
-      for (const one of list) grid.appendChild(wallpaperTile(one, current, !allBright));
+      for (const one of list) grid.appendChild(wallpaperTile(one, current));
       section.append(head, grid);
       groupsBox.appendChild(section);
     }

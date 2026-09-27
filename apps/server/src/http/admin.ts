@@ -148,7 +148,6 @@ import { ago, presence, presenceDot } from './presence.js';
 import { canvasGutterStep, GUTTER_DEFAULT_STEP, GUTTER_LABELS } from '../gutter.js';
 import {
   isWidgetGround,
-  notForOled,
   themeTone,
   WALLPAPER_CATEGORY_NAMES,
   WALLPAPERS,
@@ -6065,10 +6064,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
        */
       wallpapers: WALLPAPERS.map((w) => ({
         ...w,
-        // What the picker says of it, decided here so the threshold and the
-        // category's words have one owner (P6.2, P6.3).
+        // The category's words, decided here so they have one owner (P6.2).
         categoryName: WALLPAPER_CATEGORY_NAMES[w.category],
-        oled: notForOled(w),
       })),
       wallTone: themeTone(ownerColours['--bg'] ?? ''),
       themePanel: ownerColours['--panel'],

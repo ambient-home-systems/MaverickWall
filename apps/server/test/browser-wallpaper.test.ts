@@ -13,7 +13,7 @@ import {
   shutDownBrowser,
   type Installation,
 } from './browser-harness.js';
-import { WALLPAPERS, WALLPAPER_CATEGORY_NAMES, notForOled, wallpaperById } from '../src/wallpapers.js';
+import { WALLPAPERS, WALLPAPER_CATEGORY_NAMES, wallpaperById } from '../src/wallpapers.js';
 
 const ids = (tone: 'light' | 'dark'): string[] => WALLPAPERS.filter((w) => w.tone === tone).map((w) => w.id).sort();
 
@@ -77,6 +77,25 @@ function setBackground(json: string | null): void {
   wall.db
     .prepare('UPDATE screens SET layout_background = ?, layout_landscape_background = ?, widget_ground = NULL WHERE id = ?')
     .run(json, json, screenId);
+}
+
+/**
+ * Every place the open wallpaper picker mentions OLED screens: its visible
+ * words, and each tile's accessible name and tooltip. The picker says nothing
+ * about them; the notice is placed where a household chooses a screen.
+ */
+function pickerMentionsOled(page: Page): Promise<string[]> {
+  return page.$eval('.le-wallpapers', (picker) => {
+    const said: string[] = [];
+    if (/oled/i.test(picker.textContent ?? '')) said.push(`text: ${picker.textContent ?? ''}`);
+    for (const tile of Array.from(picker.querySelectorAll<HTMLElement>('[data-wallpaper]'))) {
+      for (const attribute of ['aria-label', 'title']) {
+        const value = tile.getAttribute(attribute) ?? '';
+        if (/oled/i.test(value)) said.push(`${tile.dataset['wallpaper']} ${attribute}: ${value}`);
+      }
+    }
+    return said;
+  });
 }
 
 // --- Pixels ------------------------------------------------------------------
@@ -503,9 +522,7 @@ describe('the picker', () => {
           return wrong;
         });
         expect(misplaced).toEqual([]);
-        // No dark wallpaper is bright enough to warn about, and every tile
-        // names the theme it suits.
-        expect(await page.$$eval('.le-wallpapers [data-oled]', (n) => n.length)).toBe(0);
+        // Every tile names the theme it suits.
         expect(await page.getAttribute('.le-wallpapers [data-wallpaper="hills"]', 'aria-label')).toBe('Hills — suits Panels, Swiss');
         // Every thumbnail is written relative — so it resolves under the
         // admin's <base>, which under ingress carries the add-on's prefix — and
@@ -528,40 +545,33 @@ describe('the picker', () => {
         expect((await offered()).sort()).toEqual([...ids('dark'), ...ids('light')].sort());
         expect(await page.locator('.le-wallpapers .le-wp-warning').textContent()).toContain('may be hard to read');
         // A light wallpaper shown to a dark wall says which theme it was drawn
-        // for, and — every one of them being bright — that it is not for an
-        // OLED screen: as data, in its name, and written on the tile (P6.3),
-        // since here it is what tells a light tile from a dark one.
-        const bright = WALLPAPERS.filter(notForOled).map((w) => w.id).sort();
-        expect(bright).toEqual(ids('light'));
-        expect((await page.$$eval('.le-wallpapers [data-oled="no"]', (n) => n.map((t) => (t as HTMLElement).dataset['wallpaper']))).sort()).toEqual(bright);
-        expect(await page.getAttribute('.le-wallpapers [data-wallpaper="paper"]', 'aria-label')).toBe('Paper — drawn for a light theme; not for OLED screens');
+        // for, and nothing about OLED screens: that notice is the owner's to
+        // place where a household chooses a screen, not on every bright
+        // picture — so neither the words on the picker nor any tile's name
+        // mention it, with every light picture on screen.
+        expect(await page.getAttribute('.le-wallpapers [data-wallpaper="paper"]', 'aria-label')).toBe('Paper — drawn for a light theme');
+        expect(await pickerMentionsOled(page)).toEqual([]);
         /*
-         * Written under the picture, and nothing laid over it. The caution
-         * was an ::after across the tile's top, and the admin's own
-         * button::after — the 48px pointer target every button stretches —
-         * gave it that pseudo's size and translate, so every bright tile drew
-         * a blank grey square over a quarter of its picture. The pseudo is
-         * the pointer target again, and paints nothing.
+         * Written under the picture, and nothing laid over it. An OLED
+         * caution used to be an ::after across the tile's top, and the
+         * admin's own button::after — the 48px pointer target every button
+         * stretches — gave it that pseudo's size and translate, so every
+         * bright tile drew a blank grey square over a quarter of its picture.
+         * The pseudo is the pointer target again, and paints nothing.
          */
         const caption = await page.$eval('.le-wallpapers [data-wallpaper="paper"]', (t) => {
           const box = (selector: string): DOMRect | undefined => t.querySelector(selector)?.getBoundingClientRect();
           const after = getComputedStyle(t, '::after');
           return {
-            note: t.querySelector('.le-wp-note')?.textContent ?? '',
             pictureBottom: box('.le-wp-pic')?.bottom ?? Infinity,
             pictureHeight: box('.le-wp-pic')?.height ?? 0,
             nameTop: box('.le-wp-name')?.top ?? -Infinity,
-            noteTop: box('.le-wp-note')?.top ?? -Infinity,
             after: { content: after.content, background: after.backgroundColor },
           };
         });
-        expect(caption.note).toBe('Not for OLED');
         expect(caption.pictureHeight).toBeGreaterThan(40);
         expect(caption.nameTop).toBeGreaterThanOrEqual(caption.pictureBottom - 0.5);
-        expect(caption.noteTop).toBeGreaterThanOrEqual(caption.pictureBottom - 0.5);
         expect(caption.after).toEqual({ content: '""', background: 'rgba(0, 0, 0, 0)' });
-        // A dark tile beside it carries no caution to tell it apart by.
-        expect(await page.$$eval('.le-wallpapers [data-wallpaper="hills"] .le-wp-note', (n) => n.length)).toBe(0);
 
         await page.click('.le-wallpapers [data-wallpaper="hills"]');
         expect(await page.getAttribute('.le-wallpapers [data-wallpaper="hills"]', 'aria-pressed')).toBe('true');
@@ -708,15 +718,13 @@ describe('a light theme in the editor', () => {
         );
         expect(offered.sort(), 'Household is light, so every light wallpaper and no dark one').toEqual(ids('light'));
         expect(await page.getAttribute('.le-wallpapers [data-wallpaper="paper"]', 'aria-label')).toBe(
-          'Paper — suits Household, Paper Almanac, Blueprint; not for OLED screens',
+          'Paper — suits Household, Paper Almanac, Blueprint',
         );
-        // Every picture offered is bright, so the caution is said once, above
-        // them, where it was twelve identical lines on twelve tiles — and the
-        // filter is said too, with the wall's own theme named.
-        expect(await page.$$eval('.le-wallpapers .le-wp-note', (n) => n.length)).toBe(0);
-        const lead = await page.locator('.le-wallpapers .le-wp-lead').textContent();
-        expect(lead).toContain('Drawn for light themes like Household.');
-        expect(lead).toContain('not for OLED screens');
+        // The filter is said above the pictures, with the wall's own theme
+        // named, and nothing on the picker mentions OLED screens — where every
+        // picture offered is a bright one, which is where a caution last was.
+        expect(await page.locator('.le-wallpapers .le-wp-lead').textContent()).toBe('Drawn for light themes like Household.');
+        expect(await pickerMentionsOled(page)).toEqual([]);
         await page.selectOption('.le-bg select', 'none');
         await page.keyboard.press('Escape');
 

@@ -8203,9 +8203,11 @@ dark". Every master is composed with nothing near its edges, and four
 that travels in the manifest — spread, never `focal: undefined`, so a
 wallpaper without one sends the document it always sent — and becomes the
 canvas's `background-position`. The picker groups its tiles under a heading
-per category, names the themes a wallpaper suits, and marks every light one
+per category, names the themes a wallpaper suits, and marked every light one
 "not for OLED screens", on the tile and in its accessible name, from a
-luminance threshold the server owns. The whole set is 7.3 MB; the budget
+luminance threshold the server owns. It no longer does: the owner took the
+notice off the picker, which the last of the picker paragraphs below records,
+and the threshold stays in `wallpapers.ts`. The whole set is 7.3 MB; the budget
 test pins the directory under 15 MB and over 5 MB, the floor because a set
 that compressed to nothing would be gradients with nothing for a decoder to
 do.
@@ -8542,9 +8544,9 @@ too, so a household choosing between five pale papers was shown about half of
 each. `browser-wallpaper` asserted the pseudo's `content` and a height over 8px,
 and both were true of the square. Nothing is laid over the picture now: a tile
 is the picture (`.le-wp-pic`), cropped to the orientation being arranged and
-centred on its focal point, with the name and any caution underneath. The test
-holds both below the picture's bottom edge and the tile's `::after` to a
-transparent pointer target.
+centred on its focal point, with the name underneath. The test holds it below
+the picture's bottom edge and the tile's `::after` to a transparent pointer
+target.
 
 The second was the headings. They were items in the one grid the tiles were
 in, and a `flex-basis: 100%` meant for a flex row does nothing in a grid, so
@@ -8582,9 +8584,9 @@ every pick. It is the Layouts menu's fault from the previous change, one
 popover along: a pick redraws the panel, the click's target leaves the page,
 and the document reads it as a click outside. It stops its own clicks now. And
 the light list carried "Not for OLED" on all twelve tiles, which says nothing
-about any one of them. It is said once, in the lead, when every tile shown is
-bright, and on the tile only where it tells a light picture from a dark one
-beside it. The lead also says which themes the list is filtered to, above the
+about any one of them. It was then said once, in the lead, when every tile
+shown was bright, and on the tile only where it told a light picture from a
+dark one beside it, until it came off the picker entirely (below). The lead also says which themes the list is filtered to, above the
 pictures rather than only in a switch at the foot of the list.
 
 Nine mutations were checked on a rebuilt bundle, and all nine turn
@@ -8612,6 +8614,24 @@ written for.
 **Still unproven where it counts:** it was measured at 390px and 1440px in
 headless Chromium, and nobody has looked at it on the phone the report came
 from.
+
+**Then the OLED caution came off the picker altogether, on the owner's call.**
+Two reasons, and the second is the one worth keeping. It was true of every
+light wallpaper, so wherever it appeared it told no picture from its
+neighbour; and a static calendar should not be on an OLED panel whatever is
+behind it, so the place for the notice is where a household chooses a screen,
+not on each picture. So no tile carries it, no tile's name or tooltip says it,
+the lead line says only which themes the pictures are drawn for, and
+`.le-wp-note` and the bootstrap's `oled` flag are gone. `notForOled` and
+`OLED_LUMINANCE` stay in `wallpapers.ts`, held to the set by
+`wallpapers.test.ts`, as the one statement of which pictures the notice will
+concern. Two of the nine mutations above, the caution drawn over the picture
+and the caution on every tile, have nothing left to mutate. In their place
+`browser-wallpaper` reads every word of the open picker and every tile's name
+and tooltip for "OLED", on a dark wall with the light pictures shown and on a
+light wall. Two mutations turn it red: the note put back into the light
+tiles' names reddens both walls, and the sentence put back into the lead
+reddens the dark one.
 
 ---
 

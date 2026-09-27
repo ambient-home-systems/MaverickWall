@@ -1834,11 +1834,10 @@ pre.code{background:var(--mw-surface-2);
 /* The wallpaper picker (P6.2). A category is a heading over its own grid —
  * never a cell in somebody else's row, which is what one shared grid with the
  * headings as items drew. A tile is the picture, whole and cropped to the
- * orientation being arranged, with its name and any caution *underneath*:
- * nothing is laid over the picture, because the one pseudo-element that was
- * (the OLED caution) inherited button::after's pointer-target size and
- * translate and drew as a blank grey square over a quarter of every bright
- * tile. The tile is a button that clears its fill, so it names its own hover
+ * orientation being arranged, with its name *underneath*: nothing is laid
+ * over the picture, because the one pseudo-element that was (an OLED caution,
+ * since removed) inherited button::after's pointer-target size and translate
+ * and drew as a blank grey square over a quarter of every bright tile. The tile is a button that clears its fill, so it names its own hover
  * and press states. */
 .le-media-head{margin:0;font-size:var(--mw-t-label-sm-size);color:var(--muted)}
 .le-wp-lead{margin:0}
@@ -1855,8 +1854,6 @@ pre.code{background:var(--mw-surface-2);
 .le-wallpapers[data-orientation="landscape"] .le-wp-pic{aspect-ratio:5/4}
 .le-wp-name{display:block;padding:var(--mw-s-1) var(--mw-s-2) 0;font-size:var(--mw-t-label-sm-size);
   line-height:1.25;overflow-wrap:break-word}
-.le-wp-note{display:block;padding:0 var(--mw-s-2);font-size:var(--mw-t-label-xs-size);line-height:1.25;
-  color:var(--muted)}
 /* The widget ground, at the head of the picker: what every widget sits on
  * over the picture, and the sentence saying what that does to it. */
 .le-wp-ground{display:flex;flex-direction:column;gap:var(--mw-s-2);padding-bottom:var(--mw-s-3);

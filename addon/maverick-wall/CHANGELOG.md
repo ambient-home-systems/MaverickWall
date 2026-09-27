@@ -28,8 +28,7 @@ on most walls widgets cover most of the picture. **Widget ground** is now at the
 top of the picker as well as in Wall settings → Look. Choose None, Soft or Solid
 there to decide how much of the picture shows behind your widgets, and the
 preview changes straight away. The picker also says which themes its wallpapers
-are drawn for, and says once, rather than on every tile, that the light ones
-are not for OLED screens.
+are drawn for. The "Not for OLED" label is gone from the wallpapers.
 
 **The Background picker stays open while you choose.** It used to close after
 every pick, so comparing two wallpapers meant opening it again each time.
