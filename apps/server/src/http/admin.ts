@@ -352,6 +352,20 @@ function wallThemeColours(db: SqliteDatabase, ref: string): Readonly<Record<stri
 }
 
 /**
+ * The name a household knows its wall's theme by — a custom theme's own name,
+ * or a built-in's — for the wallpaper picker's sentences, which say whose card
+ * colour tints the picture. A custom theme that has since been deleted is the
+ * fallback's name, because the fallback is what the wall draws.
+ */
+function wallThemeName(db: SqliteDatabase, ref: string): string {
+  if (ref.startsWith(CUSTOM_PREFIX)) {
+    const theme = readTheme(db, ref.slice(CUSTOM_PREFIX.length));
+    return theme === undefined ? themeName(FALLBACK_THEME) : theme.name;
+  }
+  return themeName(displayThemeRef(ref));
+}
+
+/**
  * The Widget ground control (plan item P6.3): None, Soft or Solid, on the
  * wall's Look settings beside the other widget defaults.
  *
@@ -381,9 +395,10 @@ function widgetGroundControl(screen: {
       label: 'Widget ground',
       name: 'widget_ground',
       hint:
-        'What each widget sits on over a picture. Soft lets the wallpaper show through a little; ' +
-        'Solid is the theme’s own card colour; None puts the text straight on the picture. ' +
-        'Until you choose, a wall with a wallpaper uses Soft and any other wall uses None.',
+        'What each widget sits on over a picture, in the theme’s card colour. Soft tints the ' +
+        'picture behind each widget and lets it show faintly; Solid hides it behind the card colour; ' +
+        'None puts the text straight on the picture. Until you choose, a wall with a wallpaper uses ' +
+        'Soft and any other wall uses None. The wallpaper picker offers the same choice.',
       selected: shown,
       options: WIDGET_GROUNDS.map((value) => ({ value, label: labels[value] })),
     }) + `<input type="hidden" name="widget_ground_shown" value="${shown}">`
@@ -6057,6 +6072,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       })),
       wallTone: themeTone(ownerColours['--bg'] ?? ''),
       themePanel: ownerColours['--panel'],
+      // Its name, so the picker can say whose card colour tints the picture
+      // behind every widget rather than leaving the household to notice it.
+      themeName: wallThemeName(deps.db, owner?.theme ?? FALLBACK_THEME),
       // Which widgets the wall will leave out, and what to do about it. The
       // editor keeps the box — it has to be grabbable — and flags it. Keyed by
       // box, over both canvases, and beside it the facts to keep the flags

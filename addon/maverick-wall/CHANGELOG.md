@@ -16,6 +16,24 @@
 
 ## Unreleased
 
+**The wallpaper picker shows the pictures properly.** Each wallpaper is shown
+whole, cropped the way your wall will show it, with its name underneath. The
+grey square that covered a corner of every light one is gone, and each group of
+wallpapers now sits under its own heading instead of sharing a row with the
+group before it.
+
+**It also explains why a wallpaper looks tinted by your theme.** Every widget
+sits on a layer of the theme's card colour, so its text stays easy to read, and
+on most walls widgets cover most of the picture. **Widget ground** is now at the
+top of the picker as well as in Wall settings → Look. Choose None, Soft or Solid
+there to decide how much of the picture shows behind your widgets, and the
+preview changes straight away. The picker also says which themes its wallpapers
+are drawn for, and says once, rather than on every tile, that the light ones
+are not for OLED screens.
+
+**The Background picker stays open while you choose.** It used to close after
+every pick, so comparing two wallpapers meant opening it again each time.
+
 ## 0.72.0
 
 **Timed layouts, and their hours, are all in one menu now.** The button at

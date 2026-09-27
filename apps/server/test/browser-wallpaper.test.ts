@@ -482,6 +482,27 @@ describe('the picker', () => {
         const heads = await page.$$eval('.le-wallpapers .le-media-head', (nodes) => nodes.map((n) => n.textContent));
         const darkCategories = [...new Set(WALLPAPERS.filter((w) => w.tone === 'dark').map((w) => w.category))];
         expect(heads).toEqual(darkCategories.map((c) => WALLPAPER_CATEGORY_NAMES[c]));
+        // And each heading is over its own pictures, measured: every tile of a
+        // group lies below that group's heading and above the next one. The
+        // headings used to be items in one shared grid, where a heading is
+        // one cell — so on a phone "Paper and textures" sat at the end of the
+        // gradients' row with its papers starting under it on the next.
+        const misplaced = await page.$$eval('.le-wallpapers .le-media-head', (nodes) => {
+          const wrong: string[] = [];
+          const tops = nodes.map((n) => n.getBoundingClientRect().top);
+          nodes.forEach((head, index) => {
+            const below = head.getBoundingClientRect().bottom;
+            const next = tops[index + 1] ?? Infinity;
+            const group = head.closest('.le-wp-group');
+            for (const tile of Array.from(group?.querySelectorAll<HTMLElement>('[data-wallpaper]') ?? [])) {
+              const box = tile.getBoundingClientRect();
+              if (box.top < below - 0.5 || box.bottom > next + 0.5) wrong.push(`${tile.dataset['wallpaper']} under ${head.textContent}`);
+            }
+            if (group === null) wrong.push(`${head.textContent} heads no group`);
+          });
+          return wrong;
+        });
+        expect(misplaced).toEqual([]);
         // No dark wallpaper is bright enough to warn about, and every tile
         // names the theme it suits.
         expect(await page.$$eval('.le-wallpapers [data-oled]', (n) => n.length)).toBe(0);
@@ -490,12 +511,13 @@ describe('the picker', () => {
         // admin's <base>, which under ingress carries the add-on's prefix — and
         // answers. The harness has no prefix, so an absolute path would resolve
         // to the same place here; the spelling is what can tell them apart.
-        const written = await page.$$eval('.le-wallpapers [data-wallpaper]', (tiles) =>
-          tiles.map((t) => (t as HTMLElement).style.backgroundImage),
+        const written = await page.$$eval('.le-wallpapers [data-wallpaper] .le-wp-pic', (pictures) =>
+          pictures.map((t) => (t as HTMLElement).style.backgroundImage),
         );
+        expect(written.length).toBe(ids('dark').length);
         for (const one of written) expect(one.startsWith('url("assets/wallpapers/'), one).toBe(true);
-        const thumbs = await page.$$eval('.le-wallpapers [data-wallpaper]', (tiles) =>
-          tiles.map((t) => /url\("([^"]+)"\)/.exec(getComputedStyle(t).backgroundImage)?.[1] ?? ''),
+        const thumbs = await page.$$eval('.le-wallpapers [data-wallpaper] .le-wp-pic', (pictures) =>
+          pictures.map((t) => /url\("([^"]+)"\)/.exec(getComputedStyle(t).backgroundImage)?.[1] ?? ''),
         );
         for (const thumb of thumbs) {
           expect(thumb.startsWith(`${wall.base}/assets/wallpapers/`), thumb).toBe(true);
@@ -504,20 +526,42 @@ describe('the picker', () => {
 
         await page.click('.le-wallpapers label:has-text("Show wallpapers drawn for a light theme")');
         expect((await offered()).sort()).toEqual([...ids('dark'), ...ids('light')].sort());
-        expect(await page.locator('.le-wallpapers p.hint').textContent()).toContain('may be hard to read');
+        expect(await page.locator('.le-wallpapers .le-wp-warning').textContent()).toContain('may be hard to read');
         // A light wallpaper shown to a dark wall says which theme it was drawn
         // for, and — every one of them being bright — that it is not for an
-        // OLED screen: as data, in its name, and drawn on the tile (P6.3).
+        // OLED screen: as data, in its name, and written on the tile (P6.3),
+        // since here it is what tells a light tile from a dark one.
         const bright = WALLPAPERS.filter(notForOled).map((w) => w.id).sort();
         expect(bright).toEqual(ids('light'));
         expect((await page.$$eval('.le-wallpapers [data-oled="no"]', (n) => n.map((t) => (t as HTMLElement).dataset['wallpaper']))).sort()).toEqual(bright);
         expect(await page.getAttribute('.le-wallpapers [data-wallpaper="paper"]', 'aria-label')).toBe('Paper — drawn for a light theme; not for OLED screens');
+        /*
+         * Written under the picture, and nothing laid over it. The caution
+         * was an ::after across the tile's top, and the admin's own
+         * button::after — the 48px pointer target every button stretches —
+         * gave it that pseudo's size and translate, so every bright tile drew
+         * a blank grey square over a quarter of its picture. The pseudo is
+         * the pointer target again, and paints nothing.
+         */
         const caption = await page.$eval('.le-wallpapers [data-wallpaper="paper"]', (t) => {
+          const box = (selector: string): DOMRect | undefined => t.querySelector(selector)?.getBoundingClientRect();
           const after = getComputedStyle(t, '::after');
-          return { content: after.content, height: parseFloat(after.height) };
+          return {
+            note: t.querySelector('.le-wp-note')?.textContent ?? '',
+            pictureBottom: box('.le-wp-pic')?.bottom ?? Infinity,
+            pictureHeight: box('.le-wp-pic')?.height ?? 0,
+            nameTop: box('.le-wp-name')?.top ?? -Infinity,
+            noteTop: box('.le-wp-note')?.top ?? -Infinity,
+            after: { content: after.content, background: after.backgroundColor },
+          };
         });
-        expect(caption.content).toBe('"not for OLED"');
-        expect(caption.height).toBeGreaterThan(8);
+        expect(caption.note).toBe('Not for OLED');
+        expect(caption.pictureHeight).toBeGreaterThan(40);
+        expect(caption.nameTop).toBeGreaterThanOrEqual(caption.pictureBottom - 0.5);
+        expect(caption.noteTop).toBeGreaterThanOrEqual(caption.pictureBottom - 0.5);
+        expect(caption.after).toEqual({ content: '""', background: 'rgba(0, 0, 0, 0)' });
+        // A dark tile beside it carries no caution to tell it apart by.
+        expect(await page.$$eval('.le-wallpapers [data-wallpaper="hills"] .le-wp-note', (n) => n.length)).toBe(0);
 
         await page.click('.le-wallpapers [data-wallpaper="hills"]');
         expect(await page.getAttribute('.le-wallpapers [data-wallpaper="hills"]', 'aria-pressed')).toBe('true');
@@ -539,6 +583,103 @@ describe('the picker', () => {
         // "Use for both" is the default: one choice, both orientations.
         expect(JSON.parse(stored.p)).toEqual({ type: 'wallpaper', id: 'hills' });
         expect(JSON.parse(stored.l)).toEqual({ type: 'wallpaper', id: 'hills' });
+      } finally {
+        await context.close();
+      }
+    },
+    SLOW,
+  );
+
+  it(
+    'says what the widget ground does to the picture, previews a choice at once, and saves it with the wall',
+    async () => {
+      setBackground('{"type":"wallpaper","id":"dusk"}');
+      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      try {
+        const page = await context.newPage();
+        await wall.signIn(page);
+        await page.goto(`${wall.base}/admin/walls/${encodeURIComponent(screenId)}`, { waitUntil: 'load' });
+        await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
+        const previewGround = (): Promise<string> =>
+          page.evaluate(
+            () =>
+              document.querySelector<HTMLElement>('.le-preview')?.shadowRoot?.querySelector<HTMLElement>('.canvas')
+                ?.dataset['ground'] ?? 'none',
+          );
+        await expect.poll(previewGround).toBe('soft');
+        await page.click('.le-background-btn');
+
+        /*
+         * The picker leads with the one thing that decides most of what a
+         * household sees: every widget sits on a wash of the theme's card
+         * colour, so on Classic the picture reads as the theme's colour with
+         * the wallpaper faint underneath. Nothing said so, anywhere a
+         * wallpaper is chosen, and "the theme colours my wallpaper" was
+         * reported as a fault. Said in the wall's own theme's name — and
+         * "Panels’", which a naive "’s" would have written "Panels’s".
+         */
+        const pressed = (): Promise<string[]> =>
+          page.$$eval('.le-wp-ground [data-ground][aria-pressed="true"]', (n) => n.map((b) => (b as HTMLElement).dataset['ground'] ?? ''));
+        expect(await pressed()).toEqual(['soft']);
+        expect(await page.locator('.le-wp-ground-hint').textContent()).toBe(
+          'Each widget sits on a wash of Panels’ card colour, so behind it the picture shows faintly, tinted by the theme.',
+        );
+
+        // Pressed: the preview draws it at once, and it is Wall settings' own
+        // control that moved, so Save wall has one value to submit.
+        await page.click('.le-wp-ground [data-ground="none"]');
+        expect(await pressed()).toEqual(['none']);
+        // The redraw replaced the pressed segment; the picker stays open —
+        // it closed itself after every press, the click's target having left
+        // the page — and the keyboard stays on the segment.
+        expect(await page.locator('.le-background-pop').isVisible()).toBe(true);
+        expect(await page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset['ground'])).toBe('none');
+        await expect.poll(previewGround).toBe('none');
+        expect(await page.$eval('input[name="widget_ground"]:checked', (r) => (r as HTMLInputElement).value)).toBe('none');
+        expect(await page.locator('.le-wp-ground-hint').textContent()).toContain('The picture shows in full');
+        expect(await page.locator('[data-action="save"]').isEnabled()).toBe(true);
+
+        // And the other way: a choice made in Wall settings is what the
+        // preview follows, rather than the preview going on drawing the
+        // ground the page loaded with.
+        await page.keyboard.press('Escape');
+        await page.click('[data-mode="settings"]');
+        await page.click('#wset-tab-look');
+        await page.locator('label:has(input[name="widget_ground"][value="solid"])').click();
+        await page.click('[data-mode="layout"]');
+        await expect.poll(previewGround).toBe('solid');
+        await page.click('.le-background-btn');
+        expect(await pressed()).toEqual(['solid']);
+
+        await page.click('.le-wp-ground [data-ground="none"]');
+        await Promise.all([page.waitForNavigation({ timeout: 20_000 }), page.click('[data-action="save"]')]);
+        const stored = wall.db.prepare('SELECT widget_ground AS g FROM screens WHERE id = ?').get(screenId) as { g: string | null };
+        expect(stored.g).toBe('none');
+
+        /*
+         * The case that loses a choice. Wall settings writes the ground only
+         * when the posted segment differs from the one the page drew, so a
+         * wall nobody had asked goes on following its background. On a wall
+         * with no wallpaper yet the page drew None — and a household who
+         * then chooses a wallpaper and presses None in the picker posts None
+         * too: "unchanged", the column stays empty, and the wall draws Soft
+         * over the new picture. A choice made in the picker is a choice.
+         */
+        setBackground(null);
+        await page.goto(`${wall.base}/admin/walls/${encodeURIComponent(screenId)}`, { waitUntil: 'load' });
+        await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
+        await page.click('.le-background-btn');
+        await page.selectOption('.le-bg select', 'wallpaper');
+        await page.click('.le-wallpapers [data-wallpaper="hills"]');
+        expect(await page.locator('.le-background-pop').isVisible(), 'a pick leaves the picker open').toBe(true);
+        expect(await pressed(), 'never chosen, a wallpaper draws Soft').toEqual(['soft']);
+        await page.click('.le-wp-ground [data-ground="none"]');
+        await Promise.all([page.waitForNavigation({ timeout: 20_000 }), page.click('[data-action="save"]')]);
+        const again = wall.db
+          .prepare('SELECT widget_ground AS g, layout_background AS b FROM screens WHERE id = ?')
+          .get(screenId) as { g: string | null; b: string };
+        expect(JSON.parse(again.b)).toEqual({ type: 'wallpaper', id: 'hills' });
+        expect(again.g).toBe('none');
       } finally {
         await context.close();
       }
@@ -569,6 +710,13 @@ describe('a light theme in the editor', () => {
         expect(await page.getAttribute('.le-wallpapers [data-wallpaper="paper"]', 'aria-label')).toBe(
           'Paper — suits Household, Paper Almanac, Blueprint; not for OLED screens',
         );
+        // Every picture offered is bright, so the caution is said once, above
+        // them, where it was twelve identical lines on twelve tiles — and the
+        // filter is said too, with the wall's own theme named.
+        expect(await page.$$eval('.le-wallpapers .le-wp-note', (n) => n.length)).toBe(0);
+        const lead = await page.locator('.le-wallpapers .le-wp-lead').textContent();
+        expect(lead).toContain('Drawn for light themes like Household.');
+        expect(lead).toContain('not for OLED screens');
         await page.selectOption('.le-bg select', 'none');
         await page.keyboard.press('Escape');
 
