@@ -8509,22 +8509,24 @@ removed, the hours left out of the dirty flag, the menu's own click let
 through, the hours never posted, the server's held-layout check removed, a
 blank row counted as unsaved, and the phone compaction removed.
 
-**4801 tests passing, 1 skipped and 4 red, over 333 files**: calendar 153
-over 10 · core 314 over 9 · display 890 over 50 · server 3444 over 264 with 4
-red. Measured with `pnpm test` and a real Chromium (`MW_BROWSER_EXECUTABLE`).
-Against the 4785 recorded before this change, 20 tests were added: 17 in
+**4805 tests passing and 1 skipped, over 333 files**: calendar 153 over 10 ·
+core 314 over 9 · display 890 over 50 · server 3448 over 264. The full run
+was `pnpm test` with a real Chromium (`MW_BROWSER_EXECUTABLE`). Against the
+4785 recorded before this change, 20 tests were added: 17 in
 `layout-hours.test.ts`, 1 in `layout-schedule.test.ts` and 2 in
-`browser-editor-slots.test.ts`. That is 4805, of which the four red are
-`browser-calendar-looks` and `browser-calendar-shift-styles`, two each, and
-they are **red on a clean worktree of `main` at the same hour**, so they are
-not this change's. Both need a month cell with nobody on the rota, and the
-only such cells were the grid's leading days before the manifest's window,
-which exist on five weekdays in seven. The run was at 00:30 on a Sunday in
-London, where the week starts, so there were none. That is the week-numbers
-fault above, one assertion along. Ending Amy's rota a fortnight out in those
-two fixtures turns both files green on the same date; it is proposed on the
-pull request rather than made here, because the fixtures are not this
-change's.
+`browser-editor-slots.test.ts`. That full run read four red, in
+`browser-calendar-looks` and `browser-calendar-shift-styles`, two each. They
+were **red on a clean worktree of `main` at the same hour**, so they were not
+this change's code; they were a fault in both files' fixtures. Both need a
+month cell with nobody on the rota, and the only such cells were the grid's
+leading days before the manifest's window, which exist on five weekdays in
+seven. The run was at 00:30 on a Sunday in London, where the week starts, so
+there were none. That is the week-numbers fault above, one assertion along.
+Both fixtures now end Amy's rota a fortnight out, which leaves at least
+fourteen rota-less days on a five-week grid whatever weekday it starts on
+(reasoned). Measured: the two files alone were 4 red and 32 green at 01:46 on
+that Sunday before the change, and 36 of 36 after. The full suite was not
+re-run for a two-fixture change; CI runs it.
 
 ---
 

@@ -87,6 +87,14 @@ function addSecondRotaPerson(at: number): void {
 beforeAll(async () => {
   wall = await install({ calendars: HOUSEHOLD_CALENDARS });
   equipHousehold(wall.db, wall.now());
+  // Amy's rota ends a fortnight out, so the grid holds days with nobody on the
+  // rota whatever weekday the suite runs on. The only such days used to be the
+  // grid's leading cells before the manifest's window, which exist on five
+  // weekdays in seven: on a Sunday or a Monday, with the week starting Sunday,
+  // there were none, and the assertions that need one went red.
+  wall.db
+    .prepare(`UPDATE shift_plans SET effective_to = ? WHERE id = 'plan-amy'`)
+    .run(new Date(wall.now() + 14 * 86_400_000).toISOString().slice(0, 10));
   addSecondRotaPerson(wall.now());
   link = await wall.pairLink('Kitchen');
   screenId = (
