@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.73.0
+
 **The wallpaper picker shows the pictures properly.** Each wallpaper is shown
 whole, cropped the way your wall will show it, with its name underneath. The
 grey square that covered a corner of every light one is gone, and each group of
