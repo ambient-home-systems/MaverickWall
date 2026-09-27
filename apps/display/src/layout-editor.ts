@@ -17,7 +17,7 @@
  */
 
 import { renderFreeform } from './render.js';
-import { ADMIN_WALLPAPER_BASE } from './wallpaper.js';
+import { ADMIN_WALLPAPER_BASE, wallpaperPosition, widgetGroundFor, type WidgetGround } from './wallpaper.js';
 import { buildModel, type DisplayModel } from './viewmodel.js';
 import { applyTheme, themeTokens } from './theme.js';
 import {
@@ -370,8 +370,6 @@ function boot(): void {
     readonly categoryName: string;
     /** The built-in themes it is drawn for, as the server names them. */
     readonly themes: readonly string[];
-    /** Bright enough to burn in: the picker says "not for OLED screens". */
-    readonly oled: boolean;
     readonly focal?: { readonly x: number; readonly y: number };
   }
   let wallpapers: readonly WallpaperChoice[] = [];
@@ -388,6 +386,21 @@ function boot(): void {
    * a default nobody could have chosen for that wall.
    */
   let themePanel = '#1B212A';
+  /** The theme's name, so the picker can say whose card colour tints the picture. */
+  let wallThemeName = 'this wall’s theme';
+  /**
+   * What each widget sits on over the picture, when the household has chosen
+   * it this session — in the wallpaper picker or in Wall settings. Undefined
+   * is "as the wall has it", which `widgetGroundFor` answers per canvas.
+   *
+   * It lives in the settings form (`widget_ground`), because it is a fact about
+   * the wall rather than about one layout, and Save wall submits that form
+   * after the canvases. The picker writes the form's own radio rather than a
+   * second copy of the value, so the two controls cannot disagree and there is
+   * one thing to save; the preview reads it here so a choice is seen at once,
+   * which is the whole of why a household would understand what it does.
+   */
+  let groundChoice: WidgetGround | undefined;
   /** Whether the picker offers the wallpapers drawn for the other tone. */
   let showAllWallpapers = false;
   /** Whether choosing a wallpaper applies it to both orientations (P6.4). */
@@ -454,6 +467,7 @@ function boot(): void {
       readonly wallpapers?: unknown;
       readonly wallTone?: unknown;
       readonly themePanel?: unknown;
+      readonly themeName?: unknown;
     };
     const r = parsed.report;
     if (r !== undefined && typeof r.w === 'number' && typeof r.h === 'number' && r.w > 0 && r.h > 0) {
@@ -540,7 +554,6 @@ function boot(): void {
             (key) => typeof (one as Record<string, unknown>)[key] === 'string',
           ) &&
           Array.isArray((one as { themes?: unknown }).themes) &&
-          typeof (one as { oled?: unknown }).oled === 'boolean' &&
           ((one as { tone?: unknown }).tone === 'light' || (one as { tone?: unknown }).tone === 'dark'),
       );
     }
@@ -548,6 +561,7 @@ function boot(): void {
     if (typeof parsed.themePanel === 'string' && /^#[0-9a-fA-F]{6}$/.test(parsed.themePanel)) {
       themePanel = parsed.themePanel;
     }
+    if (typeof parsed.themeName === 'string' && parsed.themeName.trim() !== '') wallThemeName = parsed.themeName;
     // Start on portrait; landscape waits in the stash (RFC 005). 9:16 and 16:9
     // are the per-orientation defaults when a canvas has no aspect yet.
     const portrait = canvasFrom(parsed.portrait, 0.5625);
@@ -898,6 +912,24 @@ function boot(): void {
   // orientation like the widgets do.
   const backgroundPanel = document.createElement('div');
   backgroundPanel.className = 'le-bg';
+
+  /*
+   * Wall settings' own Widget ground control is on this page too, in the
+   * settings form Save wall submits. A choice made there is previewed here as
+   * it is made, the same as one made in the wallpaper picker — two controls
+   * for one value, so they are one value: the picker writes these radios, and
+   * these radios are what the preview follows.
+   */
+  for (const radio of groundRadios()) {
+    radio.addEventListener('change', () => {
+      if (!radio.checked || !isWidgetGround(radio.value)) return;
+      groundChoice = radio.value;
+      // And the picker's own segments, which would otherwise go on pressing
+      // the ground they were drawn with over a preview drawing this one.
+      drawBackgroundPanel();
+      renderPreview();
+    });
+  }
 
   /**
    * The toolbar: one row (RFC 009 Phase 5).
@@ -1717,6 +1749,15 @@ function boot(): void {
   const backgroundContext = document.createElement('div');
   backgroundContext.className = 'le-pop-sub';
   backgroundPopover.append(backgroundTitle, backgroundContext, backgroundPanel);
+  /*
+   * Its own clicks stop here, as the Layouts menu's do and for the same
+   * reason: pressing a wallpaper or a widget ground redraws the panel, so by
+   * the time the click reaches the document its target has left the page,
+   * reads as "a click outside the picker", and closed it — after every pick.
+   * Comparing two wallpapers, or trying None against Soft, meant reopening it
+   * each time, and on a desktop the preview beside it was the whole point.
+   */
+  backgroundPopover.addEventListener('click', (event) => event.stopPropagation());
 
   // Layers: a toggle that opens an anchored popover (built below). Anchored to
   // the tools row, never <body>, so it cannot float over the settings pane.
@@ -2223,7 +2264,8 @@ function boot(): void {
     // font-size of its own.
     const drawn = previewWidgets();
     const drawnBackground = state.background === undefined ? undefined : previewBackground(state.background);
-    renderFreeform(previewWall, model, {
+    // A widget ground chosen but not yet saved is drawn as the wall will draw it.
+    renderFreeform(previewWall, groundChoice === undefined ? model : { ...model, widgetGround: groundChoice }, {
       aspect: state.aspect,
       widgets: drawn,
       ...(drawnBackground !== undefined ? { background: drawnBackground } : {}),
@@ -4460,35 +4502,49 @@ function boot(): void {
   /**
    * One wallpaper's tile. Its accessible name carries what the picker knows
    * about it beyond the picture: which theme it is drawn for when that is not
-   * this wall's, the theme it sits best under, and "not for OLED screens" on
-   * a bright one (P6.3) — a static light picture is the burn-in the shadow
-   * rule was written about, and a household with an OLED television is told
-   * on the tile rather than after a year.
+   * this wall's, and otherwise the themes it sits best under.
+   *
+   * It says nothing about OLED screens, deliberately. It used to mark every
+   * bright picture "not for OLED screens", on the tile and in its name; that
+   * was true of all twelve light ones and so told no tile from its
+   * neighbour, and a static calendar is not a thing to hang on an OLED panel
+   * whatever is behind it. The notice belongs where a household chooses a
+   * screen, not on each picture.
+   *
+   * **Nothing is laid over the picture.** The name used to sit on a dark band
+   * across its foot and the OLED caution was an `::after` across its top — and
+   * the admin's own `button::after`, the 48px pointer target every button
+   * stretches, gave that pseudo its size and its `translate(-50%, -50%)`, so
+   * every bright tile drew a blank grey square over a quarter of its picture
+   * with the words pushed out of sight. A household choosing between five pale
+   * papers was shown half of each. The name goes under the picture now, where
+   * nothing can collide with it, and the picture is cropped to the
+   * orientation being arranged and centred on its focal point — the part of
+   * it this wall will actually show.
    */
   function wallpaperTile(one: WallpaperChoice, current: string): HTMLElement {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'le-media-item' + (one.id === current ? ' is-on' : '') + (one.oled ? ' is-bright' : '');
+    button.className = 'le-wp-tile' + (one.id === current ? ' is-on' : '');
     button.dataset['wallpaper'] = one.id;
     button.dataset['category'] = one.category;
-    if (one.oled) button.dataset['oled'] = 'no';
-    button.style.backgroundColor = one.color;
-    button.style.backgroundImage = `url("${ADMIN_WALLPAPER_BASE}${one.thumb}")`;
     const notes: string[] = [];
     if (one.tone !== wallTone) notes.push(`drawn for a ${one.tone} theme`);
     else if (one.themes.length > 0) notes.push(`suits ${one.themes.map(themeLabel).join(', ')}`);
-    if (one.oled) notes.push('not for OLED screens');
     const label = notes.length === 0 ? one.name : `${one.name} — ${notes.join('; ')}`;
     button.title = label;
     button.setAttribute('aria-label', label);
     button.setAttribute('aria-pressed', one.id === current ? 'true' : 'false');
-    // The name, on the tile itself: a hover tooltip is undiscoverable on the
-    // touchscreen these tiles are mostly chosen on, and twenty-six unlabelled
-    // swatches read as a heap rather than a catalogue.
+    const picture = document.createElement('span');
+    picture.className = 'le-wp-pic';
+    picture.setAttribute('aria-hidden', 'true');
+    picture.style.backgroundColor = one.color;
+    picture.style.backgroundImage = `url("${ADMIN_WALLPAPER_BASE}${one.thumb}")`;
+    picture.style.backgroundPosition = wallpaperPosition(one);
     const name = document.createElement('span');
-    name.className = 'le-media-name';
+    name.className = 'le-wp-name';
     name.textContent = one.name;
-    button.appendChild(name);
+    button.append(picture, name);
     button.addEventListener('click', () => {
       record();
       const chosen: Background = { type: 'wallpaper', id: one.id };
@@ -4528,13 +4584,131 @@ function boot(): void {
     return names[key] ?? key;
   }
 
+  function isWidgetGround(value: string): value is WidgetGround {
+    return value === 'none' || value === 'soft' || value === 'solid';
+  }
+
+  /** Wall settings' Widget ground radios, on this page — none on a panel's page. */
+  function groundRadios(): HTMLInputElement[] {
+    return Array.from(document.querySelectorAll<HTMLInputElement>('input[type="radio"][name="widget_ground"]'));
+  }
+
+  /**
+   * What each widget sits on over a wallpaper: the household's choice this
+   * session, or what the wall has — which, never chosen, is Soft over a
+   * wallpaper (`widgetGroundFor`). Asked as though a wallpaper were already
+   * on the canvas, because the picker is where one is being chosen, and a
+   * sentence saying "None" before the first tile is pressed and "Soft" after
+   * would describe the empty canvas rather than the wall being made.
+   */
+  function wallpaperGround(): WidgetGround {
+    return groundChoice ?? widgetGroundFor(model?.widgetGround, { type: 'wallpaper', id: '', small: '', large: '' });
+  }
+
+  /**
+   * The Widget ground control, at the top of the wallpaper picker, with a
+   * sentence saying what the chosen one does to the picture.
+   *
+   * This is the part of a wallpaper nothing used to explain, and it decides
+   * most of what a household sees: every widget sits on a layer of the
+   * theme's card colour so its text keeps the contrast it was measured for,
+   * and Classic's widgets cover nearly the whole wall — so on Soft the picture
+   * reads as the theme's colour with the wallpaper faint underneath. A
+   * household who chose a picture and got a wall "coloured by the theme" had
+   * no way to know why, or that this was the control. It is Wall settings'
+   * own control, written through (`setWallpaperGround`), so there is one value
+   * and one thing to save.
+   */
+  function groundField(): HTMLElement {
+    const current = wallpaperGround();
+    const field = document.createElement('div');
+    field.className = 'le-wp-ground';
+    const head = document.createElement('p');
+    head.className = 'le-wp-ground-head';
+    head.textContent = 'Widget ground';
+    field.appendChild(head);
+    if (groundRadios().length > 0) {
+      const group = document.createElement('div');
+      group.className = 'seg le-seg';
+      group.setAttribute('role', 'group');
+      group.setAttribute('aria-label', 'Widget ground');
+      for (const [value, text] of [['none', 'None'], ['soft', 'Soft'], ['solid', 'Solid']] as const) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = text;
+        button.dataset['ground'] = value;
+        button.className = value === current ? 'on' : '';
+        button.setAttribute('aria-pressed', value === current ? 'true' : 'false');
+        button.addEventListener('click', () => setWallpaperGround(value));
+        group.appendChild(button);
+      }
+      field.appendChild(group);
+    }
+    const say = document.createElement('p');
+    say.className = 'hint le-wp-ground-hint';
+    say.textContent = groundSentence(current);
+    field.appendChild(say);
+    return field;
+  }
+
+  /**
+   * What a widget ground does to the picture, in the wall's own theme's name —
+   * one sentence, because it sits above the pictures on a phone and every
+   * line of it is a line of pictures pushed below the fold.
+   */
+  function groundSentence(ground: WidgetGround): string {
+    const theme = possessive(wallThemeName);
+    if (ground === 'soft') {
+      return `Each widget sits on a wash of ${theme} card colour, so behind it the picture shows faintly, tinted by the theme.`;
+    }
+    if (ground === 'solid') {
+      return `Each widget sits on ${theme} card colour, so the picture shows only between widgets.`;
+    }
+    return 'The picture shows in full behind every widget. Text over a busy part of it may be harder to read.';
+  }
+
+  /** "Household’s", and "Panels’" rather than "Panels’s". */
+  function possessive(name: string): string {
+    return /s$/i.test(name) ? `${name}’` : `${name}’s`;
+  }
+
+  /**
+   * Choose the widget ground from the picker: Wall settings' radio, checked
+   * and announced, so Save wall submits it and the page counts it as unsaved.
+   *
+   * The handler writes the column only when the posted segment differs from
+   * the one the page drew (`widget_ground_shown`), so a wall nobody had asked
+   * goes on following its background. A choice made here is a choice even when
+   * it names the segment that happened to be drawn — Soft, on a wall about to
+   * gain its first wallpaper — so the marker is cleared, and the handler reads
+   * whatever is posted as moved.
+   */
+  function setWallpaperGround(value: WidgetGround): void {
+    groundChoice = value;
+    const radio = groundRadios().find((one) => one.value === value);
+    if (radio !== undefined) {
+      radio.checked = true;
+      const shown = document.querySelector<HTMLInputElement>('input[name="widget_ground_shown"]');
+      if (shown !== null) shown.value = '';
+      // Its listener redraws the picker and the preview, and the page counts
+      // the settings form as edited, so Save wall is live.
+      radio.dispatchEvent(new Event('change', { bubbles: true }));
+    } else {
+      drawBackgroundPanel();
+      renderPreview();
+    }
+    // The redraw replaced the segment that was pressed; keep a keyboard where
+    // it was rather than dropping it back to the top of the document.
+    backgroundPanel.querySelector<HTMLElement>(`.le-wp-ground [data-ground="${value}"]`)?.focus();
+  }
+
   function wallpaperPicker(current: string): HTMLElement {
     const wrap = document.createElement('div');
     wrap.className = 'le-media le-wallpapers';
-    const grid = document.createElement('div');
-    grid.className = 'le-media-grid';
-    grid.setAttribute('role', 'group');
-    grid.setAttribute('aria-label', 'Wallpapers');
+    // The tiles crop to the orientation being arranged (see `wallpaperTile`).
+    wrap.dataset['orientation'] = state.orientation;
+    // A panel draws no background at all, so it has no ground to choose.
+    if (!epaperHost) wrap.appendChild(groundField());
 
     /*
      * Filtered by tone to match the wall's theme (P6.3), because a wallpaper
@@ -4543,37 +4717,64 @@ function boot(): void {
      * theme's flat ground. The rest are one switch away, behind a sentence
      * that says what they cost, and the chosen one is always shown even when
      * it is the other tone — a picker that hides what is on the wall reads as
-     * "nothing is chosen".
+     * "nothing is chosen". The filter is said above the tiles rather than only
+     * at the foot of the list: a household on a light theme was shown only
+     * pale pictures with nothing on screen saying why.
      */
+    const otherTone = wallTone === 'dark' ? 'light' : 'dark';
     const shown = wallpapers.filter(
       (one) => showAllWallpapers || one.tone === wallTone || one.id === current,
     );
+    if (wallpapers.length > 0) {
+      const lead = document.createElement('p');
+      lead.className = 'hint le-wp-lead';
+      lead.textContent = showAllWallpapers
+        ? `Every wallpaper, including the ones drawn for ${otherTone} themes.`
+        : `Drawn for ${wallTone} themes like ${wallThemeName}.`;
+      wrap.appendChild(lead);
+    }
+
     /*
-     * Grouped by category (Q10), in the catalogue's own order, under a small
-     * heading each — twenty-six tiles at 64px read as a heap without one. A
-     * group with nothing shown in it is not drawn at all, so a dark wall with
-     * "show all" off never sees "Paper and textures" over an empty row.
+     * Grouped by category (Q10), in the catalogue's own order: a heading over
+     * each group's own grid. They used to be one grid with the headings as
+     * items in it, and a heading is one cell of a grid unless it is told to
+     * span — so on a phone "Paper and textures" sat in the last cell of the
+     * row of soft gradients and its papers started on the next row, under the
+     * wrong words. A group with nothing shown in it is not drawn at all, so a
+     * dark wall with "show all" off never sees a heading over nothing.
      */
+    const groupsBox = document.createElement('div');
+    groupsBox.className = 'le-wp-groups';
+    groupsBox.setAttribute('role', 'group');
+    groupsBox.setAttribute('aria-label', 'Wallpapers');
     const groups = new Map<string, WallpaperChoice[]>();
     for (const one of shown) {
       const list = groups.get(one.category);
       if (list === undefined) groups.set(one.category, [one]);
       else list.push(one);
     }
-    for (const [, list] of groups) {
+    for (const [category, list] of groups) {
+      const section = document.createElement('div');
+      section.className = 'le-wp-group';
+      section.setAttribute('role', 'group');
       const head = document.createElement('p');
       head.className = 'le-media-head';
+      head.id = `le-wp-head-${category}`;
       head.textContent = list[0]?.categoryName ?? '';
-      grid.appendChild(head);
+      section.setAttribute('aria-labelledby', head.id);
+      const grid = document.createElement('div');
+      grid.className = 'le-wp-grid';
       for (const one of list) grid.appendChild(wallpaperTile(one, current));
+      section.append(head, grid);
+      groupsBox.appendChild(section);
     }
     if (wallpapers.length === 0) {
       const note = document.createElement('p');
       note.className = 'hint';
       note.textContent = 'No wallpapers are installed.';
-      grid.appendChild(note);
+      groupsBox.appendChild(note);
     }
-    wrap.appendChild(grid);
+    wrap.appendChild(groupsBox);
 
     const toggle = (text: string, checked: boolean, onChange: (on: boolean) => void): HTMLElement => {
       const label = document.createElement('label');
@@ -4590,7 +4791,6 @@ function boot(): void {
         wallpaperForBoth = on;
       }),
     );
-    const otherTone = wallTone === 'dark' ? 'light' : 'dark';
     if (wallpapers.some((one) => one.tone === otherTone)) {
       wrap.appendChild(
         toggle(`Show wallpapers drawn for a ${otherTone} theme`, showAllWallpapers, (on) => {
@@ -4600,11 +4800,11 @@ function boot(): void {
       );
       if (showAllWallpapers) {
         const warning = document.createElement('p');
-        warning.className = 'hint';
+        warning.className = 'hint le-wp-warning';
         warning.textContent =
           `This wall's theme is ${wallTone}, and its text is drawn to be read on a ${wallTone} ground. ` +
           `Over a ${otherTone} picture some of it may be hard to read — choose a Solid widget ground ` +
-          `in Wall settings → Look, or a ${otherTone} theme.`;
+          `above, or a ${otherTone} theme.`;
         wrap.appendChild(warning);
       }
     }

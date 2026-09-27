@@ -8203,9 +8203,11 @@ dark". Every master is composed with nothing near its edges, and four
 that travels in the manifest — spread, never `focal: undefined`, so a
 wallpaper without one sends the document it always sent — and becomes the
 canvas's `background-position`. The picker groups its tiles under a heading
-per category, names the themes a wallpaper suits, and marks every light one
+per category, names the themes a wallpaper suits, and marked every light one
 "not for OLED screens", on the tile and in its accessible name, from a
-luminance threshold the server owns. The whole set is 7.3 MB; the budget
+luminance threshold the server owns. It no longer does: the owner took the
+notice off the picker, which the last of the picker paragraphs below records,
+and the threshold stays in `wallpapers.ts`. The whole set is 7.3 MB; the budget
 test pins the directory under 15 MB and over 5 MB, the floor because a set
 that compressed to nothing would be gradients with nothing for a decoder to
 do.
@@ -8527,6 +8529,109 @@ fourteen rota-less days on a five-week grid whatever weekday it starts on
 (reasoned). Measured: the two files alone were 4 red and 32 green at 01:46 on
 that Sunday before the change, and 36 of 36 after. The full suite was not
 re-run for a two-fixture change; CI runs it.
+
+**The wallpaper picker was reported from a phone as three faults, and all three
+were real.** "The screenshots are not good", "poorly organised", and "the theme
+you select colours them, and that is not explained at all".
+
+The first was a grey square over the top-left quarter of every light tile. It
+was the "not for OLED" caution, an `::after` positioned across the tile's top.
+The admin's own `button::after` is the 48px pointer target every button
+stretches, and it gave that pseudo its `width`, `height` and
+`translate(-50%, -50%)`. So the caution drew as a blank dark box with its words
+pushed out of the tile. The name sat on a dark band across the picture's foot,
+too, so a household choosing between five pale papers was shown about half of
+each. `browser-wallpaper` asserted the pseudo's `content` and a height over 8px,
+and both were true of the square. Nothing is laid over the picture now: a tile
+is the picture (`.le-wp-pic`), cropped to the orientation being arranged and
+centred on its focal point, with the name underneath. The test holds it below
+the picture's bottom edge and the tile's `::after` to a transparent pointer
+target.
+
+The second was the headings. They were items in the one grid the tiles were
+in, and a `flex-basis: 100%` meant for a flex row does nothing in a grid, so
+each heading was one cell. On a phone "Paper and textures" sat in the last cell
+of the gradients' row, with its papers starting under it on the next. Each
+category is a heading over its own grid now, and the test measures every tile
+below its own heading and above the next.
+
+The third is the design rather than a fault in it. Every widget sits on a wash
+of the theme's `--panel` (the Soft ground, P6.3), so its text keeps the contrast
+it was measured for. Classic's widgets tile nearly the whole canvas, so on Soft
+the wall reads as the theme's colour with the wallpaper faint underneath. The
+one control that decides it, Widget ground, lived in Wall settings → Look, and
+nothing where a wallpaper is chosen mentioned it. It now leads the picker as
+None / Soft / Solid, with one sentence per ground naming the wall's own theme.
+`themeName` is new in the editor's bootstrap, and `possessive` writes "Panels’"
+where a naive "’s" writes "Panels’s".
+
+**The picker writes Wall settings' own radio rather than a second copy of the
+value**, so there is one thing Save wall submits and the two controls cannot
+disagree. The preview follows the radio in both directions: `groundChoice`
+overrides the model's `widgetGround` in `renderPreview`, and a change made in
+Wall settings redraws the picker's segments too. The first draft left those
+pressing the old ground over a preview drawing the new one, and the test caught
+it on its first run. The half that would have lost a choice silently is the
+settings handler's own rule. It writes the column only when the posted segment
+differs from the one the page drew, so a wall nobody asked goes on following
+its background. On a wall with no wallpaper yet the page drew None, and a
+household that chose a wallpaper and pressed None posted None: "unchanged", so
+the column stayed empty and the wall drew Soft. A choice made in the picker
+clears `widget_ground_shown`, and the test walks exactly that wall.
+
+**Two more came out of driving it.** The Background popover closed itself after
+every pick. It is the Layouts menu's fault from the previous change, one
+popover along: a pick redraws the panel, the click's target leaves the page,
+and the document reads it as a click outside. It stops its own clicks now. And
+the light list carried "Not for OLED" on all twelve tiles, which says nothing
+about any one of them. It was then said once, in the lead, when every tile
+shown was bright, and on the tile only where it told a light picture from a
+dark one beside it, until it came off the picker entirely (below). The lead also says which themes the list is filtered to, above the
+pictures rather than only in a switch at the foot of the list.
+
+Nine mutations were checked on a rebuilt bundle, and all nine turn
+`browser-wallpaper` red:
+
+- the caution drawn over the picture again;
+- the headings put back in one grid;
+- the preview ignoring the choice;
+- the picker not writing the radio;
+- the marker kept;
+- Wall settings' change not redrawing the picker;
+- the popover closing on a pick;
+- the caution on every tile;
+- the naive possessive.
+
+**4806 tests passing and 1 skipped, over 333 files**, every file green:
+calendar 153 over 10 · core 314 over 9 · display 890 over 50 · server 3449 over
+264. Measured with `pnpm test` and a real Chromium (`MW_BROWSER_EXECUTABLE`) at
+02:05 on a Sunday in London. Against the 4805 recorded above, that is this
+change's one new test in `browser-wallpaper`; the other assertions it added sit
+in tests that already existed. The four tests that were red at 00:30 on the
+same Sunday are green, which is the fixture fix measured on the day it was
+written for.
+
+**Still unproven where it counts:** it was measured at 390px and 1440px in
+headless Chromium, and nobody has looked at it on the phone the report came
+from.
+
+**Then the OLED caution came off the picker altogether, on the owner's call.**
+Two reasons, and the second is the one worth keeping. It was true of every
+light wallpaper, so wherever it appeared it told no picture from its
+neighbour; and a static calendar should not be on an OLED panel whatever is
+behind it, so the place for the notice is where a household chooses a screen,
+not on each picture. So no tile carries it, no tile's name or tooltip says it,
+the lead line says only which themes the pictures are drawn for, and
+`.le-wp-note` and the bootstrap's `oled` flag are gone. `notForOled` and
+`OLED_LUMINANCE` stay in `wallpapers.ts`, held to the set by
+`wallpapers.test.ts`, as the one statement of which pictures the notice will
+concern. Two of the nine mutations above, the caution drawn over the picture
+and the caution on every tile, have nothing left to mutate. In their place
+`browser-wallpaper` reads every word of the open picker and every tile's name
+and tooltip for "OLED", on a dark wall with the light pictures shown and on a
+light wall. Two mutations turn it red: the note put back into the light
+tiles' names reddens both walls, and the sentence put back into the lead
+reddens the dark one.
 
 ---
 

@@ -1831,26 +1831,36 @@ pre.code{background:var(--mw-surface-2);
   border:2px solid var(--rule);background-size:cover;background-position:center}
 .le-media-item:hover{border-color:var(--faint)}
 .le-media-item.is-on{border-color:var(--accent)}
-/* The wallpaper picker (P6.2): a heading per category takes a whole row of the
-   grid, and a bright picture carries its OLED caution on the tile itself. */
-.le-media-head{flex-basis:100%;margin:var(--mw-s-2) 0 0;font-size:var(--mw-t-label-sm-size);color:var(--muted)}
-.le-media-item.is-bright{position:relative;overflow:hidden}
-.le-media-item.is-bright::after{content:'not for OLED';position:absolute;left:0;right:0;bottom:0;
-  padding:var(--mw-s-1) 0;font-size:var(--mw-t-label-sm-size);line-height:1;color:#fff;background:rgba(0,0,0,.55)}
-/* Every other picker here is a bare swatch a household already knows by sight
- * (their own uploaded photo, a colour they just chose) — a wallpaper is
- * neither, so its tile carries the picture's name rather than a tooltip
- * nobody hovers on a touchscreen. Bigger cards, in their own grid, scoped so
- * the uploaded-image picker above keeps its plain thumbnails. */
-.le-wallpapers .le-media-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));
-  gap:var(--mw-s-3)}
-.le-wallpapers .le-media-item{width:100%;height:auto;aspect-ratio:1;display:flex;align-items:flex-end;
-  position:relative;overflow:hidden}
-.le-wallpapers .le-media-item.is-bright::after{bottom:auto;top:0}
-.le-media-name{display:block;width:100%;padding:var(--mw-s-1) var(--mw-s-2);
-  font-size:var(--mw-t-label-xs-size);line-height:1.2;color:#fff;text-align:left;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-  background:linear-gradient(to top,rgba(0,0,0,.72),rgba(0,0,0,0))}
+/* The wallpaper picker (P6.2). A category is a heading over its own grid —
+ * never a cell in somebody else's row, which is what one shared grid with the
+ * headings as items drew. A tile is the picture, whole and cropped to the
+ * orientation being arranged, with its name *underneath*: nothing is laid
+ * over the picture, because the one pseudo-element that was (an OLED caution,
+ * since removed) inherited button::after's pointer-target size and translate
+ * and drew as a blank grey square over a quarter of every bright tile. The tile is a button that clears its fill, so it names its own hover
+ * and press states. */
+.le-media-head{margin:0;font-size:var(--mw-t-label-sm-size);color:var(--muted)}
+.le-wp-lead{margin:0}
+.le-wp-groups{display:flex;flex-direction:column;gap:var(--mw-s-4)}
+.le-wp-group{display:flex;flex-direction:column;gap:var(--mw-s-2)}
+.le-wp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:var(--mw-s-3)}
+.le-wp-tile{display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:0;
+  height:auto;margin:0;padding:0 0 var(--mw-s-1);border:2px solid var(--rule);border-radius:var(--mw-r-2);
+  overflow:hidden;background:var(--panel2);color:var(--ink);text-align:left;white-space:normal;cursor:pointer}
+.le-wp-tile:hover,.le-wp-tile:active{background:var(--panel2);border-color:var(--faint)}
+.le-wp-tile.is-on{border-color:var(--accent)}
+.le-wp-tile.is-on .le-wp-name{font-weight:600}
+.le-wp-pic{display:block;width:100%;aspect-ratio:4/5;background-size:cover;background-repeat:no-repeat}
+.le-wallpapers[data-orientation="landscape"] .le-wp-pic{aspect-ratio:5/4}
+.le-wp-name{display:block;padding:var(--mw-s-1) var(--mw-s-2) 0;font-size:var(--mw-t-label-sm-size);
+  line-height:1.25;overflow-wrap:break-word}
+/* The widget ground, at the head of the picker: what every widget sits on
+ * over the picture, and the sentence saying what that does to it. */
+.le-wp-ground{display:flex;flex-direction:column;gap:var(--mw-s-2);padding-bottom:var(--mw-s-3);
+  border-bottom:1px solid var(--rule)}
+.le-wp-ground-head{margin:0;font-size:var(--mw-t-label-size);font-weight:var(--mw-t-label-weight);color:var(--ink)}
+.le-wp-ground .le-seg{align-self:flex-start}
+.le-wp-ground-hint,.le-wp-warning{margin:0}
 .le-media-upload{display:inline-flex;align-items:center;gap:var(--mw-s-2);font-size:var(--mw-t-label-size);color:var(--muted)}
 .le-media-upload input{font-size:var(--mw-t-label-sm-size)}
 .le-media-status{font-family:var(--mono);font-size:var(--mw-t-label-sm-size);color:var(--mw-ink-muted)}

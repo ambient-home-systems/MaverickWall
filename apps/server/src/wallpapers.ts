@@ -95,7 +95,8 @@ export interface Wallpaper {
   readonly color: string;
   /**
    * The picture's mean relative luminance (0 black, 1 white), measured off the
-   * raster. Above `OLED_LUMINANCE` the picker marks it "not for OLED screens".
+   * raster. Above `OLED_LUMINANCE` it is bright enough to burn into an OLED
+   * screen.
    */
   readonly luminance: number;
   /** About 320px square: the picker's thumbnail. */
@@ -109,11 +110,18 @@ export interface Wallpaper {
 export const WALLPAPERS: readonly Wallpaper[] = WALLPAPER_CATALOGUE;
 
 /**
- * The mean luminance above which a wallpaper is marked "not for OLED screens"
- * (P6.3). A bright static picture is the burn-in the shadow rule was written
- * about; every light wallpaper in the set sits far above this and every dark
- * one far below, so the line is a statement of which half is which rather
- * than a threshold anything lands near.
+ * The mean luminance above which a wallpaper is bright enough to burn into an
+ * OLED screen (P6.3). A bright static picture is the burn-in the shadow rule
+ * was written about; every light wallpaper in the set sits far above this and
+ * every dark one far below, so the line is a statement of which half is which
+ * rather than a threshold anything lands near.
+ *
+ * The wallpaper picker no longer says so. It marked every light picture "not
+ * for OLED screens", which was true of all twelve and so told none of them
+ * apart, and a static calendar does not belong on an OLED panel whatever is
+ * behind it. The owner is moving that notice to where a household chooses a
+ * screen; this is kept as the one statement of which pictures it concerns,
+ * and `wallpapers.test.ts` holds it to the set.
  */
 export const OLED_LUMINANCE = 0.4;
 
