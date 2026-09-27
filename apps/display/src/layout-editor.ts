@@ -75,6 +75,16 @@ import { MARQUEE_MIN, enclosedBy, marqueeBetween, toggleSelected } from './selec
 import { GROUP_LAYOUTS, groupChildren, groupIsOrdered, parentIdOf, topLevelWidgets } from './group-cells.js';
 import { markTabs, wireTabs } from './tabs.js';
 import {
+  type EditedRule,
+  firstOverlap,
+  hoursOf,
+  isBlankRule,
+  scheduleForSave,
+  scheduleProblem,
+  scheduleSnapshot,
+  whenLine,
+} from './layout-hours.js';
+import {
   canvasKey,
   canvasSnapshot,
   isCanvasDirty,
@@ -155,13 +165,13 @@ interface LayoutState {
   // The active canvas is held flat as `aspect`/`widgets` so the whole editor
   // reads and mutates it directly; every other canvas — the other orientation,
   // and each named slot on both orientations — waits in `stash`, keyed by
-  // `canvasKey`, and one swaps in on the orientation toggle or the slot tabs.
+  // `canvasKey`, and one swaps in on the orientation toggle or the Layouts menu.
   // Each is saved under its own orientation and slot.
   aspect: number;
   widgets: Widget[];
   background?: Background | undefined;
   stash: Record<string, Canvas>;
-  /** The named canvases this wall holds, in the order the tabs draw them. */
+  /** The named canvases this wall holds, in the order the Layouts menu lists them. */
   slots: string[];
   /** How many named canvases a wall may hold — the server's bound, echoed. */
   maxSlots: number;
@@ -405,6 +415,17 @@ function boot(): void {
    */
   const notDrawnSeed = new Map<string, string>();
   let omissionFacts: OmissionFacts | undefined;
+  /**
+   * The timed layouts the server holds, and the hours each one shows (RFC 014
+   * §5.2) — `schedule` as the Layouts menu is editing it, in the order the
+   * rules were written, because where two overlap the first one wins.
+   * `savedSchedule`, set once this is read, is what the server holds, and the
+   * two compared are whether the hours are unsaved work. `maxRules` is the
+   * server's bound on rules per wall, echoed.
+   */
+  const savedSlots = new Set<string>();
+  const schedule: EditedRule[] = [];
+  let maxRules = 4;
 
   let state: LayoutState;
   try {
@@ -415,7 +436,9 @@ function boot(): void {
       readonly portrait?: RawCanvas;
       readonly landscape?: RawCanvas;
       readonly slots?: unknown;
+      readonly schedule?: unknown;
       readonly maxSlots?: unknown;
+      readonly maxRules?: unknown;
       readonly calendars?: unknown;
       readonly readings?: unknown;
       readonly modules?: unknown;
@@ -542,6 +565,7 @@ function boot(): void {
         const named = entry as { slot?: unknown; portrait?: RawCanvas; landscape?: RawCanvas };
         if (typeof named.slot !== 'string' || !SLOT_NAME.test(named.slot) || slots.includes(named.slot)) continue;
         slots.push(named.slot);
+        savedSlots.add(named.slot);
         const p = canvasFrom(named.portrait, portrait.aspect);
         const l = canvasFrom(named.landscape, landscape.aspect);
         stash[canvasKey('portrait', named.slot)] = {
@@ -554,6 +578,15 @@ function boot(): void {
         };
       }
     }
+    if (Array.isArray(parsed.schedule)) {
+      for (const entry of parsed.schedule) {
+        const rule = entry as { slot?: unknown; from?: unknown; to?: unknown };
+        if (typeof rule.slot === 'string' && typeof rule.from === 'string' && typeof rule.to === 'string') {
+          schedule.push({ slot: rule.slot, from: rule.from, to: rule.to });
+        }
+      }
+    }
+    if (typeof parsed.maxRules === 'number' && parsed.maxRules > 0) maxRules = parsed.maxRules;
     state = {
       screen: typeof parsed.screen === 'string' ? parsed.screen : null,
       mode: parsed.mode === 'freeform' ? 'freeform' : 'auto',
@@ -595,6 +628,10 @@ function boot(): void {
       calendars: [], readings: [], modules: [], people: [], todoLists: [],
     };
   }
+
+  /** The hours as the server holds them — reset by a save, and by a layout removed. */
+  let savedSchedule: EditedRule[] = schedule.map((rule) => ({ ...rule }));
+  const scheduleDirty = (): boolean => scheduleSnapshot(schedule) !== scheduleSnapshot(savedSchedule);
 
   // The wall being edited, as a query for the per-wall endpoints.
   const screenQuery = state.screen === null ? '' : `?screen=${encodeURIComponent(state.screen)}`;
@@ -904,83 +941,416 @@ function boot(): void {
   }
 
   /*
-   * Which of this wall's *named* layouts is being arranged (RFC 014 §5.2).
+   * Which layout is being arranged, and when each one shows (RFC 014 §5.2):
+   * one button naming the layout on screen — "Everyday ▾" — and a menu under
+   * it.
    *
-   * A tablist, wired by `wireTabs` — the roving tabindex the inspector's
-   * tabs and the ink lane use, and not a second mechanism — beside the
-   * orientation buttons: orientation decides the family of canvases and the
-   * slot picks within it, so the two controls sit together and read in that
-   * order. "Everyday" is the default canvas, which has no name in the store
-   * and no window in the schedule; it is what the wall draws outside every
-   * rule. New starts a layout *from what is there now*, which is the whole
-   * "start from what you have" affordance: a school-morning wall is the
-   * everyday one with a box or two moved, not a blank page. Remove is only
-   * offered on a named layout, because the everyday one cannot be removed.
+   * It used to be three places. A tablist of the layouts beside these
+   * buttons, drawn only once a second layout existed; New and Remove beside
+   * that; and the hours in Wall settings › Layouts, a tab away, as rows of a
+   * from, an until and a layout picked out of a list. A household made a
+   * layout here, saved, went to the other tab, found the row and chose the
+   * times — and a timed layout with no hours, which the wall never draws, was
+   * the common result. The menu is all of it in one place: every layout with a
+   * line saying when it shows, the hours of the one on screen under that, a
+   * new one named where it is made, and the one on screen removed.
    *
-   * Hidden on a panel with the orientation buttons, for the reason the
-   * server refuses a slot at one: a battery panel draws one layout. And
-   * **hidden on a wall with no named layout**, which is every wall until a
-   * household makes one: measured, a second segment beside the orientation
-   * buttons wrapped the toolbar onto a third row on a 390px phone and took the
-   * canvas from 455px to 388px — under the half-screen floor RFC 009 Phase 5
-   * measured it up to. So New and Remove live in the Layout popover, where the
-   * canvas's own settings already are, and the tabs cost the toolbar nothing
-   * until there is a second layout to choose between.
+   * The button is always there on a wall, because the menu is also where the
+   * first timed layout is made, and a control that appears only after its own
+   * first use is one nobody finds. Hidden on a panel with the orientation
+   * buttons, for the reason the server refuses a slot at one: a battery panel
+   * draws one layout.
+   *
+   * The hours are unsaved work like a moved box: they light the save bar, the
+   * one Save posts them after the layouts they name exist on the server, and a
+   * half-typed row is refused by name before anything is posted. What each of
+   * those decisions is lives in `layout-hours.ts`, where it can be asked
+   * without a browser.
    */
-  const slotBar = document.createElement('div');
-  slotBar.className = 'le-slots';
-  const slotGroup = document.createElement('div');
-  slotGroup.className = 'le-orient seg';
-  slotGroup.setAttribute('role', 'tablist');
-  slotGroup.setAttribute('aria-label', 'Which of this wall’s layouts you are arranging');
-  const slotTabs: HTMLButtonElement[] = [];
-  const slotKeyOf = (tab: HTMLButtonElement): string | undefined => tab.dataset['slot'];
-  const newSlotButton = document.createElement('button');
-  newSlotButton.type = 'button';
-  newSlotButton.className = 'le-add';
-  newSlotButton.textContent = 'New layout';
-  newSlotButton.title = 'Start another layout from this one, to show at certain hours';
-  newSlotButton.addEventListener('click', () => newSlotFromCurrent());
-  const removeSlotButton = document.createElement('button');
-  removeSlotButton.type = 'button';
-  removeSlotButton.className = 'le-add';
-  removeSlotButton.textContent = 'Remove layout';
-  removeSlotButton.addEventListener('click', () => {
-    void removeCurrentSlot();
-  });
-  function drawSlotTabs(): void {
-    for (const tab of slotTabs) tab.remove();
-    slotTabs.length = 0;
-    for (const slot of [null, ...state.slots]) {
-      const tab = document.createElement('button');
-      tab.type = 'button';
-      tab.className = 'le-orient-btn';
-      tab.setAttribute('role', 'tab');
-      tab.dataset['slot'] = slot ?? '';
-      tab.textContent = slot ?? 'Everyday';
-      slotTabs.push(tab);
+  let layoutsOpen = false;
+  const layoutsButton = document.createElement('button');
+  layoutsButton.type = 'button';
+  layoutsButton.className = 'le-tool-btn le-layouts-btn';
+  layoutsButton.title = 'Choose which layout to arrange, make a timed one, or set when it shows';
+  layoutsButton.setAttribute('aria-haspopup', 'dialog');
+  layoutsButton.setAttribute('aria-expanded', 'false');
+  const layoutsName = document.createElement('span');
+  layoutsName.className = 'le-layouts-name';
+  const layoutsCaret = document.createElement('span');
+  layoutsCaret.setAttribute('aria-hidden', 'true');
+  layoutsCaret.textContent = '▾';
+  layoutsButton.append(layoutsName, layoutsCaret);
+  const layoutsPopover = document.createElement('div');
+  layoutsPopover.className = 'le-canvas-pop le-layouts-pop';
+  layoutsPopover.id = 'le-layouts';
+  layoutsPopover.setAttribute('role', 'dialog');
+  layoutsPopover.setAttribute('aria-label', 'Layouts and their hours');
+  layoutsButton.setAttribute('aria-controls', layoutsPopover.id);
+  layoutsPopover.hidden = true;
+  /*
+   * A click inside the menu stays inside it. Choosing a layout redraws the
+   * menu, so by the time the click reaches the document its target has left
+   * the page — and "a click whose target is not in the menu" is exactly what
+   * closes it.
+   */
+  layoutsPopover.addEventListener('click', (event) => event.stopPropagation());
+  // Whether a new layout is being named in the menu, and why the last name was not taken.
+  let naming = false;
+  let namingError = '';
+  // Why the last save refused the hours; cleared by the next edit to them.
+  let hoursError = '';
+  // What `refreshLayoutLines` updates in place while a time is being typed —
+  // rebuilding the menu under the cursor would take the input away.
+  const whenLines = new Map<string, HTMLElement>();
+  let overlapNote: HTMLElement | undefined;
+  let hoursErrorNote: HTMLElement | undefined;
+
+  const layoutLabel = (slot: string | null): string => slot ?? 'Everyday';
+
+  function drawLayouts(): void {
+    const label = layoutLabel(state.slot);
+    layoutsName.textContent = label;
+    layoutsButton.setAttribute('aria-label', `${label}: layouts and their hours`);
+    drawSlotNote();
+    if (!layoutsOpen) return;
+    whenLines.clear();
+    layoutsPopover.textContent = '';
+
+    /*
+     * A row nobody has typed into is somewhere to type, not a rule, so one is
+     * kept for the timed layout on screen when it has none — and dropped from
+     * every other layout, so a menu opened on "evening" is not still carrying
+     * the empty row "morning" was offered.
+     */
+    for (let i = schedule.length - 1; i >= 0; i -= 1) {
+      const rule = schedule[i] as EditedRule;
+      if (isBlankRule(rule) && rule.slot !== state.slot) schedule.splice(i, 1);
     }
-    slotGroup.append(...slotTabs);
-    wireTabs(
-      slotTabs,
-      slotKeyOf,
-      (key) => switchCanvas(state.orientation, key === '' ? null : key),
-      false,
+    const onScreen = state.slot;
+    const rulesTaken = (): number => schedule.filter((rule) => !isBlankRule(rule)).length;
+    if (onScreen !== null && !schedule.some((rule) => rule.slot === onScreen) && rulesTaken() < maxRules) {
+      schedule.push({ slot: onScreen, from: '', to: '' });
+    }
+
+    const title = document.createElement('div');
+    title.className = 'le-pop-title';
+    title.textContent = 'Layouts';
+    const sub = document.createElement('div');
+    sub.className = 'le-pop-sub';
+    sub.textContent = state.slots.length === 0
+      ? 'This wall has one layout, shown all day. A timed layout takes its place at the hours you choose — a school-morning wall, say.'
+      : 'The wall shows Everyday except during a timed layout’s hours. Choose a layout to arrange it.';
+    layoutsPopover.append(title, sub);
+
+    const list = document.createElement('div');
+    list.className = 'le-layouts-list';
+    list.setAttribute('role', 'group');
+    list.setAttribute('aria-label', 'Which layout you are arranging');
+    for (const slot of [null, ...state.slots]) {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'le-layout-row' + (slot === onScreen ? ' is-on' : '');
+      row.dataset['slot'] = slot ?? '';
+      row.setAttribute('aria-pressed', slot === onScreen ? 'true' : 'false');
+      const name = document.createElement('span');
+      name.className = 'le-layout-name';
+      name.textContent = layoutLabel(slot) + (slot !== null && !savedSlots.has(slot) ? ' (not saved yet)' : '');
+      const when = document.createElement('span');
+      when.className = 'le-layout-when';
+      when.textContent = whenLine(schedule, slot);
+      whenLines.set(slot ?? '', when);
+      row.append(name, when);
+      row.addEventListener('click', () => {
+        naming = false;
+        switchCanvas(state.orientation, slot);
+        layoutsPopover.querySelector<HTMLElement>(`.le-layout-row[data-slot="${slot ?? ''}"]`)?.focus();
+      });
+      list.appendChild(row);
+    }
+    layoutsPopover.appendChild(list);
+
+    // While a new layout is being named, the hours of the one on screen are
+    // beside the point — and on a phone they push the name field under the
+    // save bar.
+    if (onScreen !== null && !naming) {
+      const hours = document.createElement('div');
+      hours.className = 'le-hours';
+      hours.setAttribute('role', 'group');
+      const heading = document.createElement('div');
+      heading.className = 'le-hours-title';
+      heading.id = 'le-hours-title';
+      heading.textContent = `When ${onScreen} shows`;
+      hours.setAttribute('aria-labelledby', heading.id);
+      hours.appendChild(heading);
+      const mine = schedule.map((rule, index) => ({ rule, index })).filter(({ rule }) => rule.slot === onScreen);
+      for (const { rule, index } of mine) {
+        const line = document.createElement('div');
+        line.className = 'le-hours-row';
+        const field = (which: 'from' | 'to'): HTMLLabelElement => {
+          const wrap = document.createElement('label');
+          wrap.className = 'le-hours-field';
+          const caption = document.createElement('span');
+          caption.textContent = which === 'from' ? 'From' : 'Until';
+          const input = document.createElement('input');
+          input.type = 'time';
+          input.value = rule[which];
+          input.dataset['hours'] = which;
+          const write = (): void => {
+            const now = schedule[index] as EditedRule;
+            schedule[index] = { ...now, [which]: input.value };
+            hoursError = '';
+            refreshLayoutLines();
+            markDirty();
+          };
+          input.addEventListener('input', write);
+          input.addEventListener('change', write);
+          wrap.append(caption, input);
+          return wrap;
+        };
+        const drop = document.createElement('button');
+        drop.type = 'button';
+        drop.className = 'le-hours-drop';
+        drop.textContent = '×';
+        drop.setAttribute('aria-label', 'Remove these times');
+        drop.addEventListener('click', () => {
+          schedule.splice(index, 1);
+          hoursError = '';
+          drawLayouts();
+          markDirty();
+          layoutsPopover.querySelector<HTMLInputElement>('input[data-hours="from"]')?.focus();
+        });
+        line.append(field('from'), field('to'));
+        // A lone empty row has nothing to remove: it is where the first time goes.
+        if (!isBlankRule(rule) || mine.length > 1) line.appendChild(drop);
+        hours.appendChild(line);
+      }
+      if (mine.length === 0) {
+        // Every rule the wall can hold is taken by other layouts.
+        const full = document.createElement('p');
+        full.className = 'le-hours-hint';
+        full.textContent =
+          `This wall already has ${maxRules} sets of hours, the most it holds. ` +
+          'Remove one from another layout to give this one its own.';
+        hours.appendChild(full);
+      } else if (rulesTaken() < maxRules && mine.every(({ rule }) => !isBlankRule(rule))) {
+        const more = document.createElement('button');
+        more.type = 'button';
+        more.className = 'btn-text le-hours-more';
+        more.textContent = '+ Add another time';
+        more.addEventListener('click', () => {
+          schedule.push({ slot: onScreen, from: '', to: '' });
+          drawLayouts();
+          const froms = layoutsPopover.querySelectorAll<HTMLInputElement>('input[data-hours="from"]');
+          froms[froms.length - 1]?.focus();
+        });
+        hours.appendChild(more);
+      }
+      const hint = document.createElement('p');
+      hint.className = 'le-hours-hint';
+      hint.textContent = 'Every day. Hours may run past midnight: from 22:00 until 06:00 is the night.';
+      hours.appendChild(hint);
+      hoursErrorNote = document.createElement('p');
+      hoursErrorNote.className = 'le-hours-error';
+      hoursErrorNote.setAttribute('role', 'alert');
+      hours.appendChild(hoursErrorNote);
+      layoutsPopover.appendChild(hours);
+    } else {
+      hoursErrorNote = undefined;
+    }
+
+    overlapNote = document.createElement('p');
+    overlapNote.className = 'le-hours-hint le-layouts-overlap';
+    if (!naming) layoutsPopover.appendChild(overlapNote);
+
+    const actions = document.createElement('div');
+    actions.className = 'le-pop-actions le-layouts-actions';
+    if (naming) {
+      const form = document.createElement('div');
+      form.className = 'le-new-layout';
+      const label = document.createElement('label');
+      label.className = 'le-hours-field le-new-name';
+      const caption = document.createElement('span');
+      caption.textContent = 'Name the new layout';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.maxLength = 24;
+      input.placeholder = 'morning';
+      input.autocomplete = 'off';
+      input.spellcheck = false;
+      label.append(caption, input);
+      const hint = document.createElement('p');
+      hint.className = 'le-hours-hint';
+      hint.textContent = `It starts as a copy of ${layoutLabel(onScreen)}. Then give it hours.`;
+      const error = document.createElement('p');
+      error.className = 'le-hours-error';
+      error.setAttribute('role', 'alert');
+      error.textContent = namingError;
+      const make = document.createElement('button');
+      make.type = 'button';
+      make.className = 'le-tool-btn is-on';
+      make.textContent = 'Make it';
+      const cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.className = 'le-tool-btn';
+      cancel.textContent = 'Cancel';
+      const submit = (): void => {
+        const outcome = newSlotNamed(input.value);
+        if (outcome !== undefined) {
+          namingError = outcome;
+          error.textContent = outcome;
+          input.focus();
+          input.select();
+        }
+      };
+      make.addEventListener('click', submit);
+      cancel.addEventListener('click', () => {
+        naming = false;
+        namingError = '';
+        drawLayouts();
+        layoutsPopover.querySelector<HTMLElement>('.le-layouts-new')?.focus();
+      });
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          submit();
+        } else if (event.key === 'Escape') {
+          // Back out of the name, not out of the whole menu.
+          event.preventDefault();
+          event.stopPropagation();
+          cancel.click();
+        }
+      });
+      const buttons = document.createElement('div');
+      buttons.className = 'le-new-buttons';
+      buttons.append(make, cancel);
+      form.append(label, hint, error, buttons);
+      actions.appendChild(form);
+    } else {
+      if (state.slots.length < state.maxSlots) {
+        const add = document.createElement('button');
+        add.type = 'button';
+        add.className = 'le-tool-btn le-layouts-new';
+        add.textContent = '+ New timed layout';
+        add.addEventListener('click', () => startNaming());
+        actions.appendChild(add);
+      } else {
+        const full = document.createElement('p');
+        full.className = 'le-hours-hint';
+        full.textContent = `A wall holds ${state.maxSlots} timed layouts. Remove one to make another.`;
+        actions.appendChild(full);
+      }
+      if (onScreen !== null) {
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'le-tool-btn le-layouts-remove';
+        remove.textContent = `Remove ${onScreen}`;
+        remove.addEventListener('click', () => {
+          void removeCurrentSlot();
+        });
+        actions.appendChild(remove);
+      }
+    }
+    layoutsPopover.appendChild(actions);
+    refreshLayoutLines();
+  }
+
+  /** What changes as a time is typed, updated where it stands. */
+  function refreshLayoutLines(): void {
+    for (const [key, line] of whenLines) line.textContent = whenLine(schedule, key === '' ? null : key);
+    const overlap = firstOverlap(schedule);
+    if (overlapNote !== undefined) {
+      overlapNote.hidden = overlap === undefined;
+      overlapNote.textContent = overlap === undefined
+        ? ''
+        : `${overlap.slots[0]} and ${overlap.slots[1]} overlap from ${overlap.from}. ` +
+          `There the wall shows ${overlap.shows}, whose hours were set first.`;
+    }
+    if (hoursErrorNote !== undefined) {
+      hoursErrorNote.textContent = hoursError;
+      hoursErrorNote.hidden = hoursError === '';
+    }
+    drawSlotNote();
+  }
+
+  function startNaming(): void {
+    naming = true;
+    namingError = '';
+    drawLayouts();
+    layoutsPopover.querySelector<HTMLInputElement>('.le-new-name input')?.focus();
+  }
+
+  function setLayoutsOpen(open: boolean): void {
+    layoutsOpen = open;
+    layoutsPopover.hidden = !open;
+    layoutsButton.classList.toggle('is-on', open);
+    layoutsButton.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (!open) {
+      naming = false;
+      namingError = '';
+      return;
+    }
+    setLayersOpen(false);
+    setCanvasOpen(false);
+    setBackgroundOpen(false);
+    drawLayouts();
+    keepInViewport(layoutsPopover);
+  }
+
+  /** Open the menu on the hours of the layout on screen, with the cursor in the first empty time. */
+  function openHours(): void {
+    setLayoutsOpen(true);
+    const times = Array.from(layoutsPopover.querySelectorAll<HTMLInputElement>('input[data-hours]'));
+    (times.find((input) => input.value === '') ?? times[0] ?? layoutsButton).focus();
+  }
+
+  /*
+   * When the layout on screen is drawn, in one line under the toolbar, with
+   * the way to change it. Only for a timed layout: the everyday one is what
+   * the wall draws outside every rule, and saying so on every wall would be a
+   * row of type on a phone for a fact nobody asked about. It reads the hours
+   * as edited, not as saved, so it agrees with the menu while a time is typed.
+   */
+  const slotNote = document.createElement('p');
+  slotNote.className = 'le-slot-note';
+  slotNote.hidden = true;
+  function drawSlotNote(): void {
+    const slot = state.slot;
+    slotNote.textContent = '';
+    slotNote.hidden = epaperHost || slot === null;
+    if (slot === null || epaperHost) return;
+    const hoursLink = (label: string): HTMLButtonElement => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn-text le-slot-hours';
+      button.textContent = label;
+      button.addEventListener('click', (event) => {
+        // The document's click would otherwise close the menu this opens.
+        event.stopPropagation();
+        openHours();
+      });
+      return button;
+    };
+    const name = document.createElement('b');
+    name.textContent = slot;
+    const hours = hoursOf(schedule, slot);
+    if (hours.length === 0) {
+      slotNote.append(
+        name,
+        savedSlots.has(slot)
+          ? ' has no hours yet, so the wall never shows it. '
+          : ' is new. Give it hours, then press Save wall — without hours the wall never shows it. ',
+        hoursLink('Set its hours'),
+      );
+      return;
+    }
+    slotNote.append(
+      name,
+      ` shows ${hours.join(' and ')} every day; Everyday shows the rest of the time. `,
+      hoursLink('Change its hours'),
     );
-    markSlotTabs();
   }
-  function markSlotTabs(): void {
-    markTabs(slotTabs, slotKeyOf, state.slot ?? '', 'is-on');
-    slotBar.hidden = epaperHost || state.slots.length === 0;
-    removeSlotButton.hidden = state.slot === null;
-    newSlotButton.hidden = state.slots.length >= state.maxSlots;
-    newSlotButton.title =
-      state.slots.length >= state.maxSlots
-        ? `A wall can hold ${state.maxSlots} extra layouts`
-        : 'Start another layout from this one, to show at certain hours';
-  }
-  slotBar.append(slotGroup);
-  drawSlotTabs();
+  layoutsButton.hidden = epaperHost;
+  drawLayouts();
 
   // A panel has one orientation and one ratio, both facts about the hardware.
   // Offering the wall's Portrait/Landscape tabs and its aspect list let a
@@ -1000,7 +1370,7 @@ function boot(): void {
 
   const aspectSelect = document.createElement('select');
   aspectSelect.className = 'le-aspect';
-  aspectSelect.setAttribute('aria-label', 'Layout size');
+  aspectSelect.setAttribute('aria-label', 'Shape');
   for (const a of ASPECTS) {
     const opt = document.createElement('option');
     opt.value = String(a.value);
@@ -1079,7 +1449,20 @@ function boot(): void {
   const addWidgetButton = document.createElement('button');
   addWidgetButton.type = 'button';
   addWidgetButton.className = 'le-add le-add-primary';
-  addWidgetButton.textContent = '+ Add widget';
+  /*
+   * "+ Add" on a phone, where the toolbar has two rows to hold nine controls
+   * and the Layouts button took the width " widget" was spending. The word is
+   * the dispensable half — the only thing this toolbar adds is a widget — and
+   * the name a screen reader hears is whole either way.
+   */
+  // One flex item, so the button's gap does not open between the two words.
+  const addLabel = document.createElement('span');
+  const addWord = document.createElement('span');
+  addWord.className = 'le-add-word';
+  addWord.textContent = ' widget';
+  addLabel.append('+ Add', addWord);
+  addWidgetButton.appendChild(addLabel);
+  addWidgetButton.setAttribute('aria-label', 'Add widget');
   addWidgetButton.setAttribute('aria-haspopup', 'dialog');
   palette.appendChild(addWidgetButton);
 
@@ -1250,27 +1633,30 @@ function boot(): void {
   resetButton.textContent = 'Reset layout…';
   resetForm.appendChild(resetButton);
 
-  /** Layout controls concern the canvas shape, grid and named layouts. */
+  /*
+   * The shape being arranged and the snap grid — named for what it holds.
+   *
+   * It was "Layout — Portrait 9:16", on a page whose tab is Layout, over a
+   * popover titled Layout that also made and removed named layouts: one word
+   * for four things. It also carried the shape a second time, beside the
+   * preview header that already states it, and the extra width pushed
+   * Background onto a row of its own at 1440px. The shape stays in the
+   * accessible name, where a screen reader has no header beside it.
+   */
   const canvasButton = document.createElement('button');
   canvasButton.type = 'button';
-  canvasButton.className = 'le-tool-btn';
+  canvasButton.className = 'le-tool-btn le-size-btn';
   canvasButton.setAttribute('aria-haspopup', 'true');
   canvasButton.setAttribute('aria-expanded', 'false');
-  canvasButton.appendChild(document.createTextNode('Layout'));
-  // The shape, as its own node rather than part of the label: on a phone the
-  // row has to fit and the popover states it anyway, so the stylesheet hides
-  // this and the button keeps its name.
-  const canvasNote = document.createElement('span');
-  canvasNote.className = 'le-tool-note';
-  canvasButton.appendChild(canvasNote);
+  canvasButton.textContent = 'Size & grid';
 
   const canvasPopover = document.createElement('div');
-  canvasPopover.className = 'le-canvas-pop';
+  canvasPopover.className = 'le-canvas-pop le-size-pop';
   canvasPopover.hidden = true;
   {
     const title = document.createElement('div');
     title.className = 'le-pop-title';
-    title.textContent = 'Layout';
+    title.textContent = 'Size and grid';
     const sub = document.createElement('div');
     sub.className = 'le-pop-sub';
     sub.textContent = epaperHost
@@ -1281,7 +1667,7 @@ function boot(): void {
       const sizeRow = document.createElement('div');
       sizeRow.className = 'le-pop-row';
       const sizeLabel = document.createElement('span');
-      sizeLabel.textContent = 'Layout size';
+      sizeLabel.textContent = 'Shape';
       sizeRow.append(sizeLabel, aspectSelect);
       canvasPopover.appendChild(sizeRow);
       if (report !== undefined) {
@@ -1298,17 +1684,6 @@ function boot(): void {
     snapRow.className = 'le-pop-row';
     snapRow.appendChild(snapToggle);
     canvasPopover.appendChild(snapRow);
-    if (!epaperHost) {
-      // Another layout for certain hours (RFC 014 §5.2): started from this
-      // one, or the one on screen removed. Here rather than in the toolbar,
-      // which has no row to spare on a phone — see `slotBar`.
-      const slotSep = document.createElement('div');
-      slotSep.className = 'le-pop-sep';
-      const slotRow = document.createElement('div');
-      slotRow.className = 'le-pop-row le-pop-slots';
-      slotRow.append(newSlotButton, removeSlotButton);
-      canvasPopover.append(slotSep, slotRow);
-    }
     // The reset, on a panel only. On a wall the page's overflow menu carries
     // "Reset layout…" already, and one destructive action offered twice on one
     // screen is one of them somebody presses by accident.
@@ -1374,14 +1749,14 @@ function boot(): void {
     layersPopover.hidden = !open;
     layersButton.classList.toggle('is-on', open);
     layersButton.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (open) { setCanvasOpen(false); setBackgroundOpen(false); }
+    if (open) { setCanvasOpen(false); setBackgroundOpen(false); setLayoutsOpen(false); }
   };
   const setCanvasOpen = (open: boolean): void => {
     canvasOpen = open;
     canvasPopover.hidden = !open;
     canvasButton.classList.toggle('is-on', open);
     canvasButton.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (open) { setLayersOpen(false); setBackgroundOpen(false); }
+    if (open) { setLayersOpen(false); setBackgroundOpen(false); setLayoutsOpen(false); }
   };
   const setBackgroundOpen = (open: boolean): void => {
     backgroundOpen = open;
@@ -1391,16 +1766,22 @@ function boot(): void {
     if (open) {
       setLayersOpen(false);
       setCanvasOpen(false);
-      // A phone may wrap this button onto a new toolbar row. Keep the wide
-      // wallpaper grid within the viewport without detaching its top edge
-      // from the button that opened it.
-      backgroundPopover.style.transform = '';
-      const box = backgroundPopover.getBoundingClientRect();
-      const shift = box.left < 8 ? 8 - box.left :
-        box.right > window.innerWidth - 8 ? window.innerWidth - 8 - box.right : 0;
-      if (shift !== 0) backgroundPopover.style.transform = `translateX(${shift}px)`;
+      setLayoutsOpen(false);
+      keepInViewport(backgroundPopover);
     }
   };
+  /*
+   * A phone may wrap a button onto a new toolbar row. Keep a wide menu within
+   * the viewport without detaching its top edge from the button that opened
+   * it.
+   */
+  function keepInViewport(popover: HTMLElement): void {
+    popover.style.transform = '';
+    const box = popover.getBoundingClientRect();
+    const shift = box.left < 8 ? 8 - box.left :
+      box.right > window.innerWidth - 8 ? window.innerWidth - 8 - box.right : 0;
+    if (shift !== 0) popover.style.transform = `translateX(${shift}px)`;
+  }
   layersButton.addEventListener('click', (event) => {
     event.stopPropagation();
     setLayersOpen(!layersOpen);
@@ -1412,6 +1793,26 @@ function boot(): void {
   backgroundButton.addEventListener('click', (event) => {
     event.stopPropagation();
     setBackgroundOpen(!backgroundOpen);
+  });
+  layoutsButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    setLayoutsOpen(!layoutsOpen);
+  });
+  // Wall settings › Layouts and the ⋮ menu ask for a timed layout, or for
+  // this menu, this way — having already put the editor on screen.
+  window.addEventListener('mw:new-layout', () => {
+    if (epaperHost) return;
+    setLayoutsOpen(true);
+    startNaming();
+  });
+  window.addEventListener('mw:open-layouts', () => {
+    if (epaperHost) return;
+    if (state.slot === null) {
+      setLayoutsOpen(true);
+      layoutsButton.focus();
+    } else {
+      openHours();
+    }
   });
   window.addEventListener('mw:open-background', (event) => {
     if (epaperHost) return;
@@ -1428,6 +1829,7 @@ function boot(): void {
     if (layersOpen && !layersPopover.contains(target) && target !== layersButton) setLayersOpen(false);
     if (canvasOpen && !canvasPopover.contains(target) && target !== canvasButton) setCanvasOpen(false);
     if (backgroundOpen && !backgroundPopover.contains(target) && target !== backgroundButton) setBackgroundOpen(false);
+    if (layoutsOpen && !layoutsPopover.contains(target) && !layoutsButton.contains(target)) setLayoutsOpen(false);
   });
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') return;
@@ -1444,6 +1846,11 @@ function boot(): void {
     if (backgroundOpen) {
       setBackgroundOpen(false);
       backgroundButton.focus();
+      return;
+    }
+    if (layoutsOpen) {
+      setLayoutsOpen(false);
+      layoutsButton.focus();
       return;
     }
     // With nothing else to close, Escape clears the selection (RFC 014 §5.1)
@@ -1473,7 +1880,7 @@ function boot(): void {
   };
   barMain.append(
     orientToggle,
-    slotBar,
+    ...(epaperHost ? [] : [anchor(layoutsButton, layoutsPopover)]),
     panelChip,
     palette,
     undoButton,
@@ -1504,10 +1911,9 @@ function boot(): void {
   }
 
   function updateCanvasLabel(): void {
-    canvasNote.textContent = `\u2014 ${canvasSizeLabel()}`;
-    canvasButton.setAttribute('aria-label', `Layout \u2014 ${canvasSizeLabel()}`);
+    canvasButton.setAttribute('aria-label', `Size and grid \u2014 ${canvasSizeLabel()}`);
     const dims = document.querySelector<HTMLElement>('[data-preview-dims]');
-    if (dims !== null) dims.textContent = `${canvasSizeLabel()} · updates within a minute`;
+    if (dims !== null) dims.textContent = `${canvasSizeLabel()} · the wall updates within a minute of Save`;
   }
 
   /**
@@ -1703,6 +2109,7 @@ function boot(): void {
     clearSelection(true);
   });
 
+  toolbar.appendChild(slotNote);
   mount.append(toolbar, stage, hint, modal);
   if (inspectorInline) mount.appendChild(inspectorHost);
 
@@ -1972,7 +2379,8 @@ function boot(): void {
    * flag honestly, and the other orientation's unsaved work keeps it set.
    */
   function markDirty(): void {
-    setDirty(isCanvasDirty(state, savedSnapshot[activeKey()] ?? '', anyStashDirty()));
+    // The hours are unsaved work too (RFC 014 §5.2), and the one Save saves them.
+    setDirty(isCanvasDirty(state, savedSnapshot[activeKey()] ?? '', anyStashDirty()) || scheduleDirty());
     refreshUndo();
   }
 
@@ -6261,7 +6669,7 @@ function boot(): void {
     state.slot = slot;
     rememberOrientation(state.screen, which);
     selection = [];
-    markSlotTabs();
+    drawLayouts();
 
     // Reflect the switch in the toolbar: the active button, and the aspect
     // select. `aria-pressed` moves with the class — the fill and the tick are
@@ -6279,7 +6687,13 @@ function boot(): void {
   }
 
   /**
-   * Start a named layout from the canvas on screen (RFC 014 §5.2).
+   * Start a named layout from the canvas on screen (RFC 014 §5.2), under the
+   * name typed into the Layouts menu. Answers why a name was not taken, or
+   * nothing once the layout exists.
+   *
+   * Asked again with the reason, rather than dropped: a name that slugged to
+   * nothing or matched a layout already here used to return in silence, which
+   * from the outside is a button that does nothing.
    *
    * The widgets are copied with fresh ids — a template's rule: two canvases
    * started from one arrangement must not share widget ids, or a box moved on
@@ -6287,16 +6701,19 @@ function boot(): void {
    * lands on the current orientation only; the other orientation's canvas for
    * the new layout starts empty, which the wall reads as "draw the everyday
    * one there" and the editor shows as empty so it can be filled in turn.
+   *
+   * The menu stays open on the new layout's hours, with the cursor in the
+   * first time: a timed layout with no hours is never drawn, and the moment
+   * it is made is the moment somebody knows what they made it for.
    */
-  function newSlotFromCurrent(): void {
-    if (state.slots.length >= state.maxSlots) return;
-    const typed = window.prompt(
-      'Name for the new layout — a short word, like morning or evening:',
-      '',
-    );
-    if (typed === null) return;
+  function newSlotNamed(typed: string): string | undefined {
+    if (state.slots.length >= state.maxSlots) {
+      return `A wall holds ${state.maxSlots} timed layouts. Remove one to make another.`;
+    }
     const slot = typed.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24);
-    if (!SLOT_NAME.test(slot) || state.slots.includes(slot)) return;
+    if (!SLOT_NAME.test(slot)) return 'Use letters or numbers — morning, school-run or evening, say.';
+    if (slot === 'everyday') return 'Everyday is the name of this wall’s main layout. Choose another name.';
+    if (state.slots.includes(slot)) return `This wall already has a layout called ${slot}. Choose another name.`;
     // Fresh ids, and a child re-linked to its group's fresh id (RFC 014
     // §5.1) — copied as-is it would name a group on the layout it came from.
     const minted = new Map(state.widgets.map((widget) => [widget.id, randomId()]));
@@ -6320,21 +6737,26 @@ function boot(): void {
     // Never saved, so it compares against nothing: the copy is unsaved work
     // from the moment it exists, and the bar says so.
     savedSnapshot[canvasKey(state.orientation, slot)] = '';
-    drawSlotTabs();
+    naming = false;
+    namingError = '';
     switchCanvas(state.orientation, slot);
+    layoutsPopover.querySelector<HTMLInputElement>('input[data-hours="from"]')?.focus();
+    return undefined;
   }
 
   /**
    * Remove the named layout on screen, on the server and here.
    *
    * On the server first: a layout removed only here would come back on the
-   * next load, and its schedule rows with it. The everyday layout cannot be
-   * removed, so the button is hidden on it and the server's shape refuses it.
+   * next load, and its hours with it — the server removes those too, so they
+   * leave both the hours being edited and the hours saved. The everyday
+   * layout cannot be removed, so the menu offers Remove only on a timed one
+   * and the server's shape refuses it.
    */
   async function removeCurrentSlot(): Promise<void> {
     const slot = state.slot;
     if (slot === null) return;
-    if (!window.confirm(`Remove the “${slot}” layout? Any rule showing it at certain hours goes with it.`)) return;
+    if (!window.confirm(`Remove the “${slot}” layout, and the hours it shows? This cannot be undone.`)) return;
     try {
       const response = await fetch('admin/layout/remove-slot', {
         method: 'POST',
@@ -6345,20 +6767,25 @@ function boot(): void {
     } catch {
       return;
     }
+    for (let i = schedule.length - 1; i >= 0; i -= 1) {
+      if ((schedule[i] as EditedRule).slot === slot) schedule.splice(i, 1);
+    }
+    savedSchedule = savedSchedule.filter((rule) => rule.slot !== slot);
     switchCanvas(state.orientation, null);
     state.slots = state.slots.filter((one) => one !== slot);
+    savedSlots.delete(slot);
     for (const orientation of ['portrait', 'landscape'] as const) {
       const key = canvasKey(orientation, slot);
       delete state.stash[key];
       delete savedSnapshot[key];
       delete histories[key];
     }
-    drawSlotTabs();
+    drawLayouts();
     markDirty();
-    // The schedule rows under Wall settings were rendered with that layout on
-    // offer. With nothing else unsaved, a reload is the honest refresh; with
-    // edits pending it is not, and the settings form refuses a stale row by
-    // name rather than losing them.
+    layoutsPopover.querySelector<HTMLElement>('.le-layout-row[data-slot=""]')?.focus();
+    // Wall settings › Layouts was rendered with that layout listed. With
+    // nothing else unsaved, a reload is the honest refresh; with edits
+    // pending it is not, and the list is corrected by the next Save.
     if (!dirty) location.reload();
   }
 
@@ -6420,6 +6847,21 @@ function boot(): void {
    */
   async function saveCurrent(): Promise<{ ok: boolean; message?: string }> {
     /*
+     * Hours that are half-typed are refused before anything is posted, with
+     * the menu opened on them — never a layout saved without the hours it was
+     * made for. Opened on the next task, because this runs inside the save
+     * button's click and the document's click would close it again.
+     */
+    const problem = scheduleProblem(schedule);
+    if (problem !== undefined) {
+      hoursError = problem.message;
+      window.setTimeout(() => {
+        if (state.slot !== problem.slot) switchCanvas(state.orientation, problem.slot);
+        openHours();
+      }, 0);
+      return { ok: false, message: problem.message };
+    }
+    /*
      * Every stashed canvas that differs from what the server holds, then the
      * active one — the other orientation and every named layout alike (RFC
      * 014 §5.2). A canvas the server has never seen and that is still empty
@@ -6438,8 +6880,38 @@ function boot(): void {
       }
     }
     const outcome = await postCanvas(state.orientation, state.slot, state.aspect, state.widgets, state.background);
+    /*
+     * The hours last, once every layout they name is on the server — a new
+     * layout's first save is the canvas post above, and the server refuses
+     * hours for a layout it does not hold.
+     */
+    if (outcome.ok && scheduleDirty()) {
+      const hours = await postSchedule();
+      markDirty();
+      return hours;
+    }
     markDirty();
     return outcome;
+  }
+
+  /** Save the hours whole — the server replaces the wall's schedule with what is posted. */
+  async function postSchedule(): Promise<{ ok: boolean; message?: string }> {
+    const rules = scheduleForSave(schedule);
+    try {
+      const response = await fetch('admin/layout/schedule', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ screen: state.screen, rules }),
+      });
+      const body = (await response.json().catch(() => ({}))) as { message?: string };
+      if (response.ok) {
+        savedSchedule = rules;
+        return { ok: true };
+      }
+      return { ok: false, message: body.message ?? 'The hours did not save.' };
+    } catch {
+      return { ok: false, message: 'Could not reach the server, so the hours did not save.' };
+    }
   }
 
   // Publish the bridge the page chrome drives: one sticky save bar saves the

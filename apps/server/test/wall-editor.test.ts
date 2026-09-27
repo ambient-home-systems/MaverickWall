@@ -216,7 +216,8 @@ describe('the wall editor is two modes, not one page', () => {
     h.pairScreen('s4', 'Snug');
     const html = await (await h.call('/admin/walls/s4')).text();
 
-    // They live in the header overflow and in the Advanced category…
+    // The pairing link lives in the header overflow and in the Advanced
+    // category…
     expect(html).toContain('aria-label="More actions for this wall"');
     expect(html).toContain('admin/screens/s4/regenerate');
     expect(html).toContain('admin/screens/s4/revoke');
@@ -224,9 +225,87 @@ describe('the wall editor is two modes, not one page', () => {
     expect(html).toContain('data-confirm="Unpair Snug?');
     expect(html).toContain('Reset both the portrait and landscape layouts');
 
+    // Reset and Unpair are on the page once, in Advanced. The ⋮ used to carry
+    // both too, one tab away from the same two buttons, and a destructive
+    // action offered twice on one screen is one of them somebody presses by
+    // accident. The ⋮ keeps the way to them rather than a copy.
+    expect(html.match(/action="admin\/screens\/s4\/revoke"/g)?.length).toBe(1);
+    expect(html.match(/\/reset-layout"/g)?.length).toBe(1);
+    const menuAt = html.indexOf('<div class="ovf-menu"');
+    const menu = html.slice(menuAt, html.indexOf('</details>', menuAt));
+    expect(menu).not.toContain('revoke');
+    expect(menu).not.toContain('reset-layout');
+    expect(menu).toContain('data-open-settings="advanced"');
+
     // And never as a permanently disabled button beside Add widget. Checked
     // past the inline stylesheet, whose comment says why that control moved.
     expect(html.slice(html.indexOf('</style>'))).not.toContain('Remove selected');
+  });
+});
+
+describe('a timed layout says how to make one, and whether it ever shows', () => {
+  const addSlot = async (h: Awaited<ReturnType<typeof ready>>, screen: string, slot: string): Promise<void> => {
+    const saved = await h.call('/admin/layout', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        screen, orientation: 'portrait', mode: 'freeform', aspect: 0.5625,
+        widgets: [{ id: `${slot}-clock`, type: 'clock', x: 0, y: 0, w: 1, h: 1, z: 0 }],
+        background: null, slot,
+      }),
+    });
+    expect(saved.status, `saving the ${slot} layout`).toBe(200);
+  };
+  const designOf = (html: string): string =>
+    html.slice(html.indexOf('data-wset-panel="design"'), html.indexOf('data-wset-panel="look"'));
+
+  /*
+   * The dependency the rows have — a schedule needs a second layout to choose
+   * between — used to be one sentence pointing at "New layout" on "the Layout
+   * tab": a button inside a toolbar popover also called Layout. So a wall with
+   * none gets the steps and a button that starts them, and no rows.
+   */
+  it('shows the steps and the button on a wall with no timed layout, and no rows', async () => {
+    const h = await ready();
+    h.pairScreen('t1', 'Kitchen');
+    const html = await (await h.call('/admin/walls/t1')).text();
+    const design = designOf(html);
+    expect(design).toContain('<ol class="wset-steps">');
+    expect(design).toContain('data-new-layout');
+    expect(design).toContain('Make a timed layout');
+    expect(design).not.toContain('schedule_form');
+    expect(design).not.toContain('on the Layout tab, press');
+    // The ⋮ offers the same button, so Layout mode has a way in too.
+    expect(html.match(/data-new-layout/g)?.length).toBe(2);
+  });
+
+  /*
+   * With a timed layout, the group says what is saved in the editor menu's
+   * words and opens that menu — it draws no rows to edit, because the hours
+   * are changed beside the layout they belong to, not a tab away from it.
+   */
+  it('names a timed layout with no hours as one the wall never shows, and opens the menu to fix it', async () => {
+    const h = await ready();
+    h.pairScreen('t2', 'Kitchen');
+    await addSlot(h, 't2', 'morning');
+    const design = designOf(await (await h.call('/admin/walls/t2')).text());
+    expect(design).toContain('<b>morning</b>');
+    expect(design).toContain('No hours yet, so never shown');
+    expect(design).toContain('<b>Everyday</b>');
+    expect(design).toContain('Shown all day');
+    expect(design).toContain('data-open-layouts');
+    expect(design).not.toContain('name="schedule_');
+    expect(design).toContain('Make another timed layout');
+    expect(design).not.toContain('wset-steps');
+  });
+
+  it('stops offering another once the wall holds as many as it can', async () => {
+    const h = await ready();
+    h.pairScreen('t3', 'Kitchen');
+    for (const slot of ['a1', 'a2', 'a3', 'a4']) await addSlot(h, 't3', slot);
+    const html = await (await h.call('/admin/walls/t3')).text();
+    expect(html).not.toContain('data-new-layout');
+    expect(designOf(html)).not.toContain('Make another timed layout');
   });
 });
 
@@ -382,7 +461,7 @@ describe('wall settings are categories, and every field kept its name', () => {
     expect(daySelect).not.toContain('Household default');
     // One hint about the daylight window, in System's own words, rather than a
     // hint and a trailing paragraph saying the second half of it (RFC 015 §2.7).
-    expect(form).toContain('A lighter theme during the hours below. A dark theme at noon');
+    expect(form).toContain('A lighter theme for daytime hours. A dark theme at noon');
     expect(
       [...form.matchAll(/A dark theme at noon/g)].length,
       'the daylight window is written twice again',

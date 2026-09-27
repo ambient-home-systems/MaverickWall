@@ -16,6 +16,31 @@
 
 ## Unreleased
 
+**Timed layouts, and their hours, are all in one menu now.** The button at
+the start of the layout editor's toolbar names the layout you are arranging —
+**Everyday ▾** — and opens a menu listing every layout with when it shows.
+Choose a timed layout to arrange it and set its hours right there, beside it,
+including a second set of hours if it shows twice a day. **+ New timed layout**
+names one in the menu, and **Remove** takes one away. If two layouts' hours
+overlap, the menu says which one the wall will show. Hours are saved with
+**Save wall** like any other change, and a time with only one half filled in
+is pointed out rather than saved. Wall settings → Layouts now lists your
+layouts and their hours and opens the same menu; the separate rule rows there
+are gone.
+
+**Wall settings read more clearly.** Design is now **Layouts**, Content
+defaults is **Calendar amounts** (with the same labels as System), and Alerts
+and interaction is **Touch controls**, which now correctly says all three
+switches start off. Several hints are shorter and no longer describe settings
+that are hidden.
+
+**In the layout editor, "Layout — Portrait 9:16" is now "Size & grid",** so
+"Layout" no longer means four different things on one screen. On a phone,
+**+ Add widget** reads **+ Add**, so the toolbar still fits in two rows. Reset
+layout and Unpair wall are now only in Wall settings → Advanced, below the
+everyday actions. The ⋮ menu links there rather than offering them a second
+time.
+
 ## 0.71.0
 
 **Background has its own button beside Layout in the wall editor.** Choose a

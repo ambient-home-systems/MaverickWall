@@ -613,6 +613,32 @@ const removeSlotBody = z.object({
   slot: z.string().regex(SLOT_NAME),
 });
 
+/**
+ * A wall's hours, whole, as JSON from the editor's Layouts menu (RFC 014
+ * §5.2): which timed layout shows between which two times, in the order they
+ * were written, because where two overlap the first one wins. The shape of a
+ * rule is the boundary — a real time, twice, and different, since a window of
+ * no length would never switch — and whether the wall holds the layout a rule
+ * names is asked in the handler, which can see the rows.
+ */
+const layoutScheduleBody = z
+  .object({
+    screen: z.string().min(1).max(64),
+    rules: z
+      .array(
+        z
+          .object({
+            slot: z.string().regex(SLOT_NAME, 'A layout name is a short word: letters, digits and dashes.'),
+            from: z.string().refine(isHhmm, 'Use HH:MM for the time a layout starts showing.'),
+            to: z.string().refine(isHhmm, 'Use HH:MM for the time a layout stops showing.'),
+          })
+          .strict()
+          .refine((rule) => rule.from !== rule.to, 'A layout that starts and ends at the same time would never show.'),
+      )
+      .max(MAX_SCHEDULE_ROWS, `A wall holds ${MAX_SCHEDULE_ROWS} sets of hours.`),
+  })
+  .strict();
+
 import { registerHaRoutes } from './admin-ha.js';
 import { registerAlertRoutes } from './admin-alerts.js';
 import { registerModuleRoutes } from './admin-modules.js';
@@ -3047,10 +3073,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     }
 
     /*
-     * When to draw which named layout (RFC 014 §5.2).
+     * When to draw which named layout (RFC 014 §5.2), from a page rendered
+     * before the hours moved into the editor's Layouts menu, which saves them
+     * through `/admin/layout/schedule` instead. No page this server renders
+     * posts these rows now; one cached from before still can, and its hours
+     * are still worth keeping rather than refusing.
      *
      * Absent marker is **what this wall already has**, the style lane's rule
-     * one group up. Otherwise the rows are the schedule, whole: a row with
+     * one group up — which is what every current page posts. Otherwise the rows are the schedule, whole: a row with
      * nothing chosen is not a row; a layout chosen with one time and not the
      * other is half a thought, refused with the interrupt window's own
      * sentence rather than honoured as a window nobody can see; a window of
@@ -3072,27 +3102,27 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         const to = field('schedule_to');
         if (slot === '' && from === '' && to === '') continue;
         if (slot === '') {
-          return c.html(displayDetailPage(id, `Row ${n}: choose which layout to show between those times.`, c), 400);
+          return c.html(displayDetailPage(id, `Rule ${n}: choose which layout to show between those times.`, c), 400);
         }
         if (!isSlotName(slot) || !held.includes(slot)) {
-          return c.html(displayDetailPage(id, `Row ${n}: that layout is not on this wall any more. Reload the page.`, c), 400);
+          return c.html(displayDetailPage(id, `Rule ${n}: that layout is not on this wall any more. Reload the page.`, c), 400);
         }
         if ((from === '') !== (to === '')) {
           return c.html(
             displayDetailPage(
               id,
-              `Row ${n}: give both times, or leave the row empty. From 06:30 to 08:30 shows that layout every morning.`,
+              `Rule ${n}: give both times, or leave the row empty. From 06:30 to 08:30 shows that layout every morning.`,
               c,
             ),
             400,
           );
         }
         if (from === '') {
-          return c.html(displayDetailPage(id, `Row ${n}: give the times to show that layout between.`, c), 400);
+          return c.html(displayDetailPage(id, `Rule ${n}: give the times to show that layout between.`, c), 400);
         }
         if (!isHhmm(from) || !isHhmm(to) || from === to) {
           return c.html(
-            displayDetailPage(id, `Row ${n}: those times are not a window. Use HH:MM, and make them different.`, c),
+            displayDetailPage(id, `Rule ${n}: those times are not a window. Use HH:MM, and make them different.`, c),
             400,
           );
         }
@@ -3152,11 +3182,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       if (n < low || n > high) return { ok: false, message: `${label} has to be between ${low} and ${high}.` };
       return { ok: true, value: n };
     };
-    const today = density(shaped.value.today_events, 1, 20, 'Events today');
+    const today = density(shaped.value.today_events, 1, 20, 'Events listed for today');
     if (!today.ok) return c.html(displayDetailPage(id, today.message, c), 400);
-    const nextDays = density(shaped.value.next_days, 0, 14, 'Days ahead');
+    const nextDays = density(shaped.value.next_days, 0, 14, 'Days an agenda looks ahead');
     if (!nextDays.ok) return c.html(displayDetailPage(id, nextDays.message, c), 400);
-    const weeks = density(shaped.value.horizon_weeks, 1, 8, 'Weeks of month');
+    const weeks = density(shaped.value.horizon_weeks, 1, 8, 'Weeks in the month grid');
     if (!weeks.ok) return c.html(displayDetailPage(id, weeks.message, c), 400);
 
     /*
@@ -3570,6 +3600,50 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       return c.json({ ok: false, message: 'That wall is no longer there.' }, 404);
     }
     deleteLayoutSlot(deps.db, owner, shaped.value.slot);
+    return c.json({ ok: true });
+  });
+
+  /**
+   * A wall's hours, from the editor's Layouts menu (RFC 014 §5.2). JSON like
+   * the canvas save, and posted by the same Save after it, so a layout made
+   * and given hours in one sitting is on the server before its hours are.
+   *
+   * Replaced whole, for `replaceLayoutSchedule`'s reason: what the menu posts
+   * *is* the schedule. A rule naming a layout the wall does not hold is
+   * refused rather than stored — a window pointing at nothing would draw the
+   * everyday layout anyway, and a row nobody can see is worse than a sentence.
+   * A panel holds no timed layouts, so it holds no hours either.
+   */
+  app.post('/admin/layout/schedule', async (c: Context) => {
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ ok: false, message: 'That was not readable as JSON.' }, 400);
+    }
+    const shaped = parse(layoutScheduleBody, raw);
+    if (!shaped.ok) return c.json({ ok: false, message: shaped.message }, 400);
+    const owner = resolveOwner(shaped.value.screen);
+    if (owner === undefined) {
+      return c.json({ ok: false, message: 'That wall is no longer there.' }, 404);
+    }
+    if (isEpaperOwner(owner)) {
+      return c.json({ ok: false, message: 'A panel draws one layout, so it has no hours to set.' }, 400);
+    }
+    const held = readLayoutSlots(deps.db, owner);
+    const missing = shaped.value.rules.find((rule) => !held.includes(rule.slot));
+    if (missing !== undefined) {
+      return c.json(
+        {
+          ok: false,
+          message:
+            `There is no “${missing.slot}” layout on this wall to show. ` +
+            'Give it at least one widget, or reload the page if it was removed in another window.',
+        },
+        400,
+      );
+    }
+    replaceLayoutSchedule(deps.db, owner, shaped.value.rules);
     return c.json({ ok: true });
   });
 
@@ -4846,64 +4920,64 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   }
 
   /**
-   * When to draw which named layout (RFC 014 §5.2): one `listRow` per rule,
-   * *from – to – which layout*, inside the settings form's one Save.
+   * Timed layouts (RFC 014 §5.2): what this wall has saved, and the way into
+   * the editor's Layouts menu, where they are made and given their hours.
    *
-   * The rows exist only once the wall holds a second layout, because a
-   * schedule with nothing to choose between is a control that does nothing —
-   * so a wall with one layout gets one sentence saying where the second one
-   * is made. `schedule_form` is the marker the handler reads the rows by, and
-   * it is posted only with the rows, so a page that never drew them leaves
-   * the schedule alone. Every rendered row is posted, filled or not: the
-   * handler reads an all-blank row as no rule, which is what lets a household
-   * clear one by emptying it.
+   * The hours used to be edited here, as rows of a from, an until and a
+   * layout picked out of a list — a tab away from the layout they decided.
+   * A household made a layout in the editor, saved, came back here, found the
+   * row and chose the times, and a timed layout with no hours, which the wall
+   * never draws, was the common result. They are set in the editor now, from
+   * the menu under the layout's own name above the wall, beside the
+   * arrangement they are the hours of. This group says what is saved, and
+   * says it in the menu's own words, and its buttons open that menu:
+   * `data-new-layout` names a new layout there, `data-open-layouts` just
+   * opens it. The handler still reads the old rows if a page rendered before
+   * this posts them.
    */
-  function scheduleRows(screenId: string): string {
-    const option = (value: string, label: string, selected: boolean): string =>
-      `<option value="${escapeHtml(value)}"${selected ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+  function timedLayouts(screenId: string): string {
     const slots = readLayoutSlots(deps.db, screenId);
     const intro =
       `<p class="hint">Show a different layout at certain hours — a school-morning ` +
       `layout from 06:30 to 08:30, say. The wall changes over on its own, ` +
       `even while it cannot reach this server.</p>`;
+    const makeButton = (label: string): string =>
+      `<button type="button" class="btn-sm secondary" data-new-layout>${escapeHtml(label)}</button>`;
     if (slots.length === 0) {
       return (
         intro +
-        `<p class="hint">Make a second layout first: on the Layout tab, press ` +
-        `<b>New layout</b> to start one from what is there now.</p>`
+        `<ol class="wset-steps">` +
+        `<li><b>Make a timed layout.</b> It starts as a copy of this wall’s everyday layout.</li>` +
+        `<li>Arrange the copy.</li>` +
+        `<li>Choose its hours in the menu under its name, above the wall, then press <b>Save wall</b>.</li>` +
+        `</ol>` +
+        `<p>${makeButton('Make a timed layout')}</p>`
       );
     }
     const stored = readLayoutSchedule(deps.db, screenId);
-    const rows: string[] = [];
-    for (let n = 1; n <= MAX_SCHEDULE_ROWS; n += 1) {
-      const row = stored[n - 1];
-      const chosen = row?.slot ?? '';
-      const control =
-        `<span class="sched-row">` +
-        `<label class="sched-field"><span>From</span>` +
-        `<input type="time" name="schedule_from_${n}" value="${escapeHtml(row?.from ?? '')}"></label>` +
-        `<label class="sched-field"><span>Until</span>` +
-        `<input type="time" name="schedule_to_${n}" value="${escapeHtml(row?.to ?? '')}"></label>` +
-        `<label class="sched-field"><span>Show</span>` +
-        `<select name="schedule_slot_${n}">` +
-        option('', row === undefined ? 'Not used' : 'Remove this rule', chosen === '') +
-        slots.map((slot) => option(slot, slot, chosen === slot)).join('') +
-        `</select></label>` +
-        `</span>`;
-      rows.push(
-        listRow('', {
-          title: `Rule ${n}`,
-          detail: row === undefined ? 'Between two times, show one of your layouts.' : `${row.from}–${row.to}: ${row.slot}`,
-        }, control),
-      );
-    }
+    const hoursOf = (slot: string): string[] =>
+      stored.filter((rule) => rule.slot === slot).map((rule) => `${rule.from}–${rule.to}`);
+    const rows = [
+      listRow('', {
+        title: 'Everyday',
+        detail: stored.length === 0 ? 'Shown all day' : 'Shown the rest of the time',
+      }),
+      ...slots.map((slot) => {
+        const hours = hoursOf(slot);
+        return listRow('', {
+          title: slot,
+          detail: hours.length === 0 ? 'No hours yet, so never shown' : `Shown ${hours.join(' and ')}`,
+        });
+      }),
+    ];
     return (
       intro +
-      `<input type="hidden" name="schedule_form" value="1">` +
       `<div class="rows sched-rows">${rows.join('')}</div>` +
-      `<p class="hint">Outside every rule the wall shows its everyday layout. A rule ` +
-      `may run past midnight — from 21:00 until 06:00 is the whole night. Where ` +
-      `two rules overlap, the first one wins.</p>`
+      `<p class="hint">As saved. Hours are set in the layout editor, in the menu under the layout’s name above the wall.</p>` +
+      `<p>` +
+      `<button type="button" class="btn-sm secondary" data-open-layouts>Change layouts and hours</button>` +
+      (slots.length < MAX_LAYOUT_SLOTS ? ` ${makeButton('Make another timed layout')}` : '') +
+      `</p>`
     );
   }
 
@@ -4929,11 +5003,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   ): string {
     const inheriting = value === null;
     return (
+      /*
+       * The switch says what *on* means in its own label, because a bare
+       * "Events listed for today" with a switch beside it reads as "on lists
+       * events". The household's number is named, and where it is set, so
+       * "same as the household" is a value somebody can check rather than a
+       * word they have to trust.
+       */
       switchRow({
-        label: `${label}: follow the household`,
+        label: `${label}: same as the household`,
         name: `inherit_${name}`,
         checked: inheriting,
-        hint: `Household default — ${fallback} ${unit}`,
+        hint: `Household default — ${fallback} ${unit}, set on System. Turn this off to choose this wall’s own.`,
         attrs: `data-inherit-toggle="${escapeHtml(name)}"`,
       }) +
       // `data-inherit-default` is what the field is seeded with the first time
@@ -5102,13 +5183,17 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     // in Advanced cannot move with it.
     const design =
       wsetGroup(
-        'Layout',
+        'Starter design',
         `<div class="rows">` +
           `<a class="arow" href="admin/displays/${encodeURIComponent(screen.id)}/gallery">` +
           `<span class="arow-text">Choose a starter design` +
-          `<small>Replace both layouts and backgrounds; a design may also change this wall’s theme. You can copy another wall here too.</small></span>` +
+          `<small>Replaces both layouts and their backgrounds, and some designs change the theme too. ` +
+          `You can copy another wall’s layout from there as well.</small></span>` +
           `<span class="srow-chev" aria-hidden="true">${icon('chev')}</span></a>` +
-          `</div>` +
+          `</div>`,
+      ) +
+      wsetGroup(
+        'Spacing',
           /*
            * How much room between the widgets (RFC 014 §4.4).
            *
@@ -5130,17 +5215,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             label: 'Room between widgets',
             name: 'layout_gutter',
             hint:
-              'How much of the wall goes to the space around each widget. ' +
-              'Normal is what this wall draws today; tighter gives the room back to what is on it.',
+              'The gap around each widget. Normal is the default; a tighter step gives ' +
+              'more of the wall to what is on it.',
             selected: String(screen.layoutGutter ?? GUTTER_DEFAULT_STEP),
             options: GUTTER_LABELS.map((label, step) => ({ value: String(step), label })),
-          }) +
-          scheduleRows(screen.id),
-      );
+          }),
+      ) +
+      wsetGroup('Timed layouts', timedLayouts(screen.id));
     const backgroundAndDefaults =
       wsetGroup(
         'Backgrounds',
-        `<p class="hint">The theme sets the wall’s base colours. These are the everyday layouts; a timed layout can have its own background. Wallpaper offers an option to apply it to both orientations.</p>` +
+        `<p class="hint">A colour, gradient, photo or wallpaper behind the widgets. Each opens in the ` +
+        `layout editor, where a timed layout can have a background of its own too.</p>` +
         `<div class="rows">` +
         (['portrait', 'landscape'] as const).map((orientation) => {
           const background = parseBackground(orientation === 'portrait'
@@ -5151,7 +5237,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             background.type === 'gradient' ? 'Gradient' : 'Uploaded image';
           return `<button type="button" class="arow" data-open-background="${orientation}">` +
             `<span class="arow-text">Everyday ${orientation} background` +
-            `<small>${description} · open background picker</small></span>` +
+            `<small>${description} · change in the layout editor</small></span>` +
             `<span class="srow-chev" aria-hidden="true">${icon('chev')}</span></button>`;
         }).join('') +
         `</div>`,
@@ -5165,14 +5251,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
        * handler keeps only what differs from them.
        */
       wsetGroup('Wall widget defaults',
-        `<p class="hint">These override the shared theme on this wall. A widget’s own style can override them again.</p>` +
+        `<p class="hint">What every widget on this wall starts from. A widget’s own Style tab can still change it.</p>` +
         widgetGroundControl(screen) +
         styleLaneFields(screen));
     const themeLook = wsetGroup(
         'Theme',
-        `<p class="hint">Choose a shared colour and type design for this wall. ` +
-        `<a class="link" href="admin/themes">Browse or edit shared themes</a>; ` +
-        `editing one there changes every wall that uses it.</p>` +
+        `<p class="hint">Themes are shared: editing one on ` +
+        `<a class="link" href="admin/themes">Themes</a> changes every wall that uses it.</p>` +
         /*
          * The same cards the creation page and Themes draw, and that is the
          * whole of RFC 015 §3.5: one decision with one appearance wherever it
@@ -5218,8 +5303,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
              * hint.
              */
             hint:
-              'A lighter theme during the hours below. A dark theme at noon is a hole in ' +
-              'the wall; a light one at 2am is a lamp.',
+              'A lighter theme for daytime hours. A dark theme at noon is a hole in the ' +
+              'wall; a light one at 2am is a lamp. Pick one to set its hours.',
             optionsHtml:
               option('', 'Same theme all day', !scheduled) +
               THEMES.map((theme) =>
@@ -5250,24 +5335,28 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const look = themeLook + backgroundAndDefaults;
 
     // --- Content defaults -------------------------------------------------
+    // The same three labels System uses for the household's numbers, so the
+    // setting and the default it follows read as one thing on both screens.
     const content =
       `<div class="rows">` +
       inheritedNumber(
-        'today_events', 'Events today', 'events',
+        'today_events', 'Events listed for today', 'events',
         screen.displayTodayEvents, household.displayTodayEvents, 1, 20,
         'Anything past this is counted rather than listed. 1 to 20.',
       ) +
       inheritedNumber(
-        'next_days', 'Days ahead', 'days',
+        'next_days', 'Days an agenda looks ahead', 'days',
         screen.displayNextDays, household.displayNextDays, 0, 14,
-        'How many upcoming days an agenda can list. 0 to 14.',
+        'How many upcoming days a Calendar agenda can list. 0 to 14.',
       ) +
       inheritedNumber(
-        'horizon_weeks', 'Weeks of month', 'weeks',
+        'horizon_weeks', 'Weeks in the month grid', 'weeks',
         screen.displayHorizonWeeks, household.displayHorizonWeeks, 1, 8,
         'How many weeks a month Calendar draws. 1 to 8.',
       ) +
-      `</div>`;
+      `</div>` +
+      `<p class="hint">A Calendar widget’s own settings can show fewer. ` +
+      `<a class="link" href="admin/system">Change the household’s numbers on System</a>.</p>`;
 
     // --- Device and time --------------------------------------------------
     const motionOn = wallMotion(screen.motion, screen.panelWidthMm, screen.panelHeightMm);
@@ -5323,12 +5412,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
        */
       wsetGroup(
         'Size and reading distance',
+        `<p class="hint">Tell the wall how big it is and where people read it from, and it sizes ` +
+        `its text to be legible from there. Leave both unset and it draws as it does now.</p>` +
         `<div class="rows">` +
           selectRow({
             label: 'Wall size',
             name: 'panel_size',
             wide: true,
-            hint: 'Pick the nearest, or enter the picture’s own size.',
+            hint: 'Pick the nearest match, or enter the picture’s own size.',
             attrs: 'data-cond',
             optionsHtml:
               option('', 'Not set', sizeValue === '') +
@@ -5365,17 +5456,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             value: screen.readDistanceMm === null ? '' : String(screen.readDistanceMm),
             hint:
               'How far away somebody stands to read a name off this wall, in ' +
-              'millimetres — not where they glance at it from the doorway. Those ' +
-              'are two different distances and this is the reading one. Left ' +
+              'millimetres — not where they glance at it from the doorway. Left ' +
               'blank, a size from the list brings its own.',
             attrs:
               `inputmode="numeric" min="${READ_DISTANCE_MM_MIN}" max="${READ_DISTANCE_MM_MAX}"`,
           }) +
           `</div>` +
-          `</div>` +
-          `<p class="hint-1">Two facts about the hardware, like the mounting above: ` +
-          `nothing else in here knows how large this wall is or how far away it is ` +
-          `read from. Leave them unset and it draws exactly as it does today.</p>`,
+          `</div>`,
       ) +
       /*
        * Whether this wall may move (plan P4.3, decision D7) — beside the size
@@ -5392,13 +5479,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         'Motion',
         `<div class="rows">` +
           switchRow({
-            label: 'Motion',
+            label: 'Let styles move',
             name: 'motion',
             checked: motionOn,
             hint:
-              'Lets the styles that move — weather that drifts, a countdown that ' +
-              'celebrates — move on this wall. Off by default for an e-ink size. ' +
-              'A device set to reduce motion stays still either way.',
+              'Weather that drifts, a countdown that celebrates — only the widget ' +
+              'styles made to move. Off by default for an e-ink size, and a device ' +
+              'set to reduce motion stays still either way.',
           }) +
           `<input type="hidden" name="motion_shown" value="${motionOn ? '1' : '0'}">` +
           `</div>`,
@@ -5508,7 +5595,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<small>Shows a fresh link and code. The current one stops working` +
       `${screen.lastSeenAt === null ? '' : ', and this wall drops off until the new one is opened on it'}.</small></span>` +
       `<span class="srow-chev" aria-hidden="true">${icon('chev')}</span></button></form>` +
-      // The starter-design gallery lives under Design: it is
+      // The wall's own CSS (RFC 014 §7) is a page of its own — a field per
+      // widget and a live preview do not fit a category — and it is here rather
+      // than under Look because it is the last option, not the first.
+      cssAdvancedRow(screen.id) +
+      `<div class="frow"><span>Wall id</span><code>${escapeHtml(screen.id)}</code></div>` +
+      `</div>` +
+      wsetGroup('Start over', `<div class="rows">` +
+      // Last, below everything that is only infrequent: the two actions that
+      // throw something away. They are offered here and nowhere else on this
+      // page — the ⋮ menu used to carry both too, and one destructive action
+      // offered twice on one screen is one of them somebody presses by
+      // accident. The starter-design gallery lives under Layouts: it is
       // neither infrequent nor destructive, which is what this category is for.
       `<form method="post" action="admin/displays/${id}/reset-layout" ` +
       `data-confirm="Reset both the portrait and landscape layouts of ${escapeHtml(screen.name)} ` +
@@ -5519,38 +5617,39 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `data-confirm="Unpair ${escapeHtml(screen.name)}? Its token stops working and it drops off the wall.">` +
       `<button class="arow is-danger" type="submit"><span class="arow-text">Unpair wall` +
       `<small>This wall stops receiving updates until it is paired again.</small></span></button></form>` +
-      // The wall's own CSS (RFC 014 §7) is a page of its own — a field per
-      // widget and a live preview do not fit a category — and it is here rather
-      // than under Look because it is the last option, not the first.
-      cssAdvancedRow(screen.id) +
-      `<div class="frow"><span>Wall id</span><code>${escapeHtml(screen.id)}</code></div>` +
-      `</div>`;
+      `</div>`);
 
     return (
       `<div class="wset" data-wset-root>` +
       `<nav class="wset-nav" role="tablist" aria-orientation="vertical" aria-label="Wall settings">` +
-      wsetRow('design', 'Design', 'Templates, spacing and timed layouts', true) +
-      wsetRow('look', 'Look', 'Theme, backgrounds and type', false) +
-      wsetRow('content', 'Content defaults', 'How much the calendars show', false) +
-      wsetRow('device', 'Device and time', 'Name, mounting, size, timezone', false) +
-      // Names both switches: the section holds one about alerts and one about
-      // chores, and a subtitle that mentions only the first is a heading a
-      // household would not open looking for the second.
-      wsetRow('alerts', 'Alerts and interaction', 'What this wall can press', false) +
-      wsetRow('advanced', 'Advanced', 'Pairing, reset, unpair, custom CSS', false) +
+      /*
+       * The keys are unchanged — they are stored per browser and named by
+       * tests — and only the words moved. "Design" sat beside "Look" and the
+       * two read as the same question; this one is about the wall's layouts,
+       * so it says so. "Content defaults" was three calendar numbers under a
+       * name that could mean anything on the wall. And the touch row names all
+       * three switches: a subtitle that mentions only the first is a heading a
+       * household would not open looking for the other two.
+       */
+      wsetRow('design', 'Layouts', 'Starter design, spacing, timed layouts', true) +
+      wsetRow('look', 'Look', 'Theme, backgrounds, widget style', false) +
+      wsetRow('content', 'Calendar amounts', 'Events, days and weeks shown', false) +
+      wsetRow('device', 'Device and time', 'Name, mounting, size, motion, clock', false) +
+      wsetRow('alerts', 'Touch controls', 'Dismiss alerts, tick off chores and to-dos', false) +
+      wsetRow('advanced', 'Advanced', 'Pairing, custom CSS, reset, unpair', false) +
       `</nav>` +
       `<div class="wset-panels">` +
       `<form method="post" action="${action}" class="wall-settings" data-settings>` +
-      wsetPanel('design', 'Design', 'This wall’s layout, spacing and timed layouts. Arrange widgets in the Layout editor.', design, true) +
-      wsetPanel('look', 'Look', 'The theme is shared; the choice, layout backgrounds and overrides here belong to this wall.', look, false) +
-      wsetPanel('content', 'Content defaults', 'How much the calendars on this wall show. Each one follows the household until you turn that off.', content, false) +
+      wsetPanel('design', 'Layouts', 'Where this wall’s layouts start, the room around each widget, and the timed layouts it holds. Widgets are moved, and timed layouts given their hours, under Layout at the top of this page.', design, true) +
+      wsetPanel('look', 'Look', 'This wall’s theme, what sits behind its widgets, and the style every widget starts from.', look, false) +
+      wsetPanel('content', 'Calendar amounts', 'How much a Calendar widget on this wall shows. Each number follows the household until you turn that off.', content, false) +
       wsetPanel('device', 'Device and time', 'What this wall is called, how it is hung, how large it is, and the clock it keeps.', device, false) +
-      // Both switches, not just the alert one — this panel is now where every
+      // Every switch, not just the alert one — this panel is where every
       // "can this screen write anything" decision lives, and it is worth saying
       // that a wall display can only ever press what is listed here.
-      wsetPanel('alerts', 'Alerts and interaction', 'What a person standing at this wall is allowed to press. Both are off until you turn them on.', alerts, false) +
+      wsetPanel('alerts', 'Touch controls', 'What a person standing at this wall is allowed to press. All three are off until you turn them on.', alerts, false) +
       `</form>` +
-      wsetPanel('advanced', 'Advanced', 'Infrequent, and some of it destructive. These act at once — they are not part of Save wall.', advanced, false) +
+      wsetPanel('advanced', 'Advanced', 'Infrequent, and the last two throw work away. These act at once — they are not part of Save wall.', advanced, false) +
       `</div></div>`
     );
   }
@@ -5902,6 +6001,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       slots,
       schedule: readLayoutSchedule(deps.db, ownerKey),
       maxSlots: MAX_LAYOUT_SLOTS,
+      maxRules: MAX_SCHEDULE_ROWS,
       // Everything the config panel needs to offer a choice: the calendars that
       // exist (id + name), and the watched Home Assistant readings (id, the
       // name the wall draws, and the handle the panel keys it by). Read here
@@ -5990,6 +6090,19 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             : `<b>Not seen recently</b> · last seen ${escapeHtml(ago(owner.lastSeenAt, at))}`;
 
     const ownerParam = encodeURIComponent(owner?.id ?? '');
+    /*
+     * The wall's quick actions, reachable from either tab: the ones Layout
+     * needs without a trip to Wall settings. Reset and Unpair are not here
+     * any more. They were also in Advanced, one tab away on the same page,
+     * and a destructive action offered twice on one screen is one of them
+     * somebody presses by accident — the rule the editor's own toolbar
+     * already keeps for Reset. Advanced has them once, with a line each
+     * saying what they take.
+     *
+     * "New timed layout…" is a button the page chrome hands to the editor
+     * (`data-new-layout`), the same one Wall settings › Layouts offers, so a
+     * layout is made one way however it is reached.
+     */
     const menuItems =
       (owner === null
         ? ''
@@ -5998,17 +6111,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `<button class="ovf-item${owner.lastSeenAt === null ? '' : ' is-danger'}" type="submit">` +
           `New pairing link…</button></form>`) +
       `<a class="ovf-item" href="admin/displays/${ownerParam}/gallery">Choose a starter design…</a>` +
+      (slotNames.length < MAX_LAYOUT_SLOTS
+        ? `<button type="button" class="ovf-item" data-new-layout>New timed layout…</button>`
+        : '') +
       `<div class="ovf-sep"></div>` +
-      `<form method="post" action="admin/displays/${ownerParam}/reset-layout" ` +
-      `data-confirm="Reset both the portrait and landscape layouts of ${escapeHtml(
-        owner?.name ?? 'this wall',
-      )} to the Classic layout? Everything arranged here is replaced.">` +
-      `<button class="ovf-item is-danger" type="submit">Reset layout…</button></form>` +
-      (owner === null
-        ? ''
-        : `<form method="post" action="admin/screens/${encodeURIComponent(owner.id)}/revoke" ` +
-          `data-confirm="Unpair ${escapeHtml(owner.name)}? Its token stops working and it drops off the wall.">` +
-          `<button class="ovf-item is-danger" type="submit">Unpair wall…</button></form>`);
+      `<button type="button" class="ovf-item" data-open-settings="advanced">Reset or unpair…</button>`;
 
     // Status and the overflow ride the mode bar rather than a header of their
     // own: the app bar already carries the way back and the wall's name, and a
@@ -6036,8 +6143,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     // Said once, above the canvas, rather than repeated under each panel.
     const previewCaption =
       owner?.reportW != null && owner?.reportH != null
-        ? `${owner.reportW}×${owner.reportH} · updates within a minute`
-        : 'updates within a minute';
+        ? `${owner.reportW}×${owner.reportH} · the wall updates within a minute of Save`
+        : 'the wall updates within a minute of Save';
 
     const layoutPane =
       `<section class="mode" id="mode-layout" role="tabpanel" aria-labelledby="mode-tab-layout" ` +

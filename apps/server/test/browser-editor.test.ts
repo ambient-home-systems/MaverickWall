@@ -1406,12 +1406,13 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
   /**
    * Each toolbar popover opens under the button that opened it.
    *
-   * Layout and Layers align their right edges with their buttons. Background
-   * is wider than the editor column, so it may shift to stay on screen, but
-   * the button must still sit above its horizontal span.
+   * Size & grid and Layers align their right edges with their buttons, and
+   * Layouts — the first button in the row — its left edge. Background is
+   * wider than the editor column, so it may shift to stay on screen, but the
+   * button must still sit above its horizontal span.
    */
   it(
-    'opens the Layers, Layout and Background popovers under their own buttons',
+    'opens the Layouts, Layers, Size & grid and Background popovers under their own buttons',
     async () => {
       const wall = await newWall();
       const context = await editorContext(wall);
@@ -1420,8 +1421,9 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
         await openEditor(wall, page);
 
         for (const [button, popover] of [
+          ['.le-layouts-btn', '.le-layouts-pop'],
           ['.le-layers-btn', '.le-layers-pop'],
-          ['.le-tool-btn[aria-label^="Layout"]', '.le-canvas-pop:not(.le-background-pop)'],
+          ['.le-size-btn', '.le-size-pop'],
           ['.le-background-btn', '.le-background-pop'],
         ] as const) {
           await page.click(button);
@@ -1432,6 +1434,7 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
               const two = document.querySelector(p as string)?.getBoundingClientRect();
               if (one === undefined || two === undefined) return null;
               return {
+                buttonLeft: Math.round(one.left),
                 buttonRight: Math.round(one.right),
                 popoverRight: Math.round(two.right),
                 popoverLeft: Math.round(two.left),
@@ -1442,7 +1445,14 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
             [button, popover],
           );
           expect(seen, `${popover} did not open`).not.toBeNull();
-          if (popover === '.le-background-pop') {
+          if (popover === '.le-layouts-pop') {
+            // The Layouts button starts the toolbar, so its menu opens from the
+            // button's left edge rather than running off the page's.
+            expect(
+              Math.abs((seen?.popoverLeft ?? 0) - (seen?.buttonLeft ?? 0)),
+              `${popover} is detached from the button that opened it`,
+            ).toBeLessThanOrEqual(2);
+          } else if (popover === '.le-background-pop') {
             expect(seen?.buttonRight ?? 0).toBeGreaterThanOrEqual(seen?.popoverLeft ?? 0);
             expect(seen?.buttonRight ?? 0).toBeLessThanOrEqual(seen?.popoverRight ?? 0);
             expect(seen?.popoverRight ?? Infinity).toBeLessThanOrEqual(seen?.width ?? 0);

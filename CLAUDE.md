@@ -7235,6 +7235,14 @@ on the server, `canvas-schedule.ts` in the bundle — held character-identical b
 test, and the bundle's copy is held to `daytimeActive` at every minute of the
 day.
 
+> **The paragraph that follows describes the slot tabs and the schedule rows
+> in Wall settings, and both are history.** The layouts and their hours are
+> one menu now, under the button naming the layout on screen ("Everyday ▾"),
+> and the settings group only lists what is saved — see the Layouts menu
+> paragraphs at the end of this section. The stash keyed on `(orientation,
+> slot)`, per-canvas dirtiness, fresh ids on New and the measurement of the
+> boundary are all unchanged.
+
 **The editor is one mechanism rather than a second one, and the verification is
 the boundary rather than the rule.** The slot tabs beside the orientation
 buttons are `wireTabs`, the same roving tabindex the inspector and the ink lane
@@ -8422,6 +8430,103 @@ The splits above add five bodies per widget type over eleven types, and the
 last full run read 3439: +55 on the first reading, which agrees.
 **Still unproven where it counts:** nobody has looked at a planner month on a
 kitchen wall or picked a look on a real phone.
+
+**A wall's settings and its layout toolbar were reviewed as a household reads
+them, and the one hidden feature on the page is now one menu.** Timed layouts
+(RFC 014 §5.2) were reachable only by knowing to open a toolbar popover called
+"Layout" and press New there, and their hours were rows of a from, an until
+and a layout picked from a list in Wall settings, a tab away from the layout
+they decided. A household made a layout, saved, went to the other tab, found
+the row and chose the times, and a timed layout with no hours, which the wall
+never draws, was the common result. Now the first button in the toolbar names
+the layout on screen ("Everyday ▾") and opens a menu listing every layout with
+a line saying when it shows. The timed layout on screen has its hours under
+the list, with "+ Add another time". A new layout is named in the menu, and the
+one on screen is removed there. Where two layouts' windows overlap, the menu
+says from when and which one the wall draws, which is the first rule written,
+the wall's own answer. The button is always there on a browser wall, because
+its menu is where the first timed layout is made. It is absent on a panel,
+which draws one layout.
+
+**The hours are unsaved work like a moved box, and what that means is a pure
+module.** `layout-hours.ts` in the display answers what counts as unsaved (a
+row with no times is somewhere to type and never counts; one time typed
+does), what each layout's line says, what the save refuses before it posts,
+and where two windows first overlap, walked back so a night window reports
+22:00 and not midnight. Save posts the canvases first and then the hours, to a
+new JSON endpoint, `POST /admin/layout/schedule`, because the server refuses
+hours for a layout it does not yet hold and a new layout's first save is its
+canvas. The endpoint takes the schedule whole in written order, through a Zod
+shape (two real times, different, at most `MAX_SCHEDULE_ROWS`), and refuses a
+rule naming a layout the wall does not hold, a panel, and a stranger's id. A
+half-typed row is refused by name before anything is posted, and the menu is
+opened on it on the next task, because the save runs inside a click and the
+document's click would close it again. Wall settings › Layouts lists the saved
+layouts in the menu's own words and has two buttons, `data-new-layout` and
+`data-open-layouts`, which put the editor on screen and open the menu. The
+form handler still reads the old rows, for a page rendered before this.
+Two faults were found by building it. Choosing a layout redraws the menu, so
+the click's target had left the page by the time it reached the document, and
+"a click outside the menu" closed it. The menu stops its own clicks now. On a
+phone the naming field landed under the save bar, so the menu drops the hours
+while a name is being typed.
+
+**The six categories kept their keys and changed their words.** Design is
+**Layouts**, Content defaults is **Calendar amounts**, and Alerts and
+interaction is **Touch controls**. The keys are stored per browser and named
+by tests. Calendar amounts takes System's three labels, so a number and the
+default it follows read as one thing on both screens, and the handler's error
+messages use the same words. The touch lead said "Both are off" over three
+switches, and the gutter hint said "Normal is what this wall draws today",
+which stops being true after one click. Both are fixed. The toolbar button
+"Layout — Portrait 9:16" is now **Size & grid**. It repeated the shape the
+preview header already states, and that width pushed Background onto a second
+row at 1440px. Reset layout and Unpair wall were on the page twice, in the ⋮
+menu and in Advanced, one tab apart. They are now only at the foot of
+Advanced, under their own heading, and the ⋮ menu links there instead. One
+real layout fault was found by looking: an `.arow` sitting directly in a
+`.rows` list cleared the divider `.rows>*+*` gives it, because both selectors
+are (0,1,0) and `.arow` comes later.
+
+**The phone toolbar was measured, not assumed, twice.** "Size & grid" is 27px
+wider than the old label on a phone, and the tools row at 390px became 370px
+of buttons in 350px, wrapped, and the canvas fell to 404px, under the suite's
+440px floor. Taking one spacing step off each side of the tool buttons below
+560px brought it back. Then "Everyday ▾" took the first row's spare width and
+pushed Background onto a third row, 404px again. Three things below 560px buy
+it back, measured: the orientation segments at one step of side padding
+(written against `.le-orient`, because the toggle is also a `.seg` and
+`.seg button` outranks the button's own class, so the first attempt changed
+nothing), "+ Add widget" drawn as "+ Add" with the accessible name kept whole,
+and a layout's name cut at 8ch. At 360, 375 and 390px the canvas measures 404,
+404 and 444px, the same as `main`, and the first row ends 12px inside the bar.
+On a desktop the button wraps Background onto a second row at 1440px, and the
+canvas is identical to the pixel with and without the button at 1024, 1280,
+1440, 1600 and 1920, because the desktop budget is the viewport and not the
+toolbar. Nine mutations were checked and all nine are red: every rule row
+drawn again in settings, Unpair put back in the ⋮ menu, the save's pre-check
+removed, the hours left out of the dirty flag, the menu's own click let
+through, the hours never posted, the server's held-layout check removed, a
+blank row counted as unsaved, and the phone compaction removed.
+
+**4805 tests passing and 1 skipped, over 333 files**: calendar 153 over 10 ·
+core 314 over 9 · display 890 over 50 · server 3448 over 264. The full run
+was `pnpm test` with a real Chromium (`MW_BROWSER_EXECUTABLE`). Against the
+4785 recorded before this change, 20 tests were added: 17 in
+`layout-hours.test.ts`, 1 in `layout-schedule.test.ts` and 2 in
+`browser-editor-slots.test.ts`. That full run read four red, in
+`browser-calendar-looks` and `browser-calendar-shift-styles`, two each. They
+were **red on a clean worktree of `main` at the same hour**, so they were not
+this change's code; they were a fault in both files' fixtures. Both need a
+month cell with nobody on the rota, and the only such cells were the grid's
+leading days before the manifest's window, which exist on five weekdays in
+seven. The run was at 00:30 on a Sunday in London, where the week starts, so
+there were none. That is the week-numbers fault above, one assertion along.
+Both fixtures now end Amy's rota a fortnight out, which leaves at least
+fourteen rota-less days on a five-week grid whatever weekday it starts on
+(reasoned). Measured: the two files alone were 4 red and 32 green at 01:46 on
+that Sunday before the change, and 36 of 36 after. The full suite was not
+re-run for a two-fixture change; CI runs it.
 
 ---
 

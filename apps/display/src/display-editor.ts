@@ -157,6 +157,52 @@ function boot(): void {
     });
   }
 
+  /*
+   * A timed layout is made in the editor, however it is asked for.
+   *
+   * Wall settings › Layouts and the ⋮ menu both offer it, and it used to be
+   * one sentence — "on the Layout tab, press New layout" — pointing at a
+   * button two taps deep inside a toolbar popover also called Layout. These
+   * buttons do the steps instead: show the editor, then let it open its
+   * Layouts menu on a new name, so there is one way a layout is made. The
+   * hand-off waits a frame so the editor is on screen before its menu is,
+   * and a task so the click that asked is over before the menu opens — the
+   * editor closes its menus on any click outside them.
+   *
+   * `data-open-layouts` is the same hand-off without the New: Wall settings ›
+   * Layouts lists what is saved, and the hours are changed in that menu,
+   * beside the layouts they belong to — so its button opens the menu rather
+   * than a second form for the same rows.
+   */
+  const handOff = (selector: string, event: string): void => {
+    for (const button of document.querySelectorAll<HTMLButtonElement>(selector)) {
+      button.addEventListener('click', (click) => {
+        click.stopPropagation();
+        button.closest('details')?.removeAttribute('open');
+        selectMode('layout');
+        window.requestAnimationFrame(() => {
+          window.setTimeout(() => window.dispatchEvent(new CustomEvent(event)), 0);
+        });
+      });
+    }
+  };
+  handOff('[data-new-layout]', 'mw:new-layout');
+  handOff('[data-open-layouts]', 'mw:open-layouts');
+
+  // And the way back: the ⋮ menu's "Reset or unpair…" opens a settings
+  // category by name.
+  const openSettings = (category: string | undefined): void => {
+    if (category === undefined || !catTabs.some((tab) => catOf(tab) === category)) return;
+    selectMode('settings');
+    selectCategory(category, true, true);
+  };
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-open-settings]')) {
+    button.addEventListener('click', () => {
+      button.closest('details')?.removeAttribute('open');
+      openSettings(button.dataset['openSettings']);
+    });
+  }
+
   // ---- progressive disclosure -------------------------------------------
 
   /*

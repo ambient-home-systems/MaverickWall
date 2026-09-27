@@ -286,7 +286,7 @@ describe('through the real app', () => {
     expect(readLayoutSchedule(wall.db, screenId)).toEqual([]);
   });
 
-  it('stores the schedule whole, in the household’s order, and the manifest carries it', async () => {
+  it('stores the schedule whole from a page rendered before the menu, in the household’s order', async () => {
     const saved = await settings({
       schedule_form: '1',
       // Row 1 empty on purpose: a blank row is no rule, and rows keep their
@@ -303,10 +303,18 @@ describe('through the real app', () => {
       { slot: 'evening', from: '20:00', to: '23:00' },
       { slot: 'morning', from: '06:30', to: '08:30' },
     ]);
-    // The settings page draws the rules back, offering every slot on each.
+    // The settings page says what is saved, in the editor menu's own words,
+    // and draws no rows to edit: the hours are changed in the editor's
+    // Layouts menu, beside the layouts they belong to, and a second form for
+    // the same rows is how the two came to disagree.
     const html = await (await wall.call(`/admin/walls/${screenId}`)).text();
-    expect(html).toContain('20:00–23:00: evening');
-    expect(html).toContain('name="schedule_slot_4"');
+    expect(html).toContain('Shown 20:00–23:00');
+    expect(html).toContain('Shown 06:30–08:30');
+    expect(html).toContain('Shown the rest of the time');
+    expect(html).toContain('No hours yet, so never shown');
+    expect(html).toContain('data-open-layouts');
+    expect(html).not.toContain('name="schedule_form"');
+    expect(html).not.toContain('name="schedule_slot_1"');
   });
 
   it('leaves the schedule alone for a page that never drew the rows', async () => {
@@ -314,6 +322,57 @@ describe('through the real app', () => {
     // no marker, and a stale tab saving a timezone must not clear a schedule.
     expect((await settings({})).status).toBe(302);
     expect(readLayoutSchedule(wall.db, screenId)).toHaveLength(2);
+  });
+
+  /*
+   * The editor's Layouts menu saves the hours through its own JSON endpoint,
+   * after the canvases, and this is the boundary it crosses. Whole, in the
+   * order written, and refusing what the wall could not draw — the same four
+   * refusals the settings rows had, and two a JSON body makes possible.
+   */
+  it('saves the Layouts menu’s hours whole, and refuses what the wall could not draw', async () => {
+    const hours = (rules: unknown, screen: unknown = screenId) =>
+      wall.call('/admin/layout/schedule', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ screen, rules }),
+      });
+    const refused = async (rules: unknown, status = 400): Promise<string> => {
+      const response = await hours(rules);
+      expect(response.status).toBe(status);
+      return ((await response.json()) as { message: string }).message;
+    };
+    const before = readLayoutSchedule(wall.db, screenId);
+
+    expect(await refused([{ slot: 'morning', from: '07:00', to: '07:00' }])).toContain('never show');
+    expect(await refused([{ slot: 'morning', from: '7am', to: '08:30' }])).toContain('HH:MM');
+    expect(await refused([{ slot: 'morning', from: '06:30' }])).toBeTruthy();
+    expect(await refused([{ slot: 'gone', from: '06:30', to: '08:30' }])).toContain('no “gone” layout');
+    expect(await refused([{ slot: 'morning', from: '06:30', to: '08:30', extra: 1 }])).toBeTruthy();
+    const five = Array.from({ length: MAX_LAYOUT_SLOTS + 1 }, (_, i) => ({ slot: 'morning', from: `0${i}:00`, to: `0${i}:30` }));
+    expect(await refused(five)).toContain(String(MAX_LAYOUT_SLOTS));
+    expect((await hours([], 'not-a-wall')).status).toBe(404);
+    const unreadable = await wall.call('/admin/layout/schedule', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: '{',
+    });
+    expect(unreadable.status).toBe(400);
+    const panel = wall.db
+      .prepare(`SELECT id FROM screens WHERE kind = 'epaper' ORDER BY created_at DESC LIMIT 1`)
+      .get() as { id: string };
+    expect((await hours([], panel.id)).status).toBe(400);
+    // Nothing refused touched what was saved.
+    expect(readLayoutSchedule(wall.db, screenId)).toEqual(before);
+
+    // An empty list clears it, and a list is stored in the order it was written.
+    expect((await hours([])).status).toBe(200);
+    expect(readLayoutSchedule(wall.db, screenId)).toEqual([]);
+    const written = [
+      { slot: 'evening', from: '20:00', to: '23:00' },
+      { slot: 'morning', from: '06:30', to: '08:30' },
+    ];
+    expect((await hours(written)).status).toBe(200);
+    expect(readLayoutSchedule(wall.db, screenId)).toEqual(written);
+    expect((await manifest()).layout.schedule).toEqual(written);
   });
 
   it('removes a slot with every rule naming it, and never the default', async () => {
