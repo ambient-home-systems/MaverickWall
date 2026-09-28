@@ -1566,6 +1566,37 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
         seen = await where();
         expect(seen.panel, 'the build panel stayed up under a selected widget').toBe(false);
         expect(await page.locator('.insp-head').isVisible()).toBe(true);
+
+        // With the panel gone, "+ Add" in the settings header is the way to
+        // add the next widget — one tap, the same modal, focus handed back to
+        // it on Escape, and a widget added from it like any other.
+        const headerAdd = page.locator('.insp-head .insp-add');
+        expect(await headerAdd.isVisible(), 'no + Add in the settings header at 1280px').toBe(true);
+        await headerAdd.click();
+        expect(await page.locator('.le-modal').isVisible()).toBe(true);
+        await page.keyboard.press('Escape');
+        // The modal fades out, so it is still displayed for the length of its
+        // exit transition; wait for it to go rather than reading it mid-fade.
+        await page.locator('.le-modal').waitFor({ state: 'hidden' });
+        await settle(page);
+        expect(
+          await page.locator('.insp-head').isVisible(),
+          'the Escape that closed the modal also closed the widget behind it',
+        ).toBe(true);
+        expect(
+          await page.evaluate(() => document.activeElement?.classList.contains('insp-add') ?? false),
+          'closing the modal did not hand focus back to the + Add that opened it',
+        ).toBe(true);
+        await headerAdd.click();
+        await page.locator('.le-modal-item').filter({ hasText: /^Clock$/ }).click();
+        await settle(page);
+        expect(await page.locator('.le-overlay > .le-widget').count()).toBe(seen.boxes + 1);
+        await pressUndo(page);
+        await settle(page);
+        expect(await page.locator('.le-overlay > .le-widget').count()).toBe(seen.boxes);
+
+        await page.locator('.le-overlay .le-widget').first().click();
+        await settle(page);
         await page.click('.insp-close');
         await settle(page);
         seen = await where();
@@ -1601,6 +1632,14 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
         await settle(page);
         expect(await page.locator('.le-layers-pop .le-layer').count()).toBe(seen.boxes);
         await page.click('.le-layers-btn');
+        // And the header's + Add goes with it: the toolbar's Add widget is on
+        // screen above the sheet, and one act gets one button.
+        await page.locator('.le-overlay .le-widget').first().click();
+        await settle(page);
+        expect(await page.locator('.insp-head').isVisible()).toBe(true);
+        expect(await page.locator('.insp-head .insp-add').isVisible(), '+ Add doubled the toolbar at 1024px').toBe(false);
+        await page.click('.insp-close');
+        await settle(page);
 
         // And back again.
         await page.setViewportSize({ width: 1470, height: 900 });

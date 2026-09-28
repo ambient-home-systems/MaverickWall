@@ -1504,13 +1504,20 @@ function boot(): void {
   modal.setAttribute('role', 'dialog');
   modal.setAttribute('aria-modal', 'true');
   modal.setAttribute('aria-label', 'Add a widget');
-  const openAddModal = (): void => {
+  /*
+   * Two buttons open the modal — Add widget, and the compact "+ Add" in a
+   * selected widget's settings header — so closing it hands focus back to
+   * whichever one opened it, while that one is still on screen.
+   */
+  let addOpener: HTMLElement = addWidgetButton;
+  const openAddModal = (opener: HTMLElement = addWidgetButton): void => {
+    addOpener = opener;
     modal.hidden = false;
     modalGrid.querySelector('button')?.focus();
   };
   const closeAddModal = (): void => {
     modal.hidden = true;
-    addWidgetButton.focus();
+    (addOpener.offsetParent !== null ? addOpener : addWidgetButton).focus();
   };
   const modalCard = document.createElement('div');
   modalCard.className = 'le-modal-card';
@@ -1540,13 +1547,22 @@ function boot(): void {
   }
   modalCard.append(modalHead, modalGrid);
   modal.appendChild(modalCard);
-  addWidgetButton.addEventListener('click', openAddModal);
+  addWidgetButton.addEventListener('click', () => openAddModal(addWidgetButton));
   // A click on the backdrop (not the card) closes; Escape closes.
   modal.addEventListener('click', (event) => {
     if (event.target === modal) closeAddModal();
   });
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !modal.hidden) closeAddModal();
+    if (event.key !== 'Escape' || modal.hidden) return;
+    /*
+     * One Escape closes one thing. The editor's own Escape handler, registered
+     * later on the same document, clears the selection once no modal is up —
+     * and by the time it ran, this one had just hidden it, so the same press
+     * also closed the widget's settings behind the modal and put focus on the
+     * canvas instead of the button that opened it.
+     */
+    event.stopImmediatePropagation();
+    closeAddModal();
   });
 
   /**
@@ -2035,7 +2051,28 @@ function boot(): void {
   inspectorClose.innerHTML = '';
   inspectorClose.textContent = '×';
   inspectorClose.addEventListener('click', () => clearSelection(true));
-  inspectorHead.append(inspectorTitle, inspectorClose);
+  /*
+   * "+ Add" in the header, from 1200px only.
+   *
+   * There Add widget lives in the side column's build panel, which a selected
+   * widget's settings replace — so arranging one widget and then adding the
+   * next cost a trip through the close button first. This is the same modal
+   * one tap away. Below 1200px Add widget is already in the toolbar above an
+   * open sheet, and a second one here would be two buttons for one act on one
+   * screen; `placeBuildControls` hides it there. Deliberately not
+   * `.le-add-primary`: the filled button stays the one Add widget in the
+   * document, and this is a compact tool beside the way out.
+   */
+  const inspectorAdd = document.createElement('button');
+  inspectorAdd.type = 'button';
+  inspectorAdd.className = 'le-tool-btn insp-add';
+  inspectorAdd.textContent = '+ Add';
+  inspectorAdd.setAttribute('aria-label', 'Add widget');
+  inspectorAdd.setAttribute('aria-haspopup', 'dialog');
+  inspectorAdd.title = 'Add another widget to this layout';
+  inspectorAdd.hidden = true;
+  inspectorAdd.addEventListener('click', () => openAddModal(inspectorAdd));
+  inspectorHead.append(inspectorTitle, inspectorAdd, inspectorClose);
 
   const inspectorBody = document.createElement('div');
   inspectorBody.className = 'insp-body';
@@ -2229,6 +2266,7 @@ function boot(): void {
         layersPopover.appendChild(layersPanel);
       }
       addWidgetButton.classList.toggle('le-add-block', docked);
+      inspectorAdd.hidden = !docked;
       layersAnchor.hidden = docked;
       palette.hidden = palette.childElementCount === 0;
     }

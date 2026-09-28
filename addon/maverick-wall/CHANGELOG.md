@@ -16,6 +16,12 @@
 
 ## Unreleased
 
+**Add another widget without closing the one you are changing.** On a laptop
+or desktop, a widget's settings now have a small **+ Add** button beside the
+close button, so you can add the next widget straight away. And pressing
+Escape to close the "Add a widget" window no longer closes the settings of the
+widget you had open behind it as well.
+
 ## 0.74.0
 
 **The layout editor's toolbar fits on one row.** On a laptop or desktop,
