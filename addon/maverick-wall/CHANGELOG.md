@@ -16,6 +16,16 @@
 
 ## Unreleased
 
+**The layout editor's toolbar fits on one row.** On a laptop or desktop,
+**+ Add widget** and the list of widgets on the layout now sit in the column
+beside the canvas whenever nothing is selected. Tap a widget there or on the
+layout to change it, and drag a row by its handle to bring it to the front.
+The toolbar above the canvas keeps Portrait and Landscape, which layout you are
+arranging, Undo, Size & grid and Background. On a phone or tablet nothing
+moves: that column is the sheet that slides up for a selected widget, so Add
+widget and Layers stay in the toolbar there. The line saying how big the wall
+is and when it updates is now under the canvas.
+
 ## 0.73.0
 
 **The wallpaper picker shows the pictures properly.** Each wallpaper is shown

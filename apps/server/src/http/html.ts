@@ -1516,6 +1516,15 @@ pre.code{background:var(--mw-surface-2);
    and never floats over the settings pane. Right-aligned: both buttons sit at
    the end of the toolbar, where a left-aligned 320px panel would run off. */
 .le-pop-anchor{position:relative;display:inline-flex}
+/* Both are display rules an author wrote, so the hidden attribute needs saying
+ * — the .le-tool-btn[hidden] trap above. From 1200px Add widget and the
+ * layers list move into the side column and leave these empty. */
+.le-pop-anchor[hidden],.le-palette[hidden]{display:none}
+/* Undo and the canvas's own settings at the far end of the row, where the
+ * side column holds Add widget and Layers. Not below that: a phone's row
+ * wraps, and a pushed item that starts a line would strand itself at the
+ * right edge. */
+@media(min-width:1200px){.le-bar-push{margin-left:auto}}
 /* A menu surface: 4px corner, a bordered panel, and the one heavy shadow —
  * it genuinely floats over the page, so it is allowed to say so. */
 .le-layers-pop{position:absolute;top:calc(100% + 6px);right:0;width:320px;z-index:30;
@@ -2306,6 +2315,10 @@ pre.code{background:var(--mw-surface-2);
 .prev-head b{font:var(--mw-t-h4);
   letter-spacing:var(--mw-t-h4-tracking);color:var(--ink)}
 .prev-head small{font-size:var(--mw-t-label-sm-size);color:var(--mw-ink-2)}
+/* A wall's caption sits under its canvas: the toolbar above already names
+ * what is being arranged, and a "Live preview" heading there spent a row
+ * naming the thing directly beneath it. */
+.prev-head.prev-foot{margin:var(--mw-s-2) 0 0}
 .lay-inspector{position:sticky;top:96px;min-width:0;
   background:var(--panel);border:1px solid var(--rule);
   border-radius:var(--mw-r-3);
@@ -2313,6 +2326,23 @@ pre.code{background:var(--mw-surface-2);
 .insp-empty{padding:var(--mw-s-5) calc(var(--mw-s-4) + var(--mw-s-1));font-size:var(--mw-t-label-size);
   color:var(--mw-ink-2);line-height:1.55}
 .insp-empty[hidden],.insp-head[hidden],.insp-body[hidden]{display:none}
+/* The build panel: the column's own content while nothing is selected — Add
+ * widget and every widget on the layout, front first. The column scrolls, so
+ * the list inside it does not carry the popover's own 340px cap. */
+.le-build[hidden]{display:none}
+.le-build-top{padding:var(--mw-s-4) calc(var(--mw-s-4) + var(--mw-s-1)) var(--mw-s-4)}
+.le-build-head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--mw-s-2)}
+.le-build-title{margin:0;font:var(--mw-t-h4);
+  letter-spacing:var(--mw-t-h4-tracking);color:var(--ink)}
+.le-build-count{font-size:var(--mw-t-label-sm-size);color:var(--mw-ink-2)}
+.le-build-add{margin-top:var(--mw-s-3)}
+.le-add.le-add-block{width:100%;height:auto;min-height:var(--mw-touch);
+  justify-content:center;text-align:center}
+.le-build-list{border-top:1px solid var(--ruleSoft)}
+.le-build-list .le-layers{max-height:none;overflow:visible}
+.le-build-hint{margin:0;padding:var(--mw-s-3) calc(var(--mw-s-4) + var(--mw-s-1));
+  border-top:1px solid var(--ruleSoft);font-size:var(--mw-t-label-sm-size);
+  line-height:1.5;color:var(--mw-ink-2)}
 /* The inspector's own header: which widget this is, and the way out. */
 .insp-head{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:var(--mw-s-3);
   padding:var(--mw-s-3) var(--mw-s-2) var(--mw-s-3) calc(var(--mw-s-4) + var(--mw-s-1));background:var(--panel);
@@ -2595,8 +2625,8 @@ pre.code{background:var(--mw-surface-2);
    * being edited. Two of those are here and the third is the one-row toolbar
    * above; sizeCanvas spends what they free on the canvas itself.
    *
-   * The preview caption is 31px naming the thing directly beneath it, and the
-   * shape it repeats is in the Size & grid popover. */
+   * The preview caption is a line under the canvas repeating the shape the
+   * Size & grid popover already states. */
   .prev-head{display:none}
   /* The tools row — Undo, Layers, Size & grid, Background — has to stay one
    * row on a 390px phone or the canvas drops under its 440px floor: measured,

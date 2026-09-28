@@ -466,6 +466,9 @@ describe('1 · the undo stack', () => {
         });
 
         await step('adding a widget', async () => {
+          // From 1200px Add widget is the side column's while nothing is
+          // selected, and the nudge above left a widget selected.
+          if (!(await page.locator('.le-add-primary').isVisible())) await page.click('.insp-close');
           await page.click('.le-add-primary');
           await page.click('.le-modal-item:has-text("Clock")');
         });
@@ -481,7 +484,7 @@ describe('1 · the undo stack', () => {
         });
 
         await step('restacking in the Layers list', async () => {
-          await page.click('.le-layers-btn');
+          await showLayers(page);
           const rows = page.locator('.le-layer');
           const last = await rows.last().locator('.le-layer-grip').boundingBox();
           const first = await rows.first().boundingBox();
@@ -490,7 +493,7 @@ describe('1 · the undo stack', () => {
           await page.mouse.down();
           await page.mouse.move(first.x + first.width / 2, first.y + 2, { steps: 6 });
           await page.mouse.up();
-          await page.click('.le-layers-btn');
+          await hideLayers(page);
         });
 
         /*
@@ -1410,12 +1413,15 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
    * Layouts — the first button in the row — its left edge. Background is
    * wider than the editor column, so it may shift to stay on screen, but the
    * button must still sit above its horizontal span.
+   *
+   * At 1024px, because that is where Layers is still a popover: from 1200px
+   * the list is the side column's own (the next test).
    */
   it(
     'opens the Layouts, Layers, Size & grid and Background popovers under their own buttons',
     async () => {
       const wall = await newWall();
-      const context = await editorContext(wall);
+      const context = await editorContext(wall, { width: 1024, height: 900 });
       try {
         const page = await context.newPage();
         await openEditor(wall, page);
@@ -1474,6 +1480,143 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
   );
 
   /**
+   * From 1200px, Add widget and the layers list are the side column's.
+   *
+   * The toolbar over the canvas carried eight controls and wrapped onto a
+   * second row on a 15" laptop, while the column beside it held one sentence
+   * whenever nothing was selected. Nothing selected is exactly when somebody
+   * is choosing what to add or which box to open, so that column holds both
+   * now, and the toolbar keeps what is about the canvas as a whole.
+   *
+   * What is asserted is geometry rather than classes: the button's box is
+   * inside the column, the toolbar's controls share one top, and the list has
+   * one row per box on the canvas. Below 1200px the column is the bottom
+   * sheet, which opens only on a selection, so the two go back to the toolbar
+   * — and there is only ever one Add widget button in the document, moved
+   * rather than drawn twice, so neither a test nor a screen reader can find a
+   * hidden copy.
+   */
+  it(
+    'keeps Add widget and the layers list in the side column from 1200px, and in the toolbar below it',
+    async () => {
+      const wall = await newWall();
+      const context = await editorContext(wall, { width: 1280, height: 800 });
+      try {
+        const page = await context.newPage();
+        await openEditor(wall, page);
+
+        const where = (): Promise<{
+          adds: number;
+          addInColumn: boolean;
+          addInToolbar: boolean;
+          layersButton: boolean;
+          panel: boolean;
+          rows: number;
+          boxes: number;
+          count: string;
+          toolbarTops: number[];
+        }> =>
+          page.evaluate(() => {
+            const visible = (el: Element | null): boolean => {
+              if (el === null) return false;
+              const r = el.getBoundingClientRect();
+              return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
+            };
+            const inside = (el: Element | null, host: Element | null): boolean => {
+              if (el === null || host === null || !visible(el)) return false;
+              const a = el.getBoundingClientRect();
+              const b = host.getBoundingClientRect();
+              return a.left >= b.left - 1 && a.right <= b.right + 1 && a.top >= b.top - 1 && a.bottom <= b.bottom + 1;
+            };
+            const add = document.querySelector('.le-add-primary');
+            const main = document.querySelector('.le-bar-main');
+            return {
+              adds: document.querySelectorAll('.le-add-primary').length,
+              addInColumn: inside(add, document.getElementById('wall-inspector')),
+              addInToolbar: inside(add, main),
+              layersButton: visible(document.querySelector('.le-layers-btn')),
+              panel: visible(document.querySelector('.le-build')),
+              rows: Array.from(document.querySelectorAll('.le-build .le-layer')).filter(visible).length,
+              boxes: document.querySelectorAll('.le-overlay > .le-widget').length,
+              count: document.querySelector('.le-build-count')?.textContent ?? '',
+              toolbarTops: Array.from(main?.children ?? [])
+                .filter(visible)
+                .map((el) => { const r = el.getBoundingClientRect(); return Math.round((r.top + r.bottom) / 2); }),
+            };
+          });
+
+        // Docked: the column holds both, and the toolbar is one row.
+        let seen = await where();
+        expect(seen.adds, 'Add widget was drawn more than once').toBe(1);
+        expect(seen.addInColumn, 'Add widget is not in the side column at 1280px').toBe(true);
+        expect(seen.layersButton, 'the toolbar still offers a Layers popover at 1280px').toBe(false);
+        expect(seen.panel).toBe(true);
+        expect(seen.boxes).toBeGreaterThan(0);
+        expect(seen.rows, 'the column lists a different number of widgets from the canvas').toBe(seen.boxes);
+        expect(seen.count).toBe(`${seen.boxes} widgets`);
+        expect(
+          new Set(seen.toolbarTops).size,
+          `the toolbar wrapped at 1280px: controls centred at ${seen.toolbarTops.join(', ')}`,
+        ).toBe(1);
+
+        // A selection replaces the panel with the widget's settings; closing
+        // them brings it back, list and all.
+        await page.locator('.le-overlay .le-widget').first().click();
+        await settle(page);
+        seen = await where();
+        expect(seen.panel, 'the build panel stayed up under a selected widget').toBe(false);
+        expect(await page.locator('.insp-head').isVisible()).toBe(true);
+        await page.click('.insp-close');
+        await settle(page);
+        seen = await where();
+        expect(seen.panel).toBe(true);
+        expect(seen.addInColumn).toBe(true);
+
+        // A row in the column selects its widget, as a tap on the canvas does.
+        const first = page.locator('.le-build .le-layer').first();
+        const id = await first.getAttribute('data-id');
+        await first.click();
+        await settle(page);
+        expect(
+          await page.locator(`.le-overlay .le-widget[data-id="${id ?? ''}"]`).getAttribute('class'),
+        ).toContain('is-selected');
+        await page.click('.insp-close');
+        await settle(page);
+
+        // And the button in the column opens the same modal.
+        await page.click('.le-add-primary');
+        expect(await page.locator('.le-modal').isVisible()).toBe(true);
+        await page.keyboard.press('Escape');
+        await settle(page);
+
+        // Narrower than the column: both go back to the toolbar, on resize.
+        await page.setViewportSize({ width: 1024, height: 800 });
+        await settle(page);
+        seen = await where();
+        expect(seen.adds).toBe(1);
+        expect(seen.addInToolbar, 'Add widget did not come back to the toolbar at 1024px').toBe(true);
+        expect(seen.layersButton, 'no Layers button at 1024px, where the column is a sheet').toBe(true);
+        expect(seen.panel).toBe(false);
+        await page.click('.le-layers-btn');
+        await settle(page);
+        expect(await page.locator('.le-layers-pop .le-layer').count()).toBe(seen.boxes);
+        await page.click('.le-layers-btn');
+
+        // And back again.
+        await page.setViewportSize({ width: 1470, height: 900 });
+        await settle(page);
+        seen = await where();
+        expect(seen.addInColumn).toBe(true);
+        expect(seen.rows).toBe(seen.boxes);
+        expect(new Set(seen.toolbarTops).size, 'the toolbar wrapped at 1470px').toBe(1);
+      } finally {
+        await context.close();
+      }
+    },
+    SLOW,
+  );
+
+  /**
    * Two Calendars are two different widgets, and the canvas says which.
    *
    * The default wall ships with both — a month grid and an upcoming list — and
@@ -1508,12 +1651,12 @@ describe('5 · the editor on a phone, a tablet and a desktop', () => {
         ]);
 
         // Layers says the same thing — it is the other list of the same boxes.
-        await page.click('.le-layers-btn');
+        await showLayers(page);
         const rows = (await page.locator('.le-layer-name').allTextContents()).filter((one) =>
           one.startsWith('Calendar'),
         );
         expect(rows.sort()).toEqual(['Calendar \u2014 Month grid', 'Calendar \u2014 Upcoming list']);
-        await page.click('.le-layers-btn');
+        await hideLayers(page);
 
         // And it follows the setting rather than being stamped once at boot.
         const monthBox = calendars.find((one) => one.label.includes('Month'));
@@ -1965,7 +2108,7 @@ describe('7 · the widget name chip', () => {
 // 8 · A box the wall leaves out
 // ===========================================================================
 
-/** Add a widget the way a household does: the toolbar button, then the modal. */
+/** Add a widget the way a household does: the Add widget button, then the modal. */
 async function addWidget(page: Page, label: string): Promise<void> {
   await page.locator('.le-add-primary').click();
   await page.locator('.le-modal-item').filter({ hasText: new RegExp(`^${label}$`) }).click();
@@ -2345,17 +2488,39 @@ async function saveBar(page: Page): Promise<{ flagged: boolean; saveEnabled: boo
 }
 
 /**
+ * Put the layers list on screen, wherever this width keeps it.
+ *
+ * From 1200px it is the side column's own content while nothing is selected
+ * (the build panel), so a selected widget's settings are closed to reach it;
+ * below that it is the toolbar's Layers popover.
+ */
+async function showLayers(page: Page): Promise<void> {
+  if (await page.locator('.le-layers-btn').isVisible()) {
+    if (!(await page.locator('.le-layers-pop').isVisible())) await page.click('.le-layers-btn');
+  } else if (await page.locator('.insp-close').isVisible()) {
+    await page.click('.insp-close');
+  }
+  await page.locator('.le-layers').waitFor({ state: 'visible' });
+  await settle(page);
+}
+
+/** Put the popover away again, if the list was a popover at this width. */
+async function hideLayers(page: Page): Promise<void> {
+  if (await page.locator('.le-layers-pop').isVisible()) await page.click('.le-layers-btn');
+  await settle(page);
+}
+
+/**
  * Select a group through its Layers row. Its own box is under its children's
  * — a child takes the pointer before the group behind it — so a tap on the
  * layout reaches a group only where no child covers it, and Layers is the
  * way a household reaches one that is covered.
  */
 async function selectViaLayers(page: Page, id: string): Promise<void> {
-  await page.click('.le-layers-btn');
+  await showLayers(page);
   await page.locator(`.le-layer[data-id="${id}"]`).click();
   await settle(page);
-  if (await page.locator('.le-layers-pop').isVisible()) await page.click('.le-layers-btn');
-  await settle(page);
+  await hideLayers(page);
 }
 
 /** Choose two boxes: a click, then a Shift+click. */
@@ -2645,14 +2810,14 @@ describe('11 · groups', () => {
         expect(await page.getAttribute(selector, 'data-marker'), 'the group box was rebuilt').toBe('kept');
         expect(await page.getAttribute(selector, 'aria-label')).toBe(`Group of 2: clock, ${renamed.label.toLowerCase()}`);
         expect(await page.locator('.le-layers').isHidden()).toBe(true);
-        await page.click('.le-layers-btn');
+        await showLayers(page);
         const layerNames = await page.evaluate(() =>
           [...document.querySelectorAll<HTMLElement>('.le-layer')].map((row) => [row.classList.contains('le-layer-child'), row.textContent?.trim()]),
         );
         expect(layerNames.filter(([child]) => child === true).map(([, name]) => name)).toEqual(
           expect.arrayContaining([expect.stringContaining('Clock')]),
         );
-        await page.click('.le-layers-btn');
+        await hideLayers(page);
 
         // A row: the child's place is the order, and the panel says so.
         await selectViaLayers(page, group.id);
