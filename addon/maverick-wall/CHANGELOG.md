@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.75.0
+
 **Add another widget without closing the one you are changing.** On a laptop
 or desktop, a widget's settings now have a small **+ Add** button beside the
 close button, so you can add the next widget straight away. And pressing
