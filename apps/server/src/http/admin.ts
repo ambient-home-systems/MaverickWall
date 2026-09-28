@@ -6155,7 +6155,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     // A settings error is about the settings, so the page opens on them.
     const startMode = error === undefined ? 'layout' : 'settings';
 
-    // Said once, above the canvas, rather than repeated under each panel.
+    // Said once, under the canvas, rather than repeated under each panel.
     const previewCaption =
       owner?.reportW != null && owner?.reportH != null
         ? `${owner.reportW}×${owner.reportH} · the wall updates within a minute of Save`
@@ -6166,13 +6166,16 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `data-mode-panel="layout"${startMode === 'layout' ? '' : ' hidden'}>` +
       `<div class="lay-panes">` +
       `<div class="lay-canvas" id="layout">` +
-      `<div class="prev-head"><b>Live preview</b>` +
-      `<small data-preview-dims>${escapeHtml(previewCaption)}</small></div>` +
       layoutEditorMount(initial) +
+      // Under the canvas, where it is a caption rather than a heading: the
+      // toolbar above is what names what is being arranged.
+      `<div class="prev-head prev-foot"><small data-preview-dims>${escapeHtml(previewCaption)}</small></div>` +
       `</div>` +
-      // The contextual inspector. The editor script fills it when a widget is
-      // selected; below 1200px the same element is the bottom sheet.
-      `<aside class="lay-inspector" id="wall-inspector" aria-label="Selected widget">` +
+      // The side column. With nothing selected the editor script puts Add
+      // widget and the layers list here; a selected widget's settings replace
+      // them. Below 1200px the same element is the bottom sheet, and those
+      // two go back to the toolbar.
+      `<aside class="lay-inspector" id="wall-inspector" aria-label="Widgets">` +
       `<p class="insp-empty">Nothing selected. Tap a widget on the layout to change ` +
       `what it shows and how it looks.</p>` +
       `</aside>` +

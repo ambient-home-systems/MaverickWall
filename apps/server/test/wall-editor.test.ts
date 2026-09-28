@@ -148,10 +148,13 @@ describe('the wall editor is two modes, not one page', () => {
     expect(html).toContain('assets/display-editor.js');
     expect(html).toContain('id="layout"');
 
-    // The preview says its size and its cadence once, above the canvas — it
-    // used to be repeated under every widget panel.
-    expect(html).toContain('Live preview');
+    // The preview says its size and its cadence once — it used to be repeated
+    // under every widget panel — and says it under the canvas, as a caption:
+    // a "Live preview" heading above it spent a row naming the thing directly
+    // beneath it, on the screen whose toolbar was already two rows deep.
+    expect(html).not.toContain('Live preview');
     expect(html).toContain('data-preview-dims');
+    expect(html.indexOf('data-preview-dims')).toBeGreaterThan(html.indexOf('id="layout-editor"'));
     expect((html.match(/updates within a minute/g) ?? []).length).toBe(1);
   });
 

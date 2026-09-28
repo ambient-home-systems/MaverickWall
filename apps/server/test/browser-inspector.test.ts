@@ -220,8 +220,11 @@ async function openWithGroup(app: Installation, page: Page, tab: 'Content' | 'St
   );
   if (group?.id == null) throw new Error('no group on this wall');
   // The group's own box is under its children's, which take the pointer
-  // first; the Layers row is how a covered group is reached.
-  await page.click('.le-layers-btn');
+  // first; the Layers row is how a covered group is reached. From 1200px the
+  // list is in the side column while nothing is selected, and below that it
+  // is the toolbar's popover.
+  const popover = await page.locator('.le-layers-btn').isVisible();
+  if (popover) await page.click('.le-layers-btn');
   await page.locator(`.le-layer[data-id="${group.id}"]`).click();
   await page.waitForSelector('.le-cfg-field .seg', { timeout: 20_000 });
   if (await page.locator('.le-layers-pop').isVisible()) await page.click('.le-layers-btn');

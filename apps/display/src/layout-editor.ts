@@ -1919,13 +1919,30 @@ function boot(): void {
     wrap.append(button, popover);
     return wrap;
   };
+  /*
+   * Layers is a toolbar popover only where the side column cannot hold it.
+   *
+   * At 1200px and up the column beside the canvas is empty whenever nothing
+   * is selected, and that is exactly when somebody is choosing what to add or
+   * which box to pick — so Add widget and the layers list live there
+   * (`placeBuildControls`), and the toolbar keeps what is about the canvas as
+   * a whole. Below 1200px that column is the bottom sheet, which opens only on
+   * a selection, so the two come back up here. One button and one list,
+   * moved rather than drawn twice: two Add widget buttons, one of them hidden,
+   * is a control a test or a screen reader can find the wrong copy of.
+   */
+  const layersAnchor = anchor(layersButton, layersPopover);
+  // Undo and the canvas's own settings sit at the far end of the row, apart
+  // from which canvas is being arranged — the one row says "this layout" on
+  // the left and "do something to it" on the right.
+  undoButton.classList.add('le-bar-push');
   barMain.append(
     orientToggle,
     ...(epaperHost ? [] : [anchor(layoutsButton, layoutsPopover)]),
     panelChip,
     palette,
     undoButton,
-    anchor(layersButton, layersPopover),
+    layersAnchor,
     anchor(canvasButton, canvasPopover),
     ...(epaperHost ? [] : [anchor(backgroundButton, backgroundPopover)]),
     // Last, because they come and go: a button that appears in the middle of
@@ -2134,13 +2151,89 @@ function boot(): void {
 
   inspectorBody.append(laneBar, inspectorTabs, configPanel, inspectorActions, inspectorDanger);
   inspectorHost.append(inspectorHead, inspectorBody);
-  // Nothing selected yet: on a wall the host keeps the empty note the server
-  // rendered, so the column is not a blank box on a desktop.
+  // Nothing selected yet. On a panel's inline card this is the note; on a
+  // wall the column holds the build panel below instead.
   const inspectorEmpty = document.createElement('p');
   inspectorEmpty.className = 'insp-empty';
   inspectorEmpty.textContent =
     'Nothing selected. Tap a widget on the layout to change what it shows and how it looks.';
-  inspectorHost.appendChild(inspectorEmpty);
+
+  /*
+   * The build panel: what the side column shows when nothing is selected.
+   *
+   * It used to show one sentence in a box the height of a settings panel,
+   * while Add widget and Layers crowded the toolbar over the canvas onto a
+   * second row at 1440px. Nothing selected is the moment somebody is deciding
+   * what to add or which box to open, so the column holds both: Add widget,
+   * and every widget on this layout, front first — the Layers list, drawn
+   * inline rather than behind a popover. Selecting one replaces the panel
+   * with that widget's settings, exactly as the note it replaces did.
+   *
+   * Only on a wall, whose inspector is `#wall-inspector`. A panel's designer
+   * draws the inspector inline under the canvas, where there is no column to
+   * fill, so its toolbar keeps both controls.
+   */
+  const buildPanel = document.createElement('section');
+  buildPanel.className = 'le-build';
+  buildPanel.setAttribute('aria-labelledby', 'le-build-title');
+  const buildTop = document.createElement('div');
+  buildTop.className = 'le-build-top';
+  const buildHead = document.createElement('div');
+  buildHead.className = 'le-build-head';
+  const buildTitle = document.createElement('h2');
+  buildTitle.className = 'le-build-title';
+  buildTitle.id = 'le-build-title';
+  buildTitle.textContent = 'On this layout';
+  const buildCount = document.createElement('span');
+  buildCount.className = 'le-build-count';
+  buildHead.append(buildTitle, buildCount);
+  const buildAdd = document.createElement('div');
+  buildAdd.className = 'le-build-add';
+  buildTop.append(buildHead, buildAdd);
+  const buildList = document.createElement('div');
+  buildList.className = 'le-build-list';
+  const buildHint = document.createElement('p');
+  buildHint.className = 'le-build-hint';
+  buildHint.textContent =
+    'Tap a widget here or on the layout to change it. Drag a row by its handle to restack \u2014 the top row shows in front.';
+  buildPanel.append(buildTop, buildList, buildHint);
+  inspectorHost.appendChild(inspectorInline ? inspectorEmpty : buildPanel);
+
+  // Whether Add widget and the layers list are in the side column right now.
+  let buildDocked = false;
+
+  /** The column's empty state: the note, or the build panel, while nothing is open. */
+  function syncEmptyState(): void {
+    const open = inspectorHost.classList.contains('is-open');
+    inspectorEmpty.hidden = open;
+    buildPanel.hidden = open || !buildDocked;
+  }
+
+  /**
+   * Put Add widget and the layers list where this width can show them: the
+   * side column from 1200px, the toolbar below it. Only moves anything when
+   * the answer changes, so a resize that does not cross 1200px keeps focus
+   * where it is. Everything starts in the toolbar, so the first call is the
+   * only move a desktop ever makes.
+   */
+  function placeBuildControls(): void {
+    const docked = !inspectorInline && !inspectorIsSheet();
+    if (docked !== buildDocked) {
+      buildDocked = docked;
+      if (docked) {
+        setLayersOpen(false);
+        buildAdd.appendChild(addWidgetButton);
+        buildList.appendChild(layersPanel);
+      } else {
+        palette.prepend(addWidgetButton);
+        layersPopover.appendChild(layersPanel);
+      }
+      addWidgetButton.classList.toggle('le-add-block', docked);
+      layersAnchor.hidden = docked;
+      palette.hidden = palette.childElementCount === 0;
+    }
+    syncEmptyState();
+  }
 
   // Escape closes the inspector wherever focus is inside it, and hands focus
   // back to the widget on the canvas — the element that opened it.
@@ -2153,6 +2246,8 @@ function boot(): void {
   toolbar.appendChild(slotNote);
   mount.append(toolbar, stage, hint, modal);
   if (inspectorInline) mount.appendChild(inspectorHost);
+  placeBuildControls();
+  window.addEventListener('resize', placeBuildControls);
 
   // ---- the live preview ------------------------------------------------
 
@@ -3078,6 +3173,7 @@ function boot(): void {
    */
   function drawLayers(): void {
     layersPanel.textContent = '';
+    buildCount.textContent = '';
     if (state.widgets.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'le-layers-empty';
@@ -3121,6 +3217,8 @@ function boot(): void {
       row(widget, '');
       for (const child of (children.get(widget.id) ?? []).slice().sort((a, b) => b.z - a.z)) row(child, widget.id);
     }
+    const count = layersPanel.querySelectorAll('.le-layer').length;
+    buildCount.textContent = count === 1 ? '1 widget' : `${count} widgets`;
   }
 
   /**
@@ -3689,10 +3787,10 @@ function boot(): void {
 
   function openInspector(keepFocus = false): void {
     const wasOpen = inspectorHost.classList.contains('is-open');
-    inspectorEmpty.hidden = true;
     inspectorHead.hidden = false;
     inspectorBody.hidden = false;
     inspectorHost.classList.add('is-open');
+    syncEmptyState();
     if (wasOpen || !inspectorIsSheet()) return;
     /*
      * The sheet takes the foot of the screen, so the canvas above it shrinks to
@@ -3720,7 +3818,7 @@ function boot(): void {
     inspectorHost.classList.remove('is-open');
     inspectorHead.hidden = true;
     inspectorBody.hidden = true;
-    inspectorEmpty.hidden = false;
+    syncEmptyState();
     document.documentElement.classList.remove('mw-insp-open');
     if (wasOpen && inspectorIsSheet()) sizeCanvas();
   }
