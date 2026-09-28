@@ -2351,6 +2351,10 @@ pre.code{background:var(--mw-surface-2);
   font:var(--mw-t-h3);
   letter-spacing:var(--mw-t-h3-tracking);color:var(--ink);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* "+ Add" beside the way out, from 1200px, where Add widget is otherwise in
+ * the build panel this header has replaced. A compact tool, not the filled
+ * Add widget: that stays the one primary button on the screen. */
+.insp-add{flex:0 0 auto}
 .insp-close{position:relative;flex:0 0 auto;margin:0;width:44px;height:44px;padding:0;
   display:grid;place-items:center;background:none;border:0;
   border-radius:var(--mw-r-2);
