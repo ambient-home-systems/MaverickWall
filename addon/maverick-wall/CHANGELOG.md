@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.74.0
+
 **The layout editor's toolbar fits on one row.** On a laptop or desktop,
 **+ Add widget** and the list of widgets on the layout now sit in the column
 beside the canvas whenever nothing is selected. Tap a widget there or on the
