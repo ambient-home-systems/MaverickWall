@@ -78,17 +78,21 @@ alone restores everything except your calendar addresses — those are encrypted
 It changes two kinds of thing in your house, and only once you ask: ticking an
 item off a to-do list you chose to show on a wall, and operating lights,
 switches, fans and blinds from a wall — switching them, dimming a light or
-changing its colour, setting a fan's speed, and opening, closing or moving a
-blind. A wall operates something only when you
+changing its colour, setting a fan's speed, opening, closing or moving a
+blind, and running a scene or a script, which a wall asks you to press and
+hold. A wall operates something only when you
 have marked it **Can be controlled from walls** on the Readings screen, turned on
 **Allow operating things in the house** for that wall, and set the widget to
 **Tap to operate** — all three off by default. A later release will let a wall
-also run a scene, a script or a media player, behind the same three switches;
-those are not built yet.
+also work a media player, behind the same three switches; that is not built
+yet.
 
 It can never unlock a door, disarm an alarm, change a thermostat, or open a
 garage, gate, door or window. Those are not in its frozen table of permitted
-actions, and a test holds the code to that table.
+actions, and a test holds the code to that table. A scene that sets any of them
+is refused too, checked when you allow it and again at every press. A script
+cannot be checked that way: one you allow can do whatever it was written to do,
+and the Readings screen says so before you allow it.
 
 Even the tick is off until you ask for it, wall by wall. Adding a list shows it
 everywhere you have put a To-do widget; turning on **Allow ticking to-do items
@@ -102,5 +106,5 @@ The wall itself receives resolved values — "19.4 °C", "Open" — never an ent
 id and never a way to ask Home Assistant a question of its own. If a tablet in
 your hallway is ever compromised, the worst it can do is show somebody your
 indoor temperature, tick an item off your shopping list and operate the
-lights, fans and blinds you allowed it to — and whatever you allow, it can never
-open your garage.
+lights, fans and blinds and run the scenes and scripts you allowed it to — and
+it can never open your garage, unless a script you allowed does.

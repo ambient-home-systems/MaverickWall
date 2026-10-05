@@ -11,7 +11,7 @@ import type {
   TodayShiftModel,
   TodoItemModel,
 } from './viewmodel.js';
-import { DISPLAY_LOCALE, localTime, opensPanel } from './viewmodel.js';
+import { DISPLAY_LOCALE, localTime, needsHold, opensPanel } from './viewmodel.js';
 import {
   FACE_DIAL_PATH,
   FACE_HUB_PATH,
@@ -1038,14 +1038,15 @@ function operable(model: DisplayModel, config: unknown, reading: HouseReadingMod
   ) {
     return undefined;
   }
-  // A reading with more than a switch opens its panel (RFC 018 phase 3); one
-  // with only a switch is switched, as phase 2 drew it.
+  // A scene or a script is held (phase 4); a reading with more than a switch
+  // opens its panel (phase 3); one with only a switch is switched (phase 2).
+  if (needsHold(reading.actions)) return 'hold';
   if (opensPanel(reading.actions)) return 'panel';
   return reading.actions.includes('toggle') ? 'toggle' : undefined;
 }
 
-/** What a press on a reading does: switch it, or open its controls. */
-type Press = 'toggle' | 'panel';
+/** What a press on a reading does: switch it, open its controls, or — held — run it. */
+type Press = 'toggle' | 'panel' | 'hold';
 
 /**
  * A reading's element: a `<div>`, or the `<button>` a press lands on.
@@ -1067,7 +1068,14 @@ function readingNode(
   const button = el('button', `${className} ${actClass}`);
   button.setAttribute('type', 'button');
   button.setAttribute('data-ha-act', reading.key);
-  button.setAttribute('data-ha-action', press);
+  button.setAttribute('data-ha-action', press === 'hold' ? 'run' : press);
+  if (press === 'hold') {
+    // A tap does nothing but say so (`main.ts`): the button tells a screen
+    // reader, and a pointer that has one, what the press it wants is.
+    button.setAttribute('data-ha-hold', '');
+    button.setAttribute('aria-description', 'Press and hold to run');
+    button.setAttribute('title', 'Press and hold to run');
+  }
   if (press === 'panel') {
     // Says it opens something, and whether that something is open now.
     button.setAttribute('aria-haspopup', 'dialog');

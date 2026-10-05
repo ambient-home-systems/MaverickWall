@@ -1400,6 +1400,17 @@ body {
    when the next document says so. */
 .hs-act:active,
 .ht-act:active { opacity: 0.6; }
+/*
+ * A scene or a script being held (RFC 018 phase 4): a ring, heavier than the
+ * focus ring, for as long as the press lasts. Still rather than filling: an
+ * animation on this wall has to sit inside reduced motion and the wall's own
+ * Motion switch, and a hold that showed nothing with motion off would be a
+ * button that seemed to ignore the finger on it. The ring is the hold; what
+ * the household learns is that holding is the press, and the run comes at
+ * 600 ms.
+ */
+.hs-act[data-holding],
+.ht-act[data-holding] { outline: 0.35rem solid var(--accent); outline-offset: 0.25rem; }
 /* A press that did not go through, in the box it was pressed in. A grid of
    tiles gives it the whole row. */
 .ht-act-note { grid-column: 1 / -1; }

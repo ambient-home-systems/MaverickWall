@@ -41,7 +41,7 @@ import {
 import { householdSetUp } from '../modules/index.js';
 import { HOME_BLOCK as HOME_MODULE } from '../modules/homeassistant/index.js';
 import { COVER_CLASSES, wallActionsFor } from '../modules/homeassistant/services.js';
-import { readWallActions } from '../modules/homeassistant/control.js';
+import { checkScene, readWallActions } from '../modules/homeassistant/control.js';
 import {
   anyWallShowsReadings,
   shownOnTag,
@@ -158,7 +158,18 @@ const readingControlBody = z.object({
  */
 const NEVER_FROM_A_WALL: readonly string[] = ['lock', 'alarm_control_panel', 'climate', 'input_boolean', 'camera'];
 /** What a later phase of RFC 018 wires, and this release does not. */
-const NOT_YET_FROM_A_WALL: readonly string[] = ['scene', 'script', 'media_player'];
+const NOT_YET_FROM_A_WALL: readonly string[] = ['media_player'];
+
+/**
+ * What each choice costs, beside the switch that makes it (RFC 018 §7.3) —
+ * because a script, a scene and a switch can each do more than their names
+ * say, and the household deciding is the only one who knows what.
+ */
+const CONTROL_CAUTIONS: Readonly<Record<string, string>> = {
+  script: 'A script can do anything Home Assistant can do. Allow only scripts you would let a guest in your kitchen run.',
+  scene: 'A scene sets every entity in it, including any lock or cover it names.',
+  switch: 'A switch can be wired to anything. Check what this one powers.',
+};
 
 /**
  * What a wall could do to a reading, in a household's words, from the actions
@@ -176,6 +187,7 @@ function whatAWallCanDo(actions: readonly string[]): string {
   if (actions.includes('open') || actions.includes('close') || actions.includes('position')) {
     words.push('opened, closed or moved');
   }
+  if (actions.includes('run')) words.push('run, by pressing and holding it');
   if (words.length <= 1) return words[0] ?? 'operated';
   return `${words.slice(0, -1).join(', ')} or ${words[words.length - 1]}`;
 }
@@ -994,8 +1006,8 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
           message: 'Choose an entity from the list.',
           suggestion:
             'Sensors, binary sensors, weather, people and device trackers, and the ' +
-            'state of lights, switches, helper toggles, fans, blinds, locks and ' +
-            'thermostats. Anything else is not a reading a wall can show.',
+            'state of lights, switches, helper toggles, fans, blinds, locks, ' +
+            'thermostats, scenes and scripts. Anything else is not a reading a wall can show.',
         },
         400,
       );
@@ -1149,6 +1161,25 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     if (row === undefined) return c.redirect('/admin/home-assistant/readings', 302);
     if (on && wallActionsFor(row.entityId, safeJson(row.attributes)).length === 0) {
       return renderReadings(c, { message: 'That can’t be operated from a wall.' }, 400);
+    }
+    /*
+     * A scene is checked member by member before a wall may run it (RFC 018
+     * phase 4) — from the house as it is now, since the cache keeps no list of
+     * what a scene sets. Asked again at every press.
+     */
+    if (on && domainOf(row.entityId) === 'scene') {
+      const resolved = resolveConnection(deps.db, deps.keyring);
+      if (!resolved.ok) return renderReadings(c, { message: resolved.message }, 400);
+      const scene = await call(deps.fetcher, resolved.connection, `/states/${encodeURIComponent(row.entityId)}`);
+      if (!scene.ok) return renderReadings(c, { message: scene.message }, 400);
+      let attributes: unknown;
+      try {
+        attributes = (JSON.parse(scene.body) as Record<string, unknown>)['attributes'];
+      } catch {
+        attributes = undefined;
+      }
+      const checked = await checkScene(deps.fetcher, resolved.connection, attributes);
+      if (!checked.ok) return renderReadings(c, { message: checked.message }, 400);
     }
     setReadingControllable(deps.db, row.entityId, on);
     return savedRedirect(
@@ -1601,7 +1632,9 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
    * The never-list is the part that does not move with a release, so it is
    * stated as "ever": no row in `HA_SERVICES` can reach a lock, an alarm, a
    * thermostat or a garage, gate, door or window cover, and a test holds the
-   * code to the table.
+   * code to the table. A scene that sets one is refused member by member; a
+   * script cannot be, and the card says so rather than rounding it into the
+   * "ever" (decided by the owner, 2026-10-05).
    */
   function boundary(): string {
     return card(
@@ -1611,15 +1644,18 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       `<code>todo.update_item</code> — only on a wall you have allowed to.</li>` +
       `<li>It operates lights, switches, fans and blinds from a wall — switching ` +
       `them, dimming a light or changing its colour, setting a fan's speed, opening, ` +
-      `closing or moving a blind — and only the ones you mark <strong>Can be ` +
+      `closing or moving a blind, running a scene or a script with a press and hold ` +
+      `— and only the ones you mark <strong>Can be ` +
       `controlled from walls</strong> under Readings, on walls you allow, from ` +
       `widgets you set to Tap to operate. Readings lists the last fortnight of ` +
       `presses.</li>` +
-      `<li>A later release will let a wall also run a scene, a script or a media ` +
-      `player, behind the same three switches. Those are not built yet.</li>` +
+      `<li>A later release will let a wall also work a media player, behind the ` +
+      `same three switches. Those are not built yet.</li>` +
       `<li>No locks, no alarms, no thermostats, and no garage, gate, door or window ` +
       `covers — ever. They are not in the frozen table of actions this application ` +
-      `may take, and a test holds the code to that table.</li>` +
+      `may take, and a test holds the code to that table. A scene that sets any of ` +
+      `them is refused too. A script cannot be checked that way: one you allow can ` +
+      `do whatever it was written to do.</li>` +
       `<li>The wall receives <strong>resolved values</strong> — “19.4 °C”, “Closed”. ` +
       `It never receives your token, an entity name, or any way to ask Home ` +
       `Assistant a question of its own.</li>` +
@@ -1630,8 +1666,9 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       `your home and cannot be limited to reading. That is why the limit is on this ` +
       `side: if a wall in your hallway were ever compromised, the worst it could do ` +
       `is show somebody your indoor temperature, tick an item off your shopping ` +
-      `list and operate the lights, fans and blinds you allowed it to — and whatever you ` +
-      `allow, it could never open your garage.</p>`,
+      `list, and operate the lights, fans and blinds and run the scenes and scripts ` +
+      `you allowed it to — and it could never open your garage, unless a script you ` +
+      `allowed does.</p>`,
     );
   }
 
@@ -1870,13 +1907,9 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     const actions = wallActionsFor(row.entityId, attributes);
     if (actions.length > 0) {
       const on = row.controllable === 1;
-      const caution =
-        domain === 'switch'
-          ? ' A switch can be anything — a lamp, or a heater — so only allow it if nothing bad ' +
-            'happens when somebody at the wall presses it.'
-          : '';
+      const caution = CONTROL_CAUTIONS[domain] === undefined ? '' : ` ${CONTROL_CAUTIONS[domain]}`;
       return (
-        `<details class="disclose"><summary>${on ? 'Walls: can switch it' : 'Walls: show only'}</summary>` +
+        `<details class="disclose"><summary>${on ? 'Walls: can operate it' : 'Walls: show only'}</summary>` +
         `<form method="post" action="admin/home-assistant/entities/control">` +
         `<input type="hidden" name="entity_id" value="${escapeHtml(row.entityId)}">` +
         switchRow({

@@ -5,7 +5,13 @@ import type { Keyring } from '../../secrets/keyring.js';
 import { haReadingHandle, readingEntityIds } from '../../api/manifest.js';
 import { buildCall, call, callService, resolveConnection } from './client.js';
 import { cachedAttributes, parseStates } from './entities.js';
-import { WALL_ACTIONS, WALL_ACTION_VALUES, wallActionKey, wallActionsFor } from './services.js';
+import {
+  WALL_ACTIONS,
+  WALL_ACTION_VALUES,
+  sceneReachesNever,
+  wallActionKey,
+  wallActionsFor,
+} from './services.js';
 import { watchedReadingChoices } from './store.js';
 
 /**
@@ -163,6 +169,54 @@ function widgetActs(db: SqliteDatabase, screenId: string, widgetId: string, enti
   // the widget actually draws.
   const shown = readingEntityIds(c['readings'], watchedReadingChoices(db));
   return shown === undefined || shown.length === 0 || shown.includes(entityId);
+}
+
+/**
+ * Whether a scene may be run from a wall, from the house as it is now: its
+ * members, each judged by the never-list. `ok: false` carries the sentence —
+ * naming the member, in the household's words — or Home Assistant's own when
+ * the house could not be asked, which is refused too: a check that cannot run
+ * is not a pass.
+ */
+export async function checkScene(
+  fetcher: Fetcher,
+  connection: Parameters<typeof call>[1],
+  sceneAttributes: unknown,
+): Promise<{ ok: true } | { ok: false; reaches: boolean; message: string }> {
+  const answer = await call(fetcher, connection, '/states');
+  if (!answer.ok) return { ok: false, reaches: false, message: answer.message };
+  let states: unknown;
+  try {
+    states = JSON.parse(answer.body);
+  } catch {
+    return { ok: false, reaches: false, message: 'Home Assistant answered in a way Maverick Wall could not read.' };
+  }
+  const byId = new Map<string, { deviceClass: string | null; name: string }>();
+  if (Array.isArray(states)) {
+    for (const entry of states) {
+      if (typeof entry !== 'object' || entry === null) continue;
+      const id = (entry as Record<string, unknown>)['entity_id'];
+      const attributes = (entry as Record<string, unknown>)['attributes'];
+      if (typeof id !== 'string') continue;
+      const a = typeof attributes === 'object' && attributes !== null ? (attributes as Record<string, unknown>) : {};
+      byId.set(id, {
+        deviceClass: typeof a['device_class'] === 'string' ? a['device_class'] : null,
+        name: typeof a['friendly_name'] === 'string' ? a['friendly_name'].slice(0, 60) : id,
+      });
+    }
+  }
+  const member = sceneReachesNever(sceneAttributes, (id) => byId.get(id)?.deviceClass);
+  if (member === undefined) return { ok: true };
+  if (member === null) {
+    return { ok: false, reaches: true, message: 'This scene does not say what it sets, so a wall cannot run it.' };
+  }
+  return {
+    ok: false,
+    reaches: true,
+    message:
+      `This scene sets ${byId.get(member)?.name ?? member}, and a wall can never reach a lock, an alarm, ` +
+      `a thermostat or a garage, gate, door or window — so a wall cannot run it.`,
+  };
 }
 
 /** Read one entity's state now, raw, for the eligibility check and the cache. */
@@ -339,6 +393,21 @@ export async function operate(context: OperateContext, input: OperateInput): Pro
         db.prepare(`UPDATE ha_entity_cache SET controllable = 0 WHERE entity_id = ?`).run(entityId);
       }
       return refused(409, 'not-eligible', NOT_ANY_MORE);
+    }
+
+    /*
+     * A scene is everything it sets (RFC 018 phase 4): judged now, member by
+     * member, from the house as it is. One that has since been edited to set a
+     * lock or a garage door loses its switch, as a blind that became a garage
+     * door does.
+     */
+    if (key === 'scene.run') {
+      const scene = await checkScene(context.fetcher, connection, before.attributes);
+      if (!scene.ok) {
+        if (!scene.reaches) return refused(502, 'upstream', scene.message);
+        db.prepare(`UPDATE ha_entity_cache SET controllable = 0 WHERE entity_id = ?`).run(entityId);
+        return refused(409, 'not-eligible', NOT_ANY_MORE);
+      }
     }
 
     const answer = await callService(context.fetcher, connection, built.call);

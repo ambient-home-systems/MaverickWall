@@ -80,12 +80,20 @@ describe('reading entities', () => {
     for (const domain of ['light', 'switch', 'input_boolean', 'fan', 'cover', 'lock', 'climate']) {
       expect(isSupported(`${domain}.thing`), domain).toBe(true);
     }
-    // And still not the rest of rule 12's list, nor anything else that is a
-    // control and nothing but: these have no state a wall has a use for.
-    for (const domain of ['alarm_control_panel', 'scene', 'script', 'automation', 'camera', 'button']) {
+    /*
+     * Scenes and scripts are watchable since RFC 018 phase 4, so a wall can run
+     * one behind the three switches and a press-and-hold — the letter of the
+     * line below moved and its intent did not: what stays out is everything a
+     * wall must never reach, and an alarm panel, an automation, a camera and a
+     * button press are that.
+     */
+    for (const domain of ['scene', 'script']) {
+      expect(isSupported(`${domain}.thing`), domain).toBe(true);
+    }
+    for (const domain of ['alarm_control_panel', 'automation', 'camera', 'button', 'input_button']) {
       expect(isSupported(`${domain}.thing`), domain).toBe(false);
     }
-    expect(SUPPORTED_DOMAINS).toHaveLength(12);
+    expect(SUPPORTED_DOMAINS).toHaveLength(14);
     expect(domainOf('no-dot-here')).toBe('');
   });
 
@@ -250,6 +258,10 @@ const TONES: readonly (readonly [
   ['light', null, 'unavailable', {}, null],
   ['binary_sensor', 'door', 'unavailable', {}, null],
   ['lock', null, 'unknown', {}, null],
+  // RFC 018 phase 4: a running script is doing something; a scene never is.
+  ['script', null, 'on', {}, 'active'],
+  ['script', null, 'off', {}, null],
+  ['scene', null, '2026-10-05T18:00:00+00:00', {}, null],
 ];
 
 describe('the tone table', () => {
@@ -269,6 +281,15 @@ describe('the tone table', () => {
 describe('the seven read-only domains, in a household\'s words', () => {
   const read = (domain: string, value: string, attributes: HaAttributes = {}, deviceClass: string | null = null): string =>
     readState(state({ domain, state: value, attributes, deviceClass }));
+
+  it('names a scene and says whether a script is running, never the clock', () => {
+    // A scene's state is the instant it last ran; drawn, it would move the
+    // manifest every time anybody anywhere ran it.
+    expect(read('scene', '2026-10-05T18:00:00+00:00')).toBe('Scene');
+    expect(read('scene', 'unknown')).toBe('Scene');
+    expect(read('script', 'off')).toBe('Ready');
+    expect(read('script', 'on')).toBe('Running');
+  });
 
   it('says what a light, a switch and a fan are doing', () => {
     // 153 of 255 is 60%, which is how a household would say it.

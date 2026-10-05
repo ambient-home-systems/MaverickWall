@@ -69,7 +69,8 @@ configure first, no account to create anywhere else, no key to paste.
 - **Home Assistant, on your terms.** A few readings beside the calendar, a
   to-do list you can cross things off from the wall, and lights, switches and
   fans you can switch from it — each off on every wall until you turn it on for
-  that wall. It can never unlock a door or open a garage. See below.
+  that wall. It cannot unlock a door or open a garage — see below for the one
+  exception you can make, a script.
 - **Weather alerts.** National Weather Service, United States only. A banner
   for an advisory, the whole screen for a severe warning, and for an Extreme
   warning it can light a screen that has gone dark.
@@ -156,7 +157,8 @@ be limited to reading, so the limit lives on this side instead:
   an item off a to-do list you chose to show on a wall (`todo.update_item`),
   and operating lights, switches, fans and blinds from a wall — switching them,
   dimming a light or changing its colour, setting a fan's speed, and opening,
-  closing or moving a blind.
+  closing or moving a blind, and running a scene or a script, which a wall asks
+  you to press and hold.
 - Even that is **off by default on every wall**. A wall gets a tick box only
   once you turn on "Allow ticking to-do items off" for that particular wall —
   its own switch, separate from clearing an alert and from ticking a chore,
@@ -169,13 +171,16 @@ be limited to reading, so the limit lives on this side instead:
   on, and the widget it is pressed in is set to **Tap to operate**. The
   Readings screen lists the last fortnight of presses — which wall, which
   thing, and whether it worked.
-- The rules this project holds itself to also allow a wall, later, to run a
-  scene, a script or a media player, and a phone to add to a to-do list.
-  **Those are not built yet**, and each will sit behind the same three
-  switches.
+- The rules this project holds itself to also allow a wall, later, to work a
+  media player, and a phone to add to a to-do list. **Those are not built
+  yet**, and each will sit behind the same three switches.
 - It can **never** unlock a door, disarm an alarm, change a thermostat, or open
   a garage, gate, door or window. Those are not in the frozen table of actions
   this application may take, and a test asserts nothing leaves that table.
+  A scene that sets any of them is refused too — checked when you allow it and
+  again at every press. **A script cannot be checked that way**: one you allow
+  can do whatever it was written to do, and the Readings screen says so before
+  you allow it.
 - Your wall receives **resolved values** — "19.4 °C", "Open". Never the token,
   never an entity name, and never an endpoint it could ask its own questions
   through. There is a test asserting exactly that.
@@ -184,8 +189,8 @@ be limited to reading, so the limit lives on this side instead:
 
 If a tablet in your hallway is ever compromised, the worst it can do is show
 somebody your indoor temperature, tick an item off your shopping list, and
-operate the lights, fans and blinds you allowed it to. Whatever you allow, it can never
-open your garage.
+operate the lights, fans and blinds and run the scenes and scripts you allowed
+it to. It can never open your garage, unless a script you allowed does.
 
 ## Weather alerts
 

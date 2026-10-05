@@ -99,6 +99,33 @@ export function statesBody(
      * is a Home Assistant address and a credential in one attribute.
      */
     ...READ_ONLY_DOMAINS.map((entity) => ({ ...entity, ...stamp(at - 30 * 60_000) })),
+    /*
+     * A scene and a script (RFC 018 phase 4). A scene's state is the instant
+     * it last ran, which is why the wall reads it as one word; a script's is
+     * whether it is running.
+     */
+    {
+      entity_id: 'scene.movie_night',
+      state: new Date(at - 3 * 86_400_000).toISOString(),
+      attributes: { friendly_name: 'Movie night', entity_id: ['light.living_room', 'cover.kitchen_blind'] },
+      ...stamp(at - 3 * 86_400_000),
+      context: { id: '01W', parent_id: null, user_id: null },
+    },
+    {
+      // A scene that locks up — the case the never-list has to see through.
+      entity_id: 'scene.leaving',
+      state: 'unknown',
+      attributes: { friendly_name: 'Leaving', entity_id: ['light.living_room', 'lock.front_door'] },
+      ...stamp(at - 7 * 86_400_000),
+      context: { id: '01Y', parent_id: null, user_id: null },
+    },
+    {
+      entity_id: 'script.goodnight',
+      state: 'off',
+      attributes: { friendly_name: 'Goodnight', mode: 'single' },
+      ...stamp(at - 86_400_000),
+      context: { id: '01X', parent_id: null, user_id: null },
+    },
     {
       // Not a reading. Must never reach the picker or the wall.
       entity_id: 'automation.morning_routine',
@@ -597,6 +624,12 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
             state.set[entity] = { ...(state.set[entity] ?? {}), current_position: 0 };
           },
           'cover/stop_cover': () => {},
+          // A scene's state becomes the instant it ran; a script finishes at
+          // once here, as a short one does.
+          'scene/turn_on': () => {
+            state.toggled[entity] = new Date().toISOString();
+          },
+          'script/turn_on': () => {},
           'cover/set_cover_position': (data) => {
             state.toggled[entity] = data['position'] === 0 ? 'closed' : 'open';
             state.set[entity] = { ...(state.set[entity] ?? {}), current_position: data['position'] };

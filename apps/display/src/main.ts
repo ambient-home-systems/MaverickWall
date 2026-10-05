@@ -218,6 +218,19 @@ function start(): void {
    * being dragged, and the value the household was choosing goes with it.
    */
   const PANEL_IDLE_MS = 45_000;
+
+  /*
+   * A scene or a script, being held (RFC 018 phase 4, OQ6): which reading, in
+   * which box, and the timer that runs it at `HOLD_MS`. Held by its identity
+   * rather than its node, because the fifteen-second rebuild can replace the
+   * button under a finger and the hold must outlive that — `draw` puts the
+   * ring back on whatever node now carries the reading.
+   */
+  const HOLD_MS = 600;
+  const HOLD_NOTICE = 'Press and hold to run it.';
+  let hold: { widgetId: string; reading: string; timer: ReturnType<typeof setTimeout> } | undefined;
+  const holdSelector = (widgetId: string, reading: string): string =>
+    `.fw[data-widget-id="${widgetId}"] [data-ha-hold][data-ha-act="${reading}"]`;
   let controlPanel: { widgetId: string; reading: string; touchedAt: number } | undefined;
   let panelJustOpened = false;
   let sliderHeld = false;
@@ -429,6 +442,8 @@ function start(): void {
      * since — is closed rather than left open in the model for a later poll
      * to bring back unasked.
      */
+    // A hold outlives a rebuild: its ring goes back on the reading's new node.
+    if (hold !== undefined) root.querySelector(holdSelector(hold.widgetId, hold.reading))?.setAttribute('data-holding', '');
     const drawnPanel = root.querySelector<HTMLElement>('.hc-panel');
     if (controlPanel !== undefined && drawnPanel === null) controlPanel = undefined;
     if (drawnPanel !== null) {
@@ -973,8 +988,62 @@ function start(): void {
   document.addEventListener('pointerup', release);
   document.addEventListener('pointercancel', release);
 
+  /*
+   * Press-and-hold. Started by a finger or by the OK key on a scene or a
+   * script, run when it has lasted `HOLD_MS`, and cancelled — with a sentence,
+   * so a tap is not a button that ignored somebody — when it ends sooner.
+   */
+  const startHold = (button: Element): void => {
+    const reading = button.getAttribute('data-ha-act') ?? '';
+    const widgetId = (button.closest('.fw') as HTMLElement | null)?.dataset['widgetId'] ?? '';
+    if (reading === '' || widgetId === '' || hold !== undefined) return;
+    button.setAttribute('data-holding', '');
+    hold = {
+      widgetId,
+      reading,
+      timer: setTimeout(() => {
+        const held = hold;
+        hold = undefined;
+        if (held === undefined) return;
+        root.querySelector(holdSelector(held.widgetId, held.reading))?.removeAttribute('data-holding');
+        void actOnReading(held.widgetId, held.reading, 'run');
+      }, HOLD_MS),
+    };
+  };
+  const endHold = (tooSoon: boolean): void => {
+    const held = hold;
+    if (held === undefined) return;
+    hold = undefined;
+    clearTimeout(held.timer);
+    root.querySelector(holdSelector(held.widgetId, held.reading))?.removeAttribute('data-holding');
+    if (tooSoon) {
+      houseNotices.set(held.widgetId, { text: HOLD_NOTICE, until: Date.now() + HOUSE_NOTICE_MS });
+      safely(draw);
+    }
+  };
+  root.addEventListener('pointerdown', (event: Event) => {
+    const button = (event.target as Element | null)?.closest?.('[data-ha-hold]');
+    if (button !== null && button !== undefined) startHold(button);
+  });
+  document.addEventListener('pointerup', () => endHold(true));
+  document.addEventListener('pointercancel', () => endHold(false));
+  root.addEventListener('keydown', (event: KeyboardEvent) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const button = (event.target as Element | null)?.closest?.('[data-ha-hold]');
+    if (button === null || button === undefined) return;
+    // The click a native button fires on Enter is ignored by the click
+    // handler below, which is what makes this the only way the key runs it.
+    if (!event.repeat) startHold(button);
+  });
+  root.addEventListener('keyup', (event: KeyboardEvent) => {
+    if (event.key === 'Enter' || event.key === ' ') endHold(true);
+  });
+
   root.addEventListener('click', (event: Event) => {
     const target = event.target as Element | null;
+
+    // A scene or a script is run by its hold, never by the click that ends it.
+    if (target?.closest?.('[data-ha-hold]') !== null && target?.closest?.('[data-ha-hold]') !== undefined) return;
 
     // A reading's panel: closed by Done or by a press on the wall around it,
     // with focus handed back to the reading that opened it.

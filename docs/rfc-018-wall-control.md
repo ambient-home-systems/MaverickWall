@@ -1,11 +1,13 @@
 # RFC 018 — Wall control, and a narrow amendment to rule 12
 
-Status: **accepted 2026-10-05 (MD13); phases 1–3 built — lights, switches,
-fans and blinds operate from a wall.** Hard rule 12 in `CLAUDE.md` now reads as
-§3.1 below. Phase 1 (§12) landed the table, `buildCall`, the door's issued check
-and the claims; phase 2 the route, all three switches, the button, the history
-and the browser test; phase 3 brightness, colour, white, fan speed, a blind's
-open, close, stop and position, and the panel. Phase 4 is next. Every open question was
+Status: **accepted 2026-10-05 (MD13); phases 1–4 built — lights, switches,
+fans and blinds operate from a wall, and scenes and scripts run by
+press-and-hold.** Hard rule 12 in `CLAUDE.md` now reads as §3.1 below, with its
+last clause qualified for scripts (§3.3). Phase 1 (§12) landed the table,
+`buildCall`, the door's issued check and the claims; phase 2 the route, all
+three switches, the button, the history and the browser test; phase 3
+brightness, colour, white, fan speed, a blind's movement and the panel; phase 4
+scenes and scripts. Phase 5 is next. Every open question was
 decided by the owner the same day: the five items in §5.2 are folded into §5
 and §5.1, and OQ6–OQ10 are settled in §14 ·
 Owner: — · First drafted 2026-10-05 · Relates to
@@ -73,10 +75,14 @@ the network, can call it.
 > `alarm_control_panel`, a cover whose device class is `garage`, `gate`, `door`,
 > `window` or `damper` or is unset, `input_boolean`, `climate`, `button`,
 > `input_button`, `valve`, `siren`, `camera`, `automation`, `update`, `notify`,
-> `hassio`, or a generic `homeassistant.*` service. The display still receives
-> handles this server minted, never an entity id and never the token — so a
-> compromised wall tablet can turn off the kitchen light and cannot open the
-> garage.
+> `hassio`, or a generic `homeassistant.*` service — nor a **scene** that sets
+> any of them, which is checked member by member when it is marked and again at
+> every press. A **script** cannot be checked that way, so a script the
+> household allows can do whatever it was written to do, and the Readings screen
+> says so before they allow it. The display still receives handles this server
+> minted, never an entity id and never the token — so a compromised wall tablet
+> can turn off the kitchen light and cannot open the garage, unless a script the
+> household allowed on that wall does.
 
 ### 3.2 What changes for the blast radius
 
@@ -89,6 +95,26 @@ the network, can call it.
 
 The honest cost is the first row. The household decides how large it is, entity
 by entity and wall by wall, and the admin says so in those words (§7.3).
+
+### 3.3 Scenes and scripts reach past the table (decided 2026-10-05, phase 4)
+
+The table has no row for a lock or a garage door, but a scene sets every entity
+in it and a script can call any service, so "cannot open the garage" was true
+only of direct control. Building phase 4 surfaced it, and the owner chose:
+
+- **A scene is checked.** Home Assistant lists a scene's members in its
+  `entity_id` attribute. Each is judged by the never-list
+  (`sceneReachesNever`, `neverFromAWall`) against the house's current states —
+  when the household marks the scene controllable, and again at every press.
+  A scene that sets a never-list member is refused, naming the member, and one
+  edited to set one later loses its switch at the next press. A scene that
+  lists no members is refused as though it set a lock.
+- **A script is qualified, not checked.** The REST API offers no list of what a
+  script calls. A script stays allowed, behind the three switches and its
+  warning, and every "never" sentence — Rule 12's last clause included — says
+  "unless a script you allowed does". `ha-claims.test.ts` refuses the
+  unqualified sentence and requires the qualifier on the Home Assistant card,
+  in the README and in the add-on's documentation.
 
 ## 4. What Home Assistant gives us, and does not
 
@@ -414,7 +440,22 @@ controls, and "never" only of what no row in the table can reach.
    dimmer and keeps its switch, and the flag is cleared only when nothing a
    wall could do is left. Held by `ha-act.test.ts` (33) and
    `browser-ha-panel.test.ts` (5); 22 mutations checked, all red.
-4. **Scenes and scripts**, with press-and-hold.
+4. **Scenes and scripts**, with press-and-hold — **built.** Scenes and scripts
+   became watchable readings: a scene reads "Scene" and a script "Ready" or
+   "Running", so neither moves the manifest with the clock. The word is `run`,
+   with no value ever. The wall asks for a hold of 600 ms, by a finger or by
+   holding the OK key, with a still ring while held — still rather than
+   filling, because an animation must sit inside reduced motion and the wall's
+   Motion switch, and a hold that showed nothing with motion off would look
+   ignored. A shorter press sends nothing and says "Press and hold to run it."
+   The hold outlives the fifteen-second rebuild. §7.3's warnings are shown
+   beside a scene's and a script's switch verbatim, and the switch's own
+   warning is now §7.3's wording too. The scene check and the script qualifier
+   are §3.3. Held by `ha-act.test.ts`, `ha-claims.test.ts` and `browser-ha-hold.test.ts`; 18
+   mutations checked, all red. Two were green at first: a tap running a scene
+   (the test stopped at the first run and could not see a second) and Enter
+   clicking at once (a `preventDefault` the click guard already made
+   redundant, now deleted).
 5. **Webhook buttons.**
 6. **Media transport**: play/pause, next, previous and volume, for the
    now-playing card (M6.9).

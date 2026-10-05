@@ -728,9 +728,10 @@ export type WallAction =
   | 'open'
   | 'close'
   | 'stop'
-  | 'position';
+  | 'position'
+  | 'run';
 const WALL_ACTIONS: readonly WallAction[] = [
-  'toggle', 'brightness', 'colour', 'colour_temp', 'speed', 'open', 'close', 'stop', 'position',
+  'toggle', 'brightness', 'colour', 'colour_temp', 'speed', 'open', 'close', 'stop', 'position', 'run',
 ];
 
 /**
@@ -740,7 +741,16 @@ const WALL_ACTIONS: readonly WallAction[] = [
  * turning off by surprise, and a blind — which has no toggle — always opens.
  */
 export function opensPanel(actions: readonly WallAction[] | undefined): boolean {
-  return actions !== undefined && actions.some((action) => action !== 'toggle');
+  return actions !== undefined && actions.some((action) => action !== 'toggle' && action !== 'run');
+}
+
+/**
+ * Whether a press on this reading must be held (RFC 018 §10, OQ6): a scene or
+ * a script, which another tap cannot undo. Held for `HOLD_MS` in `main.ts`,
+ * by a finger or by the OK key.
+ */
+export function needsHold(actions: readonly WallAction[] | undefined): boolean {
+  return actions !== undefined && actions.includes('run');
 }
 
 export interface InterruptModel {
