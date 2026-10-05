@@ -16,6 +16,12 @@
 
 ## Unreleased
 
+**Moving weather and countdown pictures no longer skip when the wall
+refreshes.** The wall redraws itself every fifteen seconds, and on a slow
+tablet a glowing sun, drifting clouds or falling rain could jump back a
+fraction of a second each time. They now carry on smoothly from where they
+were.
+
 **What Maverick Wall may change in your house, stated plainly.** The Home
 Assistant screen now says what it changes today — ticking an item off a to-do
 list you chose to show, on a wall you allowed — and what a later release may

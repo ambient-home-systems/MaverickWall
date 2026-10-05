@@ -260,6 +260,48 @@ export function repeatFiredAt(
 export function lockLoop(node: HTMLElement, durationMs: number, wallNowMs: number): void {
   node.style.animationDuration = `${durationMs}ms`;
   node.style.animationDelay = phaseDelay(durationMs, wallNowMs);
+  node.classList.add(LOOP_CLASS);
+}
+
+/** What `lockLoop` marks a loop with, so `advanceLocks` can find it. It names no keyframes. */
+const LOOP_CLASS = 'fx-loop';
+
+/**
+ * Move every lock under `root` on by the time the draw itself took.
+ *
+ * A lock is taken from the clock the draw read **when it started**, and the
+ * browser starts the animation on the first frame **after the draw ends**, so
+ * the element lands that far behind where the clock says it is. That gap is the
+ * draw's own duration, and the trouble is that it is not the same twice:
+ * measured on a real wall (the Classic seed with a `today` forecast), it was
+ * 15–25ms idle, about 60ms at 6x CPU throttling and about 250ms at 20x — and
+ * on a loaded machine one draw can be cheap and the next dear. Two draws that
+ * lag differently put the rebuilt element that much away from the one it
+ * replaced, which is a jump on the glass, and on a CI runner it measured past
+ * 300ms (`browser-weather-today`'s glow, the flake that found this).
+ *
+ * So `draw()` calls this last, with how long it has been since it read the
+ * clock, and every loop and every playing one-shot is moved on by exactly that.
+ * What is left is the gap from the end of the draw to the frame that starts the
+ * animation, which measured within 20ms of the draw's end even at 20x. A lock
+ * is re-written rather than taken late in the first place because the renderer
+ * decides *what* to draw from the same reading — taking the clock twice in one
+ * draw is how a wall comes to draw one minute and phase another.
+ *
+ * Re-writing the delay of an element whose animation already exists is a
+ * timing update to that animation, not a restart: the browser keeps its start
+ * time and reads the new delay against it.
+ */
+export function advanceLocks(root: ParentNode, elapsedMs: number): void {
+  if (!Number.isFinite(elapsedMs) || elapsedMs <= 0) return;
+  for (const node of [...root.querySelectorAll<HTMLElement>(`.${LOOP_CLASS}, .fx-playing`)]) {
+    const duration = parseFloat(node.style.animationDuration);
+    const into = -parseFloat(node.style.animationDelay);
+    if (!(duration > 0) || !Number.isFinite(into)) continue;
+    node.style.animationDelay = node.classList.contains(LOOP_CLASS)
+      ? phaseDelay(duration, into + elapsedMs)
+      : `-${Math.round(into + elapsedMs)}ms`;
+  }
 }
 
 /**
