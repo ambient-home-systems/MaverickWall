@@ -46,8 +46,20 @@ so the calendar is never left covered. Opening it moves nothing on the wall.
 It can never unlock a door, disarm an alarm, change a thermostat, or open a
 garage, gate, door or window: those are not in the fixed list of things this
 application may ask Home Assistant to do, and the Readings screen says so beside
-them. Running a scene or a script will come in a later release, behind the same
-three switches.
+them.
+
+**Run a scene or a script from the wall, by pressing and holding it.** Scenes
+and scripts can now be added on the Readings screen, and behind the same three
+switches a wall can run one. Because tapping again cannot undo a scene, the wall
+asks for a press and hold of just over half a second — a ring shows while it is
+held, and holding the OK key on a remote works too. A quick tap runs nothing and
+says to hold instead. The Readings screen says what each costs before you allow
+it: a script can do anything Home Assistant can do, and a scene sets every
+entity in it. A scene that locks a door, sets an alarm or a thermostat, or
+moves a garage, gate, door or window is refused, and the Readings screen names
+what it sets; this is checked again every time it is run from a wall. A script
+cannot be checked that way, so one you allow can do whatever it was written to
+do — the Home Assistant screen, this documentation and the README now say so.
 
 ## 0.75.0
 

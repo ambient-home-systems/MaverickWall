@@ -62,6 +62,15 @@ export const SUPPORTED_DOMAINS = [
   'cover',
   'lock',
   'climate',
+  /*
+   * Scenes and scripts, since RFC 018 phase 4 — watched so a wall can *run*
+   * one, behind the same three switches and a press-and-hold. Neither has a
+   * state worth reading: a scene's is the instant it last ran, and a script's
+   * is whether it is running now. `readState` gives each a word that does not
+   * move with the clock, so watching one costs no manifest churn.
+   */
+  'scene',
+  'script',
 ] as const;
 
 /*
@@ -402,6 +411,16 @@ export function readState(state: HaState): string {
     return state.state;
   }
 
+  /*
+   * A scene's state is the ISO instant it was last activated, which is not a
+   * reading anybody asked for and would move the manifest every time anybody
+   * ran it anywhere; a script's is `on` while it runs. One word each, so the
+   * line under a scene says what it is and the line under a script says the
+   * one thing worth knowing about it.
+   */
+  if (state.domain === 'scene') return 'Scene';
+  if (state.domain === 'script') return state.state === 'on' ? 'Running' : 'Ready';
+
   const own = readOwnDomain(state);
   if (own !== undefined) return own;
 
@@ -555,6 +574,8 @@ const DOMAIN_TONES: Readonly<Record<string, Readonly<Record<string, ReadingTone>
   fan: { on: 'active' },
   input_boolean: { on: 'active' },
   cover: { open: 'active' },
+  // A script that is running is doing something now; a scene never is.
+  script: { on: 'active' },
 };
 
 /** What a thermostat is doing that makes it `active`. Its mode never does. */

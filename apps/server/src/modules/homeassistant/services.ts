@@ -134,6 +134,48 @@ const TODO_CREATE_ITEM = 1;
 /** The colour modes that take an RGB colour. `color_temp` is its own row. */
 const RGB_MODES: readonly string[] = ['hs', 'xy', 'rgb', 'rgbw', 'rgbww'];
 
+/**
+ * The domains a wall may never reach (RFC 018 §5.1), by any route — directly,
+ * or through a scene that sets one. A cover is judged by its device class,
+ * below, because a blind is fine and a garage door is not.
+ */
+export const NEVER_DOMAINS: readonly string[] = Object.freeze([
+  'lock', 'alarm_control_panel', 'climate', 'input_boolean', 'button', 'input_button', 'valve',
+  'siren', 'camera', 'automation', 'update', 'notify', 'hassio', 'homeassistant',
+]);
+
+/** Whether a wall may never reach this entity, by any route (RFC 018 §5.1). */
+export function neverFromAWall(entityId: string, deviceClass: string | null | undefined): boolean {
+  const domain = domainOf(entityId);
+  if (NEVER_DOMAINS.includes(domain)) return true;
+  // A cover with no device class fails closed, as it does for a direct press.
+  return domain === 'cover' && !COVER_CLASSES.includes(deviceClass ?? '');
+}
+
+/**
+ * The first member of a scene a wall may never reach, or `undefined` when there
+ * is none — or `null` when the scene does not say what it sets, which is
+ * refused as though it set a lock (RFC 018 phase 4, decided 2026-10-05).
+ *
+ * A scene "sets every entity in it, including any lock or cover it names"
+ * (§7.3), so running one from a wall is reaching each of its members. Home
+ * Assistant lists them in the scene's `entity_id` attribute; each is judged by
+ * the same rule a direct press is, with `classOf` answering a member's device
+ * class from the house's current states. A script has no such list over the
+ * REST API, which is why a script is warned about rather than checked.
+ */
+export function sceneReachesNever(
+  sceneAttributes: unknown,
+  classOf: (entityId: string) => string | null | undefined,
+): string | undefined | null {
+  const members =
+    typeof sceneAttributes === 'object' && sceneAttributes !== null
+      ? (sceneAttributes as Record<string, unknown>)['entity_id']
+      : undefined;
+  if (!Array.isArray(members) || members.some((member) => typeof member !== 'string')) return null;
+  return (members as string[]).find((member) => neverFromAWall(member, classOf(member)));
+}
+
 /** A call this module issued. Opaque outside it: only `buildCall` makes one. */
 export interface HaCall {
   readonly key: ServiceKey;
@@ -433,6 +475,10 @@ export const WALL_ACTIONS: Readonly<Record<string, Readonly<Record<string, Contr
   close: Object.freeze({ cover: 'cover.close' }),
   stop: Object.freeze({ cover: 'cover.stop' }),
   position: Object.freeze({ cover: 'cover.position' }),
+  // Phase 4: a scene or a script, run with no variables. The wall asks for a
+  // press-and-hold before it sends this word; the server cannot tell a hold
+  // from a tap and does not pretend to — the three switches are its check.
+  run: Object.freeze({ scene: 'scene.run', script: 'script.run' }),
 });
 
 /** The words that carry a value, and what shape it takes. */

@@ -20,7 +20,7 @@ import {
   recordWallAction,
   resetOperateLimits,
 } from '../src/modules/homeassistant/control.js';
-import { HA_SERVICES } from '../src/modules/homeassistant/services.js';
+import { HA_SERVICES, sceneReachesNever } from '../src/modules/homeassistant/services.js';
 import {
   closeFakeHomeAssistants,
   fakeHomeAssistant,
@@ -59,6 +59,8 @@ const LIGHT = 'light.living_room';
 const LIGHT_KEY = haReadingHandle(LIGHT);
 const FAN = 'fan.bedroom';
 const BLIND = 'cover.kitchen_blind';
+const SCENE = 'scene.movie_night';
+const SCRIPT = 'script.goodnight';
 
 interface Harness {
   readonly db: SqliteDatabase;
@@ -151,7 +153,7 @@ async function harness(): Promise<Harness> {
   // Through the real form, in the order a household would: a light, a switch,
   // a lock and a temperature.
   for (const entity of [
-    LIGHT, 'switch.kettle', 'lock.front_door', 'sensor.kitchen_temperature', FAN, BLIND,
+    LIGHT, 'switch.kettle', 'lock.front_door', 'sensor.kitchen_temperature', FAN, BLIND, SCENE, SCRIPT,
   ]) {
     expect((await form('/admin/home-assistant/entities', { entity_id: entity, label: '' })).status).toBe(302);
   }
@@ -463,11 +465,12 @@ describe('Can be controlled from walls', () => {
     const controls = [...html.matchAll(/action="admin\/home-assistant\/entities\/control">\s*<input type="hidden" name="entity_id" value="([^"]+)"/g)]
       .map((match) => match[1]);
     // A blind since phase 3: it shades a room and reports what can be moved.
-    expect(controls.sort()).toEqual([BLIND, FAN, LIGHT, 'switch.kettle'].sort());
+    // And a scene and a script since phase 4.
+    expect(controls.sort()).toEqual([BLIND, FAN, LIGHT, SCENE, SCRIPT, 'switch.kettle'].sort());
     // The lock is told why, beside it, rather than left without a switch.
     expect(html).toContain('Walls can never operate this.');
     // And a switch carries its caution: it can be anything.
-    expect(html).toContain('A switch can be anything');
+    expect(html).toContain('A switch can be wired to anything. Check what this one powers.');
   });
 
   it('refuses a lock posted by hand, which no page offers', async () => {
@@ -735,3 +738,137 @@ describe('a press that carries a value (RFC 018 phase 3)', () => {
     expect(html).toContain('Kitchen blind can be opened, closed or moved');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 4: running a scene or a script
+// ---------------------------------------------------------------------------
+
+describe('running a scene or a script (RFC 018 phase 4)', () => {
+  const sent = (h: Harness): { path: string; body: unknown }[] =>
+    h.ha.posts
+      .filter((post) => post.path.startsWith('/api/services/') && !post.path.includes('/todo/'))
+      .map((post) => ({ path: post.path.slice('/api/services/'.length), body: JSON.parse(post.body) }));
+
+  it('reads a scene as one word and a script as whether it runs, so neither moves with the clock', async () => {
+    const h = await harness();
+    const readings = readingsOf((await h.manifest()).body);
+    expect(readings.find((r) => r.key === haReadingHandle(SCENE))?.value).toBe('Scene');
+    expect(readings.find((r) => r.key === haReadingHandle(SCRIPT))?.value).toBe('Ready');
+  });
+
+  it('runs each through its own row, with the entity and nothing else', async () => {
+    const h = await harness();
+    h.allowControl();
+    for (const entity of [SCENE, SCRIPT]) expect((await markControllable(h, entity)).status).toBe(302);
+    const widget = h.widget({ tapAction: 'act' });
+    const readings = readingsOf((await h.manifest()).body);
+    for (const entity of [SCENE, SCRIPT]) {
+      expect(readings.find((r) => r.key === haReadingHandle(entity))?.actions, entity).toEqual(['run']);
+    }
+    expect((await h.act({ reading: haReadingHandle(SCENE), widget, action: 'run' })).status).toBe(200);
+    expect((await h.act({ reading: haReadingHandle(SCRIPT), widget, action: 'run' })).status).toBe(200);
+    expect(sent(h)).toEqual([
+      { path: HA_SERVICES['scene.run'].service, body: { entity_id: SCENE } },
+      { path: HA_SERVICES['script.run'].service, body: { entity_id: SCRIPT } },
+    ]);
+    // Ran a scene, and the wall still reads one word rather than the instant.
+    expect(readingsOf((await h.manifest()).body).find((r) => r.key === haReadingHandle(SCENE))?.value).toBe('Scene');
+  });
+
+  it('refuses a value, any other word, and a scene nobody marked', async () => {
+    const h = await harness();
+    h.allowControl();
+    await markControllable(h, SCRIPT);
+    const widget = h.widget({ tapAction: 'act' });
+    const script = haReadingHandle(SCRIPT);
+    // No variables, ever (RFC 018 §5): a value on `run` is a 400.
+    expect((await h.act({ reading: script, widget, action: 'run', value: '1' })).status).toBe(400);
+    expect((await h.act({ reading: script, widget, action: 'toggle' })).status).toBe(400);
+    expect((await h.act({ reading: haReadingHandle(SCENE), widget, action: 'run' })).status).toBe(403);
+    expect(sent(h)).toEqual([]);
+  });
+
+  it('says what each choice costs beside its switch, in the RFC’s own words', async () => {
+    const h = await harness();
+    const html = await (await h.get('/admin/home-assistant/readings')).text();
+    expect(html).toContain(
+      'A script can do anything Home Assistant can do. Allow only scripts you would let a guest in your kitchen run.',
+    );
+    expect(html).toContain('A scene sets every entity in it, including any lock or cover it names.');
+    expect(html).toContain('Movie night can be run, by pressing and holding it from a wall');
+  });
+
+  it('refuses to let a wall run a scene that sets a lock, and says which member', async () => {
+    /*
+     * The never-list, seen through a scene (decided 2026-10-05): a scene is
+     * everything it sets, so one that locks the front door is refused at the
+     * Readings screen, naming the member, whatever is ticked.
+     */
+    const h = await harness();
+    await h.form('/admin/home-assistant/entities', { entity_id: 'scene.leaving', label: '' });
+    const response = await markControllable(h, 'scene.leaving');
+    expect(response.status).toBe(400);
+    expect(await response.text()).toContain('This scene sets Front door lock');
+    const row = h.db
+      .prepare('SELECT controllable FROM ha_entity_cache WHERE entity_id = ?')
+      .get('scene.leaving') as { controllable: number };
+    expect(row.controllable).toBe(0);
+  });
+
+  it('refuses a scene at the press once it has been changed to reach a garage door, and takes its switch away', async () => {
+    const h = await harness();
+    h.allowControl();
+    expect((await markControllable(h, SCENE)).status).toBe(302);
+    const widget = h.widget({ tapAction: 'act' });
+    // Movie night sets the kitchen blind — fine while it is a blind.
+    h.ha.set[BLIND] = { device_class: 'garage' };
+    const response = await h.act({ reading: haReadingHandle(SCENE), widget, action: 'run' });
+    expect(response.status).toBe(409);
+    expect(sent(h)).toEqual([]);
+    const row = h.db
+      .prepare('SELECT controllable FROM ha_entity_cache WHERE entity_id = ?')
+      .get(SCENE) as { controllable: number };
+    expect(row.controllable).toBe(0);
+  });
+
+  it('refuses a scene that does not say what it sets', async () => {
+    const h = await harness();
+    h.allowControl();
+    expect((await markControllable(h, SCENE)).status).toBe(302);
+    const widget = h.widget({ tapAction: 'act' });
+    h.ha.set[SCENE] = { entity_id: 'light.living_room' };
+    expect((await h.act({ reading: haReadingHandle(SCENE), widget, action: 'run' })).status).toBe(409);
+    expect(sent(h)).toEqual([]);
+  });
+});
+
+describe('which scenes reach the never-list', () => {
+  const classes: Record<string, string | null> = {
+    'cover.lounge': 'blind',
+    'cover.drive': 'garage',
+    'cover.shed': null,
+  };
+  const reaches = (members: unknown): string | undefined | null =>
+    sceneReachesNever({ entity_id: members }, (id) => classes[id]);
+
+  it.each([
+    [['light.a', 'switch.b', 'fan.c', 'cover.lounge', 'media_player.d'], undefined],
+    [['light.a', 'lock.front'], 'lock.front'],
+    [['alarm_control_panel.home'], 'alarm_control_panel.home'],
+    [['climate.hall'], 'climate.hall'],
+    [['input_boolean.guests'], 'input_boolean.guests'],
+    [['cover.drive'], 'cover.drive'],
+    // An unset cover class fails closed, as a direct press does.
+    [['cover.shed'], 'cover.shed'],
+    [['cover.unknown_to_the_house'], 'cover.unknown_to_the_house'],
+  ])('%j → %s', (members, expected) => {
+    expect(reaches(members)).toBe(expected);
+  });
+
+  it('refuses a scene that does not list what it sets, as though it set a lock', () => {
+    expect(sceneReachesNever({}, () => null)).toBeNull();
+    expect(reaches('light.a')).toBeNull();
+    expect(reaches(['light.a', 7])).toBeNull();
+  });
+});
+

@@ -10,6 +10,7 @@ import {
   TODAY_EVENT_LIMIT,
   houseFrom,
   opensPanel,
+  needsHold,
   interruptsFrom,
 } from '../src/viewmodel.js';
 import type { Manifest, ManifestDay, ManifestEvent } from '../src/manifest.js';
@@ -688,6 +689,15 @@ describe('text from somewhere else', () => {
     expect(opensPanel(['toggle', 'brightness'])).toBe(true);
     // A blind has no switch at all, so a press always opens it.
     expect(opensPanel(['open', 'close', 'stop', 'position'])).toBe(true);
+    // A scene or a script is held rather than opened (RFC 018 phase 4).
+    expect(opensPanel(['run'])).toBe(false);
+  });
+
+  it('asks for a hold on a scene or a script, and on nothing else', () => {
+    expect(needsHold(['run'])).toBe(true);
+    expect(needsHold(['toggle'])).toBe(false);
+    expect(needsHold(['toggle', 'brightness'])).toBe(false);
+    expect(needsHold(undefined)).toBe(false);
   });
 
   it('reads the wall’s operating switch as true only when the manifest says true', () => {

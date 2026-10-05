@@ -45,8 +45,8 @@ Violating any of these is a failed task.
     self-diagnosable.
 12. **Home Assistant writes are confined to what the household picked, through
     one door.** *(Amended 2026-10-05 by `docs/rfc-018-wall-control.md`, accepted
-    as decision MD13. Phase 1 has landed the table, `buildCall` and the door;
-    nothing a wall can press exists until its later phases.)* Three kinds of
+    as decision MD13; its last clause qualified 2026-10-05 for scripts, by the
+    owner, in phase 4. Phases 1–4 have landed.)* Three kinds of
     write are permitted.
     `todo.update_item` sets an item's status on a to-do list the household added
     (RFC 012). `todo.add_item` adds an item to such a list, from the companion
@@ -58,9 +58,14 @@ Violating any of these is a failed task.
     `gate`, `door`, `window` or `damper` or is unset, `input_boolean`,
     `climate`, `button`, `input_button`, `valve`, `siren`, `camera`,
     `automation`, `update`, `notify`, `hassio`, or a generic
-    `homeassistant.*` service. The display still receives handles this server
+    `homeassistant.*` service — nor a **scene** that sets any of them, which is
+    checked member by member when it is marked and again at every press. A
+    **script** cannot be checked that way, so a script the household allows
+    can do whatever it was written to do, and the Readings screen says so
+    before they allow it. The display still receives handles this server
     minted, never an entity id and never the token — so a compromised wall
-    tablet can turn off the kitchen light and cannot open the garage.
+    tablet can turn off the kitchen light and cannot open the garage, unless a
+    script the household allowed on that wall does.
 
 ---
 
@@ -514,14 +519,16 @@ knowing before reading either rule as settled or as obsolete:
   three opt-ins that are all off by default; and it lets the companion API,
   never a wall, add to a household's to-do list. Locks, alarms, `input_boolean`
   helpers, thermostats and garage, gate, door and window covers stay excluded.
-  **Phases 1–3 have landed**: `HA_SERVICES` is RFC 018's frozen table,
+  **Phases 1–4 have landed**: `HA_SERVICES` is RFC 018's frozen table,
   `buildCall` its only constructor and `callService` its only door, all held by
   `ha-write-boundary.test.ts`; a wall can toggle a light, a switch or a fan
   behind the three switches; and a light's brightness, colour and white, a
   fan's speed and a blind's movement open a panel over the wall (see "Home
   Assistant writes go through a frozen table", "A wall switches a light" and
-  "A light dims from a panel" below). Scenes, scripts, webhooks and media are
-  later phases.
+  "A light dims from a panel" below); and scenes and scripts run by
+  press-and-hold — a scene refused if it sets anything on the never-list, a
+  script allowed with every "never" sentence qualified ("A scene or a script
+  reaches past the table" below). Webhooks and media are later phases.
 - **Q4 (no blur behind widgets) — still a proposal.** A Glass ground is to be
   prototyped behind a flag, with its opacity measured per picture, and Q4 flips
   only if the prototype passes the plan's MQ1 measurement. Until then
@@ -3533,6 +3540,37 @@ and a real Chromium. Against phase 2's 4852 over 335, +17 and +1, which is this
 change's count (10 route, 5 browser, 2 model). **Still unproven where it
 counts:** no real Home Assistant has dimmed a real bulb for a wall, and nobody
 has dragged a slider on a real tablet.
+
+**A scene or a script reaches past the table, and phase 4 is where that had to
+be faced (RFC 018 phase 4, §3.3).** Scenes and scripts became watchable readings
+— a scene reads "Scene" and a script "Ready" or "Running", so neither moves the
+manifest with the clock — and the wall runs one with the word `run`, never a
+value, after a press-and-hold of 600 ms by a finger or the OK key. The ring
+while held is still rather than filling, because an animation here has to sit
+inside reduced motion and the wall's Motion switch, and a hold that showed
+nothing with motion off would look like a button ignoring the finger on it. A
+shorter press sends nothing and says so; the hold outlives the rebuild.
+
+**Building it surfaced a contradiction the owner then decided.** The table has
+no row for a lock or a garage door, but a scene sets every entity in it and a
+script can call any service, so Rule 12's "cannot open the garage" was true
+only of direct control. **A scene is checked**: `sceneReachesNever` judges each
+member in its `entity_id` list by the never-list against the house's current
+states, when it is marked and again at every press; one that sets a lock is
+refused naming the member, one edited later loses its switch, and one that
+lists nothing is refused as though it set a lock. **A script is qualified**:
+the REST API cannot say what a script calls, so it stays allowed behind its
+warning, and Rule 12's last clause, RFC 018 §3.1, the README, the add-on's
+documentation and the Home Assistant card all say "unless a script you allowed
+does" — which `ha-claims.test.ts` requires, as it refuses the unqualified
+sentence. 18 mutations checked, all red; two were green first — a tap running a
+scene, which a test that stopped at the first run could not see, and Enter
+clicking at once, guarded twice, so the `preventDefault` went. **4898 tests
+passing, and 1 skipped, over 337 files**: calendar 153 over 10 · core 314 over
+9 · display 898 over 50 · server 3533 over 268, measured with `pnpm test` and a
+real Chromium. Against the 4873 over 336 measured on `main` with phases 1–3,
++25 and +1. **Still unproven where it counts:** no real Home Assistant scene or
+script has been run from a wall.
 
 **Rule 12 changed, and the interesting part is how many places said otherwise
 (RFC 012 phase 1).** The rule is no longer "READ-ONLY, no service calls": it

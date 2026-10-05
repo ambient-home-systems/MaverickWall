@@ -6610,7 +6610,7 @@ function boot(): void {
     help.className = 'hint';
     help.dataset['cfgKey'] = 'tileLayout';
     help.textContent =
-      'A tile shows what a thing is doing. It can operate a light, a switch, a fan or a blind only ' +
+      'A tile shows what a thing is doing. It can operate a light, a switch, a fan, a blind, a scene or a script only ' +
       'where you have said so three times — below, on the Readings screen, and in this wall’s Touch ' +
       'controls — and it never reaches a lock, an alarm or a garage door. There are no Home ' +
       'Assistant device pictures — the wall would have to fetch them from Home Assistant, and it is ' +
@@ -6628,9 +6628,9 @@ function boot(): void {
       switchRow(
         'Tap to operate',
         'A reading you marked “Can be controlled from walls” on the Readings screen answers a ' +
-          'press — a switch switches, and a light that dims, a fan with speeds or a blind opens its ' +
-          'controls — on a wall whose Touch controls allow operating things in the house. Off, this ' +
-          'widget only shows.',
+          'press — a switch switches, a light that dims, a fan with speeds or a blind opens its ' +
+          'controls, and a scene or a script runs when pressed and held — on a wall whose Touch ' +
+          'controls allow operating things in the house. Off, this widget only shows.',
         cfg['tapAction'] === 'act',
         (on) => setConfig(widget, 'tapAction', on ? 'act' : undefined),
         'tapAction',

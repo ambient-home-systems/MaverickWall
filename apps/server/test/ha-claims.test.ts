@@ -98,6 +98,15 @@ const RETIRED_BY_RFC_018_PHASE_2 = [
   'none of that is built yet',
   'today the one thing',
   'today the worst it',
+  /*
+   * Phase 4 (decided by the owner 2026-10-05): a scene that sets a lock or a
+   * garage door is refused, member by member, but a script cannot be checked,
+   * so "whatever you allow, it can never open your garage" stopped being true
+   * the day a wall could run one. Every page says "unless a script you allowed
+   * does" now, and this keeps the unqualified sentence from coming back.
+   */
+  'whatever you allow, it can never',
+  'whatever you allow, it could never',
 ];
 
 async function adminHomeAssistantPage(): Promise<string> {
@@ -189,7 +198,18 @@ describe('nothing still promises Home Assistant is read-only', () => {
     }
   });
 
-  it('and the scan is looking at the right documents', () => {
+  it('and the README and the add-on documentation both name the script exception', () => {
+    const readme = readFileSync(join(ROOT, 'README.md'), 'utf8').toLowerCase();
+    const docs = readFileSync(join(ROOT, 'addon', 'maverick-wall', 'DOCS.md'), 'utf8').toLowerCase();
+    for (const [name, text] of [['README.md', readme], ['DOCS.md', docs]] as const) {
+      // Read as prose: a phrase wrapped at a line break is the same sentence.
+      const prose = text.replace(/\s+/g, ' ');
+      expect(prose, name).toContain('script cannot be checked that way');
+      expect(prose, name).toContain('unless a script you allowed does');
+    }
+  });
+
+    it('and the scan is looking at the right documents', () => {
     // A path that silently resolves to nothing passes for ever. Both files are
     // read again here rather than trusted, because a rename would otherwise
     // turn three assertions green by making them about an empty string.
@@ -233,6 +253,8 @@ describe('and the page says what it can do instead', () => {
     expect(html).toContain('Can be controlled from walls');
     expect(html).toContain('Those are not built yet');
     expect(html).toContain('No locks, no alarms, no thermostats');
+    // And the one way round it is named beside the never-list, not left out.
+    expect(html).toContain('A script cannot be checked that way');
     expect(html).toContain('garage, gate, door or window');
   });
 });
