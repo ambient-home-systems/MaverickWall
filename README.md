@@ -66,10 +66,10 @@ configure first, no account to create anywhere else, no key to paste.
 - **Shift rotation.** Per person, from a repeating pattern or derived from a
   work calendar, with colours that separate at ten feet. A rest day is drawn as
   a rest day, not as a blank.
-- **Home Assistant, all but read-only.** A few readings beside the calendar,
-  and a to-do list you can cross things off from the wall — the one thing this
-  will ever change in your house, off on every wall until you turn it on for
-  that wall, and deliberate. See below.
+- **Home Assistant, on your terms.** A few readings beside the calendar, and a
+  to-do list you can cross things off from the wall — today the one thing this
+  changes in your house, off on every wall until you turn it on for that wall.
+  It can never unlock a door or open a garage. See below.
 - **Weather alerts.** National Weather Service, United States only. A banner
   for an advisory, the whole screen for a severe warning, and for an Extreme
   warning it can light a screen that has gone dark.
@@ -147,32 +147,36 @@ Assistant does the authentication), and **the port is for the wall displays** (a
 screen screwed to a wall has no Home Assistant session and connects directly).
 Full detail in [the add-on docs](addon/maverick-wall/DOCS.md).
 
-## Home Assistant: it reads, and can tick one kind of box
+## Home Assistant: it reads, and changes only what you pick
 
 A Home Assistant long-lived access token has full control of a home and cannot
 be limited to reading, so the limit lives on this side instead:
 
-- The **one** thing this application will ever change in your house is ticking
-  an item off a to-do list you chose to show on a wall. That is
-  `todo.update_item`, and it is the whole list.
+- Today the **one** thing this application changes in your house is ticking an
+  item off a to-do list you chose to show on a wall: `todo.update_item`.
 - Even that is **off by default on every wall**. A wall gets a tick box only
   once you turn on "Allow ticking to-do items off" for that particular wall —
   its own switch, separate from clearing an alert and from ticking a chore,
   because this is the only one of the three that changes anything outside this
   application. An eInk panel shows the list and never offers a box: a sleeping
   battery panel cannot honour a tap.
-- No lights, switches, covers, locks, alarms, scenes, scripts, automations or
-  cameras. Not switched off by default — there is no code here that can do any
-  of them. The permitted set is a frozen constant with a test asserting nothing
-  leaves it.
+- The rules this project holds itself to now also allow a wall to operate
+  lights, switches, fans, blinds, scenes, scripts and media players, and a phone
+  to add to a to-do list. **None of that is built yet.** When it is, a wall will
+  operate only the things you mark as controllable, only on walls you allow,
+  and only from widgets you set to act — all three off by default.
+- It can **never** unlock a door, disarm an alarm, change a thermostat, or open
+  a garage, gate, door or window. Those are not in the frozen table of actions
+  this application may take, and a test asserts nothing leaves that table.
 - Your wall receives **resolved values** — "19.4 °C", "Open". Never the token,
   never an entity name, and never an endpoint it could ask its own questions
   through. There is a test asserting exactly that.
 - The token is stored encrypted and never appears in a log, an error message,
   or the diagnostics export.
 
-If a tablet in your hallway is ever compromised, the worst it can do is give
-away your indoor temperature and tick something off your shopping list.
+If a tablet in your hallway is ever compromised, today the worst it can do is
+show somebody your indoor temperature and tick an item off your shopping list.
+Whatever you allow later, it can never open your garage.
 
 ## Weather alerts
 

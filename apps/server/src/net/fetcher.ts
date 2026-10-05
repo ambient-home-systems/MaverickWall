@@ -689,7 +689,8 @@ export function createFetcher(): Fetcher {
      * things it does not do — it serialises the body itself, fixes both content
      * types, sends no conditional request, and keeps a non-2xx body as the
      * upstream's own diagnosis. Its only caller is the Home Assistant client's
-     * `callService`, which is held to a two-member allowlist by
+     * `callService`, which sends only calls `buildCall` made from the frozen
+     * table in `modules/homeassistant/services.ts`, held there by
      * `ha-write-boundary.test.ts`.
      */
     async fetch(request: FetchRequest): Promise<FetchOutcome> {

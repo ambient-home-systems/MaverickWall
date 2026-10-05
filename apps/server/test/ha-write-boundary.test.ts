@@ -4,9 +4,15 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createFetcher } from '../src/net/fetcher.js';
 import {
+  buildCall,
   callService,
+  COVER_CLASSES,
   HA_SERVICES,
+  type CallRequest,
   type Connection,
+  type ControlKey,
+  type HaCall,
+  type ServiceKey,
 } from '../src/modules/homeassistant/client.js';
 import { closeFakeHomeAssistants, fakeHomeAssistant, TOKEN } from './fake-home-assistant.js';
 
@@ -19,8 +25,14 @@ import { closeFakeHomeAssistants, fakeHomeAssistant, TOKEN } from './fake-home-a
  * this repository, a person could confirm that in one command, and no reviewer
  * had to reason about intent.
  *
- * RFC 012 spends that property to buy a shopping list you can tick. This file
- * is what it is spent on.
+ * RFC 012 spent that property to buy a shopping list you can tick, and RFC 018
+ * (accepted 2026-10-05) widened the list into a table of verbs a wall may use on
+ * things the household picked. This file is what both are spent on.
+ *
+ * **Three parts, because they fail differently.** The table says what may be
+ * called, `buildCall` is the only thing that can make a call from it, and
+ * `callService` is the only door. The rest of this note is from RFC 012 and
+ * still holds for the door.
  *
  * **Two halves, because they fail differently.** The constant says what may be
  * called; a third member appearing in it is the obvious regression and the easy
@@ -232,48 +244,279 @@ describe('the other way a POST could leave', () => {
   });
 });
 
-describe('the allowlist', () => {
-  it('has exactly two members, and exactly one of them is the write', () => {
-    expect(Object.keys(HA_SERVICES).sort()).toEqual(['read', 'write']);
-    expect(Object.values(HA_SERVICES)).toEqual(['todo/get_items', 'todo/update_item']);
 
-    // The rule is about writes rather than about service calls, and this is
-    // where that distinction is a fact rather than a sentence in a document:
-    // `get_items` cannot change anything in a house and `update_item` can.
-    const writes = Object.entries(HA_SERVICES).filter(([role]) => role === 'write');
-    expect(writes).toHaveLength(1);
-    expect(writes[0]?.[1]).toBe('todo/update_item');
+/**
+ * RFC 018 §5, transcribed: every row the table may hold, and nothing else.
+ * A row added to `services.ts` without being added here, or the other way
+ * round, is the failure this exists to catch — the table is the rule.
+ */
+const EXPECTED_TABLE: Record<string, unknown> = {
+  'todo.read': { service: 'todo/get_items', kind: 'read', reach: 'server', data: ['status'], returnResponse: true },
+  'todo.tick': { service: 'todo/update_item', kind: 'write', reach: 'wall', data: ['item', 'status'], returnResponse: false },
+  'todo.add': { service: 'todo/add_item', kind: 'write', reach: 'companion', data: ['item'], returnResponse: false },
+  'weather.forecasts': { service: 'weather/get_forecasts', kind: 'read', reach: 'server', data: ['type'], returnResponse: true },
+  'light.toggle': { service: 'light/toggle', kind: 'write', reach: 'wall', data: [], returnResponse: false },
+  'light.brightness': { service: 'light/turn_on', kind: 'write', reach: 'wall', data: ['brightness_pct'], returnResponse: false },
+  'light.colour': { service: 'light/turn_on', kind: 'write', reach: 'wall', data: ['rgb_color'], returnResponse: false },
+  'light.colour_temp': { service: 'light/turn_on', kind: 'write', reach: 'wall', data: ['color_temp_kelvin'], returnResponse: false },
+  'switch.toggle': { service: 'switch/toggle', kind: 'write', reach: 'wall', data: [], returnResponse: false },
+  'fan.toggle': { service: 'fan/toggle', kind: 'write', reach: 'wall', data: [], returnResponse: false },
+  'fan.speed': { service: 'fan/set_percentage', kind: 'write', reach: 'wall', data: ['percentage'], returnResponse: false },
+  'cover.open': { service: 'cover/open_cover', kind: 'write', reach: 'wall', data: [], returnResponse: false },
+  'cover.close': { service: 'cover/close_cover', kind: 'write', reach: 'wall', data: [], returnResponse: false },
+  'cover.stop': { service: 'cover/stop_cover', kind: 'write', reach: 'wall', data: [], returnResponse: false },
+  'cover.position': { service: 'cover/set_cover_position', kind: 'write', reach: 'wall', data: ['position'], returnResponse: false },
+  'scene.run': { service: 'scene/turn_on', kind: 'write', reach: 'wall', data: [], returnResponse: false },
+  'script.run': { service: 'script/turn_on', kind: 'write', reach: 'wall', data: [], returnResponse: false },
+  'media_player.play_pause': { service: 'media_player/media_play_pause', kind: 'write', reach: 'wall', data: [], returnResponse: false },
+  'media_player.next': { service: 'media_player/media_next_track', kind: 'write', reach: 'wall', data: [], returnResponse: false },
+  'media_player.previous': { service: 'media_player/media_previous_track', kind: 'write', reach: 'wall', data: [], returnResponse: false },
+  'media_player.volume': { service: 'media_player/volume_set', kind: 'write', reach: 'wall', data: ['volume_level'], returnResponse: false },
+};
+
+/** What rule 12 never permits, as entities a table row might be steered at. */
+const NEVER = [
+  'lock.front_door',
+  'alarm_control_panel.house',
+  'input_boolean.vacation_mode',
+  'climate.hall',
+  'button.gate_open',
+  'input_button.doorbell',
+  'valve.water_main',
+  'siren.alarm',
+  'camera.porch',
+  'automation.morning',
+  'update.core',
+  'notify.mobile',
+] as const;
+
+const CONTROL_KEYS = (Object.keys(HA_SERVICES) as ServiceKey[]).filter(
+  (key): key is ControlKey =>
+    !['todo.read', 'todo.tick', 'todo.add', 'weather.forecasts'].includes(key),
+);
+
+const MEDIA_ALL = 1 | 4 | 16 | 32 | 16384;
+
+/** One request per control row that `buildCall` should accept. */
+const ELIGIBLE: Record<ControlKey, Extract<CallRequest, { key: ControlKey }>> = {
+  'light.toggle': { key: 'light.toggle', entityId: 'light.kitchen', attributes: { supported_color_modes: ['onoff'] } },
+  'light.brightness': { key: 'light.brightness', entityId: 'light.kitchen', attributes: { supported_color_modes: ['brightness'] }, value: 40 },
+  'light.colour': { key: 'light.colour', entityId: 'light.kitchen', attributes: { supported_color_modes: ['hs', 'color_temp'] }, value: [255, 128, 0] },
+  'light.colour_temp': { key: 'light.colour_temp', entityId: 'light.kitchen', attributes: { supported_color_modes: ['color_temp'], min_color_temp_kelvin: 2000, max_color_temp_kelvin: 6500 }, value: 2700 },
+  'switch.toggle': { key: 'switch.toggle', entityId: 'switch.kettle', attributes: {} },
+  'fan.toggle': { key: 'fan.toggle', entityId: 'fan.bedroom', attributes: {} },
+  'fan.speed': { key: 'fan.speed', entityId: 'fan.bedroom', attributes: { supported_features: 1 }, value: 50 },
+  'cover.open': { key: 'cover.open', entityId: 'cover.lounge_blind', attributes: { device_class: 'blind', supported_features: 15 } },
+  'cover.close': { key: 'cover.close', entityId: 'cover.lounge_blind', attributes: { device_class: 'blind', supported_features: 15 } },
+  'cover.stop': { key: 'cover.stop', entityId: 'cover.lounge_blind', attributes: { device_class: 'blind', supported_features: 15 } },
+  'cover.position': { key: 'cover.position', entityId: 'cover.lounge_blind', attributes: { device_class: 'blind', supported_features: 15 }, value: 30 },
+  'scene.run': { key: 'scene.run', entityId: 'scene.movie_time', attributes: {} },
+  'script.run': { key: 'script.run', entityId: 'script.good_night', attributes: {} },
+  'media_player.play_pause': { key: 'media_player.play_pause', entityId: 'media_player.kitchen', attributes: { supported_features: MEDIA_ALL } },
+  'media_player.next': { key: 'media_player.next', entityId: 'media_player.kitchen', attributes: { supported_features: MEDIA_ALL } },
+  'media_player.previous': { key: 'media_player.previous', entityId: 'media_player.kitchen', attributes: { supported_features: MEDIA_ALL } },
+  'media_player.volume': { key: 'media_player.volume', entityId: 'media_player.kitchen', attributes: { supported_features: MEDIA_ALL }, value: 50 },
+};
+
+describe('the allowlist', () => {
+  it('is exactly RFC 018 §5, row by row, data keys included', () => {
+    expect(JSON.parse(JSON.stringify(HA_SERVICES))).toEqual(EXPECTED_TABLE);
   });
 
-  it('is frozen', () => {
+  it('is frozen, and so is every row and every row’s data', () => {
     // Not decoration: this is what a test can read where `grep` used to answer.
     expect(Object.isFrozen(HA_SERVICES)).toBe(true);
+    for (const row of Object.values(HA_SERVICES)) {
+      expect(Object.isFrozen(row)).toBe(true);
+      expect(Object.isFrozen(row.data)).toBe(true);
+    }
   });
 
-  it('names nothing that could reach anything but a to-do list', () => {
-    // The firebreak, spelled out. RFC 012 §2.3: the moment one POST exists,
-    // "it is just one more service" is an argument available for ever.
-    for (const service of Object.values(HA_SERVICES)) {
-      expect(service.startsWith('todo/')).toBe(true);
+  it('asks for an answer on exactly the reads', () => {
+    // A read without `?return_response` is refused by Home Assistant with a
+    // bare 400, and a write with it is refused too. The row decides, so no
+    // caller can get either wrong.
+    for (const row of Object.values(HA_SERVICES)) {
+      expect(row.returnResponse).toBe(row.kind === 'read');
     }
-    for (const refused of [
-      'light',
-      'switch',
-      'cover',
-      'lock',
-      'alarm_control_panel',
-      'climate',
-      'scene',
-      'script',
-      'automation',
-      'camera',
-    ]) {
-      expect(Object.values(HA_SERVICES).some((s) => s.startsWith(`${refused}/`))).toBe(false);
+  });
+
+  it('has no row for anything rule 12 never permits', () => {
+    const services = Object.values(HA_SERVICES).map((row) => row.service);
+    for (const domain of [...NEVER.map((id) => id.slice(0, id.indexOf('.'))), 'hassio', 'homeassistant']) {
+      expect(services.some((service) => service.startsWith(`${domain}/`)), domain).toBe(false);
     }
-    // And the three inside `todo` that are refused here rather than for ever.
-    for (const later of ['todo/add_item', 'todo/remove_item', 'todo/remove_completed_items']) {
-      expect(Object.values(HA_SERVICES)).not.toContain(later);
+    // Inside `todo`, the two deletes stay out; and dismissing a persistent
+    // notification waits for a WebSocket client (RFC 018 OQ9).
+    for (const later of ['todo/remove_item', 'todo/remove_completed_items', 'persistent_notification/dismiss']) {
+      expect(services).not.toContain(later);
     }
+  });
+
+  it('lets only the companion API add to a list', () => {
+    // RFC 018 §5.2 (MD10): the wall has no keyboard and never reaches this row.
+    const adders = Object.entries(HA_SERVICES).filter(([, row]) => row.service === 'todo/add_item');
+    expect(adders.map(([key, row]) => [key, row.reach])).toEqual([['todo.add', 'companion']]);
+  });
+});
+
+describe('buildCall: the only constructor', () => {
+  it('is the only place a call is registered, in the source', () => {
+    // The runtime check at the door is only as good as the registry behind it.
+    // A second `ISSUED.add(` — or the registry exported — would let something
+    // other than `buildCall` mint a call the door accepts.
+    const servicesFile = `${SERVER_SRC}/modules/homeassistant/services.ts`;
+    const lines = readFileSync(join(ROOT, servicesFile), 'utf8').split('\n');
+    const adds = lines
+      .map((text, index) => ({ text, line: index + 1 }))
+      .filter((row) => row.text.includes('ISSUED.add('));
+    expect(adds).toHaveLength(1);
+    expect(enclosingFunction(lines, adds[0]!.line)).toBe('buildCall');
+    for (const file of filesUnder(SERVER_SRC)) {
+      if (relative(ROOT, file) === servicesFile) continue;
+      expect(readFileSync(file, 'utf8'), relative(ROOT, file)).not.toContain('ISSUED');
+    }
+  });
+
+  it('accepts one request per control row, with exactly its row’s data and one entity', () => {
+    expect(CONTROL_KEYS).toHaveLength(17);
+    for (const key of CONTROL_KEYS) {
+      const built = buildCall(ELIGIBLE[key]);
+      expect(built.ok, key).toBe(true);
+      if (!built.ok) continue;
+      const row = HA_SERVICES[key];
+      expect(built.call.service).toBe(row.service);
+      expect(Object.keys(built.call.body)).toEqual(['entity_id', ...row.data]);
+      expect(typeof built.call.body['entity_id']).toBe('string');
+      expect(Object.isFrozen(built.call)).toBe(true);
+      expect(Object.isFrozen(built.call.body)).toBe(true);
+    }
+  });
+
+  it('refuses every control row aimed at anything rule 12 never permits', () => {
+    // The refusal matrix: every row, steered at every forbidden domain.
+    for (const key of CONTROL_KEYS) {
+      for (const entityId of NEVER) {
+        const built = buildCall({ ...ELIGIBLE[key], entityId });
+        expect(built.ok, `${key} → ${entityId}`).toBe(false);
+        if (!built.ok) expect(built.code).toBe('wrong-domain');
+      }
+    }
+  });
+
+  it('refuses a row aimed at another permitted domain', () => {
+    // A light row cannot switch a switch: the domain is the row's, not the caller's.
+    const built = buildCall({ ...ELIGIBLE['light.toggle'], entityId: 'switch.kettle' });
+    expect(built.ok).toBe(false);
+    if (!built.ok) expect(built.code).toBe('wrong-domain');
+  });
+
+  it('takes one entity id and nothing that names a set', () => {
+    for (const entityId of ['all', 'light.*', 'light.kitchen,lock.front_door', 'Light.Kitchen', 'light.', '.kitchen', 'light kitchen', '']) {
+      const built = buildCall({ ...ELIGIBLE['light.toggle'], entityId });
+      expect(built.ok, JSON.stringify(entityId)).toBe(false);
+    }
+  });
+
+  it('moves only covers that shade a room, and refuses one that does not say what it is', () => {
+    const cover = ELIGIBLE['cover.open'];
+    for (const deviceClass of COVER_CLASSES) {
+      expect(buildCall({ ...cover, attributes: { device_class: deviceClass, supported_features: 15 } }).ok, deviceClass).toBe(true);
+    }
+    for (const key of ['cover.open', 'cover.close', 'cover.stop', 'cover.position'] as const) {
+      for (const deviceClass of ['garage', 'gate', 'door', 'window', 'damper', undefined]) {
+        const built = buildCall({
+          ...ELIGIBLE[key],
+          attributes: { ...(deviceClass === undefined ? {} : { device_class: deviceClass }), supported_features: 15 },
+        });
+        expect(built.ok, `${key} ${deviceClass ?? 'unset'}`).toBe(false);
+        if (!built.ok) expect(built.code).toBe('not-eligible');
+      }
+    }
+  });
+
+  it('refuses a row whose feature the entity does not report', () => {
+    const unsupported: [ControlKey, Record<string, unknown>][] = [
+      ['light.brightness', { supported_color_modes: ['onoff'] }],
+      ['light.colour', { supported_color_modes: ['brightness', 'color_temp'] }],
+      ['light.colour_temp', { supported_color_modes: ['hs'] }],
+      ['light.colour_temp', { supported_color_modes: ['color_temp'] }],
+      ['fan.speed', { supported_features: 0 }],
+      ['cover.open', { device_class: 'blind', supported_features: 2 | 4 | 8 }],
+      ['cover.close', { device_class: 'blind', supported_features: 1 | 4 | 8 }],
+      ['cover.stop', { device_class: 'blind', supported_features: 1 | 2 | 4 }],
+      ['cover.position', { device_class: 'blind', supported_features: 1 | 2 | 8 }],
+      ['media_player.play_pause', { supported_features: 4 | 16 | 32 }],
+      ['media_player.next', { supported_features: MEDIA_ALL & ~32 }],
+      ['media_player.previous', { supported_features: MEDIA_ALL & ~16 }],
+      ['media_player.volume', { supported_features: MEDIA_ALL & ~4 }],
+    ];
+    for (const [key, attributes] of unsupported) {
+      const built = buildCall({ ...ELIGIBLE[key], attributes });
+      expect(built.ok, `${key} ${JSON.stringify(attributes)}`).toBe(false);
+      if (!built.ok) expect(built.code).toBe('not-eligible');
+    }
+  });
+
+  it('refuses a value out of bounds rather than clamping it', () => {
+    const cases: [ControlKey, unknown, boolean][] = [
+      ['light.brightness', 1, true],
+      ['light.brightness', 100, true],
+      ['light.brightness', 0, false],
+      ['light.brightness', 101, false],
+      ['light.brightness', 40.5, false],
+      ['light.brightness', '40', false],
+      ['light.brightness', undefined, false],
+      ['light.colour', [0, 0, 0], true],
+      ['light.colour', [255, 255, 255], true],
+      ['light.colour', [256, 0, 0], false],
+      ['light.colour', [-1, 0, 0], false],
+      ['light.colour', [255, 0], false],
+      ['light.colour_temp', 2000, true],
+      ['light.colour_temp', 6500, true],
+      ['light.colour_temp', 1999, false],
+      ['light.colour_temp', 6501, false],
+      ['fan.speed', 0, true],
+      ['fan.speed', 100, true],
+      ['fan.speed', 101, false],
+      ['cover.position', 0, true],
+      ['cover.position', 100, true],
+      ['cover.position', -1, false],
+      ['media_player.volume', 0, true],
+      ['media_player.volume', 100, true],
+      ['media_player.volume', 101, false],
+    ];
+    for (const [key, value, accepted] of cases) {
+      const built = buildCall({ ...ELIGIBLE[key], value: value as number });
+      expect(built.ok, `${key} ${JSON.stringify(value)}`).toBe(accepted);
+      if (!built.ok) expect(built.code).toBe('bad-value');
+    }
+  });
+
+  it('sends volume as Home Assistant’s 0.0–1.0, from the wall’s 0–100', () => {
+    const built = buildCall({ ...ELIGIBLE['media_player.volume'], value: 35 });
+    expect(built.ok && built.call.body).toEqual({ entity_id: 'media_player.kitchen', volume_level: 0.35 });
+  });
+
+  it('adds to a list only when the list allows it, and only text it can stand behind', () => {
+    const canCreate = { supported_features: 1 | 4 };
+    const add = (text: string, attributes: unknown = canCreate) =>
+      buildCall({ key: 'todo.add', entityId: 'todo.shopping', text, attributes });
+    const ok = add('  Milk  ');
+    expect(ok.ok && ok.call.body).toEqual({ entity_id: 'todo.shopping', item: 'Milk' });
+    expect(add('Milk', { supported_features: 4 }).ok).toBe(false);
+    expect(add('   ').ok).toBe(false);
+    expect(add('x'.repeat(256)).ok).toBe(false);
+    expect(add('x'.repeat(255)).ok).toBe(true);
+    expect(add('Milk\u0007').ok).toBe(false);
+  });
+
+  it('names a to-do item by its uid and both statuses on a read', () => {
+    const tick = buildCall({ key: 'todo.tick', entityId: 'todo.shopping', item: 'i-2', done: true });
+    expect(tick.ok && tick.call.body).toEqual({ entity_id: 'todo.shopping', item: 'i-2', status: 'completed' });
+    const read = buildCall({ key: 'todo.read', entityId: 'todo.shopping' });
+    expect(read.ok && read.call.body).toEqual({ entity_id: 'todo.shopping', status: ['needs_action', 'completed'] });
+    expect(buildCall({ key: 'todo.tick', entityId: 'light.kitchen', item: 'i-2', done: true }).ok).toBe(false);
   });
 });
 
@@ -294,50 +537,49 @@ describe('the runtime half: what was actually posted', () => {
     };
   }
 
-  it('reads a list, and every path it asked for is on the allowlist', async () => {
+  /** Build a call the test expects `buildCall` to accept. */
+  function built(request: CallRequest): HaCall {
+    const result = buildCall(request);
+    if (!result.ok) throw new Error(`buildCall refused ${request.key}: ${result.message}`);
+    return result.call;
+  }
+
+  const permitted = new Set(Object.values(HA_SERVICES).map((row) => `/api/services/${row.service}`));
+
+  it('reads a list, asking for its answer, and every path it asked for is on the allowlist', async () => {
     const { ha, connection } = await connected();
-    const result = await callService(
-      createFetcher(),
-      connection,
-      HA_SERVICES.read,
-      { entity_id: 'todo.shopping' },
-      { returnResponse: true },
-    );
+    const result = await callService(createFetcher(), connection, built({ key: 'todo.read', entityId: 'todo.shopping' }));
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     const answered = JSON.parse(result.body) as {
-      service_response: Record<string, { items: { uid: string; summary: string }[] }>;
+      service_response: Record<string, { items: { uid: string; summary: string; status: string }[] }>;
     };
-    /*
-     * Two of the three, not three: asked with no `status`, Home Assistant
-     * answers `needs_action` alone, and the fake honours that default. `i-3`
-     * is completed. It is why the module names both statuses on every read
-     * (`todo-lists.test.ts`) — a reader relying on the default could never draw
-     * a ticked item, and `showDone` would be a switch that does nothing.
-     */
-    expect(answered.service_response['todo.shopping']?.items.map((i) => i.uid)).toEqual([
-      'i-1',
-      'i-2',
-    ]);
+    // Both statuses, because the row names both: `i-3` is completed and comes
+    // back. A reader relying on Home Assistant's default would never see it.
+    expect(answered.service_response['todo.shopping']?.items.map((i) => i.uid)).toEqual(['i-1', 'i-2', 'i-3']);
 
     /*
-     * The assertion this file exists for, and it is stated as a subset rather
-     * than as an equality: what matters is that nothing left the list, not that
-     * everything on the list was used.
+     * The assertion this file exists for, stated as a subset rather than as an
+     * equality: what matters is that nothing left the list, not that
+     * everything on the list was used. And the read asked for its answer —
+     * the one 400 that used to be our fault rather than theirs cannot be
+     * built any more, because the row decides it.
      */
-    const permitted = new Set(Object.values(HA_SERVICES).map((s) => `/api/services/${s}`));
     expect(ha.posts.length).toBeGreaterThan(0);
-    for (const post of ha.posts) expect(permitted.has(post.path)).toBe(true);
+    for (const post of ha.posts) {
+      expect(permitted.has(post.path)).toBe(true);
+      expect(post.query).toBe('return_response');
+    }
   });
 
   it('writes one item, and still posts nowhere else', async () => {
     const { ha, connection } = await connected();
-    const result = await callService(createFetcher(), connection, HA_SERVICES.write, {
-      entity_id: 'todo.shopping',
-      item: 'i-2',
-      status: 'completed',
-    });
+    const result = await callService(
+      createFetcher(),
+      connection,
+      built({ key: 'todo.tick', entityId: 'todo.shopping', item: 'i-2', done: true }),
+    );
 
     expect(result.ok).toBe(true);
     // The uid is the identity, so the *second* Milk is the one that moved and
@@ -348,10 +590,49 @@ describe('the runtime half: what was actually posted', () => {
       'completed',
       'completed',
     ]);
-
-    const permitted = new Set(Object.values(HA_SERVICES).map((s) => `/api/services/${s}`));
     expect(ha.posts.map((p) => p.path)).toEqual(['/api/services/todo/update_item']);
+    expect(ha.posts[0]?.query).toBe('');
+  });
+
+  it('posts each control row exactly as its row says, and nothing else', async () => {
+    // Phase 1 has no caller for these, so this is the only place they are
+    // ever posted: one call per row, against a fake that refuses them all
+    // (it has no lights). What is asserted is what left, not what answered.
+    const { ha, connection } = await connected();
+    const fetcher = createFetcher();
+    for (const key of CONTROL_KEYS) {
+      await callService(fetcher, connection, built(ELIGIBLE[key]));
+    }
+    expect(ha.posts.map((post) => post.path)).toEqual(
+      CONTROL_KEYS.map((key) => `/api/services/${HA_SERVICES[key].service}`),
+    );
+    CONTROL_KEYS.forEach((key, index) => {
+      const body = JSON.parse(ha.posts[index]?.body ?? '{}') as Record<string, unknown>;
+      expect(Object.keys(body), key).toEqual(['entity_id', ...HA_SERVICES[key].data]);
+      expect(body['entity_id'], key).toBe(ELIGIBLE[key].entityId);
+      expect(ha.posts[index]?.query, key).toBe('');
+    });
     for (const post of ha.posts) expect(permitted.has(post.path)).toBe(true);
+  });
+
+  it('refuses at the door a call nobody built, and posts nothing', async () => {
+    // The type makes a hand-built call a compile error; this is the run-time
+    // half, which a cast cannot get round.
+    const { ha, connection } = await connected();
+    const forged = {
+      key: 'light.toggle',
+      service: 'lock/unlock',
+      body: { entity_id: 'lock.front_door' },
+      returnResponse: false,
+    } as unknown as HaCall;
+    const result = await callService(createFetcher(), connection, forged);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toContain('not a call Maverick Wall makes');
+    // And a copy of a real call is not that call.
+    const copy = { ...built(ELIGIBLE['light.toggle']) } as HaCall;
+    expect((await callService(createFetcher(), connection, copy)).ok).toBe(false);
+    expect(ha.posts).toEqual([]);
   });
 
   it('reaches no service call at all across the whole read path', async () => {
@@ -369,33 +650,16 @@ describe('the runtime half: what was actually posted', () => {
   });
 
   it('says what went wrong in the upstream’s own words', async () => {
-    // §7.4: the tick failing is fine, the tick failing silently is not. This is
-    // the whole reason `postJson` keeps a non-2xx body where `fetch` does not.
+    // RFC 012 §7.4: the tick failing is fine, the tick failing silently is not.
     const { connection } = await connected();
-    const result = await callService(createFetcher(), connection, HA_SERVICES.write, {
-      entity_id: 'todo.read_only',
-      item: 'r-1',
-      status: 'completed',
-    });
+    const result = await callService(
+      createFetcher(),
+      connection,
+      built({ key: 'todo.tick', entityId: 'todo.read_only', item: 'r-1', done: true }),
+    );
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.message).toContain('does not support this service');
-  });
-
-  it('names the one 400 that is our fault rather than theirs', async () => {
-    // A `get_items` without `?return_response` is the single failure on this
-    // path that means our request was malformed. Home Assistant answers a bare
-    // 400 and puts the diagnosis in the prose, so this is the one place in the
-    // client matched on wording.
-    const { connection } = await connected();
-    const result = await callService(createFetcher(), connection, HA_SERVICES.read, {
-      entity_id: 'todo.shopping',
-    });
-
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.message).toContain('not asked correctly');
-    expect(result.suggestion).toContain('fault in Maverick Wall');
   });
 });

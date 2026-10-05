@@ -49,9 +49,10 @@ export const SUPPORTED_DOMAINS = [
    * is exactly why the sentence above matters here: reading a state is a GET of
    * `/api/states`, which this module has always made, and hard rule 12 governs
    * service calls. Watching `lock.front_door` puts "Unlocked" on the wall; it
-   * gives the wall, or this process, no new way to change it. `HA_SERVICES`
-   * stays exactly its two to-do members, and `ha-write-boundary.test.ts` is
-   * what says so.
+   * gives the wall, or this process, no new way to change it. Being watched
+   * is not being controllable: what a wall may operate is RFC 018's table in
+   * `services.ts`, behind three opt-ins of its own, and it has no row for a
+   * lock at all — `ha-write-boundary.test.ts` is what says so.
    */
   'light',
   'switch',

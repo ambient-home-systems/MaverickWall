@@ -65,6 +65,30 @@ const RETIRED = [
   'no code in this application that writes',
 ];
 
+/**
+ * The sentences RFC 018 retired, verbatim, and why they are retired before
+ * anything they deny is built.
+ *
+ * Each was true of RFC 012's rule — "one write, and that is the whole list" —
+ * and stopped being true of the rule the day RFC 018 was accepted, even though
+ * phase 1 builds nothing a household can press. A sentence that says "ever"
+ * about what the rule now permits is a promise the next release breaks, so they
+ * go with the rule, and their replacements say "today" for the to-do tick and
+ * "never" only for what no row in `HA_SERVICES` can reach. Recorded verbatim in
+ * RFC 018 §11, which the premise check below reads.
+ */
+const RETIRED_BY_RFC_018 = [
+  'can tick one kind of box',
+  'the one thing this application will ever change',
+  'the only thing it will ever write back',
+  'the one thing it will ever change in home assistant',
+  'it can change exactly one thing in your house',
+  'absent from the code entirely',
+  'there is no code here that can do any of them',
+  'no code in this application that can do any of them',
+  'give away your indoor temperature and tick something off your shopping list',
+];
+
 async function adminHomeAssistantPage(): Promise<string> {
   const address = `10.9.0.${++nextAddress}`;
   const dataDir = mkdtempSync(join(tmpdir(), 'mw-claims-'));
@@ -133,7 +157,7 @@ describe('nothing still promises Home Assistant is read-only', () => {
     // It really is the page, not a redirect or an error shell.
     expect(html).toContain('Home Assistant');
 
-    for (const sentence of RETIRED) {
+    for (const sentence of [...RETIRED, ...RETIRED_BY_RFC_018]) {
       expect(html.toLowerCase(), `the served admin page still says "${sentence}"`).not.toContain(
         sentence,
       );
@@ -142,14 +166,14 @@ describe('nothing still promises Home Assistant is read-only', () => {
 
   it('not in the README', () => {
     const readme = readFileSync(join(ROOT, 'README.md'), 'utf8').toLowerCase();
-    for (const sentence of RETIRED) {
+    for (const sentence of [...RETIRED, ...RETIRED_BY_RFC_018]) {
       expect(readme, `README.md still says "${sentence}"`).not.toContain(sentence);
     }
   });
 
   it('not in the add-on documentation the supervisor renders', () => {
     const docs = readFileSync(join(ROOT, 'addon', 'maverick-wall', 'DOCS.md'), 'utf8').toLowerCase();
-    for (const sentence of RETIRED) {
+    for (const sentence of [...RETIRED, ...RETIRED_BY_RFC_018]) {
       expect(docs, `DOCS.md still says "${sentence}"`).not.toContain(sentence);
     }
   });
@@ -172,6 +196,8 @@ describe('nothing still promises Home Assistant is read-only', () => {
       'utf8',
     ).toLowerCase();
     for (const sentence of RETIRED) expect(rfc).toContain(sentence);
+    const rfc018 = readFileSync(join(ROOT, 'docs', 'rfc-018-wall-control.md'), 'utf8').toLowerCase();
+    for (const sentence of RETIRED_BY_RFC_018) expect(rfc018).toContain(sentence);
   });
 });
 
@@ -187,10 +213,13 @@ describe('and the page says what it can do instead', () => {
      * satisfies every assertion above and leaves that hole.
      */
     const html = await adminHomeAssistantPage();
-    expect(html).toContain(HA_SERVICES.write.replace('/', '.'));
+    expect(html).toContain(HA_SERVICES['todo.tick'].service.replace('/', '.'));
     expect(html).toContain('to-do list');
-    // And the refusals stay named, because "one write" without "and nothing
-    // else" is not a boundary a household can read.
-    expect(html).toContain('No switches, no scenes');
+    // What a later release may allow is named, so "today" is not a promise
+    // somebody reads as "for ever"; and the never-list stays named, because a
+    // permission without its limits is not a boundary a household can read.
+    expect(html).toContain('None of that is built yet');
+    expect(html).toContain('No locks, no alarms, no thermostats');
+    expect(html).toContain('garage, gate, door or window');
   });
 });
