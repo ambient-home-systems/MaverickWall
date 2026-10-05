@@ -33,6 +33,8 @@ export const PALETTE: readonly { readonly type: string; readonly label: string }
   { type: 'notes', label: 'Notes' },
   { type: 'todo', label: 'To-do' },
   { type: 'chores', label: 'Chores' },
+  // RFC 018 phase 5: the household's webhook buttons.
+  { type: 'buttons', label: 'Buttons' },
   { type: 'image', label: 'Image' },
   { type: 'external', label: 'Module' },
 ];
@@ -53,6 +55,7 @@ export const SWATCH: Readonly<Record<string, string>> = {
   notes: 'var(--muted)',
   todo: 'var(--night)',
   chores: 'var(--ok)',
+  buttons: 'var(--accent)',
   image: 'var(--ok)',
   external: 'var(--warn)',
 };

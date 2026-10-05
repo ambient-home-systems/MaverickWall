@@ -228,7 +228,9 @@ function start(): void {
    */
   const HOLD_MS = 600;
   const HOLD_NOTICE = 'Press and hold to run it.';
-  let hold: { widgetId: string; reading: string; timer: ReturnType<typeof setTimeout> } | undefined;
+  let hold:
+    | { widgetId: string; reading: string; action: string; timer: ReturnType<typeof setTimeout> }
+    | undefined;
   const holdSelector = (widgetId: string, reading: string): string =>
     `.fw[data-widget-id="${widgetId}"] [data-ha-hold][data-ha-act="${reading}"]`;
   let controlPanel: { widgetId: string; reading: string; touchedAt: number } | undefined;
@@ -1001,12 +1003,16 @@ function start(): void {
     hold = {
       widgetId,
       reading,
+      action: button.getAttribute('data-ha-action') ?? 'run',
       timer: setTimeout(() => {
         const held = hold;
         hold = undefined;
         if (held === undefined) return;
         root.querySelector(holdSelector(held.widgetId, held.reading))?.removeAttribute('data-holding');
-        void actOnReading(held.widgetId, held.reading, 'run');
+        // A scene or a script runs through `/d/ha/act`; a webhook button is
+        // pressed through its own door (RFC 018 phase 5). One hold for both.
+        if (held.action === 'press') void pressButton(held.widgetId, held.reading);
+        else void actOnReading(held.widgetId, held.reading, 'run');
       }, HOLD_MS),
     };
   };
@@ -1038,6 +1044,30 @@ function start(): void {
   root.addEventListener('keyup', (event: KeyboardEvent) => {
     if (event.key === 'Enter' || event.key === ' ') endHold(true);
   });
+
+  /**
+   * Pressing a webhook button (RFC 018 phase 5): `actOnReading`'s shape at
+   * `/d/buttons/press`. The wall sends the button's id and the widget it was
+   * pressed in; the address is the server's and never leaves it.
+   */
+  const pressButton = async (widgetId: string, button: string): Promise<void> => {
+    let failure: string | undefined;
+    try {
+      const response = await fetch('/d/buttons/press', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        credentials: 'same-origin',
+        body: new URLSearchParams({ button, widget: widgetId }).toString(),
+      });
+      if (!response.ok) failure = await tickMessage(response);
+    } catch {
+      failure = TICK_FAILED;
+    }
+    if (failure !== undefined) {
+      houseNotices.set(widgetId, { text: failure, until: Date.now() + HOUSE_NOTICE_MS });
+      draw();
+    }
+  };
 
   root.addEventListener('click', (event: Event) => {
     const target = event.target as Element | null;

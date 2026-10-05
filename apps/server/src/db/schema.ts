@@ -1988,6 +1988,37 @@ export const haWallActions = sqliteTable(
 );
 
 /**
+ * The webhook buttons a household has set up (RFC 018 §9, phase 5).
+ *
+ * A webhook button POSTs to an address the household typed in the admin and
+ * nowhere else — never on the wall, which sends the row's id and nothing more.
+ * The address is **sealed** with the keyring (`webhook-url`), because a webhook
+ * address is usually its own secret: a Home Assistant webhook id is the whole
+ * credential, and anybody holding it can fire the automation behind it. An
+ * optional header carries a second secret the same way (`webhook-secret`); its
+ * *name* is not a secret and is stored in clear so the admin can say which
+ * header is set without opening anything.
+ *
+ * The network opt-ins are per target, as they are per calendar: public https
+ * by default, the household's own network or plain http only when this target
+ * says so. `pressable` is the second of RFC 018's three switches for a webhook
+ * — "Can be pressed from walls" — and is off when a target is made.
+ */
+export const webhookTargets = sqliteTable('webhook_targets', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  urlEncrypted: text('url_encrypted').notNull(),
+  headerName: text('header_name'),
+  headerValueEncrypted: text('header_value_encrypted'),
+  allowLan: integer('allow_lan', { mode: 'boolean' }).notNull().default(false),
+  allowHttp: integer('allow_http', { mode: 'boolean' }).notNull().default(false),
+  pressable: integer('pressable', { mode: 'boolean' }).notNull().default(false),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: integer('created_at', { mode: 'number' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
+});
+
+/**
  * The Home Assistant to-do lists a household has chosen to show (RFC 012).
  *
  * The entity id is the primary key and it is stored **in clear**, for the

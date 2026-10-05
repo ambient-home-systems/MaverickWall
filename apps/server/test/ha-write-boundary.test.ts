@@ -208,13 +208,16 @@ describe('the source scan: one door, and it is this one', () => {
 });
 
 describe('the other way a POST could leave', () => {
-  it('has no call site at all outside the JSON adapter', () => {
+  it('has one call site outside the JSON adapter — a webhook button, with no body', () => {
     /*
      * `fetch` grew a method in RFC 013 §6.3 and a POST through it would bypass
-     * `HA_SERVICES` completely. Nothing needs one — CalDAV speaks `PROPFIND`
-     * and `REPORT` — so the honest guard is zero rather than an allowlist, and
-     * a future caller that genuinely wants one has to change this line and say
-     * why in the same commit.
+     * `HA_SERVICES` completely. For two releases nothing needed one and the
+     * guard was zero. RFC 018 §9 (phase 5) is the one caller that does, and
+     * said why in the commit that changed this line: a **webhook button** is
+     * not a Home Assistant service call, so it does not go through the table —
+     * it POSTs to an address the household set in the admin, behind the same
+     * three switches. It is held here to exactly one file and to **no body**,
+     * so a second caller, or a body on this one, fails this line again.
      *
      * The adapter's own `POST: 'refuse'` in `REDIRECT_POLICY` and its
      * `method: 'POST'` when it builds `postJson`'s wire request are the
@@ -224,11 +227,17 @@ describe('the other way a POST could leave', () => {
      */
     const posting: string[] = [];
     let calls = 0;
+    let webhook: string | undefined;
     for (const file of filesUnder(SERVER_SRC)) {
       const name = relative(ROOT, file);
       for (const call of fetchCallArguments(readFileSync(file, 'utf8'))) {
         calls++;
-        if (call.includes(POST_METHOD)) posting.push(`${name}  ${call.slice(0, 120)}`);
+        if (!call.includes(POST_METHOD)) continue;
+        if (name === join('apps', 'server', 'src', 'modules', 'webhooks', 'index.ts') && webhook === undefined) {
+          webhook = call;
+          continue;
+        }
+        posting.push(`${name}  ${call.slice(0, 120)}`);
       }
     }
 
@@ -236,6 +245,9 @@ describe('the other way a POST could leave', () => {
       posting,
       `a .fetch() asking for POST — a POST that never reads HA_SERVICES:\n${posting.join('\n')}`,
     ).toEqual([]);
+    // The webhook press is there, and carries nothing a household typed.
+    expect(webhook, 'the webhook button POST moved or vanished').toBeDefined();
+    expect(webhook).not.toMatch(/\bbody\s*:/);
 
     // And the scan is looking at something. A brace matcher that silently found
     // no calls would pass for ever, which is this project's own complaint about

@@ -1,13 +1,13 @@
 # RFC 018 — Wall control, and a narrow amendment to rule 12
 
-Status: **accepted 2026-10-05 (MD13); phases 1–4 built — lights, switches,
-fans and blinds operate from a wall, and scenes and scripts run by
-press-and-hold.** Hard rule 12 in `CLAUDE.md` now reads as §3.1 below, with its
+Status: **accepted 2026-10-05 (MD13); phases 1–5 built — lights, switches,
+fans and blinds operate from a wall, scenes and scripts run by press-and-hold,
+and webhook buttons call addresses set in the admin.** Hard rule 12 in `CLAUDE.md` now reads as §3.1 below, with its
 last clause qualified for scripts (§3.3). Phase 1 (§12) landed the table,
 `buildCall`, the door's issued check and the claims; phase 2 the route, all
 three switches, the button, the history and the browser test; phase 3
 brightness, colour, white, fan speed, a blind's movement and the panel; phase 4
-scenes and scripts. Phase 5 is next. Every open question was
+scenes and scripts; phase 5 webhook buttons. Phase 6 is next. Every open question was
 decided by the owner the same day: the five items in §5.2 are folded into §5
 and §5.1, and OQ6–OQ10 are settled in §14 ·
 Owner: — · First drafted 2026-10-05 · Relates to
@@ -77,12 +77,14 @@ the network, can call it.
 > `input_button`, `valve`, `siren`, `camera`, `automation`, `update`, `notify`,
 > `hassio`, or a generic `homeassistant.*` service — nor a **scene** that sets
 > any of them, which is checked member by member when it is marked and again at
-> every press. A **script** cannot be checked that way, so a script the
-> household allows can do whatever it was written to do, and the Readings screen
-> says so before they allow it. The display still receives handles this server
-> minted, never an entity id and never the token — so a compromised wall tablet
-> can turn off the kitchen light and cannot open the garage, unless a script the
-> household allowed on that wall does.
+> every press. A **script** cannot be checked that way, and nor can a **webhook
+> button**, which calls whatever is behind its address — a Home Assistant
+> webhook is a script by another name — so either, once the household allows
+> it, can do whatever it was written to do, and the admin says so before they
+> allow it. The display still receives handles this server minted, never an
+> entity id, an address or the token — so a compromised wall tablet can turn
+> off the kitchen light and cannot open the garage, unless a script or a webhook
+> button the household allowed on that wall does.
 
 ### 3.2 What changes for the blast radius
 
@@ -456,7 +458,28 @@ controls, and "never" only of what no row in the table can reach.
    (the test stopped at the first run and could not see a second) and Enter
    clicking at once (a `preventDefault` the click guard already made
    redundant, now deleted).
-5. **Webhook buttons.**
+5. **Webhook buttons** — **built.** Two decisions the RFC left open were the
+   owner's (2026-10-05): a webhook button is drawn by **a new Buttons widget**,
+   not inside the Home Assistant widget, so a household with no Home Assistant
+   can still have one; and **all three switches apply** — the wall's, the
+   button's "Can be pressed from walls", and the widget's Tap to operate, as
+   §9 says. Targets live on a new **Buttons** admin screen (`webhook_targets`,
+   migration `0058`); the address is sealed (`webhook-url`), as is an optional
+   header's value (`webhook-secret`), and only the host is shown again. A press
+   is `POST /d/buttons/press` with the button's id and widget, and sends an
+   empty POST through the fetcher with the target's own network opt-ins (its
+   LAN switch covers this machine too, as the Home Assistant connection's
+   does), never following a redirect, sharing the wall's twenty presses a
+   minute. Held for 600 ms like a scene. History shares `ha_wall_actions` as
+   `webhook:<id>`, listed on Buttons. A path under `/api/webhook/` carries the
+   script warning, and the "never" claims — Rule 12's last clause included —
+   now say "unless a script or a webhook button you allowed does", the §3.3
+   decision carried to the thing §9 calls a script by another name. 19
+   mutations checked, all red (one of them a body on the webhook POST, which
+   `ha-write-boundary.test.ts` now allows exactly once and bodiless); two were green and were dead code: the press
+   modules' own copy of the wall's switch, which the route checks first (phase
+   2's `operate` had the same, also removed), and a "no panel" branch the
+   module registry never reaches.
 6. **Media transport**: play/pause, next, previous and volume, for the
    now-playing card (M6.9).
 

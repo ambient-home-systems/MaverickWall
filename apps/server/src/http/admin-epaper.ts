@@ -30,6 +30,7 @@ import {
   pairingSecret,
   omissionFacts,
   todoListChoices,
+  buttonChoices,
   widgetsNotDrawn,
   type AdminDeps,
 } from './admin.js';
@@ -1275,6 +1276,7 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
       // A panel draws a list the way a wall does (`drawTodo`), so the picker
       // is real here too.
       todoLists: todoListChoices(deps.db),
+      buttons: buttonChoices(deps.db),
       // The panel omits the same widgets the wall does, so it says the same
       // thing about them — per box, with the facts to keep it current.
       notDrawn: widgetsNotDrawn(deps.db, [

@@ -1420,6 +1420,45 @@ function renderHouseTiles(
   return grid;
 }
 
+/**
+ * A Buttons widget (RFC 018 phase 5): the household's webhook buttons, each a
+ * card with its name.
+ *
+ * Which buttons is the widget's `buttons` list, by id; absent or empty is all
+ * of them, the Home Assistant widget's rule. A button is a **button** only
+ * where RFC 018's three switches all say so — the wall's, the button's own
+ * "Can be pressed from walls", and this widget's Tap to operate — and then it
+ * is pressed by holding it, like a scene, because pressing again cannot undo
+ * whatever it called. Otherwise it is a name on a card, which is what an
+ * e-paper panel draws too. The address is never here: the model has none.
+ */
+function renderButtonsWidget(model: DisplayModel, config: unknown, widgetId = ''): HTMLElement {
+  const c = widgetConfig(config);
+  const chosen = Array.isArray(c['buttons']) ? (c['buttons'] as unknown[]).filter((id) => typeof id === 'string') : [];
+  const buttons = chosen.length === 0 ? model.buttons : model.buttons.filter((one) => chosen.includes(one.key));
+  if (buttons.length === 0) return el('div', 'cd-empty', 'Add a button on the Buttons screen.');
+  const acts = model.allowControl && c['tapAction'] === 'act';
+
+  const grid = el('section', 'bt');
+  const notice = model.houseNotices[widgetId];
+  if (notice !== undefined) grid.appendChild(houseNoticeNode(notice, 'bt-note'));
+  for (const button of buttons) {
+    if (!acts || !button.pressable) {
+      grid.appendChild(el('div', 'bt-button', button.label));
+      continue;
+    }
+    const node = el('button', 'bt-button bt-act', button.label);
+    node.setAttribute('type', 'button');
+    node.setAttribute('data-ha-act', button.key);
+    node.setAttribute('data-ha-action', 'press');
+    node.setAttribute('data-ha-hold', '');
+    node.setAttribute('aria-description', 'Press and hold to run');
+    node.setAttribute('title', 'Press and hold to run');
+    grid.appendChild(node);
+  }
+  return grid;
+}
+
 /* --------------------------------------------------------------- NEXT ---- */
 
 function renderDayRow(day: DayModel, showWeather = false, showShifts = true, showLocations = false): HTMLElement {
@@ -2333,6 +2372,8 @@ export function renderWidget(
       return renderNotesWidget(config);
     case 'todo':
       return renderTodoWidget(model, config, widgetId);
+    case 'buttons':
+      return renderButtonsWidget(model, config, widgetId);
     case 'chores':
       return renderChoresWidget(model, config);
     case 'image':
@@ -3090,6 +3131,8 @@ const WIDGET_PRIMARY: Readonly<Record<string, { readonly cls: string; readonly h
   notes: { cls: 'nt-line', host: '.nt' },
   todo: { cls: 'td-text', host: '.td' },
   chores: { cls: 'ch-name', host: '.ch, .ch-people' },
+  // A button is its name (RFC 018 phase 5).
+  buttons: { cls: 'bt-button', host: '.bt' },
 };
 
 /**
@@ -3838,7 +3881,7 @@ function listGroups(body: HTMLElement): readonly { readonly items: HTMLElement[]
       items: [...column.querySelectorAll('.ch-row')] as HTMLElement[],
     }));
   }
-  for (const selector of ['.ch-day', '.ch-row', '.td-row', '.nt-line, .nt-gap']) {
+  for (const selector of ['.ch-day', '.ch-row', '.td-row', '.nt-line, .nt-gap', '.bt-button']) {
     const found = [...body.querySelectorAll(selector)] as HTMLElement[];
     if (found.length > 0) return [{ items: found }];
   }

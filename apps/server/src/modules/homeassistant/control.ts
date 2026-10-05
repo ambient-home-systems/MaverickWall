@@ -27,7 +27,9 @@ import { watchedReadingChoices } from './store.js';
  * **The checks run in RFC 018's order, cheapest first**, and the order decides
  * which sentence a household reads:
  *
- *  1. the wall may operate things at all (`screens.allow_control`);
+ *  1. the wall may operate things at all (`screens.allow_control`) — asked
+ *     by the route, before the body is read, so a wall with the switch off
+ *     reads one sentence whatever it posted;
  *  2. the reading exists — the handle resolves to a watched entity;
  *  3. the household marked it controllable on the Readings screen;
  *  4. the widget the press came from is on this wall, set to act, and shows
@@ -95,8 +97,8 @@ export interface OperateContext {
 }
 
 export interface OperateInput {
+  /** A screen whose `allow_control` the route has already checked. */
   readonly screenId: string;
-  readonly allowControl: boolean;
   /** The reading's handle, as the wall received it. */
   readonly reading: string;
   /** The widget the press landed in. */
@@ -116,7 +118,6 @@ export type OperateResult =
       readonly message: string;
     };
 
-const NOT_ALLOWED = 'This wall cannot operate things in the house.';
 const NOT_HERE = 'That is not on this wall any more.';
 const NOT_CONTROLLABLE = "That can't be operated from a wall.";
 const NOT_ANY_MORE = "That can't be operated from a wall any more.";
@@ -134,6 +135,29 @@ const inFlight = new Set<string>();
 export function resetOperateLimits(): void {
   recent.clear();
   inFlight.clear();
+}
+
+/**
+ * Take one press from a wall's budget, or say it is spent (RFC 018 OQ7):
+ * twenty a minute per wall, and one in flight per thing pressed. Shared by
+ * every kind of press — a light, a scene, a webhook — so a wall cannot spend
+ * twenty on the lights and twenty more on a webhook. `release` must be called
+ * when the press is answered.
+ */
+export function takePress(screenId: string, key: string, now: number): boolean {
+  const window = (recent.get(screenId) ?? []).filter((at) => now - at < 60_000);
+  if (window.length >= PRESSES_PER_MINUTE || inFlight.has(key)) {
+    recent.set(screenId, window);
+    return false;
+  }
+  window.push(now);
+  recent.set(screenId, window);
+  inFlight.add(key);
+  return true;
+}
+
+export function releasePress(key: string): void {
+  inFlight.delete(key);
 }
 
 function refused(
@@ -303,10 +327,13 @@ export function readWallActions(db: SqliteDatabase, now: number, limit = 50): Wa
     .prepare(
       `SELECT a.at, a.action, a.ok, a.message,
               COALESCE(s.name, 'A wall that has been removed') AS wall,
-              COALESCE(e.label, e.friendly_name, a.entity_id) AS reading
+              COALESCE(e.label, e.friendly_name, w.name, a.entity_id) AS reading
          FROM ha_wall_actions a
          LEFT JOIN screens s ON s.id = a.screen_id
          LEFT JOIN ha_entity_cache e ON e.entity_id = a.entity_id
+         -- A webhook button's press is recorded as \`webhook:<id>\` (RFC 018
+         -- phase 5) and named by the button's own name, like a reading by its label.
+         LEFT JOIN webhook_targets w ON a.entity_id = 'webhook:' || w.id
         WHERE a.at >= ?
         ORDER BY a.at DESC, a.id DESC
         LIMIT ?`,
@@ -329,8 +356,8 @@ export function readWallActions(db: SqliteDatabase, now: number, limit = 50): Wa
 export async function operate(context: OperateContext, input: OperateInput): Promise<OperateResult> {
   const { db } = context;
 
-  // 1. The wall's own switch.
-  if (!input.allowControl) return refused(403, 'not-allowed', NOT_ALLOWED);
+  // 1, the wall's own switch, is the route's (`/d/ha/act`): it is asked before
+  // the body is read. A second copy here could never fire — a mutation said so.
 
   // 2. The reading, by its handle. Never an entity id from the wall.
   const candidates = db
@@ -355,15 +382,7 @@ export async function operate(context: OperateContext, input: OperateInput): Pro
   if (key === undefined) return refused(400, 'bad-action', NOT_CONTROLLABLE);
 
   // 6. The rate.
-  const window = (recent.get(input.screenId) ?? []).filter((at) => context.now - at < 60_000);
-  if (window.length >= PRESSES_PER_MINUTE || inFlight.has(entityId)) {
-    recent.set(input.screenId, window);
-    return refused(429, 'too-many', TOO_MANY);
-  }
-  window.push(context.now);
-  recent.set(input.screenId, window);
-
-  inFlight.add(entityId);
+  if (!takePress(input.screenId, entityId, context.now)) return refused(429, 'too-many', TOO_MANY);
   try {
     const resolved = resolveConnection(db, context.keyring);
     if (!resolved.ok) return refused(502, 'upstream', resolved.message);
@@ -429,6 +448,6 @@ export async function operate(context: OperateContext, input: OperateInput): Pro
     if (after.ok) writeThrough(db, after.body, context.now);
     return { ok: true };
   } finally {
-    inFlight.delete(entityId);
+    releasePress(entityId);
   }
 }

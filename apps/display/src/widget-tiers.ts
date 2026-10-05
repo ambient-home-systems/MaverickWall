@@ -864,6 +864,12 @@ export const WIDGET_TIERS: Readonly<Record<string, readonly WidgetTier[]>> = {
   notes: NOTES_TIERS,
   todo: TODO_TIERS,
   chores: CHORE_TIERS,
+  /*
+   * A Buttons widget (RFC 018 phase 5) is a list of names, each one line of
+   * the event role, which is the to-do list's shape exactly — so it reads the
+   * to-do list's table rather than a copy of it that could drift.
+   */
+  buttons: TODO_TIERS,
 };
 
 /**

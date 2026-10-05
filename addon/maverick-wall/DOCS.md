@@ -91,8 +91,9 @@ It can never unlock a door, disarm an alarm, change a thermostat, or open a
 garage, gate, door or window. Those are not in its frozen table of permitted
 actions, and a test holds the code to that table. A scene that sets any of them
 is refused too, checked when you allow it and again at every press. A script
-cannot be checked that way: one you allow can do whatever it was written to do,
-and the Readings screen says so before you allow it.
+cannot be checked that way, and nor can a webhook button, which calls whatever
+is behind its address: one you allow can do whatever it was written to do, and
+the admin says so before you allow it.
 
 Even the tick is off until you ask for it, wall by wall. Adding a list shows it
 everywhere you have put a To-do widget; turning on **Allow ticking to-do items
@@ -106,5 +107,6 @@ The wall itself receives resolved values — "19.4 °C", "Open" — never an ent
 id and never a way to ask Home Assistant a question of its own. If a tablet in
 your hallway is ever compromised, the worst it can do is show somebody your
 indoor temperature, tick an item off your shopping list and operate the
-lights, fans and blinds and run the scenes and scripts you allowed it to — and
-it can never open your garage, unless a script you allowed does.
+lights, fans and blinds, run the scenes and scripts and press the buttons you
+allowed it to — and it can never open your garage, unless a script or a webhook
+button you allowed does.

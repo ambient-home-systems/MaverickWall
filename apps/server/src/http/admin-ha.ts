@@ -1654,8 +1654,9 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       `<li>No locks, no alarms, no thermostats, and no garage, gate, door or window ` +
       `covers — ever. They are not in the frozen table of actions this application ` +
       `may take, and a test holds the code to that table. A scene that sets any of ` +
-      `them is refused too. A script cannot be checked that way: one you allow can ` +
-      `do whatever it was written to do.</li>` +
+      `them is refused too. A script cannot be checked that way, and nor can a ` +
+      `webhook button on Buttons: one you allow can do whatever it was written to ` +
+      `do.</li>` +
       `<li>The wall receives <strong>resolved values</strong> — “19.4 °C”, “Closed”. ` +
       `It never receives your token, an entity name, or any way to ask Home ` +
       `Assistant a question of its own.</li>` +
@@ -1666,9 +1667,9 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       `your home and cannot be limited to reading. That is why the limit is on this ` +
       `side: if a wall in your hallway were ever compromised, the worst it could do ` +
       `is show somebody your indoor temperature, tick an item off your shopping ` +
-      `list, and operate the lights, fans and blinds and run the scenes and scripts ` +
-      `you allowed it to — and it could never open your garage, unless a script you ` +
-      `allowed does.</p>`,
+      `list, and operate the lights, fans and blinds, run the scenes and scripts and ` +
+      `press the buttons you allowed it to — and it could never open your garage, ` +
+      `unless a script or a webhook button you allowed does.</p>`,
     );
   }
 
@@ -1957,7 +1958,8 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
    * this on never sees the heading.
    */
   function wallPresses(anyControllable: boolean): string {
-    const presses = readWallActions(deps.db, now());
+    // A webhook button's presses are the Buttons screen's to list.
+    const presses = readWallActions(deps.db, now()).filter((press) => press.action !== 'press');
     if (presses.length === 0 && !anyControllable) return '';
     return section(
       'Recent presses from walls',

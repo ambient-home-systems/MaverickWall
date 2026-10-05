@@ -48,6 +48,7 @@ export const WIDGET_VIEWS: Readonly<Record<string, readonly WidgetView[]>> = {
   countdown: [{ value: '', label: 'Days remaining' }],
   notes: [{ value: '', label: 'Note' }],
   todo: [{ value: '', label: 'Checklist' }],
+  buttons: [{ value: '', label: 'Buttons' }],
   /*
    * Chores. The default is stored as an *absence*, like every other type's, and
    * both renderers have to read it that way — the wall's `renderChoresWidget`

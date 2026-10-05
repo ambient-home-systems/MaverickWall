@@ -659,6 +659,8 @@ import { registerAlertRoutes } from './admin-alerts.js';
 import { registerModuleRoutes } from './admin-modules.js';
 import { registerShiftTypeRoutes } from './admin-shifts.js';
 import { registerChoreRoutes } from './admin-chores.js';
+import { registerButtonRoutes } from './admin-buttons.js';
+import { readWebhookTargets } from '../modules/webhooks/index.js';
 import { registerThemeRoutes } from './admin-themes.js';
 import { registerEpaperRoutes } from './admin-epaper.js';
 import { displaysPage, registerWallsRoutes } from './admin-walls.js';
@@ -1155,6 +1157,8 @@ function whyNotDrawn(db: SqliteDatabase, type: string): string {
       // never left out — so the sentence is about that list, and it names the
       // page the list is chosen on and the other way out.
       return 'Pick a to-do list that is still on Home Assistant, or clear it to type the items here.';
+    case 'buttons':
+      return 'Add a button on Buttons and this appears.';
     default:
       return 'Nothing is set up for this yet, so it is left out.';
   }
@@ -1225,6 +1229,14 @@ export function todoListChoices(db: SqliteDatabase): { id: string; name: string;
 }
 
 /**
+ * The household's webhook buttons, for the editor's picker (RFC 018 phase 5):
+ * the id the widget stores and the name the household gave. Never an address.
+ */
+export function buttonChoices(db: SqliteDatabase): { id: string; name: string }[] {
+  return readWebhookTargets(db).map((target) => ({ id: target.id, name: target.name }));
+}
+
+/**
  * The layout editor mount: the shell and the current layout as JSON; a
  * first-party module makes it interactive. Same-origin, ships in the image
  * (rule three); the src and its fetches are relative so the single `<base>`
@@ -1258,6 +1270,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   registerModuleRoutes(app, deps);
   registerShiftTypeRoutes(app, deps);
   registerChoreRoutes(app, deps);
+  registerButtonRoutes(app, deps);
   registerThemeRoutes(app, deps);
 
   /**
@@ -6071,6 +6084,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // The watched Home Assistant to-do lists, for the To-do widget's picker
       // (RFC 012). Empty when there are none, and the picker says so.
       todoLists: todoListChoices(deps.db),
+      buttons: buttonChoices(deps.db),
       // The bundled faces a widget's style lane may name (RFC 014 §4.1) — the
       // server's allowlist, so the inspector cannot offer a face the schema
       // would refuse.

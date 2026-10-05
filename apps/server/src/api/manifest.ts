@@ -79,6 +79,9 @@ export const WIDGET_TYPES = [
   'chores',
   'countdown',
   'image',
+  // The household's webhook buttons (RFC 018 phase 5): names on cards, and
+  // pressed by a hold where all three of RFC 018's switches say so.
+  'buttons',
   // A panel from a registered third-party module (docs/rfc-001-module-framework.md).
   // Still first-party by the rule that matters: the wall draws sanitised strings
   // through renderGenericPanel, never anything the module ships.
@@ -120,6 +123,9 @@ export const WIDGET_MODULE: Readonly<Record<string, string>> = {
    * `todo: 'todo'` before it was made to pass (RFC 012 §6.2).
    */
   todo: 'todo',
+  // Left out with nothing behind it: a Buttons widget on a household with no
+  // button set up is a box with nothing to say (RFC 018 phase 5).
+  buttons: 'buttons',
 };
 
 /**

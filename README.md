@@ -178,9 +178,9 @@ be limited to reading, so the limit lives on this side instead:
   a garage, gate, door or window. Those are not in the frozen table of actions
   this application may take, and a test asserts nothing leaves that table.
   A scene that sets any of them is refused too — checked when you allow it and
-  again at every press. **A script cannot be checked that way**: one you allow
-  can do whatever it was written to do, and the Readings screen says so before
-  you allow it.
+  again at every press. **A script cannot be checked that way**, and nor can a
+  webhook button, which calls whatever is behind its address: one you allow can
+  do whatever it was written to do, and the admin says so before you allow it.
 - Your wall receives **resolved values** — "19.4 °C", "Open". Never the token,
   never an entity name, and never an endpoint it could ask its own questions
   through. There is a test asserting exactly that.
@@ -189,8 +189,9 @@ be limited to reading, so the limit lives on this side instead:
 
 If a tablet in your hallway is ever compromised, the worst it can do is show
 somebody your indoor temperature, tick an item off your shopping list, and
-operate the lights, fans and blinds and run the scenes and scripts you allowed
-it to. It can never open your garage, unless a script you allowed does.
+operate the lights, fans and blinds, run the scenes and scripts and press the
+buttons you allowed it to. It can never open your garage, unless a script or a
+webhook button you allowed does.
 
 ## Weather alerts
 

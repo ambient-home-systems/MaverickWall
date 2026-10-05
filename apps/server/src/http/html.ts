@@ -3186,6 +3186,9 @@ const GROUPS: readonly NavGroup[] = [
     items: [
       { key: 'alerts', label: 'Weather', href: 'admin/alerts', icon: 'alerts' },
       { key: 'homeassistant', label: 'Home Assistant', href: 'admin/home-assistant', icon: 'homeassistant' },
+      // Webhook buttons (RFC 018 phase 5): an integration with anything that
+      // answers a POST, which is why it is not a corner of Home Assistant.
+      { key: 'buttons', label: 'Buttons', href: 'admin/buttons', icon: 'buttons' },
       // Store is last deliberately: navBar attaches installed modules to
       // whichever group's last item has key 'modules', in front of it — so
       // the group reads as what is installed, then where to get more.
