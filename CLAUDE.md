@@ -43,19 +43,23 @@ Violating any of these is a failed task.
     default credentials, in-app rate limiting.
 11. Assume you can never reach the user's machine. Backups trivial, errors
     self-diagnosable.
-12. **Home Assistant writes are confined to list data the household
-    authored.** The one permitted *write* is `todo.update_item`, and its whole
-    effect is to set an item's status on a to-do list the household explicitly
-    added. The only other service call permitted at all is the read it needs,
-    `todo.get_items`. Nothing else — no `light`, `switch`, `cover`, `lock`,
-    `alarm_control_panel`, `climate`, `scene`, `script`, `automation` or
-    `camera`, and no `todo.add_item`, `todo.remove_item` or
-    `todo.remove_completed_items` until one of them is argued for on its own
-    merits (RFC 012). The allowlist is a frozen constant of exactly those two
-    and a test asserts no outbound request to Home Assistant leaves it. The
-    display still receives resolved values and handles this server minted,
-    never an entity id and never the token — so a compromised wall tablet can
-    tick an item off a shopping list and cannot unlock a door.
+12. **Home Assistant writes are confined to what the household picked, through
+    one door.** *(Amended 2026-10-05 by `docs/rfc-018-wall-control.md`, accepted
+    as decision MD13; until its phase 1 lands, the code still holds RFC 012's
+    two-service allowlist.)* Three kinds of write are permitted.
+    `todo.update_item` sets an item's status on a to-do list the household added
+    (RFC 012). `todo.add_item` adds an item to such a list, from the companion
+    API and never from a wall. And a wall may operate an entity the household
+    marked controllable, on a wall they allowed, from a widget they set to act,
+    using only the verbs in RFC 018 §5. The allowlist is a frozen table and a
+    test asserts no outbound request to Home Assistant leaves it. **Never**
+    `lock`, `alarm_control_panel`, a cover whose device class is `garage`,
+    `gate`, `door`, `window` or `damper` or is unset, `input_boolean`,
+    `climate`, `button`, `input_button`, `valve`, `siren`, `camera`,
+    `automation`, `update`, `notify`, `hassio`, or a generic
+    `homeassistant.*` service. The display still receives handles this server
+    minted, never an entity id and never the token — so a compromised wall
+    tablet can turn off the kitchen light and cannot open the garage.
 
 ---
 
@@ -469,8 +473,10 @@ were rewritten before any code depended on the change.
   those are bundled emoji artwork; drawn one-bit motifs for e-paper are deferred.
   The drawn keys — thirty-four since P5.3 added five for the read-only Home
   Assistant domains — are still the whole of what a panel can draw.
-- **D4** — a Home Assistant tile-card look is adopted. Hard rule 12 is
-  unchanged: a tile shows state and controls nothing.
+- **D4** — a Home Assistant tile-card look is adopted. Hard rule 12 was
+  unchanged by it: a tile showed state and controlled nothing. RFC 018
+  (accepted 2026-10-05) later amended the rule so a tile may act, behind three
+  opt-ins that are all off by default.
 - **D5** — the Store's Countdown entry is kept and renamed.
 - **D6** — emoji are permitted on browser walls, as bundled artwork drawn as an
   `<img>` rather than a code point for the device's font. E-paper keeps the drawn
@@ -492,6 +498,32 @@ the bundled Twemoji artwork ships (see below). S12 still needs to rewrite
 shadow token under `builtin-themes-parity.test.ts`. A rule that permits more
 than its test does is the right way round for a few releases; the other way
 round is a rule nothing enforces.
+
+**On 2026-10-05 the owner reviewed Magic Frame against this product and took
+thirteen more decisions (MD1–MD13), settling every question the review raised.
+One of them changes a rule; one is still a proposal.** The review, the decisions
+and the work they imply are `docs/plan-2026-10-magic-frame-parity.md`, with the
+sandbox design in `docs/rfc-017-sandboxed-module-code.md`. Both items are worth
+knowing before reading either rule as settled or as obsolete:
+
+- **Hard Rule 12 — amended (MD13).** `docs/rfc-018-wall-control.md` was
+  accepted, and the rule above now reads as its §3.1. It lets a wall toggle
+  lights, switches and fans, set brightness, colour, position and fan speed,
+  control media playback, and press scene, script and webhook buttons, behind
+  three opt-ins that are all off by default; and it lets the companion API,
+  never a wall, add to a household's to-do list. Locks, alarms, `input_boolean`
+  helpers, thermostats and garage, gate, door and window covers stay excluded.
+  **Nothing is built yet**: until RFC 018's phase 1 lands, `HA_SERVICES` still
+  holds RFC 012's two services and `ha-write-boundary.test.ts` still holds it
+  to them, so the rule permits more than its test does — the right way round,
+  as with the 2026-09-24 decisions.
+- **Q4 (no blur behind widgets) — still a proposal.** A Glass ground is to be
+  prototyped behind a flag, with its opacity measured per picture, and Q4 flips
+  only if the prototype passes the plan's MQ1 measurement. Until then
+  `DESIGN.md`'s "Blur stays out" stands.
+
+Hard Rule 3 is unchanged on purpose: custom widgets stay data only (MD3), and
+the sandbox that RFC 017 describes runs on the server and produces only data.
 
 **0.61.0 is the current release.** `main`, the tag and the published image
 agree with each other, and `advertise` is what keeps them that way — it writes
@@ -3360,6 +3392,11 @@ hatch for what a recipe cannot do; they are just not the front door. The store i
 a *directory of source* rather than a fetched document on purpose: it bakes into
 the image and works on a wall with no internet. Only the RFC's optional
 glyph-only screenshots remain unbuilt.
+
+> **Read against hard rule 12 as amended on 2026-10-05.** RFC 018 widens the
+> door this paragraph describes into a table of verbs behind three opt-ins. The
+> paragraph is still true of the code until RFC 018's phase 1 lands, and is
+> rewritten then (RFC 018, Appendix A).
 
 **Home Assistant writes go through one door two services wide, and that is a
 security property.** A long-lived access token has full control of a house and
