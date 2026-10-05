@@ -272,6 +272,21 @@ describe('the changelog a household is shown', () => {
     expect(released.has('Unreleased'), `${tag} has no \`## Unreleased\` to compare against`).toBe(true);
   });
 
+  it('keeps every note out of the instructions comment, where nobody is shown it', () => {
+    /*
+     * The comment at the top tells a writer to put notes under `## Unreleased`
+     * — so it contains that heading's words, and an edit that inserts "after
+     * the first `## Unreleased`" lands *inside the comment*. Two release notes
+     * did exactly that and sat there unseen by Home Assistant and by every
+     * other assertion in this file, which reads sections and never the
+     * comment. A note is bold-led prose; the instructions are not.
+     */
+    const text = read(CHANGELOG);
+    const comment = text.slice(text.indexOf('<!--'), text.indexOf('-->'));
+    expect(comment.length).toBeGreaterThan(0);
+    expect(comment, 'a release note was written inside the instructions comment').not.toMatch(/\*\*/);
+  });
+
   it('names the shipped version, and names it once', () => {
     // `addon-repository.test.ts` asserts the newest heading matches the shipped
     // version; this is the other half of the same fact — that it is *there* and
