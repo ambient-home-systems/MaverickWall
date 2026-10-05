@@ -1171,6 +1171,14 @@ export interface Manifest {
      */
     readonly allowTodo?: boolean;
     /**
+     * Whether a Home Assistant widget set to act may operate the readings the
+     * household marked controllable (RFC 018). The fourth of these, and the one
+     * with the most at stake: it reaches the house rather than a list. Absent
+     * when off, for `allowTodo`'s reason above, and read as `=== true`; the
+     * wall hides the button when it is absent and `/d/ha/act` asks again.
+     */
+    readonly allowControl?: boolean;
+    /**
      * How large this screen is, and how far away it is read from.
      *
      * Millimetres — **facts, never a derived size in pixels**. The server does
@@ -1492,6 +1500,7 @@ export interface BuildManifestInput {
     readonly allowDismiss?: boolean;
     readonly allowChores?: boolean;
     readonly allowTodo?: boolean;
+    readonly allowControl?: boolean;
     /**
      * The wall's own theme, and nothing behind it (RFC 015 phase 2). Required
      * rather than nullable, so a caller that builds a document for a wall has
@@ -1984,6 +1993,7 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       allowChores: input.screen?.allowChores === true,
       // Spread, never emitted as `false` — see the field's own note.
       ...(input.screen?.allowTodo === true ? { allowTodo: true } : {}),
+      ...(input.screen?.allowControl === true ? { allowControl: true } : {}),
       /*
        * Spread rather than emitted as nulls, and refused rather than clamped.
        *

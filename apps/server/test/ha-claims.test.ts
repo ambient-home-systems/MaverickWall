@@ -89,6 +89,17 @@ const RETIRED_BY_RFC_018 = [
   'give away your indoor temperature and tick something off your shopping list',
 ];
 
+/*
+ * Phase 2 of RFC 018 built the toggles, so the sentence every page carried
+ * through phase 1 — that none of it was built — became false the day it
+ * shipped. Held here so it cannot come back on a page that was missed.
+ */
+const RETIRED_BY_RFC_018_PHASE_2 = [
+  'none of that is built yet',
+  'today the one thing',
+  'today the worst it',
+];
+
 async function adminHomeAssistantPage(): Promise<string> {
   const address = `10.9.0.${++nextAddress}`;
   const dataDir = mkdtempSync(join(tmpdir(), 'mw-claims-'));
@@ -157,7 +168,7 @@ describe('nothing still promises Home Assistant is read-only', () => {
     // It really is the page, not a redirect or an error shell.
     expect(html).toContain('Home Assistant');
 
-    for (const sentence of [...RETIRED, ...RETIRED_BY_RFC_018]) {
+    for (const sentence of [...RETIRED, ...RETIRED_BY_RFC_018, ...RETIRED_BY_RFC_018_PHASE_2]) {
       expect(html.toLowerCase(), `the served admin page still says "${sentence}"`).not.toContain(
         sentence,
       );
@@ -166,14 +177,14 @@ describe('nothing still promises Home Assistant is read-only', () => {
 
   it('not in the README', () => {
     const readme = readFileSync(join(ROOT, 'README.md'), 'utf8').toLowerCase();
-    for (const sentence of [...RETIRED, ...RETIRED_BY_RFC_018]) {
+    for (const sentence of [...RETIRED, ...RETIRED_BY_RFC_018, ...RETIRED_BY_RFC_018_PHASE_2]) {
       expect(readme, `README.md still says "${sentence}"`).not.toContain(sentence);
     }
   });
 
   it('not in the add-on documentation the supervisor renders', () => {
     const docs = readFileSync(join(ROOT, 'addon', 'maverick-wall', 'DOCS.md'), 'utf8').toLowerCase();
-    for (const sentence of [...RETIRED, ...RETIRED_BY_RFC_018]) {
+    for (const sentence of [...RETIRED, ...RETIRED_BY_RFC_018, ...RETIRED_BY_RFC_018_PHASE_2]) {
       expect(docs, `DOCS.md still says "${sentence}"`).not.toContain(sentence);
     }
   });
@@ -218,7 +229,9 @@ describe('and the page says what it can do instead', () => {
     // What a later release may allow is named, so "today" is not a promise
     // somebody reads as "for ever"; and the never-list stays named, because a
     // permission without its limits is not a boundary a household can read.
-    expect(html).toContain('None of that is built yet');
+    expect(html).toContain('lights, switches and fans');
+    expect(html).toContain('Can be controlled from walls');
+    expect(html).toContain('Those are not built yet');
     expect(html).toContain('No locks, no alarms, no thermostats');
     expect(html).toContain('garage, gate, door or window');
   });

@@ -634,6 +634,37 @@ describe('text from somewhere else', () => {
     ]);
   });
 
+  it('keeps a reading’s actions only when they are words this bundle can press (RFC 018)', () => {
+    /*
+     * A button that posts a word this wall cannot describe is worse than no
+     * button, so a newer server's word is no button. And a reading with no
+     * actions is modelled with no `actions` key at all, so the list and the
+     * tile draw it exactly as they did before a wall could operate anything.
+     */
+    const shaped = houseFrom({ readings: [
+      { key: '0123456789abcdef', label: 'Lamp', value: 'On', actions: ['toggle'] },
+      { key: '1123456789abcdef', label: 'Blind', value: 'Open', actions: ['open', 'close'] },
+      { key: '2123456789abcdef', label: 'Fan', value: 'On', actions: 'toggle' },
+      { key: '3123456789abcdef', label: 'Kitchen', value: '19.4' },
+    ] });
+    expect(shaped.readings.map((reading) => reading.actions)).toEqual([
+      ['toggle'],
+      undefined,
+      undefined,
+      undefined,
+    ]);
+    expect(shaped.readings.slice(1).every((reading) => !('actions' in reading))).toBe(true);
+  });
+
+  it('reads the wall’s operating switch as true only when the manifest says true', () => {
+    const screen = { orientation: 'auto', rotation: 0 };
+    expect(model([], { screen }).allowControl).toBe(false);
+    expect(model([], { screen: { ...screen, allowControl: true } }).allowControl).toBe(true);
+    expect(
+      model([], { screen: { ...screen, allowControl: 'yes' } } as unknown as Partial<Manifest>).allowControl,
+    ).toBe(false);
+  });
+
   it('drops a reading that is nothing but invisible characters', () => {
     // A label of zero-width marks is a label a household cannot see and cannot
     // tell apart from the one next to it.

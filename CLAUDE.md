@@ -514,11 +514,12 @@ knowing before reading either rule as settled or as obsolete:
   three opt-ins that are all off by default; and it lets the companion API,
   never a wall, add to a household's to-do list. Locks, alarms, `input_boolean`
   helpers, thermostats and garage, gate, door and window covers stay excluded.
-  **Phase 1 has landed and nothing is pressable yet**: `HA_SERVICES` is now
-  RFC 018's frozen table, `buildCall` its only constructor and `callService`
-  its only door, all held by `ha-write-boundary.test.ts`; the control rows have
-  no caller until phase 2 builds the route, the switches and the wall's
-  buttons (see "Home Assistant writes go through a frozen table" below).
+  **Phases 1 and 2 have landed**: `HA_SERVICES` is RFC 018's frozen table,
+  `buildCall` its only constructor and `callService` its only door, all held by
+  `ha-write-boundary.test.ts`; and a wall can now toggle a light, a switch or a
+  fan behind the three switches (see "Home Assistant writes go through a frozen
+  table" and "A wall switches a light" below). Brightness, colour, position,
+  scenes, scripts, webhooks and media are later phases.
 - **Q4 (no blur behind widgets) — still a proposal.** A Glass ground is to be
   prototyped behind a flag, with its opacity measured per picture, and Q4 flips
   only if the prototype passes the plan's MQ1 measurement. Until then
@@ -3419,18 +3420,17 @@ cover verb at the five forbidden classes, every feature and every bound, finds
 `ISSUED.add(` once and only inside `buildCall`, and posts every row at a fake
 Home Assistant to read back exactly what left.
 
-**Nothing a household can press exists yet.** Phase 1 has no caller for the
-control rows: no route, no switch on any form, no button on any wall. The two
-columns that are RFC 018's first two switches, `screens.allow_control` and
+**Phase 1 had no caller for the control rows**, and that was the point of it:
+the boundary was reviewed while nothing could press anything. The two columns
+that are RFC 018's first two switches, `screens.allow_control` and
 `ha_entity_cache.controllable` (migration `0056`, one generated pair of
-`ADD COLUMN`s), are read by nothing, exactly as `allow_todo` was in RFC 012's
-phase 1, and `migration-upgrade.test.ts` walks a hung wall and a watched light
-through it to prove both arrive **off**. The display still receives resolved
+`ADD COLUMN`s), arrived read by nothing, exactly as `allow_todo` did in RFC
+012's phase 1, and `migration-upgrade.test.ts` walks a hung wall and a watched
+light through it to prove both arrive **off**. The display still receives resolved
 *values* — "19.4 °C", "Open" — never an entity id, never a proxy endpoint, never
-the token. The blast radius of a compromised wall tablet is today "somebody saw
-my indoor temperature and ticked something off my shopping list"; after the
-later phases it is what the household marked controllable on that wall; and it
-is not, and must never become, "somebody opened my garage" — no row in the
+the token. The blast radius of a compromised wall tablet is "somebody saw my
+indoor temperature, ticked something off my shopping list, and switched the
+lights and fans the household marked controllable on that wall"; and it is not, and must never become, "somebody opened my garage" — no row in the
 table can reach a lock, an alarm, a thermostat or a garage, gate, door or
 window cover.
 
@@ -3450,6 +3450,53 @@ defaulting on, and three claims put back. **4822 tests passing, and 1 skipped,
 over 333 files**: calendar 153 over 10 · core 314 over 9 · display 890 over 50 ·
 server 3465 over 264, measured with `pnpm test` and a real Chromium on this
 change's own tree, every file green.
+
+**A wall switches a light, a switch or a fan now, and only behind three
+switches that all start off (RFC 018 phase 2).** The wall's own "Allow
+operating things in the house" (`screens.allow_control`), the reading's "Can be
+controlled from walls" on Home Assistant › Readings (`controllable`), and the
+widget's "Tap to operate" (`tapAction: 'act'`). `POST /d/ha/act` is
+`/d/todo/tick` one write along, and the policy is `operate` in
+`modules/homeassistant/control.ts`, pure of the route, for the reason
+`widget-options.ts` is: RFC 018 §8.2's checks in order — the wall's switch, the
+handle resolving, the reading controllable, the widget on this wall set to act
+and showing that reading (read from the stored row, never from the wall), the
+word, twenty presses a minute per wall and one in flight per entity — then the
+state re-read from Home Assistant, `buildCall`, `callService`, a row in
+`ha_wall_actions` (migration `0057`, fourteen days, shown on Readings and
+nowhere else), and the new state read back and written through, so the re-poll
+draws it. The wall sends a handle, a widget id and a word; the manifest carries
+a reading's `actions` and the screen's `allowControl`, **both spread only when
+on**, so a household that turns nothing on keeps its manifest and every panel
+its ETag. On the wall the same element becomes a `<button>` — list line or
+tile, measured to the pixel as the same rectangle — with `.td-tick`'s 44px
+target, both focus selectors, and a refusal said in the box it was pressed in.
+A panel has nothing to tap: `tapAction` is in `PANEL_IGNORES`.
+
+**Five things came out of checking the tests, and four were tests that could
+not go red.** A browser wait for "Off" in the acting box passed before the press
+was answered, because the kettle beside the light already read "Off". A ring
+assertion on `outline-width` passed with the `:focus` half of the rule deleted:
+Chromium reports the initial `medium` (3px) for an outline whose style is
+`none`, so the style is asserted too — worth knowing before trusting
+`browser-todo-tick`'s identical width check. Resetting `controllable` on removal
+was written, mutated, found green, and deleted: a removed reading's row is gone
+unless a rule keeps it, and re-adding resets a kept one — whose own test first
+passed with its reset removed, because it removed and re-added a row no rule
+kept. And the first full run caught "Readings screen" in the wall's hint, a
+retired noun. The 409 "can't be operated any more" cannot fire for a toggle,
+whose eligibility is its domain alone; it is there for phase 3 and untested
+until then, which RFC 018 §12 says. 33 mutations checked, all red; the README,
+`DOCS.md`, the Home Assistant card and the add-on's `config.yaml` comment —
+which had said "nothing writes to Home Assistant" since RFC 012 made it false —
+are rewritten, and `ha-claims.test.ts` refuses "none of that is built yet".
+**4852 tests passing, and 1 skipped, over 335 files**: calendar 153 over 10 ·
+core 314 over 9 · display 892 over 50 · server 3493 over 266, measured with
+`pnpm test` and a real Chromium on this change's own tree. Against phase 1's
+4822 over 333 that is +30 and +2, which is this change's own count (23 route, 5
+browser, 2 model) — agreement, recorded as the observation it is. **Still
+unproven where it counts:** no real Home Assistant has switched a real light
+for a wall.
 
 **Rule 12 changed, and the interesting part is how many places said otherwise
 (RFC 012 phase 1).** The rule is no longer "READ-ONLY, no service calls": it

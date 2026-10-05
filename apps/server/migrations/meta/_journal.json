@@ -400,6 +400,13 @@
       "when": 1791215911254,
       "tag": "0056_round_wendigo",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "6",
+      "when": 1791217729325,
+      "tag": "0057_tricky_kronos",
+      "breakpoints": true
     }
   ]
 }

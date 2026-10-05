@@ -27,9 +27,12 @@ arch:
   - aarch64
   - amd64
 
-# Read-only, and that is a security property rather than a missing feature: a
-# long-lived token cannot be scoped, so the limit lives on this side. Nothing
-# in this application writes to Home Assistant.
+# Mostly read-only, and that is a security property rather than a missing
+# feature: a long-lived token cannot be scoped, so the limit lives on this side.
+# What this application may write is a frozen table in
+# `apps/server/src/modules/homeassistant/services.ts` (hard rule 12, RFC 018) —
+# a to-do tick and a light, switch or fan toggle, each behind switches the
+# household turns on — and a test holds every request to that table.
 homeassistant_api: true
 
 ingress: true

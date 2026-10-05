@@ -1,9 +1,10 @@
 # RFC 018 — Wall control, and a narrow amendment to rule 12
 
-Status: **accepted 2026-10-05 (MD13); phase 1 built, nothing pressable.**
-Hard rule 12 in `CLAUDE.md` now reads as §3.1 below. Phase 1 (§12) has landed
-the table, `buildCall`, the door's issued check, two of the three switches as
-unread columns, and the claims; phase 2 is next. Every open question was
+Status: **accepted 2026-10-05 (MD13); phases 1 and 2 built — lights, switches
+and fans toggle from a wall.** Hard rule 12 in `CLAUDE.md` now reads as §3.1
+below. Phase 1 (§12) landed the table, `buildCall`, the door's issued check and
+the claims; phase 2 landed the route, all three switches, the button, the
+history and the browser test. Phase 3 is next. Every open question was
 decided by the owner the same day: the five items in §5.2 are folded into §5
 and §5.1, and OQ6–OQ10 are settled in §14 ·
 Owner: — · First drafted 2026-10-05 · Relates to
@@ -364,9 +365,26 @@ controls, and "never" only of what no row in the table can reach.
    A widget key nothing reads is an option that does nothing, and the e-paper
    honours tables, which are closed against the widget schema and proved by
    rendering, would have to describe a behaviour that does not exist yet.
-2. **Toggles**: lights, switches, fans. The route, the tile button, the
-   widget's `tapAction`, the Readings and wall switches, the audit list, the
-   browser test.
+2. **Toggles**: lights, switches, fans — **built.** `POST /d/ha/act` over
+   `operate` (`modules/homeassistant/control.ts`), which runs §8.2's checks in
+   order; the reading's `actions` and the screen's `allowControl` in the
+   manifest, both spread only when on; the same element made a `<button>` with
+   the same rectangle, list and tile alike; the widget's `tapAction`, in
+   `PANEL_IGNORES`; "Can be controlled from walls" and its why-not sentences
+   on the Readings screen; the wall's "Allow operating things in the house";
+   migration `0057`'s `ha_wall_actions`, fourteen days, on the Readings screen
+   only. Held by `ha-act.test.ts` (23, against the fake house over a socket)
+   and `browser-ha-act.test.ts` (5, a real paired wall and the real editor);
+   33 mutations checked, all red. **Three things to know.** Step 6's 409 —
+   "can't be operated any more" — cannot fire for a toggle, whose eligibility
+   is its domain alone; it is there for phase 3, where a light's colour modes
+   can change between marking and pressing, and is untested until then. The
+   reset of `controllable` on removal was written and deleted: a removed
+   reading's row is gone unless a rule keeps it, and re-adding is what resets
+   the kept one, so the line protected nothing and a mutation said so. And a
+   ring assertion on `outline-width` alone passed with the `:focus` half of the
+   rule deleted, because this browser reports the initial `medium` (3px) for an
+   outline whose style is `none`; it asserts the style too.
 3. **Brightness, colour, position and fan speed**, with the panel.
 4. **Scenes and scripts**, with press-and-hold.
 5. **Webhook buttons.**

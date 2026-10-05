@@ -6,10 +6,11 @@
  * its mark in a filled circle coloured by what the thing is doing, its name,
  * and its state — optionally with when the state last changed and, for a
  * light, a fan or a blind, a bar showing how far along it is. The look is
- * Lovelace's. **The job is not**: a tile shows a state and controls nothing.
- * There is no toggle, no slider and no tap action, because hard rule 12 allows
- * this wall one write to a house and it is a to-do item; and there is no
- * entity picture, because a picture is an address on the household's Home
+ * Lovelace's. **The job is not**: a tile shows a state, and does one thing
+ * more only where RFC 018's three switches all say so — the whole tile becomes
+ * a button that toggles a light, a switch or a fan (`operable` in
+ * `render.ts`). No slider and no hold, until a later phase of that RFC adds
+ * them behind the same switches; and there is no entity picture, because a picture is an address on the household's Home
  * Assistant that the wall would have to fetch, and the wall is never handed
  * one. The widget's help in the editor says both.
  *

@@ -268,6 +268,17 @@ export interface FakeHa {
    * lists cannot see it.
    */
   readonly todo: Record<string, { items: { uid: string; summary: string; status: string }[] }>;
+  /**
+   * What a toggle has done to the house (RFC 018 phase 2): an entity's state
+   * after `light/toggle`, `switch/toggle` or `fan/toggle`, laid over the fixed
+   * states every later read answers with — so a wall that toggled the living
+   * room reads it back off, the way the real house would say so.
+   */
+  readonly toggled: Record<string, string>;
+  /** Refuse every toggle with the 500 an integration that is reloading answers. */
+  refuseToggle: boolean;
+  /** Entities deleted since: `GET /api/states/<id>` answers 404 for these. */
+  readonly gone: Set<string>;
   /** Stand the fake down without reaching into a module-level array. */
   close(): Promise<void>;
 }
@@ -281,6 +292,9 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
     down: false,
     refuseItems: false,
     kitchen: '19.4',
+    toggled: {},
+    refuseToggle: false,
+    gone: new Set<string>(),
     todo: {
       'todo.shopping': {
         items: [
@@ -304,6 +318,18 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
   const born = Date.now();
   let lastKitchen = state.kitchen;
   let kitchenChangedAt = born - 120_000;
+
+  /** The fixed states with whatever a toggle has done laid over them. */
+  const withToggles = (body: string): string =>
+    JSON.stringify(
+      (JSON.parse(body) as { entity_id: string; state: string }[])
+        .filter((entry) => !state.gone.has(entry.entity_id))
+        .map((entry) =>
+          state.toggled[entry.entity_id] === undefined
+            ? entry
+            : { ...entry, state: state.toggled[entry.entity_id] },
+        ),
+    );
 
   const server = createServer((request: IncomingMessage, response: ServerResponse) => {
     const url = request.url ?? '';
@@ -343,7 +369,7 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
         lastKitchen = state.kitchen;
         kitchenChangedAt = Date.now();
       }
-      return json(statesBody(state.kitchen, born, kitchenChangedAt));
+      return json(withToggles(statesBody(state.kitchen, born, kitchenChangedAt)));
     }
     // One list's own state — `supported_features` lives here and nowhere else,
     // since `get_items` does not return it. A list this house has not got is a
@@ -357,6 +383,20 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
         return;
       }
       return json(JSON.stringify(todoStateBody(entityId)));
+    }
+    // Any other one entity's own state — what `/d/ha/act` re-reads before it
+    // operates anything, and again after, to write the house's answer through.
+    if (url.startsWith('/api/states/')) {
+      const entityId = decodeURIComponent(url.slice('/api/states/'.length));
+      const listed = (JSON.parse(withToggles(statesBody(state.kitchen, born, kitchenChangedAt))) as {
+        entity_id: string;
+      }[]).find((entry) => entry.entity_id === entityId);
+      if (listed === undefined || state.gone.has(entityId)) {
+        response.writeHead(404, { 'content-type': 'application/json' });
+        response.end('{"message":"Entity not found."}');
+        return;
+      }
+      return json(JSON.stringify(listed));
     }
     if (url === '/api/calendars') {
       return json(JSON.stringify([{ entity_id: 'calendar.family', name: 'Family' }]));
@@ -476,6 +516,32 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
           }
           if (typeof parsed['status'] === 'string') item.status = parsed['status'];
           json('{"changed_states":[]}');
+          return;
+        }
+
+        /*
+         * The three toggles a wall may make (RFC 018 phase 2): flip the state
+         * and answer with the changed states, as core does. Only these three —
+         * every other service still falls through to the refusal below, so
+         * the allowlist test keeps something to assert against.
+         */
+        if (service === 'light/toggle' || service === 'switch/toggle' || service === 'fan/toggle') {
+          if (state.refuseToggle) {
+            response.writeHead(500, { 'content-type': 'application/json' });
+            response.end('{"message":"Unknown error"}');
+            return;
+          }
+          const current =
+            state.toggled[entity] ??
+            (JSON.parse(statesBody(state.kitchen, born, kitchenChangedAt)) as { entity_id: string; state: string }[])
+              .find((entry) => entry.entity_id === entity)?.state;
+          if (current === undefined) {
+            response.writeHead(400, { 'content-type': 'application/json' });
+            response.end(`{"message":"Entity ${entity} does not exist"}`);
+            return;
+          }
+          state.toggled[entity] = current === 'on' ? 'off' : 'on';
+          json('[]');
           return;
         }
 

@@ -48,6 +48,7 @@ import {
   setTodoItemStatus,
   tickTodoItem,
 } from '../modules/todo/index.js';
+import { haActBody, operate } from '../modules/homeassistant/control.js';
 import { activeOn, localToday, readChores, setChoreDone } from '../api/chores.js';
 import { evaluateInterrupts } from '@maverick-wall/core';
 import { dismissInterrupt, readDismissals, readRules } from '../api/rules.js';
@@ -967,6 +968,57 @@ export function createApp(deps: AppDeps): Hono {
   });
 
   /**
+   * A wall operating something in the house (RFC 018 §8).
+   *
+   * `/d/todo/tick` one widget along, and the shape is the same on purpose: the
+   * display token is on the wall, so the server decides whether this wall may
+   * ask, what the press names, and whether it may be done — and the wall
+   * re-polls the moment the answer comes back. What the wall sends is a
+   * reading's handle, the widget the press landed in and a word (`toggle`):
+   * never an entity id, never a service, never service data. Everything about
+   * whether and how is `operate`, in `modules/homeassistant/control.ts`, which
+   * runs RFC 018 §8.2's checks in their order and is where they are argued.
+   */
+  app.post('/d/ha/act', async (c: Context) => {
+    const screen = c.get('screen') as ScreenRow;
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const field = (key: string): string =>
+      typeof body[key] === 'string' ? (body[key] as string).trim() : '';
+    const parsed = haActBody.safeParse({
+      reading: field('reading'),
+      widget: field('widget'),
+      action: field('action'),
+    });
+    // The wall's own switch is checked before the body is looked at, so a
+    // wall with control off reads one sentence whatever it posted.
+    if (screen.allowControl !== 1) {
+      return c.json(
+        { error: 'not-allowed', message: 'This wall cannot operate things in the house.' },
+        403,
+      );
+    }
+    if (!parsed.success) return c.json({ error: 'bad-request' }, 400);
+
+    const result = await operate(
+      {
+        db: deps.db,
+        fetcher: deps.fetcher,
+        keyring: deps.keyring,
+        now: (deps.now ?? Date.now)(),
+      },
+      {
+        screenId: screen.id,
+        allowControl: true,
+        reading: parsed.data.reading,
+        widget: parsed.data.widget,
+        action: parsed.data.action,
+      },
+    );
+    if (result.ok) return c.json({ ok: true });
+    return c.json({ error: result.error, message: result.message }, result.status);
+  });
+
+  /**
    * The manifest, built for a given screen.
    *
    * Shared by the wall (a paired screen) and the layout editor's preview (a
@@ -981,6 +1033,7 @@ export function createApp(deps: AppDeps): Hono {
     readonly allowDismiss: boolean;
     readonly allowChores: boolean;
     readonly allowTodo: boolean;
+    readonly allowControl?: boolean;
     /** The wall's own theme; a document for no wall states `STAND_IN_THEME`. */
     readonly theme: string;
     readonly daytimeTheme: string | null;
@@ -1128,6 +1181,7 @@ export function createApp(deps: AppDeps): Hono {
         allowDismiss: screenLike.allowDismiss,
         allowChores: screenLike.allowChores,
         allowTodo: screenLike.allowTodo,
+        allowControl: screenLike.allowControl === true,
         // Handed over as they are stored; `buildManifest` is what decides
         // whether the three of them are an answer.
         panelWidthMm: screenLike.panelWidthMm ?? null,
@@ -1174,6 +1228,7 @@ export function createApp(deps: AppDeps): Hono {
       allowDismiss: screen.allowDismiss === 1,
       allowChores: screen.allowChores === 1,
       allowTodo: screen.allowTodo === 1,
+      allowControl: screen.allowControl === 1,
       // A browser wall's row always carries one — the CHECK on `screens`
       // refuses it otherwise. The only null here is an e-paper panel, which
       // draws one bit and reads no theme; the stand-in keeps its document

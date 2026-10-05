@@ -22,13 +22,23 @@ tablet a glowing sun, drifting clouds or falling rain could jump back a
 fraction of a second each time. They now carry on smoothly from where they
 were.
 
-**What Maverick Wall may change in your house, stated plainly.** The Home
-Assistant screen now says what it changes today — ticking an item off a to-do
-list you chose to show, on a wall you allowed — and what a later release may
-let you allow: lights, switches, fans, blinds, scenes, scripts and media
-players, only the ones you mark, on walls you choose. None of that is built
-yet, and nothing on any wall behaves differently. It can never unlock a door,
-disarm an alarm, change a thermostat, or open a garage, gate, door or window.
+**Switch a light, a switch or a fan from the wall.** A Home Assistant widget
+can now turn something on or off when it is tapped — but only once you have
+said so three times, and all three are off until you do. Mark the reading
+**Can be controlled from walls** on the Readings screen; turn on **Allow
+operating things in the house** in that wall's Touch controls; and set the
+widget to **Tap to operate**. The tile then answers a tap, or the OK key on a
+remote, and shows the new state a moment later. If Home Assistant refuses, the
+widget says why. The Readings screen lists the last fortnight of presses — which
+wall, which thing, and whether it worked — and that list is kept nowhere else,
+not in the logs and not in the diagnostics export. An e-paper wall has nothing
+to tap and shows the reading as before.
+
+It can never unlock a door, disarm an alarm, change a thermostat, or open a
+garage, gate, door or window: those are not in the fixed list of things this
+application may ask Home Assistant to do, and the Readings screen says so beside
+them. Dimming a light, moving a blind, and running a scene or a script will
+come in later releases, behind the same three switches.
 
 ## 0.75.0
 

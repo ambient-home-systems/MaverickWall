@@ -1,9 +1,10 @@
 # Maverick Wall
 
 A family calendar for a wall display. It reads your Home Assistant calendars
-and a few sensors. Today the one thing it writes back is ticking an item off a
-to-do list you chose to show, and only from a wall you have turned that on for
-— see **What it will not do**, below.
+and a few sensors. It writes back only what you allow: ticking an item off a
+to-do list you chose to show, and switching a light, a switch or a fan you
+marked controllable, each only from a wall you have turned that on for — see
+**What it will not do**, below.
 
 ## Installing
 
@@ -74,11 +75,14 @@ alone restores everything except your calendar addresses — those are encrypted
 
 ## What it will not do
 
-Today it changes one thing in your house: ticking an item off a to-do list you
-chose to show on a wall. A later release will let a wall operate lights,
-switches, fans, blinds, scenes, scripts and media players — only the ones you
-mark, on walls you allow, from widgets you set to act. None of that is built
-yet.
+It changes two kinds of thing in your house, and only once you ask: ticking an
+item off a to-do list you chose to show on a wall, and switching a light, a
+switch or a fan on or off from a wall. A wall switches something only when you
+have marked it **Can be controlled from walls** on the Readings screen, turned on
+**Allow operating things in the house** for that wall, and set the widget to
+**Tap to operate** — all three off by default. A later release will let a wall
+also dim a light, move a blind and run a scene, a script or a media player,
+behind the same three switches; those are not built yet.
 
 It can never unlock a door, disarm an alarm, change a thermostat, or open a
 garage, gate, door or window. Those are not in its frozen table of permitted
@@ -87,12 +91,14 @@ actions, and a test holds the code to that table.
 Even the tick is off until you ask for it, wall by wall. Adding a list shows it
 everywhere you have put a To-do widget; turning on **Allow ticking to-do items
 off** on a particular wall's page is what puts a box beside each item there. It
-is its own switch rather than a share of the chore one, because this is the only
-control on a wall that changes something outside this application — your phones
-see it. An eInk panel shows the list and never offers a box at all.
+is its own switch rather than a share of the chore one, because it changes
+something outside this application — your phones see it. Switching a light is
+its own switch again, **Allow operating things in the house**, for the same
+reason and more so. An eInk panel shows the list and never offers a box at all.
 
 The wall itself receives resolved values — "19.4 °C", "Open" — never an entity
 id and never a way to ask Home Assistant a question of its own. If a tablet in
-your hallway is ever compromised, today the worst it can do is show somebody
-your indoor temperature and tick an item off your shopping list — and whatever
-you allow later, it can never open your garage.
+your hallway is ever compromised, the worst it can do is show somebody your
+indoor temperature, tick an item off your shopping list and switch the lights
+and fans you allowed it to — and whatever you allow, it can never open your
+garage.

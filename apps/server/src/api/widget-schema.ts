@@ -328,12 +328,24 @@ const widgetConfigFields = z
      *    not.
      *  - `showBar` draws a read-only bar under a light's brightness, a fan's
      *    speed or a blind's position — the number the words already say. Absent
-     *    is off. Displayed, never a control: hard rule 12.
+     *    is off. Displayed, never dragged: a tile that operates anything does
+     *    it as a whole (RFC 018), and a bar is not a slider.
      */
     tileLayout: z.enum(['horizontal', 'vertical']).optional(),
     hideState: z.boolean().optional(),
     showChanged: z.boolean().optional(),
     showBar: z.boolean().optional(),
+    /*
+     * Home Assistant — `act` makes a reading this wall may operate a button
+     * (RFC 018 §7). Absent is "show only", which is what every widget drew
+     * before and what a widget nobody touches goes on drawing. It is the third
+     * of three switches and the narrowest: the wall must allow control, the
+     * household must have marked the reading controllable on the Readings
+     * screen, and this widget must be set to act — so a reading shown in two
+     * places can be a button by the door and a picture in the kitchen.
+     * `/d/ha/act` reads it from the stored row, never from the wall.
+     */
+    tapAction: z.literal('act').optional(),
     // Countdown — a target date (YYYY-MM-DD); the label rides in `title`.
     target: z
       .string()

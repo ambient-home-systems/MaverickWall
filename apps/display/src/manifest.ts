@@ -252,6 +252,12 @@ export interface Manifest {
      */
     readonly allowTodo?: boolean;
     /**
+     * Whether this screen may operate the readings a household marked
+     * controllable, from a widget set to act (RFC 018 phase 2). Absent on a
+     * server older than the switch, and when it is off — the read-only wall.
+     */
+    readonly allowControl?: boolean;
+    /**
      * How large this screen is and how far away it is read from, in
      * millimetres — facts, never a size the server derived. All three or none
      * of them, and absent on a wall nobody has measured, which is most of them.
