@@ -494,7 +494,7 @@ than its test does is the right way round for a few releases; the other way
 round is a rule nothing enforces.
 
 **On 2026-10-05 the owner reviewed Magic Frame against this product and took
-nine more decisions (MD1–MD9); none of them changes a rule yet.** The review,
+ten more decisions (MD1–MD10); none of them changes a rule yet.** The review,
 the decisions and the work they imply are
 `docs/plan-2026-10-magic-frame-parity.md`, with the sandbox design in
 `docs/rfc-017-sandboxed-module-code.md`. Two of its items are **proposals
@@ -503,9 +503,11 @@ reading either rule as settled or as obsolete:
 
 - **Hard Rule 12** — a narrow amendment (`docs/rfc-018-wall-control.md`,
   proposed) to let a wall toggle lights, switches and fans, set brightness,
-  colour and position, and press scene, script and webhook buttons, behind
-  three opt-ins that are all off by default. Locks, alarms and garage, gate,
-  door and window covers stay excluded. Until RFC 018 is accepted, the rule above
+  colour, position and fan speed, control media playback, and press scene,
+  script and webhook buttons, behind three opt-ins that are all off by default;
+  and to let the companion API, never a wall, add to a household's to-do list.
+  Locks, alarms, `input_boolean` helpers, thermostats and garage, gate, door and
+  window covers stay excluded. Until RFC 018 is accepted, the rule above
   stands as written and `ha-write-boundary.test.ts` keeps holding it.
 - **Q4** (no blur behind widgets) — a Glass ground is to be prototyped behind a
   flag, with its opacity measured per picture, and Q4 flips only if the

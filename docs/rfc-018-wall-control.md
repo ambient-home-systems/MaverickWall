@@ -1,6 +1,8 @@
 # RFC 018 — Wall control, and a narrow amendment to rule 12
 
-Status: **proposed, nothing built; amends hard rule 12 only if accepted** ·
+Status: **proposed, nothing built; amends hard rule 12 only if accepted.**
+The five items in §5.2 were decided by the owner on 2026-10-05 and are folded
+into §5 and §5.1; the RFC as a whole still awaits acceptance ·
 Owner: — · First drafted 2026-10-05 · Relates to
 `apps/server/src/modules/homeassistant/client.ts` (`HA_SERVICES`,
 `callService`), `apps/server/src/modules/homeassistant/entities.ts`
@@ -16,10 +18,13 @@ P5.3 (the tile look) · Decision MD2 and plan items M6.0, M6.9, M6.11–M6.13 in
 ## 1. Summary
 
 This RFC proposes letting a wall **operate a small, named set of things in the
-house**: toggle lights, switches and fans; set a light's brightness and colour
-and a blind's position; run a scene or a script the household picked; and press
-a webhook button the household defined. Locks, alarms, and any cover that is a
-garage, gate, door or window stay out of reach, by the rule and by a test.
+house**: toggle lights, switches and fans; set a light's brightness and colour,
+a fan's speed and a blind's position; play, pause, skip and set the volume of a
+media player; run a scene or a script the household picked; and press a webhook
+button the household defined. Separately, a phone holding a companion token may
+add an item to a to-do list the household added. Locks, alarms, helpers
+(`input_boolean`), thermostats, and any cover that is a garage, gate, door or
+window stay out of reach, by the rule and by a test.
 
 Three switches must all be on before a wall can change anything: the **wall's**
 own switch, the **entity's** "can be controlled from walls" in the admin, and the
@@ -53,13 +58,15 @@ the network, can call it.
 ### 3.1 Rule 12, proposed
 
 > 12. **Home Assistant writes are confined to what the household picked, through
-> one door.** Two kinds of write are permitted. `todo.update_item` sets an
-> item's status on a to-do list the household added (RFC 012). And a wall may
-> operate an entity the household marked controllable, on a wall they allowed,
-> from a widget they set to act, using only the verbs in §5 of RFC 018. The
-> allowlist is a frozen table and a test asserts no outbound request to Home
-> Assistant leaves it. **Never** `lock`, `alarm_control_panel`, a cover whose
-> device class is `garage`, `gate`, `door` or `window` or is unset, `button`,
+> one door.** Three kinds of write are permitted. `todo.update_item` sets an
+> item's status on a to-do list the household added (RFC 012). `todo.add_item`
+> adds an item to such a list, from the companion API and never from a wall.
+> And a wall may operate an entity the household marked controllable, on a wall
+> they allowed, from a widget they set to act, using only the verbs in §5 of
+> RFC 018. The allowlist is a frozen table and a test asserts no outbound
+> request to Home Assistant leaves it. **Never** `lock`,
+> `alarm_control_panel`, a cover whose device class is `garage`, `gate`, `door`
+> or `window` or is unset, `input_boolean`, `climate`, `button`,
 > `input_button`, `valve`, `siren`, `camera`, `automation`, `update`, `notify`,
 > `hassio`, or a generic `homeassistant.*` service. The display still receives
 > handles this server minted, never an entity id and never the token — so a
@@ -72,7 +79,8 @@ the network, can call it.
 | --- | --- | --- |
 | A stolen display token, or a compromised tablet | Read what the wall shows; tick to-do items on lists the household added. | The same, plus operate the entities marked controllable, **on walls allowed to**, within the verbs and rate limits here. |
 | Somebody standing at the wall | The same as above. | The same as above. |
-| What stays impossible | Every other service, every other entity. | Locks, alarms, garage/gate/door/window covers, any entity not marked, any wall not allowed, any free-form service data, any target but one entity. |
+| A stolen companion token | Nothing in Home Assistant (the token does not exist yet). | Add items to the to-do lists the household added. |
+| What stays impossible | Every other service, every other entity. | Locks, alarms, helpers, thermostats, garage/gate/door/window covers, any entity not marked, any wall not allowed, any free-form service data, any target but one entity. |
 
 The honest cost is the first row. The household decides how large it is, entity
 by entity and wall by wall, and the admin says so in those words (§7.3).
@@ -108,20 +116,25 @@ built by the server from a bounded value; **the wall never sends service data.**
 | --- | --- | --- | --- | --- |
 | `todo` | `get_items` (read) | — | `status` | A list the household added (RFC 012). |
 | `todo` | `update_item` | tick | `item`, `status` | The same. |
+| `todo` | `add_item` | — (companion API only, never a wall) | `item`: the text, at most 255 characters, stripped like any stranger's string | A list the household added, whose `supported_features` include creating items. |
 | `weather` | `get_forecasts` (read) | — | `type` | The household picked this entity as a weather source (M5.8). |
 | `light` | `toggle` | toggle | — | Marked controllable. |
 | `light` | `turn_on` | brightness | `brightness_pct` 1–100 | Marked controllable; a dimmable colour mode is supported. |
 | `light` | `turn_on` | colour | `rgb_color` (0–255 each) or `color_temp_kelvin` within the light's own range | Marked controllable; that colour mode is supported. |
 | `switch` | `toggle` | toggle | — | Marked controllable. |
 | `fan` | `toggle` | toggle | — | Marked controllable. |
+| `fan` | `set_percentage` | speed | `percentage` 0–100 | Marked controllable; speed is in `supported_features`. |
 | `cover` | `open_cover`, `close_cover`, `stop_cover` | open, close, stop | — | Marked controllable; `device_class` is `awning`, `blind`, `curtain`, `shade` or `shutter`. |
 | `cover` | `set_cover_position` | position | `position` 0–100 | As above, and position is in `supported_features`. |
 | `scene` | `turn_on` | run | — | Marked controllable. |
 | `script` | `turn_on` | run | — (no variables) | Marked controllable. |
+| `media_player` | `media_play_pause` | play/pause | — | Marked controllable; play and pause are in `supported_features`. |
+| `media_player` | `media_next_track`, `media_previous_track` | next, previous | — | Marked controllable; that feature is supported. |
+| `media_player` | `volume_set` | volume | `volume_level` 0.0–1.0, converted by the server from the wall's 0–100 | Marked controllable; volume set is supported. |
 | `persistent_notification` | `dismiss` | dismiss | `notification_id` | A notification shown on this wall (M6.11). |
 
-Every row sends `entity_id` as a single string, except the two `todo` rows,
-which keep RFC 012's shape. `ha-write-boundary.test.ts` asserts this table
+Every row sends `entity_id` as a single string, except the `todo` rows, which
+keep RFC 012's shape. `ha-write-boundary.test.ts` asserts this table
 exactly, row by row, including the data keys.
 
 Webhook buttons are not Home Assistant service calls and have their own section
@@ -132,23 +145,24 @@ Webhook buttons are not Home Assistant service calls and have their own section
 The rule names them so nobody adds them by analogy: `lock`,
 `alarm_control_panel`, covers whose `device_class` is `garage`, `gate`, `door`,
 `window`, `damper` or **unset** (fail closed), `button` and `input_button` (a
-"press" is often an "open the gate" relay), `valve`, `siren`, `camera`,
-`automation`, `update`, `notify`, `hassio`, `homeassistant.*`, and every domain
-and service not in the table. Also never: `area_id`, `device_id`, `label_id`,
-`entity_id: all`, or any service data the wall supplied.
+"press" is often an "open the gate" relay), `input_boolean` and `climate`
+(§5.2), `valve`, `siren`, `camera`, `automation`, `update`, `notify`, `hassio`,
+`homeassistant.*`, and every domain and service not in the table. Also never:
+`area_id`, `device_id`, `label_id`, `entity_id: all`, or any service data the
+wall supplied. `todo.add_item` is never reachable from a `/d/*` route.
 
-### 5.2 Argued separately, each the owner's call
+### 5.2 Decided by the owner on 2026-10-05
 
-Each is a row that could be added. None is in the table above until the owner
-says so; the recommendation is mine.
+Five items were argued separately, each a row that could have been added. The
+owner accepted every recommendation: three are rows in §5, two are in §5.1.
 
-| Item | Recommendation | Why |
+| Item | Decision | Why |
 | --- | --- | --- |
-| `media_player` transport: `media_play_pause`, `media_next_track`, `media_previous_track`, `volume_set` (0–100) | **Include**, in its own phase. | Needed by the now-playing card (M6.9). Low harm: the worst case is music stopping. |
-| `todo.add_item`, from the **companion API only**, never the wall | **Include.** | The phone-to-shopping-list case (MQ3). It adds to a list the household added; the API needs a token; the wall has no keyboard. |
-| `fan.set_percentage` (0–100) | **Include** with position. | The same shape as brightness. |
-| `input_boolean.toggle` | **Exclude by default.** | These helpers often gate automations: "vacation mode", "alarm armed", "guest mode". A toggle can disarm something the household never thought of as a switch. |
-| `climate.set_temperature` | **Exclude.** | Not asked for, and a heating setpoint left at 30 °C by a child costs real money. |
+| `media_player` transport: play/pause, next, previous, volume | **Included**, in its own phase (§12, phase 6). | Needed by the now-playing card (M6.9). Low harm: the worst case is music stopping. |
+| `todo.add_item`, from the **companion API only**, never the wall | **Included**, with the companion API (M2.2). | The phone-to-shopping-list case (MQ3). It adds to a list the household added; the API needs a token; the wall has no keyboard. |
+| `fan.set_percentage` | **Included**, with position (§12, phase 3). | The same shape as brightness. |
+| `input_boolean.toggle` | **Excluded.** | These helpers often gate automations: "vacation mode", "alarm armed", "guest mode". A toggle can disarm something the household never thought of as a switch. |
+| `climate.set_temperature` | **Excluded.** | Not asked for, and a heating setpoint left at 30 °C by a child costs real money. |
 
 ## 6. Three switches, all off by default
 
@@ -327,10 +341,14 @@ the to-do write.
    being a read, may ship in this phase for M5.8.
 2. **Toggles**: lights, switches, fans. The route, the tile button, the audit
    list, the browser test.
-3. **Brightness, colour and position**, with the panel.
+3. **Brightness, colour, position and fan speed**, with the panel.
 4. **Scenes and scripts**, with press-and-hold.
 5. **Webhook buttons.**
-6. **Each item in §5.2** the owner accepts, one at a time.
+6. **Media transport**: play/pause, next, previous and volume, for the
+   now-playing card (M6.9).
+
+`todo.add_item` is not a wall phase. Its row lands with phase 1's table and is
+used by the companion API's list endpoint (plan item M2.2) when that is built.
 
 ## 13. How this gets proven
 
@@ -346,6 +364,12 @@ the to-do write.
   `entity_id`, and nothing else ever.
 - **The switches.** Each of the three, turned off alone, refuses the press with
   its own sentence.
+- **The values.** Each bounded value at and just past its bounds: brightness,
+  colour, position, fan speed, and volume, whose 0–100 must reach Home
+  Assistant as `volume_level` 0.0–1.0.
+- **The add.** `todo.add_item` reachable through the companion-token route and
+  refused from every `/d/*` route; refused for a list without the create
+  feature; its text capped and stripped.
 - **The manifest.** No entity id anywhere with controls on, in both
   orientations and on a named layout; a household with nothing turned on keeps
   a byte-identical manifest and ETag.
@@ -361,13 +385,16 @@ the to-do write.
 
 ## 14. Open questions
 
+OQ1–OQ5 were the §5.2 items and are decided (2026-10-05). The rest have
+proposed defaults the work builds unless the owner says otherwise.
+
 | ID | Question | Proposed default |
 | --- | --- | --- |
-| OQ1 | §5.2: media transport | Include, phase 6. |
-| OQ2 | §5.2: `todo.add_item` from the companion API | Include, companion API only. |
-| OQ3 | §5.2: fan speed | Include with phase 3. |
-| OQ4 | §5.2: `input_boolean` | Exclude. |
-| OQ5 | §5.2: climate setpoints | Exclude. |
+| OQ1 | §5.2: media transport | **Decided:** included, phase 6. |
+| OQ2 | §5.2: `todo.add_item` from the companion API | **Decided:** included, companion API only. |
+| OQ3 | §5.2: fan speed | **Decided:** included, phase 3. |
+| OQ4 | §5.2: `input_boolean` | **Decided:** excluded. |
+| OQ5 | §5.2: climate setpoints | **Decided:** excluded. |
 | OQ6 | Press-and-hold or a two-step confirm for scenes, scripts and webhooks? | Press-and-hold, 600 ms. |
 | OQ7 | Rate limits | 20 presses a minute per wall; one in flight per entity. |
 | OQ8 | Audit retention | 14 days, admin only. |

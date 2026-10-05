@@ -75,6 +75,7 @@ feature in this plan.
 | MD7 | Timers and messages on the wall | A wall may dismiss them behind its own per-wall switch, off by default, with the server as the authority. |
 | MD8 | Order of work | Push and remote control first, then photos and glass, then widgets, HA depth, custom widgets, admin. |
 | MD9 | `CLAUDE.md` | Gets a short pointer paragraph naming this plan and its two open proposals. |
+| MD10 | RFC 018 §5.2, the five items argued separately | Every recommendation accepted: media transport, `todo.add_item` from the companion API only, and fan speed are **in**; `input_boolean` helpers and thermostat setpoints are **out**. The RFC as a whole still awaits acceptance. |
 
 ## Where Maverick Wall already leads
 
@@ -126,7 +127,7 @@ Magic Frame's features exist in a form we cannot ship as it is.
 | ID | Item | Size | What it must respect |
 | --- | --- | --- | --- |
 | M2.1 | A per-account companion token: show, copy, rotate. | S | Sealed at rest; redacted in logs and the diagnostics export (rule 6). `Authorization: Bearer` preferred; `?key=` accepted for iOS Shortcuts, with a warning that addresses end up in logs. Rate-limited. |
-| M2.2 | Endpoints: start and end timers, post and clear messages, add to a Todoist list. | M | Zod at every boundary. Adding to an HA list needs `todo.add_item`, which Rule 12 excludes: MQ3. |
+| M2.2 | Endpoints: start and end timers, post and clear messages, add to a Todoist list or a Home Assistant to-do list. | M | Zod at every boundary. Adding to an HA list is `todo.add_item`, which RFC 018 permits from this API only (MD10), so that half waits on RFC 018's acceptance; until then the API adds to Todoist only. |
 | M2.3 | Display-control endpoints with the token: refresh, show a layout, next picture. | S | The same handlers as M1.2–M1.4. |
 | M2.4 | Documented recipes: iOS Shortcuts and Home Assistant `rest_command`. | S | In the docs site (M9.1). |
 
@@ -153,7 +154,7 @@ The read-only items can start now. Items marked † need RFC 018 accepted first.
 
 | ID | Item | Size | What it must respect |
 | --- | --- | --- | --- |
-| M6.0 | **RFC 018**: the narrow Rule 12 amendment, drafted in [`rfc-018-wall-control.md`](rfc-018-wall-control.md). | M | Scope: toggles for lights, switches and fans; brightness, colour and position; scene and script buttons; webhook buttons; the read-only services weather forecasts and notification listing need. Excluded outright: locks, alarms, and covers whose device class is garage, gate, door, window, damper or unset. Three opt-ins (wall, entity, widget), handles never entity ids, `HA_SERVICES` a frozen table held by `ha-write-boundary.test.ts`. |
+| M6.0 | **RFC 018**: the narrow Rule 12 amendment, drafted in [`rfc-018-wall-control.md`](rfc-018-wall-control.md). | M | Scope: toggles for lights, switches and fans; brightness, colour, position and fan speed; media transport; scene and script buttons; webhook buttons; `todo.add_item` from the companion API only (MD10); the read-only services weather forecasts and notification listing need. Excluded outright: locks, alarms, and covers whose device class is garage, gate, door, window, damper or unset. Three opt-ins (wall, entity, widget), handles never entity ids, `HA_SERVICES` a frozen table held by `ha-write-boundary.test.ts`. |
 | M6.1 | **Camera snapshot tile.** | M | RFC 007's opaque handle and frame hub. Must survive the 15 s rebuild without reconnecting. |
 | M6.2 | **Camera live stream** (MJPEG/WebRTC through HA or go2rtc). | L | RFC 007. |
 | M6.3 | **Doorbell pop-up**: a camera covers the wall when an entity triggers, then returns. | M | Built as an interrupt action, so it shares dismissal, night hours and source scope with alerts. |
@@ -382,14 +383,15 @@ did.
 
 ## Open questions, with proposed defaults
 
-Nobody has decided these yet. Each has a default the work builds unless the
-owner says otherwise, as the September plan's Q1–Q10 did.
+MQ3 is decided (MD10). Nobody has decided the other eleven yet. Each has a
+default the work builds unless the owner says otherwise, as the September
+plan's Q1–Q10 did.
 
 | ID | Question | Proposed default |
 | --- | --- | --- |
 | MQ1 | What must the Glass prototype measure to flip Q4? | Tick main-thread time within 20% of Soft at 6× CPU throttling (S22 measured 645–750 ms throttled for Soft); no new long task over 50 ms; every shipped picture holds 4.5:1 under its `glassAlpha`. |
 | MQ2 | How are uploaded photos resized, with no image library in the image today? | Resize in the admin browser with a canvas before upload; the server stores what it receives, capped in size. No native image dependency. |
-| MQ3 | Adding to an HA shopping list from a phone needs `todo.add_item`, which Rule 12 excludes. | Argued separately in RFC 018 §5.2 (recommended: companion API only, never the wall); until accepted the API adds to Todoist only. |
+| MQ3 | Adding to an HA shopping list from a phone needs `todo.add_item`, which Rule 12 excludes. | **Decided (MD10):** permitted by RFC 018 from the companion API only, never from a wall; until RFC 018 is accepted the API adds to Todoist only. |
 | MQ4 | A timer showing seconds cannot be right on a wall that redraws every 15 s. | Show minutes ("4 min left"); only the last minute counts seconds, through a phase-locked animation under D7. |
 | MQ5 | What may a View-only account do? | Look at everything, change nothing. Stricter than Magic Frame, whose View-only can still edit layouts. |
 | MQ6 | Which account does an HA sidebar visitor sign in as once there are several? | A setting naming one account for ingress; with none set, the normal sign-in page (fail closed, as `isTrustedIngress` already does). |
@@ -413,6 +415,7 @@ phase above.
 | MCP server for agents | Magic Frame v1.5.0 | Not chosen. |
 | Tap a camera for full screen | Magic Frame camera | Not chosen; the doorbell pop-up covers the main case. |
 | Lock and alarm control | Magic Frame HA entity | Excluded from RFC 018 outright. |
+| `input_boolean` helpers and thermostat setpoints from a wall | RFC 018 §5.2 | Excluded (MD10): helpers often gate automations such as "alarm armed", and a setpoint left high costs money. |
 | Local shopping list in our database | Magic Frame family widgets | Not chosen; HA lists and Todoist cover it. |
 | OIDC sign-in | Magic Frame roadmap | Not chosen. |
 | Copy a widget between walls | Magic Frame editor | Not chosen; duplicating a wall (M8.6) covers the bigger case. |
