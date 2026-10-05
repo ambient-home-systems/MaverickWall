@@ -474,8 +474,9 @@ controls, and "never" only of what no row in the table can reach.
    `webhook:<id>`, listed on Buttons. A path under `/api/webhook/` carries the
    script warning, and the "never" claims — Rule 12's last clause included —
    now say "unless a script or a webhook button you allowed does", the §3.3
-   decision carried to the thing §9 calls a script by another name. 18
-   mutations checked, all red; two were green and were dead code: the press
+   decision carried to the thing §9 calls a script by another name. 19
+   mutations checked, all red (one of them a body on the webhook POST, which
+   `ha-write-boundary.test.ts` now allows exactly once and bodiless); two were green and were dead code: the press
    modules' own copy of the wall's switch, which the route checks first (phase
    2's `operate` had the same, also removed), and a "no panel" branch the
    module registry never reaches.
