@@ -8434,10 +8434,19 @@ at 20x on a laptop, and more on a loaded runner. `advanceLocks` in `motion.ts`
 is now the last thing `draw()` does: it moves every loop and every playing
 one-shot on by the time the draw took. The same measurement then reads
 23–29ms behind at 20x, with jumps under 25ms. The 300ms tolerance is
-unchanged. A new case holds the glow within 150ms of the server's clock with
-the draw under 20x throttling. Without `advanceLocks` it reads 239ms and
-244ms, red. With the negative delay reverted, the continuity case reads
+unchanged. With the negative delay reverted, the continuity case reads
 3,024ms, red.
+
+A second case holds the glow to the same 300ms across a cheap redraw followed
+by one under 40x CPU throttling, the pair that jumps. It reads 26–40ms with
+`advanceLocks`, measured with a CPU hog on every core. Without it, it reads
+504–521ms idle, red. **Its first draft was itself a flake, and that is the
+part worth keeping.** It held the glow within 150ms of the server's clock in
+absolute terms. That reading also carries the clock offset's own error, which
+the continuity cases cancel by comparing two phases under one offset. It read
+348ms on CI with nothing wrong on the glass, and went red on the release-notes
+pull request that followed. An absolute reading is a claim about the clock
+too, and the clock was not the subject.
 
 **4779 tests passing and 1 skipped, over 332 files**: calendar 153 over 10 ·
 core 314 over 9 · display 873 over 49 · server 3439 over 264. Measured with
