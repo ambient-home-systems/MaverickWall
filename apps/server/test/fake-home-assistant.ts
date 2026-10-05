@@ -147,6 +147,11 @@ const READ_ONLY_DOMAINS: readonly {
       effect_list: ['colorloop', 'random'],
       entity_picture: '/api/image_proxy/light.living_room?token=picture-token-that-must-not-travel',
       supported_features: 44,
+      // What phase 3 of RFC 018 reads to offer a dimmer, swatches and a white
+      // slider — and what a real Hue bulb reports.
+      supported_color_modes: ['color_temp', 'rgb'],
+      min_color_temp_kelvin: 2202,
+      max_color_temp_kelvin: 6535,
     },
     context: { id: '01P', parent_id: null, user_id: null },
   },
@@ -165,7 +170,11 @@ const READ_ONLY_DOMAINS: readonly {
   {
     entity_id: 'fan.bedroom',
     state: 'on',
-    attributes: { friendly_name: 'Bedroom fan', percentage: 40, preset_mode: 'sleep', percentage_step: 20 },
+    // SET_SPEED (1) | OSCILLATE (2) | PRESET_MODE (8).
+    attributes: {
+      friendly_name: 'Bedroom fan', percentage: 40, preset_mode: 'sleep', percentage_step: 20,
+      supported_features: 11,
+    },
     context: { id: '01S', parent_id: null, user_id: null },
   },
   {
@@ -176,6 +185,8 @@ const READ_ONLY_DOMAINS: readonly {
       device_class: 'blind',
       current_position: 40,
       current_tilt_position: 10,
+      // OPEN | CLOSE | SET_POSITION | STOP.
+      supported_features: 15,
     },
     context: { id: '01T', parent_id: null, user_id: null },
   },
@@ -277,6 +288,12 @@ export interface FakeHa {
   readonly toggled: Record<string, string>;
   /** Refuse every toggle with the 500 an integration that is reloading answers. */
   refuseToggle: boolean;
+  /**
+   * Attributes a later call set (RFC 018 phase 3): a brightness, a white, a
+   * speed or a position, laid over the fixed attributes the way `toggled` lays
+   * a state — so a wall that dimmed the living room reads "On · 40%" back.
+   */
+  readonly set: Record<string, Record<string, unknown>>;
   /** Entities deleted since: `GET /api/states/<id>` answers 404 for these. */
   readonly gone: Set<string>;
   /** Stand the fake down without reaching into a module-level array. */
@@ -293,6 +310,7 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
     refuseItems: false,
     kitchen: '19.4',
     toggled: {},
+    set: {},
     refuseToggle: false,
     gone: new Set<string>(),
     todo: {
@@ -324,11 +342,16 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
     JSON.stringify(
       (JSON.parse(body) as { entity_id: string; state: string }[])
         .filter((entry) => !state.gone.has(entry.entity_id))
-        .map((entry) =>
-          state.toggled[entry.entity_id] === undefined
-            ? entry
-            : { ...entry, state: state.toggled[entry.entity_id] },
-        ),
+        .map((entry) => {
+          const attributes = state.set[entry.entity_id];
+          const withState =
+            state.toggled[entry.entity_id] === undefined
+              ? entry
+              : { ...entry, state: state.toggled[entry.entity_id] };
+          return attributes === undefined
+            ? withState
+            : { ...withState, attributes: { ...(withState as { attributes?: object }).attributes, ...attributes } };
+        }),
     );
 
   const server = createServer((request: IncomingMessage, response: ServerResponse) => {
@@ -541,6 +564,52 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
             return;
           }
           state.toggled[entity] = current === 'on' ? 'off' : 'on';
+          json('[]');
+          return;
+        }
+
+        /*
+         * What phase 3 of RFC 018 may ask: a light's brightness, colour or
+         * white, a fan's speed, a blind's movement. Each sets what core would
+         * set, so the re-read the route makes afterwards reads it back.
+         */
+        const setting: Record<string, (data: Record<string, unknown>) => void> = {
+          'light/turn_on': (data) => {
+            state.toggled[entity] = 'on';
+            const next: Record<string, unknown> = { ...(state.set[entity] ?? {}) };
+            if (typeof data['brightness_pct'] === 'number') {
+              next['brightness'] = Math.round((data['brightness_pct'] / 100) * 255);
+            }
+            if (typeof data['color_temp_kelvin'] === 'number') next['color_temp_kelvin'] = data['color_temp_kelvin'];
+            if (Array.isArray(data['rgb_color'])) next['rgb_color'] = data['rgb_color'];
+            state.set[entity] = next;
+          },
+          'fan/set_percentage': (data) => {
+            state.toggled[entity] = data['percentage'] === 0 ? 'off' : 'on';
+            state.set[entity] = { ...(state.set[entity] ?? {}), percentage: data['percentage'] };
+          },
+          'cover/open_cover': () => {
+            state.toggled[entity] = 'open';
+            state.set[entity] = { ...(state.set[entity] ?? {}), current_position: 100 };
+          },
+          'cover/close_cover': () => {
+            state.toggled[entity] = 'closed';
+            state.set[entity] = { ...(state.set[entity] ?? {}), current_position: 0 };
+          },
+          'cover/stop_cover': () => {},
+          'cover/set_cover_position': (data) => {
+            state.toggled[entity] = data['position'] === 0 ? 'closed' : 'open';
+            state.set[entity] = { ...(state.set[entity] ?? {}), current_position: data['position'] };
+          },
+        };
+        const apply = setting[service];
+        if (apply !== undefined) {
+          if (state.refuseToggle) {
+            response.writeHead(500, { 'content-type': 'application/json' });
+            response.end('{"message":"Unknown error"}');
+            return;
+          }
+          apply(parsed);
           json('[]');
           return;
         }

@@ -34,11 +34,20 @@ wall, which thing, and whether it worked — and that list is kept nowhere else,
 not in the logs and not in the diagnostics export. An e-paper wall has nothing
 to tap and shows the reading as before.
 
+**Dim a light, change its colour, set a fan's speed, and move a blind.** Behind
+the same three switches, a light that dims, a fan with speeds or a blind opens a
+small panel over the wall when it is tapped, rather than switching at once: a
+switch for it, sliders for brightness, warmth, speed or position, and eight
+colours for a light that takes one. A slider sends its value when you let go,
+not while you drag. The panel stays open while you use it, closes with **Done**
+or a tap on the wall around it, and closes itself after a short while untouched,
+so the calendar is never left covered. Opening it moves nothing on the wall.
+
 It can never unlock a door, disarm an alarm, change a thermostat, or open a
 garage, gate, door or window: those are not in the fixed list of things this
 application may ask Home Assistant to do, and the Readings screen says so beside
-them. Dimming a light, moving a blind, and running a scene or a script will
-come in later releases, behind the same three switches.
+them. Running a scene or a script will come in a later release, behind the same
+three switches.
 
 ## 0.75.0
 

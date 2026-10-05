@@ -124,12 +124,22 @@ export interface HaState {
  *
  * `device_class` is not in this table because every domain keeps it, as it
  * always has.
+ *
+ * **RFC 018 phase 3 added the control facts**, and only those: what a wall
+ * needs to know, before anybody presses anything, about whether a light dims
+ * or changes colour and over what range, whether a fan's speed or a blind's
+ * position can be set, and in what steps. They are numbers and enum words,
+ * each refused rather than coerced, and they are read by `wallActionsFor` —
+ * the same rule the door applies — so the wall is offered a slider only where
+ * the press would be accepted. `rgb_color` is still not among them: nothing
+ * needs the current colour, and a wall is offered swatches rather than a
+ * picker that starts from it.
  */
 export const ATTRIBUTE_ALLOWLIST: Readonly<Partial<Record<SupportedDomain, readonly AttributeKey[]>>> = {
-  light: ['brightness'],
-  cover: ['current_position'],
+  light: ['brightness', 'supported_color_modes', 'min_color_temp_kelvin', 'max_color_temp_kelvin', 'color_temp_kelvin'],
+  cover: ['current_position', 'supported_features'],
   climate: ['current_temperature', 'temperature', 'hvac_action'],
-  fan: ['percentage'],
+  fan: ['percentage', 'supported_features', 'percentage_step'],
 };
 
 export type AttributeKey =
@@ -138,7 +148,13 @@ export type AttributeKey =
   | 'current_temperature'
   | 'temperature'
   | 'hvac_action'
-  | 'percentage';
+  | 'percentage'
+  | 'supported_features'
+  | 'supported_color_modes'
+  | 'min_color_temp_kelvin'
+  | 'max_color_temp_kelvin'
+  | 'color_temp_kelvin'
+  | 'percentage_step';
 
 export type HaAttributes = Readonly<Partial<{
   /** Home Assistant's 0-255, not a percentage. */
@@ -152,6 +168,16 @@ export type HaAttributes = Readonly<Partial<{
   hvac_action: string;
   /** 0-100. */
   percentage: number;
+  /** Home Assistant's per-domain feature bitmask. */
+  supported_features: number;
+  /** `onoff`, `brightness`, `color_temp`, `hs`, `rgb` and so on. */
+  supported_color_modes: readonly string[];
+  min_color_temp_kelvin: number;
+  max_color_temp_kelvin: number;
+  /** The light's current white, when it is on and showing one. */
+  color_temp_kelvin: number;
+  /** How far one speed step moves a fan, 0-100. */
+  percentage_step: number;
 }>>;
 
 /**
@@ -163,13 +189,21 @@ export type HaAttributes = Readonly<Partial<{
  * still draws, it just draws "On" — the same trade `attributeValue` makes for a
  * friendly name, and the same reason one bad field must not cost the entity.
  */
-const ATTRIBUTE_SCHEMAS: Readonly<Record<AttributeKey, z.ZodType<number | string>>> = {
+const KELVIN = z.number().int().min(1000).max(20_000);
+
+const ATTRIBUTE_SCHEMAS: Readonly<Record<AttributeKey, z.ZodType<number | string | readonly string[]>>> = {
   brightness: z.number().int().min(0).max(255),
   current_position: z.number().int().min(0).max(100),
   current_temperature: z.number().finite().min(-100).max(200),
   temperature: z.number().finite().min(-100).max(200),
   hvac_action: z.string().regex(/^[a-z_]{1,32}$/),
   percentage: z.number().finite().min(0).max(100),
+  supported_features: z.number().int().min(0).max(2 ** 31 - 1),
+  supported_color_modes: z.array(z.string().regex(/^[a-z_]{1,16}$/)).max(8),
+  min_color_temp_kelvin: KELVIN,
+  max_color_temp_kelvin: KELVIN,
+  color_temp_kelvin: KELVIN,
+  percentage_step: z.number().finite().gt(0).max(100),
 };
 
 /**
@@ -183,7 +217,7 @@ const ATTRIBUTE_SCHEMAS: Readonly<Record<AttributeKey, z.ZodType<number | string
 export function pickAttributes(domain: string, raw: unknown): HaAttributes {
   const allowed = (ATTRIBUTE_ALLOWLIST as Readonly<Record<string, readonly AttributeKey[]>>)[domain];
   if (allowed === undefined || typeof raw !== 'object' || raw === null) return {};
-  const picked: Record<string, number | string> = {};
+  const picked: Record<string, number | string | readonly string[]> = {};
   for (const key of allowed) {
     const shaped = ATTRIBUTE_SCHEMAS[key].safeParse((raw as Record<string, unknown>)[key]);
     if (shaped.success) picked[key] = shaped.data;
@@ -638,6 +672,13 @@ export interface EntityReading {
    * which knows nothing of the household's switch.
    */
   readonly actions?: readonly string[];
+  /**
+   * A light's white range and, when it is showing one, its current white, in
+   * kelvin — only beside a `colour_temp` action, for the panel's slider.
+   */
+  readonly kelvin?: { readonly min: number; readonly max: number; readonly value?: number };
+  /** How far one step moves a fan's speed — only beside a `speed` action. */
+  readonly step?: number;
 }
 
 export interface WatchedEntity {

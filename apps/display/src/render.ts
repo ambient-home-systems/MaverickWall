@@ -11,7 +11,7 @@ import type {
   TodayShiftModel,
   TodoItemModel,
 } from './viewmodel.js';
-import { DISPLAY_LOCALE, localTime } from './viewmodel.js';
+import { DISPLAY_LOCALE, localTime, opensPanel } from './viewmodel.js';
 import {
   FACE_DIAL_PATH,
   FACE_HUB_PATH,
@@ -997,8 +997,10 @@ function playfulColumn(
  * item P5.3) took the look and left the argument: `renderHouseTiles` below
  * draws Home Assistant's tile card for a widget that asks for one. A reading is
  * a picture of a state unless three switches all say otherwise (RFC 018,
- * `operable`), and then it is a button that toggles a light, a switch or a fan
- * — never a lock, an alarm or a garage door, which no switch here can reach.
+ * `operable`), and then it is a button that switches a light, a switch or a
+ * fan, or opens the panel for one that dims, changes colour, has speeds or is
+ * a blind — never a lock, an alarm or a garage door, which no switch here can
+ * reach.
  *
  * Note what this function receives — a label, a value, a character, and for a
  * button a handle. There is no entity id in the model and no way to ask for
@@ -1027,15 +1029,23 @@ const HOUSE_FIELD_PRIORITY: readonly HouseField[] = ['value', 'label', 'icon'];
  * it answers, and the focus ring. `/d/ha/act` asks all three again: the
  * display token is on the wall, so this is a courtesy and never the check.
  */
-function operable(model: DisplayModel, config: unknown, reading: HouseReadingModel): boolean {
-  return (
-    model.allowControl &&
-    widgetConfig(config)['tapAction'] === 'act' &&
-    reading.key !== undefined &&
-    reading.actions !== undefined &&
-    reading.actions.includes('toggle')
-  );
+function operable(model: DisplayModel, config: unknown, reading: HouseReadingModel): Press | undefined {
+  if (
+    !model.allowControl ||
+    widgetConfig(config)['tapAction'] !== 'act' ||
+    reading.key === undefined ||
+    reading.actions === undefined
+  ) {
+    return undefined;
+  }
+  // A reading with more than a switch opens its panel (RFC 018 phase 3); one
+  // with only a switch is switched, as phase 2 drew it.
+  if (opensPanel(reading.actions)) return 'panel';
+  return reading.actions.includes('toggle') ? 'toggle' : undefined;
 }
+
+/** What a press on a reading does: switch it, or open its controls. */
+type Press = 'toggle' | 'panel';
 
 /**
  * A reading's element: a `<div>`, or the `<button>` a press lands on.
@@ -1045,13 +1055,178 @@ function operable(model: DisplayModel, config: unknown, reading: HouseReadingMod
  * form, and a button with no type is a submit somebody will one day put in
  * one.
  */
-function readingNode(className: string, act: boolean, reading: HouseReadingModel, actClass: string): HTMLElement {
-  if (!act || reading.key === undefined) return el('div', className);
+function readingNode(
+  className: string,
+  press: Press | undefined,
+  reading: HouseReadingModel,
+  actClass: string,
+  model: DisplayModel,
+  widgetId: string,
+): HTMLElement {
+  if (press === undefined || reading.key === undefined) return el('div', className);
   const button = el('button', `${className} ${actClass}`);
   button.setAttribute('type', 'button');
   button.setAttribute('data-ha-act', reading.key);
-  button.setAttribute('data-ha-action', 'toggle');
+  button.setAttribute('data-ha-action', press);
+  if (press === 'panel') {
+    // Says it opens something, and whether that something is open now.
+    button.setAttribute('aria-haspopup', 'dialog');
+    const open = model.controlPanel?.widgetId === widgetId && model.controlPanel.reading === reading.key;
+    button.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
   return button;
+}
+
+/**
+ * The colours a light can be given from a wall (RFC 018 phase 3): eight, named,
+ * as swatches rather than a picker. A picker is a drag that streams values and
+ * starts from a current colour the wall is never sent; eight named presses are
+ * eight calls a household can predict. These are values sent to a bulb, not
+ * colours this wall draws itself in, which is why they live here and not in
+ * `theme.ts` — each swatch shows the colour it sends.
+ */
+const LIGHT_SWATCHES: readonly { readonly name: string; readonly rgb: readonly [number, number, number] }[] = [
+  { name: 'Red', rgb: [255, 0, 0] },
+  { name: 'Orange', rgb: [255, 120, 0] },
+  { name: 'Yellow', rgb: [255, 210, 0] },
+  { name: 'Green', rgb: [0, 200, 60] },
+  { name: 'Cyan', rgb: [0, 200, 220] },
+  { name: 'Blue', rgb: [0, 70, 255] },
+  { name: 'Purple', rgb: [150, 40, 255] },
+  { name: 'Pink', rgb: [255, 60, 160] },
+];
+
+/** One slider, with the word it sends and a readout `main.ts` keeps live while it moves. */
+function controlSlider(
+  label: string,
+  action: string,
+  range: { readonly min: number; readonly max: number; readonly step: number; readonly value: number },
+  unit: string,
+): HTMLElement {
+  const row = el('label', 'hc-slider');
+  const head = el('span', 'hc-slider-head');
+  head.appendChild(el('span', 'hc-slider-name', label));
+  const readout = el('span', 'hc-readout', `${range.value}${unit}`);
+  readout.setAttribute('data-hc-unit', unit);
+  head.appendChild(readout);
+  row.appendChild(head);
+  const input = el('input', 'hc-range') as HTMLInputElement;
+  input.type = 'range';
+  input.min = String(range.min);
+  input.max = String(range.max);
+  input.step = String(range.step);
+  input.value = String(Math.min(range.max, Math.max(range.min, range.value)));
+  input.setAttribute('data-hc-action', action);
+  row.appendChild(input);
+  return row;
+}
+
+/** One button in the panel: a word, and for a swatch the value it sends. */
+function controlButton(text: string, action: string, value?: string): HTMLElement {
+  const button = el('button', 'hc-button', text);
+  button.setAttribute('type', 'button');
+  button.setAttribute('data-hc-action', action);
+  if (value !== undefined) button.setAttribute('data-hc-value', value);
+  return button;
+}
+
+/**
+ * A reading's controls, open over the wall (RFC 018 phase 3): its switch,
+ * a blind's open, stop and close, and a slider for each value it takes, with
+ * eight swatches for a colour.
+ *
+ * **Drawn from model state**, as the to-do failure sentence is, so the
+ * fifteen-second rebuild redraws it where it was rather than closing it; and
+ * `main.ts` holds that rebuild while a finger is on a slider, so a drag is not
+ * cut off under it. A slider sends its value once, on release (`change`),
+ * never a stream while it moves — each value is a call to somebody's house.
+ *
+ * **Drawn only where the button that opened it would be drawn**: the wall's
+ * switch, the reading's actions and this widget's `tapAction`, asked again
+ * here, so a panel left open across a poll that took any of them away simply
+ * is not there on the next draw. And the server asks all three again on every
+ * press.
+ *
+ * Returns the scrim and the panel, which `renderFreeform` puts beside the
+ * canvas rather than in it: an overlay moves no widget.
+ */
+function renderControlPanel(
+  model: DisplayModel,
+  widgets: readonly ManifestWidget[],
+): readonly HTMLElement[] | undefined {
+  const open = model.controlPanel;
+  if (open === undefined) return undefined;
+  const widget = widgets.find((one) => one.id === open.widgetId);
+  if (widget === undefined || widget.type !== 'homeassistant') return undefined;
+  const reading = houseReadingsFor(model.house, widget.config).find((one) => one.key === open.reading);
+  if (reading === undefined || operable(model, widget.config, reading) !== 'panel') return undefined;
+  const actions = reading.actions ?? [];
+
+  const scrim = el('div', 'hc-scrim');
+  scrim.setAttribute('data-hc-close', '');
+
+  const panel = el('section', 'hc-panel');
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-modal', 'true');
+  panel.setAttribute('aria-label', reading.label);
+  panel.setAttribute('data-hc-widget', open.widgetId);
+  panel.setAttribute('data-hc-reading', open.reading);
+
+  const head = el('header', 'hc-head');
+  head.appendChild(el('h2', 'hc-name', reading.label));
+  head.appendChild(el('p', 'hc-state', reading.value));
+  panel.appendChild(head);
+
+  // A press that did not go through, in the panel it was pressed in.
+  const notice = model.houseNotices[open.widgetId];
+  if (notice !== undefined) panel.appendChild(houseNoticeNode(notice, 'hc-note'));
+
+  const buttons = el('div', 'hc-buttons');
+  if (actions.includes('toggle')) {
+    buttons.appendChild(controlButton(reading.tone === 'active' ? 'Turn off' : 'Turn on', 'toggle'));
+  }
+  if (actions.includes('open')) buttons.appendChild(controlButton('Open', 'open'));
+  if (actions.includes('stop')) buttons.appendChild(controlButton('Stop', 'stop'));
+  if (actions.includes('close')) buttons.appendChild(controlButton('Close', 'close'));
+  if (buttons.childElementCount > 0) panel.appendChild(buttons);
+
+  if (actions.includes('brightness')) {
+    panel.appendChild(controlSlider('Brightness', 'brightness', { min: 1, max: 100, step: 1, value: reading.level ?? 100 }, '%'));
+  }
+  if (actions.includes('speed')) {
+    panel.appendChild(controlSlider('Speed', 'speed', { min: 0, max: 100, step: reading.step ?? 1, value: reading.level ?? 0 }, '%'));
+  }
+  if (actions.includes('position')) {
+    panel.appendChild(controlSlider('Position', 'position', { min: 0, max: 100, step: 1, value: reading.level ?? 0 }, '%'));
+  }
+  if (actions.includes('colour_temp') && reading.kelvin !== undefined) {
+    const { min, max } = reading.kelvin;
+    // A range's steps start at its minimum, so a default off that grid is
+    // moved by the browser before anybody touches it. The middle, on the grid.
+    const step = 50;
+    const value = reading.kelvin.value ?? min + Math.round((max - min) / 2 / step) * step;
+    panel.appendChild(controlSlider('White, warm to cool', 'colour_temp', { min, max, step, value }, 'K'));
+  }
+  if (actions.includes('colour')) {
+    const swatches = el('div', 'hc-swatches');
+    swatches.setAttribute('role', 'group');
+    swatches.setAttribute('aria-label', 'Colour');
+    for (const swatch of LIGHT_SWATCHES) {
+      const button = controlButton('', 'colour', swatch.rgb.join(','));
+      button.classList.add('hc-swatch');
+      button.setAttribute('aria-label', swatch.name);
+      button.setAttribute('title', swatch.name);
+      button.style.backgroundColor = `rgb(${swatch.rgb.join(', ')})`;
+      swatches.appendChild(button);
+    }
+    panel.appendChild(swatches);
+  }
+
+  const done = el('button', 'hc-button hc-done', 'Done');
+  done.setAttribute('type', 'button');
+  done.setAttribute('data-hc-close', '');
+  panel.appendChild(done);
+  return [scrim, panel];
 }
 
 /**
@@ -1087,6 +1262,8 @@ function renderHouse(
       operable(model, config, reading),
       reading,
       'hs-act',
+      model,
+      widgetId,
     );
     /*
      * Which parts this reading shows, from the widget's own list when it has
@@ -1187,6 +1364,8 @@ function renderHouseTiles(
       operable(model, config, reading),
       reading,
       'ht-act',
+      model,
+      widgetId,
     );
     tile.setAttribute('data-tone', tileTone(reading));
 
@@ -4713,6 +4892,11 @@ export function renderFreeform(
   }
 
   screen.appendChild(canvas);
+
+  // A reading's controls, over the canvas rather than in it (RFC 018 §10): an
+  // overlay moves no widget, and outside `.canvas` no household CSS reaches it.
+  const panel = renderControlPanel(model, layout.widgets);
+  if (panel !== undefined) screen.append(...panel);
 
   const banners = renderBanners(model);
   if (banners !== undefined) {

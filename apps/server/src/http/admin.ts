@@ -5607,7 +5607,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         name: 'allow_control',
         checked: screen.allowControl === 1,
         hint:
-          'Anyone at this wall can switch the lights, switches and fans you ' +
+          'Anyone at this wall can operate the lights, switches, fans and blinds you ' +
           'marked “Can be controlled from walls” under Home Assistant › Readings, ' +
           'from a widget set to Tap to operate. It never reaches a lock, an alarm ' +
           'or a garage door. Off unless you mean it.',

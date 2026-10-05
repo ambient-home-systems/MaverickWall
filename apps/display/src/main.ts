@@ -206,6 +206,34 @@ function start(): void {
   const houseNotices = new Map<string, { readonly text: string; readonly until: number }>();
 
   /*
+   * A reading's controls, open over the wall (RFC 018 phase 3): which reading,
+   * pressed in which box, and when anybody last touched it. Model state, for
+   * `todoNotices`' reason — the fifteen-second rebuild has to be told the panel
+   * is open rather than destroy it.
+   *
+   * **It closes itself** after `PANEL_IDLE_MS` untouched, because a wall has
+   * no pointer to dismiss anything and a panel left over the calendar is a
+   * calendar nobody can read until somebody walks over. And **a draw waits
+   * while a finger is on a slider**: a rebuild under a drag destroys the input
+   * being dragged, and the value the household was choosing goes with it.
+   */
+  const PANEL_IDLE_MS = 45_000;
+  let controlPanel: { widgetId: string; reading: string; touchedAt: number } | undefined;
+  let panelJustOpened = false;
+  let sliderHeld = false;
+  let drawWhenReleased = false;
+
+  /** Which control in the panel has focus, so a redraw can hand it back. */
+  const panelFocusKey = (): string | undefined => {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement) || active.closest('.hc-panel') === null) return undefined;
+    if (active.hasAttribute('data-hc-close')) return 'close';
+    const action = active.getAttribute('data-hc-action');
+    if (action === null) return undefined;
+    return `${action}|${active.getAttribute('data-hc-value') ?? ''}`;
+  };
+
+  /*
    * When each widget's one-shot effects fired, by widget id and event (plan
    * P4.3) — the confetti on a countdown's day, a page flipping at midnight.
    *
@@ -294,6 +322,16 @@ function start(): void {
     );
 
   const draw = (): void => {
+    if (sliderHeld) {
+      // Not a stopped renderer — a finger on a slider. The release draws.
+      drawWhenReleased = true;
+      lastDrawAt = Date.now();
+      return;
+    }
+    if (controlPanel !== undefined && Date.now() - controlPanel.touchedAt > PANEL_IDLE_MS) {
+      controlPanel = undefined;
+    }
+    const focusBefore = panelFocusKey();
     if (manifest === undefined) {
       /*
        * Nothing to draw is not a stopped renderer, and the watchdog cannot
@@ -321,6 +359,9 @@ function start(): void {
       offline,
       todoNotices: liveTodoNotices(),
       houseNotices: liveNotices(houseNotices),
+      ...(controlPanel === undefined
+        ? {}
+        : { controlPanel: { widgetId: controlPanel.widgetId, reading: controlPanel.reading } }),
       oneShots,
     });
     // Events nothing has asked about for an hour are forgotten, on the clock
@@ -381,6 +422,28 @@ function start(): void {
       customCss.apply(customCssBlocks(manifest.screen?.customCss, canvas.widgets));
     } else {
       customCss.clear();
+    }
+    /*
+     * The panel's focus, after a rebuild replaced every node in it. A panel
+     * the renderer declined to draw — its reading gone, a switch turned off
+     * since — is closed rather than left open in the model for a later poll
+     * to bring back unasked.
+     */
+    const drawnPanel = root.querySelector<HTMLElement>('.hc-panel');
+    if (controlPanel !== undefined && drawnPanel === null) controlPanel = undefined;
+    if (drawnPanel !== null) {
+      const want = panelJustOpened ? undefined : focusBefore;
+      const target =
+        want === undefined
+          ? drawnPanel.querySelector<HTMLElement>('[data-hc-action]')
+          : want === 'close'
+            ? drawnPanel.querySelector<HTMLElement>('[data-hc-close]')
+            : [...drawnPanel.querySelectorAll<HTMLElement>('[data-hc-action]')].find(
+                (node) =>
+                  `${node.getAttribute('data-hc-action') ?? ''}|${node.getAttribute('data-hc-value') ?? ''}` === want,
+              );
+      if (panelJustOpened || want !== undefined) target?.focus();
+      panelJustOpened = false;
     }
     /*
      * Last, so it covers everything above: whatever moves was locked to `now`,
@@ -709,8 +772,8 @@ function start(): void {
      * click on Enter is one the OK key must leave alone, and a second handler
      * with its own copy of this rule is how the two would come to disagree.
      */
-    if (document.activeElement?.closest?.('[data-chore], [data-todo], [data-ha-act]') !== null &&
-        document.activeElement?.closest?.('[data-chore], [data-todo], [data-ha-act]') !== undefined) {
+    if (document.activeElement?.closest?.('[data-chore], [data-todo], [data-ha-act], .hc-panel') !== null &&
+        document.activeElement?.closest?.('[data-chore], [data-todo], [data-ha-act], .hc-panel') !== undefined) {
       return;
     }
     const key = dismissTarget();
@@ -840,14 +903,21 @@ function start(): void {
    * pressed in and the word; the server resolves the entity, checks all three
    * switches, re-reads the state and decides.
    */
-  const actOnReading = async (widgetId: string, reading: string, action: string): Promise<void> => {
+  const actOnReading = async (
+    widgetId: string,
+    reading: string,
+    action: string,
+    value?: string,
+  ): Promise<void> => {
     let failure: string | undefined;
     try {
+      const fields: Record<string, string> = { reading, widget: widgetId, action };
+      if (value !== undefined) fields['value'] = value;
       const response = await fetch('/d/ha/act', {
         method: 'POST',
         headers: { 'content-type': 'application/x-www-form-urlencoded' },
         credentials: 'same-origin',
-        body: new URLSearchParams({ reading, widget: widgetId, action }).toString(),
+        body: new URLSearchParams(fields).toString(),
       });
       if (!response.ok) failure = await tickMessage(response);
     } catch {
@@ -861,15 +931,86 @@ function start(): void {
     await poll();
   };
 
+  /*
+   * The panel's sliders. The readout follows a drag on `input`, which sends
+   * nothing; the value goes on `change`, which a range fires once, on release
+   * — one call to the house per choice rather than a stream while it moves.
+   */
+  const panelSlider = (event: Event): HTMLInputElement | undefined => {
+    const input = event.target;
+    return input instanceof HTMLInputElement && input.closest('.hc-panel') !== null && input.hasAttribute('data-hc-action')
+      ? input
+      : undefined;
+  };
+  root.addEventListener('input', (event: Event) => {
+    const input = panelSlider(event);
+    if (input === undefined || controlPanel === undefined) return;
+    controlPanel.touchedAt = Date.now();
+    const readout = input.closest('.hc-slider')?.querySelector<HTMLElement>('.hc-readout');
+    if (readout !== null && readout !== undefined) {
+      readout.textContent = `${input.value}${readout.getAttribute('data-hc-unit') ?? ''}`;
+    }
+  });
+  root.addEventListener('change', (event: Event) => {
+    const input = panelSlider(event);
+    if (input === undefined || controlPanel === undefined) return;
+    controlPanel.touchedAt = Date.now();
+    void actOnReading(controlPanel.widgetId, controlPanel.reading, input.getAttribute('data-hc-action') ?? '', input.value);
+  });
+  // A finger on a slider holds the redraw; letting go releases it, after the
+  // `change` the release fires has been dispatched.
+  root.addEventListener('pointerdown', (event: Event) => {
+    if (panelSlider(event) !== undefined) sliderHeld = true;
+  });
+  const release = (): void => {
+    if (!sliderHeld) return;
+    sliderHeld = false;
+    if (drawWhenReleased) {
+      drawWhenReleased = false;
+      setTimeout(() => safely(draw), 0);
+    }
+  };
+  document.addEventListener('pointerup', release);
+  document.addEventListener('pointercancel', release);
+
   root.addEventListener('click', (event: Event) => {
     const target = event.target as Element | null;
+
+    // A reading's panel: closed by Done or by a press on the wall around it,
+    // with focus handed back to the reading that opened it.
+    if (target?.closest?.('[data-hc-close]') !== null && target?.closest?.('[data-hc-close]') !== undefined) {
+      const was = controlPanel;
+      controlPanel = undefined;
+      draw();
+      if (was !== undefined) {
+        root
+          .querySelector<HTMLElement>(`.fw[data-widget-id="${was.widgetId}"] [data-ha-act="${was.reading}"]`)
+          ?.focus();
+      }
+      return;
+    }
+    const control = target?.closest?.('button[data-hc-action]');
+    if (control !== null && control !== undefined && controlPanel !== undefined) {
+      controlPanel.touchedAt = Date.now();
+      const action = control.getAttribute('data-hc-action') ?? '';
+      const value = control.getAttribute('data-hc-value') ?? undefined;
+      void actOnReading(controlPanel.widgetId, controlPanel.reading, action, value);
+      return;
+    }
 
     const act = target?.closest?.('[data-ha-act]');
     if (act !== null && act !== undefined) {
       const reading = act.getAttribute('data-ha-act') ?? '';
       const action = act.getAttribute('data-ha-action') ?? '';
       const widgetId = (act.closest('.fw') as HTMLElement | null)?.dataset['widgetId'] ?? '';
-      if (reading !== '' && action !== '' && widgetId !== '') void actOnReading(widgetId, reading, action);
+      if (reading === '' || action === '' || widgetId === '') return;
+      if (action === 'panel') {
+        controlPanel = { widgetId, reading, touchedAt: Date.now() };
+        panelJustOpened = true;
+        draw();
+        return;
+      }
+      void actOnReading(widgetId, reading, action);
       return;
     }
 

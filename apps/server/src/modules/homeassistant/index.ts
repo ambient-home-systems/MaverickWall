@@ -8,6 +8,7 @@ import type { Keyring } from '../../secrets/keyring.js';
 import type { Fetcher } from '@maverick-wall/core';
 import {
   cachedAttributes,
+  domainOf,
   glyphFor,
   parseStates,
   pickAttributes,
@@ -63,7 +64,7 @@ interface WatchRow {
  * wall draws. This is a hint for the wall's renderer and nothing more: whether
  * a press is honoured is `/d/ha/act`'s decision, from the state as it is then.
  */
-function actionsOf(row: WatchRow): { readonly actions?: readonly string[] } {
+function actionsOf(row: WatchRow): ControlFields {
   if (row.controllable !== 1) return {};
   let attributes: unknown = null;
   try {
@@ -73,8 +74,34 @@ function actionsOf(row: WatchRow): { readonly actions?: readonly string[] } {
     return {};
   }
   const actions = wallActionsFor(row.entityId, attributes);
-  return actions.length === 0 ? {} : { actions };
+  if (actions.length === 0) return {};
+  /*
+   * What the panel's sliders start at and range over (RFC 018 phase 3), for
+   * the two that are not a percentage the reading's `level` already carries:
+   * a light's white, in its own kelvin range, and a fan's step. Each only
+   * beside the word that uses it, so a light that only switches sends what it
+   * sent in phase 2.
+   */
+  const picked = pickAttributes(domainOf(row.entityId), attributes);
+  const min = picked.min_color_temp_kelvin;
+  const max = picked.max_color_temp_kelvin;
+  const step = picked.percentage_step;
+  return {
+    actions,
+    ...(actions.includes('colour_temp') && min !== undefined && max !== undefined
+      ? {
+          kelvin: {
+            min,
+            max,
+            ...(picked.color_temp_kelvin === undefined ? {} : { value: picked.color_temp_kelvin }),
+          },
+        }
+      : {}),
+    ...(actions.includes('speed') && step !== undefined ? { step } : {}),
+  };
 }
+
+type ControlFields = Pick<EntityReading, 'actions' | 'kelvin' | 'step'>;
 
 const MODES: readonly string[] = ['value', 'label_value', 'icon_state', 'presence'];
 
