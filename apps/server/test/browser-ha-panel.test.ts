@@ -27,6 +27,7 @@ import { closeFakeHomeAssistants, fakeHomeAssistant, TOKEN, type FakeHa } from '
 const SLOW = 180_000;
 const LIGHT = 'light.living_room';
 const BLIND = 'cover.kitchen_blind';
+const PLAYER = 'media_player.kitchen';
 const installations: Installation[] = [];
 
 afterAll(async () => {
@@ -72,7 +73,8 @@ async function wallWithControls(): Promise<Wall> {
     min_color_temp_kelvin: 2202, max_color_temp_kelvin: 6535,
   }, 'Living room', 0);
   seed(BLIND, 'open', { device_class: 'blind', current_position: 40, supported_features: 15 }, 'Kitchen blind', 1);
-  for (const entity of [LIGHT, BLIND]) {
+  seed(PLAYER, 'playing', { supported_features: 1 | 4 | 16 | 32 | 16384, volume_level: 0.4 }, 'Kitchen speaker', 2);
+  for (const entity of [LIGHT, BLIND, PLAYER]) {
     expect(
       (await app.post('/admin/home-assistant/entities/control', { entity_id: entity, controllable: '1' })).status,
     ).toBe(302);
@@ -367,6 +369,41 @@ describe('a reading’s controls on a paired wall', () => {
         });
         await poll(page);
         await expect.poll(() => page.locator('#wall .hc-panel').count(), { timeout: 10_000 }).toBe(0);
+      } finally {
+        await opened.close();
+      }
+    },
+    SLOW,
+  );
+
+  it(
+    'plays, skips and sets a speaker’s volume from its panel (RFC 018 phase 6)',
+    async () => {
+      const wall = await wallWithControls();
+      const opened = await loadWallSettled(wall.link, { width: 1080, height: 1920 });
+      try {
+        const page = opened.page;
+        await page.waitForSelector('#wall [data-ha-action="panel"]', { timeout: 25_000 });
+        await openFor(page, 'Kitchen speaker');
+        const drawn = await page.evaluate(() => ({
+          buttons: [...document.querySelectorAll('#wall .hc-buttons .hc-button')].map((b) => (b.textContent ?? '').trim()),
+          sliders: [...document.querySelectorAll<HTMLInputElement>('#wall .hc-range')].map(
+            (r) => `${r.getAttribute('data-hc-action')}@${r.value}`,
+          ),
+        }));
+        // In a remote's order, and Pause because it is playing.
+        expect(drawn).toEqual({ buttons: ['Previous', 'Pause', 'Next'], sliders: ['volume@40'] });
+
+        await page.locator('#wall .hc-button[data-hc-action="next"]').click();
+        await expect.poll(() => services(wall.ha).length, { timeout: 10_000 }).toBe(1);
+        // One step up the volume from the keyboard: one `change`, one call.
+        await page.locator('#wall .hc-range[data-hc-action="volume"]').focus();
+        await page.keyboard.press('ArrowRight');
+        await expect.poll(() => services(wall.ha).length, { timeout: 10_000 }).toBe(2);
+        expect(services(wall.ha)).toEqual([
+          { path: 'media_player/media_next_track', body: { entity_id: PLAYER } },
+          { path: 'media_player/volume_set', body: { entity_id: PLAYER, volume_level: 0.41 } },
+        ]);
       } finally {
         await opened.close();
       }

@@ -60,6 +60,7 @@ const LIGHT_KEY = haReadingHandle(LIGHT);
 const FAN = 'fan.bedroom';
 const BLIND = 'cover.kitchen_blind';
 const SCENE = 'scene.movie_night';
+const PLAYER = 'media_player.kitchen';
 const SCRIPT = 'script.goodnight';
 
 interface Harness {
@@ -153,7 +154,7 @@ async function harness(): Promise<Harness> {
   // Through the real form, in the order a household would: a light, a switch,
   // a lock and a temperature.
   for (const entity of [
-    LIGHT, 'switch.kettle', 'lock.front_door', 'sensor.kitchen_temperature', FAN, BLIND, SCENE, SCRIPT,
+    LIGHT, 'switch.kettle', 'lock.front_door', 'sensor.kitchen_temperature', FAN, BLIND, SCENE, SCRIPT, PLAYER,
   ]) {
     expect((await form('/admin/home-assistant/entities', { entity_id: entity, label: '' })).status).toBe(302);
   }
@@ -466,7 +467,7 @@ describe('Can be controlled from walls', () => {
       .map((match) => match[1]);
     // A blind since phase 3: it shades a room and reports what can be moved.
     // And a scene and a script since phase 4.
-    expect(controls.sort()).toEqual([BLIND, FAN, LIGHT, SCENE, SCRIPT, 'switch.kettle'].sort());
+    expect(controls.sort()).toEqual([BLIND, FAN, LIGHT, PLAYER, SCENE, SCRIPT, 'switch.kettle'].sort());
     // The lock is told why, beside it, rather than left without a switch.
     expect(html).toContain('Walls can never operate this.');
     // And a switch carries its caution: it can be anything.
@@ -869,6 +870,81 @@ describe('which scenes reach the never-list', () => {
     expect(sceneReachesNever({}, () => null)).toBeNull();
     expect(reaches('light.a')).toBeNull();
     expect(reaches(['light.a', 7])).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 6: a media player's transport and volume
+// ---------------------------------------------------------------------------
+
+describe('playing, pausing, skipping and the volume (RFC 018 phase 6)', () => {
+  const sent = (h: Harness): { path: string; body: unknown }[] =>
+    h.ha.posts
+      .filter((post) => post.path.startsWith('/api/services/') && !post.path.includes('/todo/'))
+      .map((post) => ({ path: post.path.slice('/api/services/'.length), body: JSON.parse(post.body) }));
+  const KEY = haReadingHandle(PLAYER);
+
+  async function readyPlayer(h: Harness): Promise<string> {
+    h.allowControl();
+    expect((await markControllable(h, PLAYER)).status).toBe(302);
+    return h.widget({ tapAction: 'act' });
+  }
+
+  it('reads what the player is doing, carries its volume beside the slider, and never the track', async () => {
+    const h = await harness();
+    await readyPlayer(h);
+    const { body, text } = await h.manifest();
+    const reading = readingsOf(body).find((r) => r.key === KEY) as Reading & Record<string, unknown>;
+    expect(reading.value).toBe('Playing');
+    expect(reading.actions).toEqual(['play_pause', 'next', 'previous', 'volume']);
+    expect(reading['volume']).toBe(40);
+    for (const leak of ['A track title that must not travel', 'An artist', 'picture-token-that-must-not-travel']) {
+      expect(text).not.toContain(leak);
+    }
+  });
+
+  it('sends each word through its own row, and the volume as Home Assistant’s 0.0–1.0', async () => {
+    const h = await harness();
+    const widget = await readyPlayer(h);
+    for (const fields of [
+      { action: 'play_pause' },
+      { action: 'next' },
+      { action: 'previous' },
+      { action: 'volume', value: '75' },
+      { action: 'volume', value: '0' },
+    ]) {
+      expect((await h.act({ reading: KEY, widget, ...fields })).status, JSON.stringify(fields)).toBe(200);
+    }
+    // And out of range on a player that does take a volume: refused, sent nowhere.
+    expect((await h.act({ reading: KEY, widget, action: 'volume', value: '101' })).status).toBe(400);
+    expect(sent(h)).toEqual([
+      { path: 'media_player/media_play_pause', body: { entity_id: PLAYER } },
+      { path: 'media_player/media_next_track', body: { entity_id: PLAYER } },
+      { path: 'media_player/media_previous_track', body: { entity_id: PLAYER } },
+      { path: 'media_player/volume_set', body: { entity_id: PLAYER, volume_level: 0.75 } },
+      { path: 'media_player/volume_set', body: { entity_id: PLAYER, volume_level: 0 } },
+    ]);
+    // Written through: the slider starts where the player now is.
+    const reading = readingsOf((await h.manifest()).body).find((r) => r.key === KEY) as Record<string, unknown>;
+    expect(reading['volume']).toBe(0);
+  });
+
+  it('refuses a volume out of range and a word the player does not support', async () => {
+    const h = await harness();
+    h.ha.set[PLAYER] = { supported_features: 1 | 16384 };
+    await h.poll();
+    const widget = await readyPlayer(h);
+    const narrowed = readingsOf((await h.manifest()).body).find((r) => r.key === KEY) as Reading &
+      Record<string, unknown>;
+    expect(narrowed.actions).toEqual(['play_pause']);
+    // Its volume is cached and not sent: no slider, so nothing for it to start.
+    expect('volume' in narrowed).toBe(false);
+    // A word it does not support is refused at the house's own features, before
+    // any value is looked at.
+    expect((await h.act({ reading: KEY, widget, action: 'next' })).status).toBe(409);
+    expect((await h.act({ reading: KEY, widget, action: 'volume', value: '50' })).status).toBe(409);
+    expect((await h.act({ reading: KEY, widget, action: 'play_pause' })).status).toBe(200);
+    expect(sent(h).map((post) => post.path)).toEqual(['media_player/media_play_pause']);
   });
 });
 

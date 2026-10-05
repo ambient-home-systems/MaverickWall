@@ -1,7 +1,13 @@
 # Changelog
 
 <!--
-  Write release notes here, under `## Unreleased`,**Buttons on the wall that call an address you choose.** A new **Buttons**
+  Write release notes here, under `## Unreleased`,**Play, pause, skip and turn a speaker up from the wall.** Media players can
+now be added on the Readings screen; a wall shows what one is doing — Playing,
+Paused, Off — and never the song. Behind the same three switches, tapping one
+opens its controls: Previous, Play or Pause, Next, and a volume slider that
+starts where the speaker is.
+
+**Buttons on the wall that call an address you choose.** A new **Buttons**
 screen keeps addresses for a wall to call — a Home Assistant webhook, a Node-RED
 flow, anything that answers a POST — sealed, and only their host is ever shown
 again. A new **Buttons** widget draws them on a wall. Behind the same three

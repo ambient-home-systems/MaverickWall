@@ -684,6 +684,17 @@ describe('text from somewhere else', () => {
     ]);
   });
 
+  it('reads a player’s volume only as a whole percentage (RFC 018 phase 6)', () => {
+    const shaped = houseFrom({ readings: [
+      { key: '0123456789abcdef', label: 'Kitchen', value: 'Playing', actions: ['play_pause', 'volume'], volume: 40 },
+      { key: '1123456789abcdef', label: 'Hall', value: 'Paused', volume: 0.4 },
+      { key: '2123456789abcdef', label: 'Den', value: 'Off', volume: 140 },
+    ] });
+    expect(shaped.readings.map((reading) => reading.volume)).toEqual([40, undefined, undefined]);
+    expect(shaped.readings[0]?.actions).toEqual(['play_pause', 'volume']);
+    expect(opensPanel(['play_pause', 'next', 'previous', 'volume'])).toBe(true);
+  });
+
   it('opens a panel for every word but a lone switch', () => {
     expect(opensPanel(undefined)).toBe(false);
     expect(opensPanel(['toggle'])).toBe(false);

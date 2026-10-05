@@ -728,6 +728,8 @@ describe('readings on the wall', () => {
     'cover.kitchen_blind',
     'lock.front_door',
     'climate.hallway',
+    // RFC 018 phase 6: watched for what it is doing, never for what it plays.
+    'media_player.kitchen',
   ] as const;
 
   async function watchReadOnly(h: Harness): Promise<void> {
