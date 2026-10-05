@@ -1,25 +1,7 @@
 # Changelog
 
 <!--
-  Write release notes here, under `## Unreleased`,**Play, pause, skip and turn a speaker up from the wall.** Media players can
-now be added on the Readings screen; a wall shows what one is doing — Playing,
-Paused, Off — and never the song. Behind the same three switches, tapping one
-opens its controls: Previous, Play or Pause, Next, and a volume slider that
-starts where the speaker is.
-
-**Buttons on the wall that call an address you choose.** A new **Buttons**
-screen keeps addresses for a wall to call — a Home Assistant webhook, a Node-RED
-flow, anything that answers a POST — sealed, and only their host is ever shown
-again. A new **Buttons** widget draws them on a wall. Behind the same three
-switches as everything else a wall can operate — the wall's **Allow operating
-things in the house**, the button's own **Can be pressed from walls**, and the
-widget's **Tap to operate** — a button is pressed by holding it, and sends an
-empty POST, never following a redirect. The wall is never given an address. A
-Home Assistant webhook carries a warning: it runs whatever it is attached to,
-so like a script, a button you allow can do whatever that does. An e-paper wall
-shows the names.
-
- as you go.
+  Write release notes here, under `## Unreleased`, as you go.
 
   The release renames this heading to the version being shipped and raises
   config.yaml to match, in one commit, after the image is built and verified.
@@ -78,6 +60,24 @@ moves a garage, gate, door or window is refused, and the Readings screen names
 what it sets; this is checked again every time it is run from a wall. A script
 cannot be checked that way, so one you allow can do whatever it was written to
 do — the Home Assistant screen, this documentation and the README now say so.
+
+**Buttons on the wall that call an address you choose.** A new **Buttons**
+screen keeps addresses for a wall to call — a Home Assistant webhook, a Node-RED
+flow, anything that answers a POST — sealed, and only their host is ever shown
+again. A new **Buttons** widget draws them on a wall. Behind the same three
+switches as everything else a wall can operate — the wall's **Allow operating
+things in the house**, the button's own **Can be pressed from walls**, and the
+widget's **Tap to operate** — a button is pressed by holding it, and sends an
+empty POST, never following a redirect. The wall is never given an address. A
+Home Assistant webhook carries a warning: it runs whatever it is attached to,
+so like a script, a button you allow can do whatever that does. An e-paper wall
+shows the names.
+
+**Play, pause, skip and turn a speaker up from the wall.** Media players can
+now be added on the Readings screen; a wall shows what one is doing — Playing,
+Paused, Off — and never the song. Behind the same three switches, tapping one
+opens its controls: Previous, Play or Pause, Next, and a volume slider that
+starts where the speaker is.
 
 ## 0.75.0
 
