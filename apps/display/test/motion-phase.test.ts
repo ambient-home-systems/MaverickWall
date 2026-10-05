@@ -5,6 +5,7 @@ import {
   ONE_SHOT_FORGET_MS,
   ONE_SHOT_MAX,
   createOneShotMemory,
+  advanceLocks,
   lockLoop,
   lockOnce,
   oneShotPhase,
@@ -169,11 +170,12 @@ function fakeNode(): { node: HTMLElement; style: Record<string, string>; classes
 }
 
 describe('the two writers', () => {
-  it('write a loop’s duration and delay and nothing else', () => {
+  it('write a loop’s duration and delay, and mark it so a draw can find it again', () => {
     const { node, style, classes } = fakeNode();
     lockLoop(node, 6_000, 15_000);
     expect(style).toEqual({ animationDuration: '6000ms', animationDelay: '-3000ms' });
-    expect(classes).toEqual([]);
+    // A mark, not a look: no rule in display.css names it.
+    expect(classes).toEqual(['fx-loop']);
   });
 
   it('write a playing one-shot’s timing and class, and leave a finished one untouched', () => {
@@ -186,5 +188,60 @@ describe('the two writers', () => {
     expect(lockOnce(done.node, 2_400, { playing: false })).toBe(false);
     expect(done.style).toEqual({});
     expect(done.classes).toEqual([]);
+  });
+});
+
+/** A root holding the given nodes, answering the one selector `advanceLocks` asks. */
+function rootOf(...nodes: { node: HTMLElement; classes: string[] }[]): ParentNode {
+  return {
+    querySelectorAll: (selector: string) => {
+      expect(selector).toBe('.fx-loop, .fx-playing');
+      return nodes
+        .filter((one) => one.classes.includes('fx-loop') || one.classes.includes('fx-playing'))
+        .map((one) => one.node);
+    },
+  } as unknown as ParentNode;
+}
+
+function markedNode(): { node: HTMLElement; style: Record<string, string>; classes: string[] } {
+  const style: Record<string, string> = {};
+  const classes: string[] = [];
+  const node = {
+    style,
+    classList: { add: (name: string) => classes.push(name), contains: (name: string) => classes.includes(name) },
+  } as unknown as HTMLElement;
+  return { node, style, classes };
+}
+
+describe('paying back the time a draw took', () => {
+  it('moves a loop on by the draw, round its cycle, exactly as if it had been locked that much later', () => {
+    const one = markedNode();
+    lockLoop(one.node, 6_000, 15_000);
+    advanceLocks(rootOf(one), 250);
+    expect(one.style['animationDelay']).toBe(phaseDelay(6_000, 15_250));
+    // Across the end of the cycle it wraps rather than running past it.
+    const late = markedNode();
+    lockLoop(late.node, 6_000, 17_900);
+    advanceLocks(rootOf(late), 250);
+    expect(late.style['animationDelay']).toBe('-150ms');
+  });
+
+  it('moves a playing one-shot on by the draw too, without wrapping it', () => {
+    const once = markedNode();
+    lockOnce(once.node, 2_400, { playing: true, delay: '-900ms' });
+    advanceLocks(rootOf(once), 250);
+    expect(once.style['animationDelay']).toBe('-1150ms');
+  });
+
+  it('leaves what is not locked, and a draw that took no time, alone', () => {
+    const one = markedNode();
+    lockLoop(one.node, 6_000, 15_000);
+    const done = markedNode();
+    lockOnce(done.node, 2_400, { playing: false });
+    advanceLocks(rootOf(one, done), 0);
+    advanceLocks(rootOf(one, done), Number.NaN);
+    expect(one.style['animationDelay']).toBe('-3000ms');
+    advanceLocks(rootOf(one, done), 100);
+    expect(done.style).toEqual({});
   });
 });

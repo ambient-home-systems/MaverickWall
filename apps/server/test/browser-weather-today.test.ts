@@ -377,8 +377,31 @@ describe('with no reading to call now', () => {
 /** `SKY_MOTION_MS` in `apps/display/src/weather-looks.ts`. */
 const GLOW_MS = 9_000;
 const RAIN_MS = 1_200;
-/** How far a rebuilt element may land from continuity: the draw's own latency (`browser-motion`'s figure). */
+/**
+ * How far a rebuilt element may land from continuity (`browser-motion`'s figure).
+ *
+ * **What it absorbs is the draw's own duration, and that is now paid back
+ * rather than absorbed.** A lock is taken from the clock the draw read when it
+ * started and the animation starts on the frame after the draw ends, so each
+ * rebuilt glow lands the draw's duration behind the clock — and two draws are
+ * not the same length. This assertion read 305ms and 328ms on CI, and it was
+ * not measurement noise: the two phases are read off one document timeline, so
+ * the difference is what the glass did. Measured on this wall at 20x CPU
+ * throttling, a tick's draw put the glow 215–270ms behind the clock against
+ * the first draw's 35, a jump of 236ms; the clock's own offset moved by under
+ * 30ms per poll. `advanceLocks` moves every lock on by the draw's duration and
+ * the same measurement reads 23–29ms behind and a jump under 25.
+ */
 const TOLERANCE_MS = 300;
+/**
+ * How much slower the device is for the redraw that has to resume.
+ *
+ * Chosen so the fault is far past the tolerance and the fix far inside it, on
+ * a laptop and on a loaded runner alike. Measured at 40x: 26-40ms with
+ * `advanceLocks`, five runs with a CPU hog on every core, and 504-521ms
+ * without it, idle — a slower machine only widens the second.
+ */
+const THROTTLE = 40;
 
 function around(a: number, b: number, cycle: number): number {
   const d = (((a - b) % cycle) + cycle) % cycle;
@@ -453,6 +476,47 @@ describe('the sky moves, within its scope', () => {
         expect(around(gap, 0, GLOW_MS), `the redraw came ${gap.toFixed(0)}ms after the last`).toBeGreaterThan(1_000);
         const expected = (before.phase as number) + (after.at - before.at);
         expect(around(after.phase as number, expected, GLOW_MS)).toBeLessThan(TOLERANCE_MS);
+      } finally {
+        await close();
+      }
+    },
+    SLOW,
+  );
+
+  it(
+    'resumes where it was across a redraw that took the device far longer than the one before',
+    async () => {
+      measureScreen(ww, undefined);
+      const size = SIZES[0]!;
+      await setWeather(ww, size.orientation, { variant: 'today' }, { h: 0.3 });
+      const { page, close } = await loadWallSettled(ww.link, size);
+      try {
+        const glow = `#wall .canvas .fw[data-widget-id="${ww.weather[size.orientation].id}"] .wt-fx-glow`;
+        // Drawn at full speed, as the page loaded.
+        const before = await readPhase(page, glow, true);
+        /*
+         * Then a slow device, so the next tick's draw is dear and the one
+         * before it was cheap — the pair that jumps. Relative, as the case
+         * above is, so the clock's own offset cancels out: an earlier draft
+         * held the glow to the server's clock instead, and a runner's
+         * offset error alone put it 348ms out with nothing wrong on the glass.
+         */
+        const cdp = await page.context().newCDPSession(page);
+        await cdp.send('Emulation.setCPUThrottlingRate', { rate: THROTTLE });
+        await page.waitForFunction(
+          (sel) => {
+            const node = document.querySelector<HTMLElement>(sel);
+            return node !== null && node.dataset['seen'] === undefined;
+          },
+          glow,
+          { timeout: 25_000, polling: 50 },
+        );
+        const after = await readPhase(page, glow);
+        await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+        expect(after.running).toBe(1);
+        const expected = (before.phase as number) + (after.at - before.at);
+        const off = around(after.phase as number, expected, GLOW_MS);
+        expect(off).toBeLessThan(TOLERANCE_MS);
       } finally {
         await close();
       }
