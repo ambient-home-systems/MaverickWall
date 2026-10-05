@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.76.0
+
 **Moving weather and countdown pictures no longer skip when the wall
 refreshes.** The wall redraws itself every fifteen seconds, and on a slow
 tablet a glowing sun, drifting clouds or falling rain could jump back a
