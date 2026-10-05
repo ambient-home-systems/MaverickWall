@@ -16,6 +16,15 @@
 
 ## Unreleased
 
+**Add to a to-do list from your phone.** Make a companion token under **System
+› Phone and automations**, then send an item to one of the to-do lists you chose
+— from an iOS Shortcut, a script, anything that can make a web request. The page
+shows the token behind a **Show** button, copies it for you, and shows exactly
+what to send. The token can add to those lists and nothing else: it cannot read
+them, tick them off, change a setting or sign in, and a wall can never add at
+all. You can replace it or turn it off on the same page, and it is never written
+to the log or the diagnostics export.
+
 ## 0.76.0
 
 **Moving weather and countdown pictures no longer skip when the wall

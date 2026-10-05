@@ -544,6 +544,101 @@ export async function tickTodoItem(
   return { ok: true };
 }
 
+/**
+ * Which watched list a caller means, by entity id or by the name the household
+ * sees (plan item M2.2).
+ *
+ * **Only a watched list**, ever. The companion API never reaches an entity the
+ * household did not add on the To-do lists screen, so a caller naming
+ * `todo.anything` is answered from this table and not from Home Assistant — the
+ * same confinement rule 12 states for the tick. A name is matched without case,
+ * against the household's label when there is one and Home Assistant's name
+ * otherwise, because that is what the To-do lists screen shows them. With no
+ * name at all the one watched list is meant, if there is exactly one.
+ */
+export type TodoListMatch =
+  | { readonly ok: true; readonly list: TodoListRow }
+  | { readonly ok: false; readonly reason: 'none-watched' | 'not-found' | 'ambiguous' | 'which'; readonly message: string };
+
+export function todoListTitle(list: Pick<TodoListRow, 'name' | 'label'>): string {
+  return list.label ?? list.name;
+}
+
+export function findTodoList(db: SqliteDatabase, wanted: string | undefined): TodoListMatch {
+  const lists = readTodoLists(db);
+  const names = lists.map((list) => `“${todoListTitle(list)}”`).join(', ');
+  if (lists.length === 0) {
+    return {
+      ok: false,
+      reason: 'none-watched',
+      message: 'No to-do lists have been added yet. Add one under Home Assistant › To-do lists first.',
+    };
+  }
+  if (wanted === undefined) {
+    if (lists.length === 1) return { ok: true, list: lists[0]! };
+    return { ok: false, reason: 'which', message: `Say which list: ${names}.` };
+  }
+  const byId = lists.find((list) => list.entityId === wanted);
+  if (byId !== undefined) return { ok: true, list: byId };
+  const folded = wanted.trim().toLocaleLowerCase('en');
+  const byName = lists.filter((list) => todoListTitle(list).trim().toLocaleLowerCase('en') === folded);
+  if (byName.length === 1) return { ok: true, list: byName[0]! };
+  if (byName.length > 1) {
+    return {
+      ok: false,
+      reason: 'ambiguous',
+      message: 'More than one list has that name. Give one a different name under Home Assistant › To-do lists.',
+    };
+  }
+  return { ok: false, reason: 'not-found', message: `No list is called that. The lists are ${names}.` };
+}
+
+/**
+ * Add one item to one watched list — `todo.add_item`, which rule 12 permits from
+ * the companion API and never from a wall (RFC 018 §5.2, MD10).
+ *
+ * The list's state is read first, at the moment of asking, for
+ * `supported_features`: bit 1 is `CREATE_TODO_ITEM`, and a list an integration
+ * exposes without it is refused here with a sentence rather than by Home
+ * Assistant with a 400. `buildCall` checks the bit and the text, the `todo.add`
+ * row of `HA_SERVICES` is the only row that adds, and `callService` is the one
+ * door — nothing here reaches the network itself. The text is the caller's, and
+ * it is never logged or stored by this function: the cache learns about it on
+ * the next read, like an item added on a phone.
+ */
+export async function addTodoItem(
+  context: Pick<ModuleContext, 'db' | 'fetcher' | 'keyring'>,
+  entityId: string,
+  text: string,
+): Promise<
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: 'connection' | 'refused' | 'upstream'; readonly message: string }
+> {
+  const resolved = resolveConnection(context.db, context.keyring);
+  if (!resolved.ok) return { ok: false, reason: 'connection', message: resolved.message };
+
+  const state = await call(context.fetcher, resolved.connection, `/states/${encodeURIComponent(entityId)}`);
+  if (!state.ok) {
+    return {
+      ok: false,
+      reason: 'upstream',
+      message:
+        state.httpStatus === 404 ? 'That is not a to-do list Home Assistant knows about any more.' : state.message,
+    };
+  }
+  const attributes = parseJsonOr(
+    z.object({ attributes: z.unknown() }).transform((value) => value.attributes),
+    state.body,
+    undefined,
+  );
+
+  const built = buildCall({ key: 'todo.add', entityId, text, attributes });
+  if (!built.ok) return { ok: false, reason: 'refused', message: built.message };
+  const answer = await callService(context.fetcher, resolved.connection, built.call);
+  if (!answer.ok) return { ok: false, reason: 'upstream', message: answer.message };
+  return { ok: true };
+}
+
 // ---------------------------------------------------------------------------
 // The job
 // ---------------------------------------------------------------------------

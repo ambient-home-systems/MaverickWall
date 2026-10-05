@@ -1652,8 +1652,10 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       `controlled from walls</strong> under Readings, on walls you allow, from ` +
       `widgets you set to Tap to operate. Readings lists the last fortnight of ` +
       `presses.</li>` +
-      `<li>A later release will let a phone add to a to-do list you chose, through ` +
-      `an app token and never from a wall. That is not built yet.</li>` +
+      `<li>It adds an item to a to-do list you chose — <code>todo.add_item</code> — ` +
+      `from a phone or an automation holding your companion token, and never from ` +
+      `a wall. The token is made, shown and turned off under System › ` +
+      `<a class="link" href="admin/companion">Phone and automations</a>.</li>` +
       `<li>No locks, no alarms, no thermostats, and no garage, gate, door or window ` +
       `covers — ever. They are not in the frozen table of actions this application ` +
       `may take, and a test holds the code to that table. A scene that sets any of ` +
@@ -2244,7 +2246,8 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       'A Home Assistant to-do list, read every minute, drawn by the To-do widget on ' +
         'any wall or panel you put one on. To tick items off from a wall, turn on ' +
         '“Allow ticking to-do items off” on that wall’s own page — it is off ' +
-        'everywhere until you do, and an e-paper panel cannot offer it at all.',
+        'everywhere until you do, and an e-paper panel cannot offer it at all. ' +
+        'To add to one from a phone, make a token under System › Phone and automations.',
       rows === '' ? emptyState('No to-do lists are shown yet.', LISTS_ADD) : rows,
     );
   }

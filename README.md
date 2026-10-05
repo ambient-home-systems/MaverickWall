@@ -153,9 +153,9 @@ Full detail in [the add-on docs](addon/maverick-wall/DOCS.md).
 A Home Assistant long-lived access token has full control of a home and cannot
 be limited to reading, so the limit lives on this side instead:
 
-- It changes two kinds of thing in your house, and only once you ask: ticking
+- It changes three kinds of thing in your house, and only once you ask: ticking
   an item off a to-do list you chose to show on a wall (`todo.update_item`),
-  and operating lights, switches, fans and blinds from a wall — switching them,
+  adding an item to such a list from a phone (below), and operating lights, switches, fans and blinds from a wall — switching them,
   dimming a light or changing its colour, setting a fan's speed, and opening,
   closing or moving a blind, playing, pausing or skipping on a speaker and
   setting its volume, and running a scene or a script, which a wall asks you to
@@ -172,8 +172,10 @@ be limited to reading, so the limit lives on this side instead:
   on, and the widget it is pressed in is set to **Tap to operate**. The
   Readings screen lists the last fortnight of presses — which wall, which
   thing, and whether it worked.
-- The rules this project holds itself to also allow a phone to add to a to-do
-  list you chose, through an app token. **That is not built yet.**
+- A phone shortcut or an automation can add an item to a to-do list you chose
+  (`todo.add_item`), with a companion token you make under System › Phone and
+  automations — never from a wall. The token can do that and nothing else, and
+  you can replace it or turn it off there.
 - It can **never** unlock a door, disarm an alarm, change a thermostat, or open
   a garage, gate, door or window. Those are not in the frozen table of actions
   this application may take, and a test asserts nothing leaves that table.

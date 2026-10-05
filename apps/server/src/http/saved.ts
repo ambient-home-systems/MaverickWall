@@ -155,6 +155,10 @@ export const SAVED_MESSAGES = {
   'button-pressable': 'Walls with operating allowed can now press it.',
   'button-not-pressable': 'Walls can no longer press it.',
   'button-removed': 'Button removed.',
+  // The companion token (plan item M2.1).
+  'companion-created': 'Token made. Show it below to copy it into your shortcut.',
+  'companion-replaced': 'Token replaced. The old one no longer works.',
+  'companion-removed': 'Token turned off.',
   'ha-calendar-added': 'Calendar added.',
   'ha-rule-added': 'Rule added.',
   'ha-rule-removed': 'Rule removed.',

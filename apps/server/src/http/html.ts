@@ -803,6 +803,10 @@ input[type=file]{width:100%;padding:var(--mw-s-2);border-radius:var(--mw-r-1);
  * hidden until the geolocation script decides otherwise, would sit there in
  * plain sight on every install until that script ran. */
 [data-geolocate][hidden]{display:none}
+/* And the companion page's Copy button, revealed by copy-button.js only
+ * where copying can work. */
+[data-copy][hidden]{display:none}
+.token-show{margin:var(--mw-s-3) 0}
 
 /* ---- Buttons ---------------------------------------------------------------
  * The default is a filled button: 40px container, 4px corner, 20px of side
@@ -3393,6 +3397,9 @@ const WANTS_CONDITIONAL_FIELDS_SCRIPT = /<select\b[^>]*\bdata-cond(?=[\s=>])/;
  */
 const WANTS_GEOLOCATE_SCRIPT = /<button\b[^>]*\bdata-geolocate(?=[\s>])/;
 
+/** A Copy button (`data-copy`, the companion token): same shape, one control along. */
+const WANTS_COPY_SCRIPT = /<button\b[^>]*\bdata-copy(?=[\s=>])/;
+
 /**
  * The strip itself: one sentence and a way to be rid of it.
  *
@@ -3633,6 +3640,9 @@ export function page(options: PageOptions): string {
       : '') +
     (WANTS_GEOLOCATE_SCRIPT.test(options.body)
       ? `<script type="module" src="assets/geolocate-button.js"></script>`
+      : '') +
+    (WANTS_COPY_SCRIPT.test(options.body)
+      ? `<script type="module" src="assets/copy-button.js"></script>`
       : '') +
     `</main></body></html>`
   );

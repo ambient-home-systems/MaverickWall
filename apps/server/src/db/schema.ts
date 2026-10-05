@@ -2019,6 +2019,29 @@ export const webhookTargets = sqliteTable('webhook_targets', {
 });
 
 /**
+ * A companion token per account (plan item M2.1): what a phone shortcut or a
+ * Home Assistant automation presents instead of signing in.
+ *
+ * Stored twice, for two different jobs. The **hash** is what a request is
+ * checked against, so a database that leaks hands out no working credential
+ * through this column. The **sealed** copy (`companion-token` on the keyring) is
+ * what lets the admin show the token again, which is the whole of "show and
+ * copy" — a token shown once and lost is one a household rotates every time they
+ * set up a second phone. One row per account, and rotating replaces it, so an
+ * account never has two live tokens. `last_used_at` is the one reading the admin
+ * gives about use; what was added and from where is never stored.
+ */
+export const companionTokens = sqliteTable('companion_tokens', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  tokenHash: text('token_hash').notNull().unique(),
+  tokenEncrypted: text('token_encrypted').notNull(),
+  createdAt: integer('created_at', { mode: 'number' }).notNull(),
+  lastUsedAt: integer('last_used_at', { mode: 'number' }),
+});
+
+/**
  * The Home Assistant to-do lists a household has chosen to show (RFC 012).
  *
  * The entity id is the primary key and it is stored **in clear**, for the

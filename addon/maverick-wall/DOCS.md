@@ -2,8 +2,9 @@
 
 A family calendar for a wall display. It reads your Home Assistant calendars
 and a few sensors. It writes back only what you allow: ticking an item off a
-to-do list you chose to show, and operating a light, a switch, a fan or a blind
-you marked controllable, each only from a wall you have turned that on for — see
+to-do list you chose to show, adding an item to such a list from a phone that
+holds your companion token, and operating a light, a switch, a fan or a blind
+you marked controllable, only from a wall you have turned that on for — see
 **What it will not do**, below.
 
 ## Installing
@@ -75,8 +76,9 @@ alone restores everything except your calendar addresses — those are encrypted
 
 ## What it will not do
 
-It changes two kinds of thing in your house, and only once you ask: ticking an
-item off a to-do list you chose to show on a wall, and operating lights,
+It changes three kinds of thing in your house, and only once you ask: ticking
+an item off a to-do list you chose to show on a wall, adding an item to such a
+list from a phone or an automation, and operating lights,
 switches, fans and blinds from a wall — switching them, dimming a light or
 changing its colour, setting a fan's speed, opening, closing or moving a
 blind, playing, pausing or skipping on a speaker and setting its volume, and
@@ -93,6 +95,11 @@ is refused too, checked when you allow it and again at every press. A script
 cannot be checked that way, and nor can a webhook button, which calls whatever
 is behind its address: one you allow can do whatever it was written to do, and
 the admin says so before you allow it.
+
+Adding from a phone needs a companion token, which you make under **System ›
+Phone and automations** and can replace or turn off there. It can add to the
+lists you chose and do nothing else — it cannot read them, tick them off or sign
+in — and a wall can never add at all.
 
 Even the tick is off until you ask for it, wall by wall. Adding a list shows it
 everywhere you have put a To-do widget; turning on **Allow ticking to-do items

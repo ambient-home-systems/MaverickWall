@@ -346,6 +346,12 @@ export interface FakeHa {
   readonly set: Record<string, Record<string, unknown>>;
   /** Entities deleted since: `GET /api/states/<id>` answers 404 for these. */
   readonly gone: Set<string>;
+  /**
+   * A list's `supported_features`, overridden — so a test can take
+   * `CREATE_TODO_ITEM` (bit 1) away from a list both its state and its
+   * `todo/add_item` answer agree about, the way a real integration does.
+   */
+  readonly todoFeatures: Record<string, number>;
   /** Stand the fake down without reaching into a module-level array. */
   close(): Promise<void>;
 }
@@ -363,6 +369,7 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
     set: {},
     refuseToggle: false,
     gone: new Set<string>(),
+    todoFeatures: {},
     todo: {
       'todo.shopping': {
         items: [
@@ -455,7 +462,10 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
         response.end('{"message":"Entity not found."}');
         return;
       }
-      return json(JSON.stringify(todoStateBody(entityId)));
+      const body = todoStateBody(entityId);
+      const features = state.todoFeatures[entityId];
+      if (features !== undefined) body.attributes.supported_features = features;
+      return json(JSON.stringify(body));
     }
     // Any other one entity's own state — what `/d/ha/act` re-reads before it
     // operates anything, and again after, to write the house's answer through.
@@ -556,6 +566,33 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
             : ['needs_action'];
           const items = list.items.filter((item) => wanted.includes(item.status));
           json(JSON.stringify({ changed_states: [], service_response: { [entity]: { items } } }));
+          return;
+        }
+
+        /*
+         * Adding (plan item M2.2): refused the way core refuses it when the
+         * list's `required_features` lack `CREATE_TODO_ITEM`, and otherwise a
+         * new item at the end with a uid of its own, as `local_todo` makes one.
+         */
+        if (service === 'todo/add_item') {
+          const features = state.todoFeatures[entity] ?? TODO_LISTS[entity]?.features ?? 0;
+          if (list === undefined) {
+            response.writeHead(400, { 'content-type': 'application/json' });
+            response.end(`{"message":"Entity ${entity} does not exist"}`);
+            return;
+          }
+          if ((features & 1) === 0) {
+            response.writeHead(400, { 'content-type': 'application/json' });
+            response.end(`{"message":"Entity ${entity} does not support this service."}`);
+            return;
+          }
+          if (typeof parsed['item'] !== 'string') {
+            response.writeHead(400, { 'content-type': 'application/json' });
+            response.end('{"message":"required key not provided @ data[\'item\']"}');
+            return;
+          }
+          list.items.push({ uid: `added-${list.items.length + 1}`, summary: parsed['item'], status: 'needs_action' });
+          json('{"changed_states":[]}');
           return;
         }
 
