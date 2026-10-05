@@ -13,7 +13,8 @@ Nothing here has been implemented. Magic Frame was read at `b7ff1d2`
 **How to read an item.** Each has an ID (`M3.2`), what it is, its size, and the
 rule or mechanism it has to respect. Sizes are relative: **S** is one focused
 session, **M** is two or three, **L** is a phase of its own. Items marked **†**
-wait on RFC 018 (the Rule 12 amendment) being accepted.
+follow the phases of RFC 018, the Rule 12 amendment accepted on 2026-10-05
+(MD13); its phase 1, the boundary and its tests, comes first.
 
 **Discipline.** The same bar as everything else in this repository
 (`CLAUDE.md`, "Verification is the job"):
@@ -58,16 +59,16 @@ Socket.IO live sync, Immich and NAS photo wallpapers under frosted-glass cards,
 and interactive Home Assistant control. Its views are public with no login, and
 it has no test files at all.
 
-It looks good mostly because of those three things. The third conflicts with
-Hard Rule 12 directly, which is why it is a proposal (RFC 018) and not a
-feature in this plan.
+It looks good mostly because of those three things. The third conflicted with
+Hard Rule 12 directly, which is why it needed a rule change before it could be
+planned: RFC 018, accepted on 2026-10-05 (MD13).
 
 ## Decisions taken on 2026-10-05
 
 | ID | Question | Decision |
 | --- | --- | --- |
 | MD1 | Where the plan lives | This file is the source of truth; the Claude Doc is the shareable copy. |
-| MD2 | Wall control vs Hard Rule 12 | Propose a **narrow amendment** ([RFC 018](rfc-018-wall-control.md)): toggles, dimming/colour/position, scene and script buttons, webhook buttons. Locks, alarms and garage, gate, door and window covers stay excluded. Not adopted until accepted. |
+| MD2 | Wall control vs Hard Rule 12 | Propose a **narrow amendment** ([RFC 018](rfc-018-wall-control.md)): toggles, dimming/colour/position, scene and script buttons, webhook buttons. Locks, alarms and garage, gate, door and window covers stay excluded. Accepted on 2026-10-05 (MD13). |
 | MD3 | Custom widgets vs Hard Rule 3 | **Data only.** A much richer data contract now; a server-side sandbox whose output is still data is designed now (RFC 017) and built later. No code runs on the wall. |
 | MD4 | Glass (Q4) | **Prototype, then decide.** Glass is built behind a flag with measured per-picture opacity; Q4 flips only if the prototype passes MQ1. |
 | MD5 | Bundled images | Allowlist: museum CC0 art, US government public domain, CC BY 4.0 with credit, the owner's own photos. **No Unsplash, Pexels, Pixabay or AI-generated images.** |
@@ -75,9 +76,10 @@ feature in this plan.
 | MD7 | Timers and messages on the wall | A wall may dismiss them behind its own per-wall switch, off by default, with the server as the authority. |
 | MD8 | Order of work | Push and remote control first, then photos and glass, then widgets, HA depth, custom widgets, admin. |
 | MD9 | `CLAUDE.md` | Gets a short pointer paragraph naming this plan and its two open proposals. |
-| MD10 | RFC 018 §5.2, the five items argued separately | Every recommendation accepted: media transport, `todo.add_item` from the companion API only, and fan speed are **in**; `input_boolean` helpers and thermostat setpoints are **out**. The RFC as a whole still awaits acceptance. |
-| MD11 | RFC 018's remaining open questions, OQ6–OQ10 | Every proposed default accepted: press-and-hold of 600 ms for scenes, scripts and webhooks; 20 presses a minute per wall and one in flight per entity; 14 days of wall-action history, admin only; persistent-notification dismiss waits for a WebSocket client; a signed-in admin may test a control from the editor. RFC 018 has no open questions left and awaits acceptance as a whole. |
+| MD10 | RFC 018 §5.2, the five items argued separately | Every recommendation accepted: media transport, `todo.add_item` from the companion API only, and fan speed are **in**; `input_boolean` helpers and thermostat setpoints are **out**. The RFC as a whole was accepted afterwards (MD13). |
+| MD11 | RFC 018's remaining open questions, OQ6–OQ10 | Every proposed default accepted: press-and-hold of 600 ms for scenes, scripts and webhooks; 20 presses a minute per wall and one in flight per entity; 14 days of wall-action history, admin only; persistent-notification dismiss waits for a WebSocket client; a signed-in admin may test a control from the editor. RFC 018 had no open questions left, and was then accepted as a whole (MD13). |
 | MD12 | The plan's open questions, MQ1, MQ2 and MQ4–MQ12 | Every proposed default accepted, as written in the questions table below. None is open. |
+| MD13 | Accept RFC 018 | **Accepted.** Hard Rule 12 in `CLAUDE.md` now reads as RFC 018 §3.1. Nothing is built: phase 1 (the boundary and its tests) comes first, and until it lands the code still holds RFC 012's two-service allowlist. |
 
 ## Where Maverick Wall already leads
 
@@ -129,7 +131,7 @@ Magic Frame's features exist in a form we cannot ship as it is.
 | ID | Item | Size | What it must respect |
 | --- | --- | --- | --- |
 | M2.1 | A per-account companion token: show, copy, rotate. | S | Sealed at rest; redacted in logs and the diagnostics export (rule 6). `Authorization: Bearer` preferred; `?key=` accepted for iOS Shortcuts, with a warning that addresses end up in logs. Rate-limited. |
-| M2.2 | Endpoints: start and end timers, post and clear messages, add to a Todoist list or a Home Assistant to-do list. | M | Zod at every boundary. Adding to an HA list is `todo.add_item`, which RFC 018 permits from this API only (MD10), so that half waits on RFC 018's acceptance; until then the API adds to Todoist only. |
+| M2.2 | Endpoints: start and end timers, post and clear messages, add to a Todoist list or a Home Assistant to-do list. | M | Zod at every boundary. Adding to an HA list is `todo.add_item`, which RFC 018 permits from this API only (MD10), so that half waits on RFC 018's phase 1, which adds its allowlist row; Todoist works without it. |
 | M2.3 | Display-control endpoints with the token: refresh, show a layout, next picture. | S | The same handlers as M1.2–M1.4. |
 | M2.4 | Documented recipes: iOS Shortcuts and Home Assistant `rest_command`. | S | In the docs site (M9.1). |
 
@@ -144,7 +146,7 @@ Magic Frame's features exist in a form we cannot ship as it is.
 | M5.5 | **RSS headlines**, list or one at a time, with a QR to read on a phone. | M | Fetched by the server through the SSRF-guarded fetcher; nothing on the wall is a link. Needs an XML parser in `apps/server`. |
 | M5.6 | **Environment** widget: AQI, PM2.5/PM10, ozone, NO₂, pollen, UV, solar, plus HA sensors. | M | Extends the existing air-quality fetch, which stays off until switched on (Q5). Pollen data exists for Europe only. |
 | M5.7 | **Todoist** as a list source. | M | Token sealed with the keyring. Wall ticks behind the same switch as HA lists. |
-| M5.8 | **Weather providers**: HA weather entity, DWD ICON, OpenWeatherMap, Pirate Weather, Weather Underground. | M | The HA entity needs `weather.get_forecasts`, a service `HA_SERVICES` does not hold: folded into RFC 018. Keys sealed, never in a URL. |
+| M5.8 | **Weather providers**: HA weather entity, DWD ICON, OpenWeatherMap, Pirate Weather, Weather Underground. | M | The HA entity needs `weather.get_forecasts`, a service `HA_SERVICES` does not yet hold: RFC 018 permits it as a read, in its phase 1. Keys sealed, never in a URL. |
 | M5.9 | **Animated weather icon sets** (Meteocons is MIT). | M | Bundled artwork only. Animation goes through `motion.ts` and D7's rules, never SVG's own: MQ7. |
 | M5.10 | **Mini weather line on the clock.** | S | Values from the existing forecast panel. |
 | M5.11 | **Google and Microsoft 365 calendar sign-in.** | L | The household's own OAuth app; read-only scopes; tokens sealed. Google refuses private redirect addresses, so this needs a public HTTPS name: MQ12. A failed refresh says so, unlike Magic Frame's silent empty feed. |
@@ -152,11 +154,11 @@ Magic Frame's features exist in a form we cannot ship as it is.
 
 ### M6 — Home Assistant depth
 
-The read-only items can start now. Items marked † need RFC 018 accepted first.
+The read-only items can start now. Items marked † follow RFC 018's phases (accepted 2026-10-05, MD13): phase 1, the boundary, comes first.
 
 | ID | Item | Size | What it must respect |
 | --- | --- | --- | --- |
-| M6.0 | **RFC 018**: the narrow Rule 12 amendment, drafted in [`rfc-018-wall-control.md`](rfc-018-wall-control.md). | M | Scope: toggles for lights, switches and fans; brightness, colour, position and fan speed; media transport; scene and script buttons; webhook buttons; `todo.add_item` from the companion API only (MD10); the read-only services weather forecasts and notification listing need. Excluded outright: locks, alarms, and covers whose device class is garage, gate, door, window, damper or unset. Three opt-ins (wall, entity, widget), handles never entity ids, `HA_SERVICES` a frozen table held by `ha-write-boundary.test.ts`. |
+| M6.0 | **RFC 018**: the narrow Rule 12 amendment, accepted on 2026-10-05 (MD13): [`rfc-018-wall-control.md`](rfc-018-wall-control.md). | M | Scope: toggles for lights, switches and fans; brightness, colour, position and fan speed; media transport; scene and script buttons; webhook buttons; `todo.add_item` from the companion API only (MD10); the read-only services weather forecasts and notification listing need. Excluded outright: locks, alarms, and covers whose device class is garage, gate, door, window, damper or unset. Three opt-ins (wall, entity, widget), handles never entity ids, `HA_SERVICES` a frozen table held by `ha-write-boundary.test.ts`. |
 | M6.1 | **Camera snapshot tile.** | M | RFC 007's opaque handle and frame hub. Must survive the 15 s rebuild without reconnecting. |
 | M6.2 | **Camera live stream** (MJPEG/WebRTC through HA or go2rtc). | L | RFC 007. |
 | M6.3 | **Doorbell pop-up**: a camera covers the wall when an entity triggers, then returns. | M | Built as an interrupt action, so it shares dismissal, night hours and source scope with alerts. |
@@ -263,7 +265,8 @@ panel's honours tables (`epaper/honours.ts`, proved by `epaper-ink.test.ts`). A
 `contract: 1` body must keep drawing exactly as it does now.
 
 What stays out of reach: interactive modules, such as the Music Assistant
-browser in Magic Frame's issue #57. That waits on RFC 018.
+browser in Magic Frame's issue #57. RFC 018 does not change that: its controls
+belong to first-party widgets, and a module still sends data only.
 
 ---
 
@@ -362,7 +365,7 @@ Push and remote control ship first, because they are small and every later
 feature benefits from them (MD8). Two gates hold work back.
 
 1. **M0 — Plan and RFCs** (this PR): this plan, RFC 017, the `CLAUDE.md`
-   pointer, and RFC 018 (drafted, awaiting the owner's acceptance).
+   pointer, and RFC 018 (accepted 2026-10-05, MD13).
 2. **M1 and M2 — Push and API**: the wall on the push hub, remote commands,
    the companion token and its endpoints.
 3. **M3 and M4 — Photos and glass**: photo sources and presentation, the Glass
@@ -371,7 +374,8 @@ feature benefits from them (MD8). Two gates hold work back.
      gradients) and Glass as a shipped ground wait on it.
 4. **M5 — New widgets and data sources.**
 5. **M6 — Home Assistant depth.** The read-only items start without waiting.
-   - **Gate: RFC 018 accepted**, for the † items only.
+   - **Gate passed: RFC 018 was accepted on 2026-10-05 (MD13).** The † items
+     follow its phases, phase 1 (the boundary and its tests) first.
 6. **M7 — Custom widgets**: contract 2, per-widget settings, richer recipes,
    tooling, the store. The RFC 017 sandbox is built after this, if at all.
 7. **M8 — Admin, editor and layout safety.**
@@ -392,7 +396,7 @@ the proposed default for each of the other eleven on 2026-10-05 (MD12).
 | --- | --- | --- |
 | MQ1 | What must the Glass prototype measure to flip Q4? | **Decided (MD12):** Tick main-thread time within 20% of Soft at 6× CPU throttling (S22 measured 645–750 ms throttled for Soft); no new long task over 50 ms; every shipped picture holds 4.5:1 under its `glassAlpha`. |
 | MQ2 | How are uploaded photos resized, with no image library in the image today? | **Decided (MD12):** Resize in the admin browser with a canvas before upload; the server stores what it receives, capped in size. No native image dependency. |
-| MQ3 | Adding to an HA shopping list from a phone needs `todo.add_item`, which Rule 12 excludes. | **Decided (MD10):** permitted by RFC 018 from the companion API only, never from a wall; until RFC 018 is accepted the API adds to Todoist only. |
+| MQ3 | Adding to an HA shopping list from a phone needs `todo.add_item`, which Rule 12 excludes. | **Decided (MD10):** permitted by RFC 018 from the companion API only, never from a wall; until RFC 018's phase 1 lands the API adds to Todoist only. |
 | MQ4 | A timer showing seconds cannot be right on a wall that redraws every 15 s. | **Decided (MD12):** Show minutes ("4 min left"); only the last minute counts seconds, through a phase-locked animation under D7. |
 | MQ5 | What may a View-only account do? | **Decided (MD12):** Look at everything, change nothing. Stricter than Magic Frame, whose View-only can still edit layouts. |
 | MQ6 | Which account does an HA sidebar visitor sign in as once there are several? | **Decided (MD12):** A setting naming one account for ingress; with none set, the normal sign-in page (fail closed, as `isTrustedIngress` already does). |

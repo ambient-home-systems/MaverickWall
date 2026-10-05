@@ -1,9 +1,11 @@
 # RFC 018 — Wall control, and a narrow amendment to rule 12
 
-Status: **proposed, nothing built; amends hard rule 12 only if accepted.**
-Every open question was decided by the owner on 2026-10-05: the five items in
-§5.2 are folded into §5 and §5.1, and OQ6–OQ10 are settled in §14. Nothing is
-left to decide but whether to accept the RFC itself ·
+Status: **accepted 2026-10-05 (MD13); nothing built.** Hard rule 12 in
+`CLAUDE.md` now reads as §3.1 below. Phase 1 (§12) is next, and until it lands
+the code still holds RFC 012's two-service allowlist — the rule permits more
+than its test does, which is the right way round. Every open question was
+decided by the owner the same day: the five items in §5.2 are folded into §5
+and §5.1, and OQ6–OQ10 are settled in §14 ·
 Owner: — · First drafted 2026-10-05 · Relates to
 `apps/server/src/modules/homeassistant/client.ts` (`HA_SERVICES`,
 `callService`), `apps/server/src/modules/homeassistant/entities.ts`
@@ -56,7 +58,7 @@ the network, can call it.
 
 ## 3. The decision this RFC asks for
 
-### 3.1 Rule 12, proposed
+### 3.1 Rule 12, as accepted
 
 > 12. **Home Assistant writes are confined to what the household picked, through
 > one door.** Three kinds of write are permitted. `todo.update_item` sets an
@@ -66,8 +68,8 @@ the network, can call it.
 > they allowed, from a widget they set to act, using only the verbs in §5 of
 > RFC 018. The allowlist is a frozen table and a test asserts no outbound
 > request to Home Assistant leaves it. **Never** `lock`,
-> `alarm_control_panel`, a cover whose device class is `garage`, `gate`, `door`
-> or `window` or is unset, `input_boolean`, `climate`, `button`,
+> `alarm_control_panel`, a cover whose device class is `garage`, `gate`, `door`,
+> `window` or `damper` or is unset, `input_boolean`, `climate`, `button`,
 > `input_button`, `valve`, `siren`, `camera`, `automation`, `update`, `notify`,
 > `hassio`, or a generic `homeassistant.*` service. The display still receives
 > handles this server minted, never an entity id and never the token — so a
@@ -412,10 +414,15 @@ and OQ6–OQ10 took the defaults this RFC proposed. None is open.
 - Control from an e-paper panel.
 - Making views public. A wall still needs its pairing.
 
-## Appendix A — the `CLAUDE.md` diff, if accepted
+## Appendix A — the `CLAUDE.md` diff
 
-Replace hard rule 12 with §3.1's text. Under "Current state", replace the
-paragraph "Home Assistant writes go through one door two services wide" with one
-that names the table, the three switches and `buildCall`, and keeps its last
-sentence's meaning: the blast radius of a compromised wall tablet is what the
-household marked, and never a lock, an alarm or the garage.
+**Done on acceptance (2026-10-05):** hard rule 12 replaced with §3.1's text,
+and a note placed above the "Current state" paragraph "Home Assistant writes go
+through one door two services wide" saying the rule moved and the code has not
+yet.
+
+**Done with phase 1:** replace that paragraph with one that names the table, the
+three switches and `buildCall`, and keeps its last sentence's meaning: the blast
+radius of a compromised wall tablet is what the household marked, and never a
+lock, an alarm or the garage. The paragraph describes code, so it changes when
+the code does.
