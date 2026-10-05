@@ -16,6 +16,12 @@
 
 ## Unreleased
 
+**Moving weather and countdown pictures no longer skip when the wall
+refreshes.** The wall redraws itself every fifteen seconds, and on a slow
+tablet a glowing sun, drifting clouds or falling rain could jump back a
+fraction of a second each time. They now carry on smoothly from where they
+were.
+
 ## 0.75.0
 
 **Add another widget without closing the one you are changing.** On a laptop
