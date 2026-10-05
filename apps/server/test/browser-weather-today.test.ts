@@ -377,8 +377,24 @@ describe('with no reading to call now', () => {
 /** `SKY_MOTION_MS` in `apps/display/src/weather-looks.ts`. */
 const GLOW_MS = 9_000;
 const RAIN_MS = 1_200;
-/** How far a rebuilt element may land from continuity: the draw's own latency (`browser-motion`'s figure). */
+/**
+ * How far a rebuilt element may land from continuity (`browser-motion`'s figure).
+ *
+ * **What it absorbs is the draw's own duration, and that is now paid back
+ * rather than absorbed.** A lock is taken from the clock the draw read when it
+ * started and the animation starts on the frame after the draw ends, so each
+ * rebuilt glow lands the draw's duration behind the clock — and two draws are
+ * not the same length. This assertion read 305ms and 328ms on CI, and it was
+ * not measurement noise: the two phases are read off one document timeline, so
+ * the difference is what the glass did. Measured on this wall at 20x CPU
+ * throttling, a tick's draw put the glow 215–270ms behind the clock against
+ * the first draw's 35, a jump of 236ms; the clock's own offset moved by under
+ * 30ms per poll. `advanceLocks` moves every lock on by the draw's duration and
+ * the same measurement reads 23–29ms behind and a jump under 25.
+ */
 const TOLERANCE_MS = 300;
+/** How far the glow may sit from the server's clock on a wall whose draws are slow. */
+const BEHIND_MS = 150;
 
 function around(a: number, b: number, cycle: number): number {
   const d = (((a - b) % cycle) + cycle) % cycle;
@@ -453,6 +469,48 @@ describe('the sky moves, within its scope', () => {
         expect(around(gap, 0, GLOW_MS), `the redraw came ${gap.toFixed(0)}ms after the last`).toBeGreaterThan(1_000);
         const expected = (before.phase as number) + (after.at - before.at);
         expect(around(after.phase as number, expected, GLOW_MS)).toBeLessThan(TOLERANCE_MS);
+      } finally {
+        await close();
+      }
+    },
+    SLOW,
+  );
+
+  it(
+    'lands where the server clock says, however long the draw took to build it',
+    async () => {
+      measureScreen(ww, undefined);
+      const size = SIZES[0]!;
+      await setWeather(ww, size.orientation, { variant: 'today' }, { h: 0.3 });
+      const { page, close } = await loadWallSettled(ww.link, size);
+      try {
+        const glow = `#wall .canvas .fw[data-widget-id="${ww.weather[size.orientation].id}"] .wt-fx-glow`;
+        await readPhase(page, glow, true);
+        /*
+         * A slow device, so the tick's draw is dear: measured, 20x puts a
+         * lock taken at the start of the draw 215-270ms behind the clock on
+         * an idle laptop, and more on a runner. The draw the assertion reads
+         * is the next tick's, wholly under the throttle.
+         */
+        const cdp = await page.context().newCDPSession(page);
+        await cdp.send('Emulation.setCPUThrottlingRate', { rate: 20 });
+        await page.waitForFunction(
+          (sel) => {
+            const node = document.querySelector<HTMLElement>(sel);
+            return node !== null && node.dataset['seen'] === undefined;
+          },
+          glow,
+          { timeout: 25_000, polling: 50 },
+        );
+        const after = await readPhase(page, glow);
+        await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+        expect(after.running).toBe(1);
+        // The wall's clock, as the server keeps it, at the moment the phase was
+        // read: the page's timeline turned into an instant, plus the skew the
+        // harness pins. One machine, so one wall clock under both.
+        const origin = await page.evaluate(() => performance.timeOrigin);
+        const truth = (((origin + after.at + (ww.wall.now() - Date.now())) % GLOW_MS) + GLOW_MS) % GLOW_MS;
+        expect(around(after.phase as number, truth, GLOW_MS)).toBeLessThan(BEHIND_MS);
       } finally {
         await close();
       }
