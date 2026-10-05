@@ -232,7 +232,7 @@ async function refusedOn(
   expect(headingOf(html), `a refusal must come back on ${screen}`).toBe(want.heading);
   // Not the hub: the boundary card is the hub's alone, so its presence is the
   // one thing that says a refusal landed on a page with no field on it.
-  expect(html, 'a refusal must not land on the hub').not.toContain('can tick one kind of box');
+  expect(html, 'a refusal must not land on the hub').not.toContain('changes only what you pick');
   expect(html, 'the error strip carries the refusal').toContain('<div class="error">');
   if (options.says !== '') expect(html).toContain(options.says);
   if (options.formIsDrawn !== false) {

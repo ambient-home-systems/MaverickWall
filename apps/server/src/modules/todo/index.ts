@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { todoListHandle } from '../../api/manifest.js';
 import type { SqliteDatabase } from '../../db/open.js';
 import { parseJson, parseJsonOr, z } from '../../validation.js';
-import { call, callService, HA_SERVICES, resolveConnection } from '../homeassistant/client.js';
+import { buildCall, call, callService, resolveConnection } from '../homeassistant/client.js';
 import type { ModuleContext, PanelModule } from '../registry.js';
 
 /**
@@ -30,10 +30,10 @@ import type { ModuleContext, PanelModule } from '../registry.js';
  * that nags, and the reasoning chores wrote down applies unchanged: easy to add
  * later, very hard to take back.
  *
- * **And one write, which is the only one this application makes.**
+ * **And one write, the first this application made to a house.**
  * `tickTodoItem` sets an item's status through `callService`, and everything
- * that keeps it narrow is somewhere else: the allowlist is a frozen constant in
- * the Home Assistant client, the permission is `screens.allow_todo` on the wall
+ * that keeps it narrow is somewhere else: the allowlist is the frozen table in
+ * `homeassistant/services.ts`, the permission is `screens.allow_todo` on the wall
  * that asked, and the item is named by the `uid` the cache holds and never by
  * the summary a household typed. The endpoint is `POST /d/todo/tick`
  * (RFC 012 §7); this file owns the database either side of it.
@@ -513,9 +513,11 @@ export function setTodoItemStatus(
 }
 
 /**
- * Set one item's status on one list, and the only write this application makes.
+ * Set one item's status on one list — the first write this application made, and
+ * until RFC 018's later phases wire a caller for the others, the only one that
+ * runs.
  *
- * `HA_SERVICES.write` is the whole of rule 12's permitted write and
+ * The `todo.tick` row of `HA_SERVICES` is this write, `buildCall` makes it and
  * `callService` is the one door it goes through — nothing here reaches the
  * network itself. What this function owns is the *body*, and one field of it is
  * the reason this phase exists at all:
@@ -535,11 +537,9 @@ export async function tickTodoItem(
   const resolved = resolveConnection(context.db, context.keyring);
   if (!resolved.ok) return { ok: false, message: resolved.message };
 
-  const answer = await callService(context.fetcher, resolved.connection, HA_SERVICES.write, {
-    entity_id: item.entityId,
-    item: item.uid,
-    status: done ? 'completed' : 'needs_action',
-  });
+  const built = buildCall({ key: 'todo.tick', entityId: item.entityId, item: item.uid, done });
+  if (!built.ok) return { ok: false, message: built.message };
+  const answer = await callService(context.fetcher, resolved.connection, built.call);
   if (!answer.ok) return { ok: false, message: answer.message };
   return { ok: true };
 }
@@ -603,16 +603,16 @@ export async function pollTodoList(
    * Home Assistant's default for `status` is `needs_action` alone, and the
    * filter belongs to this code rather than to their default: "show the ticked
    * ones too" is a display decision, and it has to be answerable from the
-   * cache without a second service call. `HA_SERVICES.read` is the one read the
-   * allowlist permits; `callService` is the one door it goes through.
+   * cache without a second service call. The `todo.read` row names both
+   * statuses, `buildCall` makes it, and `callService` is the one door it goes
+   * through.
    */
-  const answer = await callService(
-    context.fetcher,
-    connection,
-    HA_SERVICES.read,
-    { entity_id: entityId, status: ['needs_action', 'completed'] },
-    { returnResponse: true },
-  );
+  const built = buildCall({ key: 'todo.read', entityId });
+  if (!built.ok) {
+    recordListError(db, entityId, built.message, context.now);
+    return { ok: false, message: built.message };
+  }
+  const answer = await callService(context.fetcher, connection, built.call);
   if (!answer.ok) {
     recordListError(db, entityId, answer.message, context.now);
     return { ok: false, message: answer.message };

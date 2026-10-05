@@ -1,15 +1,17 @@
 import { FETCH_LIMITS, validateOutboundUrl, type Fetcher, type NetworkOption, type UrlPolicy } from '@maverick-wall/core';
 import type { SqliteDatabase } from '../../db/open.js';
 import type { Keyring } from '../../secrets/keyring.js';
+import { isIssuedCall, type HaCall } from './services.js';
 
 /**
  * The Home Assistant connection: two credential paths, one client.
  *
- * **Two service calls, one of them a write, and that is the whole of it.**
- * `HA_SERVICES` below is the allowlist and `callService` is the only thing in
- * this repository that reaches `Fetcher.postJson` — see rule 12 and RFC 012.
- * This is a security property rather than a missing feature; the note on the
- * token below is why it has to be one.
+ * **A frozen table of verbs, one constructor, one door.** `HA_SERVICES` below
+ * is the allowlist (rule 12, RFC 018 §5), `buildCall` is the only thing that
+ * can make a call from it, and `callService` is the only thing in this
+ * repository that reaches `Fetcher.postJson`. This is a security property
+ * rather than a missing feature; the note on the token below is why it has to
+ * be one.
  *
  * Path A is the add-on: the supervisor injects `SUPERVISOR_TOKEN` and proxies
  * Core at a fixed address, so a household who installed the add-on has already
@@ -28,14 +30,16 @@ import type { Keyring } from '../../secrets/keyring.js';
  *     manifest. The display receives resolved *values* — "19.4 °C" — and never
  *     an entity handle, never a proxy endpoint it could query with, and never
  *     the token itself.
- *   - Nothing here writes, with one exception in the whole application:
- *     `todo.update_item`, against a to-do list the household explicitly added
- *     on the Home Assistant screen, on a screen they explicitly allowed. The
- *     display still receives resolved values and handles this server minted,
- *     never an entity id, never a proxy endpoint, and never the token. So the
- *     blast radius of a compromised wall tablet is "somebody saw my indoor
- *     temperature and ticked something off my shopping list", and it is not,
- *     and must never become, "somebody opened my garage".
+ *   - Nothing here writes except what `HA_SERVICES` names, and each of those
+ *     is confined to something the household picked: an item on a to-do list
+ *     they added (RFC 012), and — once RFC 018's later phases wire a caller —
+ *     an entity they marked controllable, on a wall they allowed, from a widget
+ *     they set to act. The display still receives resolved values and handles
+ *     this server minted, never an entity id, never a proxy endpoint, and never
+ *     the token. So the blast radius of a compromised wall tablet is at most
+ *     "somebody turned off my kitchen light", and it is not, and must never
+ *     become, "somebody opened my garage": no row in the table can reach a
+ *     lock, an alarm, or a garage, gate, door or window cover.
  *
  * Two things follow from the handle that are not obvious. A compromised wall
  * can tick **only items it has been shown** — it cannot enumerate lists, cannot
@@ -261,51 +265,38 @@ export async function call(
   };
 }
 
-/**
- * Every service call this application may make. There are two.
- *
- * This is the mechanism rule 12 is enforced through (RFC 012 §2.2). The rule
- * permits exactly one **write**, `todo.update_item`, whose whole effect is to
- * set an item's status on a to-do list the household explicitly added; and the
- * read it needs to know what those items are. Nothing else — no `light`,
- * `switch`, `cover`, `lock`, `alarm_control_panel`, `climate`, `scene`,
- * `script`, `automation` or `camera`, and no `todo.add_item`,
- * `todo.remove_item` or `todo.remove_completed_items` until one of them is
- * argued for on its own merits.
- *
- * **Frozen, and the freeze is not decoration.** What rule 12 used to buy was
- * that `grep` answered it: there was no POST to Home Assistant anywhere in this
- * repository and a person could confirm that in one command. That property is
- * gone and this constant is what replaces it, so it has to be a thing a test
- * can read rather than a convention — `ha-write-boundary.test.ts` asserts both
- * halves, that this holds exactly these two members and that `callService`
- * below is the only caller of `postJson` in the whole server. A constant cannot
- * see a second door that does not read it, which is why the test checks for the
- * door as well as for the list.
- *
- * The read carries `?return_response`, which Home Assistant requires for a
- * service call that answers with anything — appended at the call site rather
- * than written into the value here, because the value is a *service* and the
- * query string is how one of them is invoked.
+/*
+ * The allowlist and its one constructor live in `services.ts`, which is pure:
+ * the table, the eligibility rules and the value bounds can be tested without a
+ * network. Re-exported here so every caller keeps one import for the Home
+ * Assistant client. RFC 018 §5 is the table's specification.
  */
-export const HA_SERVICES = Object.freeze({
-  read: 'todo/get_items',
-  write: 'todo/update_item',
-} as const);
-
-export type HaService = (typeof HA_SERVICES)[keyof typeof HA_SERVICES];
+export {
+  buildCall,
+  COVER_CLASSES,
+  HA_SERVICES,
+  type BuildResult,
+  type CallRequest,
+  type ControlKey,
+  type HaCall,
+  type RefusalCode,
+  type ServiceKey,
+  type ServiceRow,
+} from './services.js';
 
 /**
- * One POST against Home Assistant, and the only one there is.
+ * One POST against Home Assistant, and the only door there is.
  *
  * The single caller of `Fetcher.postJson` in this repository. Everything about
  * the credential is `call`'s: the same bearer header, attached in one place, and
  * the same `describe` afterwards so a household reads the sentences already
  * written for a kitchen rather than a second set that drifted from them.
  *
- * The service is typed to `HaService`, so a path outside the allowlist is a
- * compile error rather than a review question — but that is the cheap half. The
- * expensive half is that this is the only door, and only a test can say so.
+ * **It sends only a call `buildCall` issued.** The type says so, which makes a
+ * hand-built call a compile error; and the door checks again at run time, which
+ * is the half a cast cannot get round. So the table in `services.ts` is the
+ * whole of what can be posted, and `ha-write-boundary.test.ts` proves both that
+ * this is the only door and that it refuses a call nobody built.
  *
  * `postJson` refuses a redirect outright, so the token and the body reach the
  * address the guard approved or they reach nowhere.
@@ -313,18 +304,24 @@ export type HaService = (typeof HA_SERVICES)[keyof typeof HA_SERVICES];
 export async function callService(
   fetcher: Fetcher,
   connection: Connection,
-  service: HaService,
-  body: unknown,
-  options: { readonly returnResponse?: boolean; readonly timeoutMs?: number } = {},
+  call: HaCall,
+  options: { readonly timeoutMs?: number } = {},
 ): Promise<CallResult> {
-  const query = options.returnResponse === true ? '?return_response' : '';
+  if (!isIssuedCall(call)) {
+    return {
+      ok: false,
+      message: 'That is not a call Maverick Wall makes, so it was not sent.',
+      suggestion: 'This is a fault in Maverick Wall rather than in Home Assistant.',
+    };
+  }
+  const query = call.returnResponse ? '?return_response' : '';
   const response = await fetcher.postJson({
-    url: `${connection.baseUrl}/services/${service}${query}`,
+    url: `${connection.baseUrl}/services/${call.service}${query}`,
     policy: connection.policy,
     maxBytes: FETCH_LIMITS.json,
     timeoutMs: options.timeoutMs ?? 10_000,
     headers: { authorization: `Bearer ${connection.token}` },
-    body,
+    body: call.body,
   });
 
   if (response.status === 'ok') return { ok: true, body: response.body };

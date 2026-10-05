@@ -243,6 +243,53 @@ describe('upgrading a database that is already in use', () => {
     db.close();
   });
 
+  it('arms nothing at the upgrade: a hung wall and a watched light come through 0056 switched off (RFC 018)', () => {
+    /*
+     * RFC 018's phase 1 adds two of its three switches — the wall's
+     * `allow_control` and the entity's `controllable` — as one generated pair
+     * of `ALTER TABLE ADD COLUMN`s, read rather than trusted. Both are read by
+     * nothing yet, and what has to hold is that **neither reaches an existing
+     * row as true**: a default of true would make every watched light in the
+     * world controllable from every wall at one image pull, the moment phase 2
+     * wires a route. And the switch a household did turn on, `allow_todo`,
+     * must survive, because it sits on the table 0009 and 0045 recreated.
+     */
+    const entries = journal();
+    const db = new Database(':memory:');
+    const stamp = 1_700_000_000_000;
+
+    for (const entry of entries.filter((entry) => entry.tag < '0056')) {
+      apply(db, entry.tag);
+      if (entry.tag.startsWith('0000')) {
+        db.prepare(
+          `INSERT INTO screens (id, name, token_hash, token_issued_at, created_at, updated_at)
+           VALUES ('scr-hall', 'Hall', 'hash-56', ?, ?, ?)`,
+        ).run(stamp, stamp, stamp);
+      }
+    }
+    db.prepare(`UPDATE screens SET allow_todo = 1 WHERE id = 'scr-hall'`).run();
+    db.prepare(
+      `INSERT INTO ha_entity_cache (entity_id, state, watched, display_mode, label, sort_order, fetched_at)
+       VALUES ('light.kitchen', 'on', 1, 'label_value', 'Kitchen light', 2, 1)`,
+    ).run();
+
+    for (const entry of entries.filter((entry) => entry.tag >= '0056')) apply(db, entry.tag);
+
+    expect(
+      db
+        .prepare(`SELECT allow_control AS allowControl, allow_todo AS allowTodo FROM screens WHERE id = 'scr-hall'`)
+        .get(),
+    ).toEqual({ allowControl: 0, allowTodo: 1 });
+    expect(
+      db
+        .prepare(`SELECT entity_id, watched, label, sort_order, controllable FROM ha_entity_cache`)
+        .all(),
+    ).toEqual([
+      { entity_id: 'light.kitchen', watched: 1, label: 'Kitchen light', sort_order: 2, controllable: 0 },
+    ]);
+    db.close();
+  });
+
   it('leaves a screen that is already hung with no size and no reading distance (0037)', () => {
     /*
      * The two facts that size type arrive on a table full of screens.

@@ -798,6 +798,21 @@ export const screens = sqliteTable(
     allowTodo: integer('allow_todo', { mode: 'boolean' }).notNull().default(false),
 
     /**
+     * Whether this screen may operate things in the house (RFC 018 §6, the
+     * first of its three switches; the entity's `controllable` and the
+     * widget's tap action are the other two).
+     *
+     * **Unread in RFC 018's phase 1**, exactly as `allow_todo` was in RFC
+     * 012's: nothing selects it, nothing draws a control from it and no form
+     * sets it. It lands with the boundary so the feature costs one migration
+     * rather than two. Its own column rather than a widening of `allow_todo`,
+     * because turning off a light is not the same risk as ticking a list, and
+     * off by default because it is a fact about the hardware: a tablet in a
+     * hall that guests use is not the one in the kitchen.
+     */
+    allowControl: integer('allow_control', { mode: 'boolean' }).notNull().default(false),
+
+    /**
      * Whether this screen's frame answers only a connection from the
      * household's own network.
      *
@@ -1839,9 +1854,10 @@ export const externalModules = sqliteTable('external_modules', {
 // when the store became a single in-repo catalogue. Migration 0020 drops it.
 
 // ---------------------------------------------------------------------------
-// Home Assistant. Read-only apart from one write: rule 12 permits
-// `todo.update_item` and nothing else, through the allowlist in
-// `modules/homeassistant/client.ts`. Nothing in these tables is a write path.
+// Home Assistant. Every write goes through the frozen table in
+// `modules/homeassistant/services.ts` and the one door in `client.ts` (hard
+// rule 12, RFC 012 and RFC 018). Nothing in these tables is itself a write
+// path: they record what the household picked.
 // ---------------------------------------------------------------------------
 
 export const haSettings = sqliteTable('ha_settings', {
@@ -1865,8 +1881,9 @@ export const haSettings = sqliteTable('ha_settings', {
 /**
  * Snapshot of watched entities.
  *
- * A cache, never a control surface. Nothing in this application calls a Home
- * Assistant service, and no column here is writable from the display.
+ * A cache, and a record of what the household picked. No column here is
+ * writable from the display. `controllable` is the household's own choice,
+ * made on the Readings screen, and is the second of RFC 018's three switches.
  */
 export const haEntityCache = sqliteTable(
   'ha_entity_cache',
@@ -1922,6 +1939,17 @@ export const haEntityCache = sqliteTable(
      */
     glyph: text('glyph'),
     sortOrder: integer('sort_order', { mode: 'number' }).notNull().default(0),
+    /**
+     * Whether a wall may operate this entity (RFC 018 §6: "Can be controlled
+     * from walls"). Off by default, so no entity a household already watches
+     * becomes controllable at an upgrade. `buildCall` still refuses one whose
+     * domain, device class or features are not eligible, whatever this says,
+     * because those can change in Home Assistant after it was set.
+     *
+     * **Unread in RFC 018's phase 1.** No form sets it and nothing reads it
+     * until phase 2 builds the Readings switch and the route.
+     */
+    controllable: integer('controllable', { mode: 'boolean' }).notNull().default(false),
   },
   (table) => ({
     byWatched: index('ha_entity_watched_idx').on(table.watched),

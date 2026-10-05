@@ -1,8 +1,8 @@
 # Maverick Wall
 
 A family calendar for a wall display. It reads your Home Assistant calendars
-and a few sensors. The only thing it will ever write back is ticking an item off
-a to-do list you chose to show, and only from a wall you have turned that on for
+and a few sensors. Today the one thing it writes back is ticking an item off a
+to-do list you chose to show, and only from a wall you have turned that on for
 — see **What it will not do**, below.
 
 ## Installing
@@ -74,10 +74,15 @@ alone restores everything except your calendar addresses — those are encrypted
 
 ## What it will not do
 
-It can change exactly one thing in your house: ticking an item off a to-do list
-you chose to show on a wall. No switches, no scenes, no lights, no locks, no
-covers, no cameras — not switched off by default, but absent from the code
-entirely, and held that way by a test.
+Today it changes one thing in your house: ticking an item off a to-do list you
+chose to show on a wall. A later release will let a wall operate lights,
+switches, fans, blinds, scenes, scripts and media players — only the ones you
+mark, on walls you allow, from widgets you set to act. None of that is built
+yet.
+
+It can never unlock a door, disarm an alarm, change a thermostat, or open a
+garage, gate, door or window. Those are not in its frozen table of permitted
+actions, and a test holds the code to that table.
 
 Even the tick is off until you ask for it, wall by wall. Adding a list shows it
 everywhere you have put a To-do widget; turning on **Allow ticking to-do items
@@ -88,5 +93,6 @@ see it. An eInk panel shows the list and never offers a box at all.
 
 The wall itself receives resolved values — "19.4 °C", "Open" — never an entity
 id and never a way to ask Home Assistant a question of its own. If a tablet in
-your hallway is ever compromised, the worst it can do is give away your indoor
-temperature and tick something off your shopping list.
+your hallway is ever compromised, today the worst it can do is show somebody
+your indoor temperature and tick an item off your shopping list — and whatever
+you allow later, it can never open your garage.

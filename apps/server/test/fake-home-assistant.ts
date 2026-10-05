@@ -243,8 +243,9 @@ export interface FakeHa {
   /** Every path requested, in order. */
   readonly paths: string[];
   /**
-   * Every POST, as `{ path, body }` — the path with its query string stripped,
-   * so it can be compared against `HA_SERVICES` directly.
+   * Every POST, as `{ path, query, body }` — the path with its query string
+   * stripped, so it can be compared against the rows of `HA_SERVICES`
+   * directly.
    *
    * This is the whole runtime half of the write boundary: the constant says
    * what may be called, and this says what actually was. A source scan alone

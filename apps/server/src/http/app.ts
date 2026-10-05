@@ -865,7 +865,9 @@ export function createApp(deps: AppDeps): Hono {
    * Ticking an item off a Home Assistant to-do list, from the wall
    * (RFC 012 phase 2).
    *
-   * **The only write this application makes to anybody's house.** Everything
+   * **The first write this application made to anybody's house** — and,
+   * until RFC 018's later phases wire a route for the others, the only one a
+   * wall can cause. Everything
    * about its shape is `/d/chores/tick`'s — same gate, same household-wide
    * effect, same "the server is the authority, not the button" — and one thing
    * about it is genuinely new: the truth is not ours. A chore's completion is a

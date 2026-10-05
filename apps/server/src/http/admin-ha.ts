@@ -1505,24 +1505,32 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
    * only claim on this page that somebody has to take on trust.
    *
    * It used to read "Maverick Wall reads. It cannot control anything", which
-   * was true when the answer was none. Rule 12 permits exactly one write now,
-   * so the heading names it. A boundary that rounds "one thing" down to
-   * "nothing" is not reassurance, it is the claim a household would discover
-   * was wrong — and `ha-claims.test.ts` fails on the old wording rather than
-   * trusting anybody to remember this paragraph.
+   * was true when the answer was none, and then "can tick one kind of box",
+   * which was true of RFC 012's rule. Hard rule 12 now permits more (RFC 018,
+   * accepted 2026-10-05), and none of the more is built yet, so the card says
+   * both halves: what it changes today, and what a later release may let a
+   * household allow. A boundary that rounds "not yet" down to "never" is the
+   * claim a household would discover was wrong — and `ha-claims.test.ts` fails
+   * on every retired wording rather than trusting anybody to remember this.
+   *
+   * The never-list is the part that does not move with a release, so it is
+   * stated as "ever": no row in `HA_SERVICES` can reach a lock, an alarm, a
+   * thermostat or a garage, gate, door or window cover, and a test holds the
+   * code to the table.
    */
   function boundary(): string {
     return card(
-      `<h2>Maverick Wall reads, and can tick one kind of box.</h2>` +
+      `<h2>Maverick Wall reads, and changes only what you pick.</h2>` +
       `<ul class="plain">` +
-      `<li>The one thing it will ever change in Home Assistant is ticking an item ` +
+      `<li>Today the one thing it changes in Home Assistant is ticking an item ` +
       `off a to-do list you have chosen to show on a wall — ` +
-      `<code>todo.update_item</code>, and that is the whole list. Nothing in this ` +
-      `version does it yet: the limit is written down first so it cannot grow ` +
-      `quietly later.</li>` +
-      `<li>No switches, no scenes, no lights, no locks, no covers, no cameras. ` +
-      `Not off by default — there is no code in this application that can do ` +
-      `any of them.</li>` +
+      `<code>todo.update_item</code> — and only on a wall you have allowed to.</li>` +
+      `<li>A later release will let a wall operate lights, switches, fans, blinds, ` +
+      `scenes, scripts and media players: only the ones you mark, on walls you ` +
+      `allow, from widgets you set to act. None of that is built yet.</li>` +
+      `<li>No locks, no alarms, no thermostats, and no garage, gate, door or window ` +
+      `covers — ever. They are not in the frozen table of actions this application ` +
+      `may take, and a test holds the code to that table.</li>` +
       `<li>The wall receives <strong>resolved values</strong> — “19.4 °C”, “Closed”. ` +
       `It never receives your token, an entity name, or any way to ask Home ` +
       `Assistant a question of its own.</li>` +
@@ -1531,9 +1539,10 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       `</ul>` +
       `<p class="hint">A Home Assistant long-lived access token has full control of ` +
       `your home and cannot be limited to reading. That is why the limit is on this ` +
-      `side: if a wall in your hallway were ever compromised, the worst it could do ` +
-      `is give away your indoor temperature and tick something off your shopping ` +
-      `list.</p>`,
+      `side: if a wall in your hallway were ever compromised, today the worst it ` +
+      `could do is show somebody your indoor temperature and tick an item off your ` +
+      `shopping list — and whatever you allow later, it could never open your ` +
+      `garage.</p>`,
     );
   }
 

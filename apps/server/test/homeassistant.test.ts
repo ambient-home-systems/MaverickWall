@@ -321,9 +321,10 @@ describe('connecting, through the form', () => {
      * this one stays here because it is the assertion that would have gone red
      * if the card had been left alone.
      */
-    expect(html).toContain('can tick one kind of box');
+    expect(html).toContain('changes only what you pick');
     expect(html).toContain('todo.update_item');
     expect(html).not.toContain('It cannot control anything');
+    expect(html).not.toContain('can tick one kind of box');
   });
 
   it('fills the picker from the live house, and leaves the rest of it out', async () => {

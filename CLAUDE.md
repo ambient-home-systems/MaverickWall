@@ -45,8 +45,9 @@ Violating any of these is a failed task.
     self-diagnosable.
 12. **Home Assistant writes are confined to what the household picked, through
     one door.** *(Amended 2026-10-05 by `docs/rfc-018-wall-control.md`, accepted
-    as decision MD13; until its phase 1 lands, the code still holds RFC 012's
-    two-service allowlist.)* Three kinds of write are permitted.
+    as decision MD13. Phase 1 has landed the table, `buildCall` and the door;
+    nothing a wall can press exists until its later phases.)* Three kinds of
+    write are permitted.
     `todo.update_item` sets an item's status on a to-do list the household added
     (RFC 012). `todo.add_item` adds an item to such a list, from the companion
     API and never from a wall. And a wall may operate an entity the household
@@ -513,10 +514,11 @@ knowing before reading either rule as settled or as obsolete:
   three opt-ins that are all off by default; and it lets the companion API,
   never a wall, add to a household's to-do list. Locks, alarms, `input_boolean`
   helpers, thermostats and garage, gate, door and window covers stay excluded.
-  **Nothing is built yet**: until RFC 018's phase 1 lands, `HA_SERVICES` still
-  holds RFC 012's two services and `ha-write-boundary.test.ts` still holds it
-  to them, so the rule permits more than its test does — the right way round,
-  as with the 2026-09-24 decisions.
+  **Phase 1 has landed and nothing is pressable yet**: `HA_SERVICES` is now
+  RFC 018's frozen table, `buildCall` its only constructor and `callService`
+  its only door, all held by `ha-write-boundary.test.ts`; the control rows have
+  no caller until phase 2 builds the route, the switches and the wall's
+  buttons (see "Home Assistant writes go through a frozen table" below).
 - **Q4 (no blur behind widgets) — still a proposal.** A Glass ground is to be
   prototyped behind a flag, with its opacity measured per picture, and Q4 flips
   only if the prototype passes the plan's MQ1 measurement. Until then
@@ -3393,23 +3395,61 @@ a *directory of source* rather than a fetched document on purpose: it bakes into
 the image and works on a wall with no internet. Only the RFC's optional
 glyph-only screenshots remain unbuilt.
 
-> **Read against hard rule 12 as amended on 2026-10-05.** RFC 018 widens the
-> door this paragraph describes into a table of verbs behind three opt-ins. The
-> paragraph is still true of the code until RFC 018's phase 1 lands, and is
-> rewritten then (RFC 018, Appendix A).
-
-**Home Assistant writes go through one door two services wide, and that is a
-security property.** A long-lived access token has full control of a house and
+**Home Assistant writes go through a frozen table, one constructor and one
+door, and that is a security property (RFC 018 phase 1, rewriting the paragraph
+RFC 012 left here).** A long-lived access token has full control of a house and
 cannot be scoped, so the limit is on this side. It used to be "nothing in the
 repository issues a POST to Home Assistant", which was free and answerable by
-`grep`; it is now "nothing issues one outside `HA_SERVICES`", which is a frozen
-constant of `todo/get_items` and `todo/update_item` and costs a test to keep
-true. The display still receives resolved *values* — "19.4 °C", "Open" — never
-an entity id, never a proxy endpoint, never the token, and the test asserting
-the manifest holds none of those needed no change, which is the point of having
-had it. The blast radius of a compromised wall tablet is now "somebody saw my
-indoor temperature and ticked something off my shopping list", and it is not,
-and must never become, "somebody opened my garage".
+`grep`; then "nothing issues one outside `HA_SERVICES`", two to-do services
+wide. It is now three parts, each held by `ha-write-boundary.test.ts`.
+**`HA_SERVICES`** in `modules/homeassistant/services.ts` is a frozen table of
+21 rows — the two to-do services RFC 012 used, `todo.add_item` for the
+companion API, `weather.get_forecasts` as a read, and seventeen verbs a wall may
+one day use on lights, switches, fans, shading covers, scenes, scripts and media
+players — each naming its service, its kind, who may cause it and the only data
+keys it may send. **`buildCall`** is the only thing that turns a row into a
+call: one `entity_id`, of the row's own domain, never an area, device, label or
+`all`; a cover only if its device class shades a room (awning, blind, curtain,
+shade, shutter — an unset class is refused); a feature the entity reports; and
+a value inside its bounds, refused rather than clamped. **`callService`** is the
+only door, and it refuses at run time any call `buildCall` did not issue — a
+registry rather than a type, because a cast gets round a type. The test pins
+the table row by row, walks every control row at twelve forbidden domains, every
+cover verb at the five forbidden classes, every feature and every bound, finds
+`ISSUED.add(` once and only inside `buildCall`, and posts every row at a fake
+Home Assistant to read back exactly what left.
+
+**Nothing a household can press exists yet.** Phase 1 has no caller for the
+control rows: no route, no switch on any form, no button on any wall. The two
+columns that are RFC 018's first two switches, `screens.allow_control` and
+`ha_entity_cache.controllable` (migration `0056`, one generated pair of
+`ADD COLUMN`s), are read by nothing, exactly as `allow_todo` was in RFC 012's
+phase 1, and `migration-upgrade.test.ts` walks a hung wall and a watched light
+through it to prove both arrive **off**. The display still receives resolved
+*values* — "19.4 °C", "Open" — never an entity id, never a proxy endpoint, never
+the token. The blast radius of a compromised wall tablet is today "somebody saw
+my indoor temperature and ticked something off my shopping list"; after the
+later phases it is what the household marked controllable on that wall; and it
+is not, and must never become, "somebody opened my garage" — no row in the
+table can reach a lock, an alarm, a thermostat or a garage, gate, door or
+window cover.
+
+**The claims moved with the rule, before anything they describe was built.**
+Nine sentences that were true of RFC 012's rule and false of RFC 018's — "can
+tick one kind of box", "the only thing it will ever write back", "absent from
+the code entirely" among them — are retired from the README, the add-on's
+`DOCS.md` and the Home Assistant screen, and `ha-claims.test.ts` fails on each,
+verbatim, with RFC 018 §11 holding the list it proves them findable against.
+Their replacements say "today" of the to-do tick, "not built yet" of the
+controls, and "never" only of what no row can reach, because a sentence saying
+"ever" about what the rule now permits is a promise the next release breaks.
+Eleven mutations were checked and all eleven are red: the cover-class check, the
+door's issued check, a `lock` row added, the domain check, volume left
+unconverted, brightness clamped, the entity-id shape loosened, `allow_control`
+defaulting on, and three claims put back. **4822 tests passing, and 1 skipped,
+over 333 files**: calendar 153 over 10 · core 314 over 9 · display 890 over 50 ·
+server 3465 over 264, measured with `pnpm test` and a real Chromium on this
+change's own tree, every file green.
 
 **Rule 12 changed, and the interesting part is how many places said otherwise
 (RFC 012 phase 1).** The rule is no longer "READ-ONLY, no service calls": it

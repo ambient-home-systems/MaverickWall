@@ -16,6 +16,14 @@
 
 ## Unreleased
 
+**What Maverick Wall may change in your house, stated plainly.** The Home
+Assistant screen now says what it changes today — ticking an item off a to-do
+list you chose to show, on a wall you allowed — and what a later release may
+let you allow: lights, switches, fans, blinds, scenes, scripts and media
+players, only the ones you mark, on walls you choose. None of that is built
+yet, and nothing on any wall behaves differently. It can never unlock a door,
+disarm an alarm, change a thermostat, or open a garage, gate, door or window.
+
 ## 0.75.0
 
 **Add another widget without closing the one you are changing.** On a laptop

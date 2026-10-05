@@ -1,9 +1,9 @@
 # RFC 018 — Wall control, and a narrow amendment to rule 12
 
-Status: **accepted 2026-10-05 (MD13); nothing built.** Hard rule 12 in
-`CLAUDE.md` now reads as §3.1 below. Phase 1 (§12) is next, and until it lands
-the code still holds RFC 012's two-service allowlist — the rule permits more
-than its test does, which is the right way round. Every open question was
+Status: **accepted 2026-10-05 (MD13); phase 1 built, nothing pressable.**
+Hard rule 12 in `CLAUDE.md` now reads as §3.1 below. Phase 1 (§12) has landed
+the table, `buildCall`, the door's issued check, two of the three switches as
+unread columns, and the claims; phase 2 is next. Every open question was
 decided by the owner the same day: the five items in §5.2 are folded into §5
 and §5.1, and OQ6–OQ10 are settled in §14 ·
 Owner: — · First drafted 2026-10-05 · Relates to
@@ -336,14 +336,37 @@ merge rather than trusting this list:
 screen is held to naming the controls it permits, as it is held today to naming
 the to-do write.
 
+**Retired in phase 1, verbatim** (lower-cased as the test matches them; the
+test reads this list to prove each is distinctive enough to find):
+
+- "can tick one kind of box"
+- "the one thing this application will ever change"
+- "the only thing it will ever write back"
+- "the one thing it will ever change in home assistant"
+- "it can change exactly one thing in your house"
+- "absent from the code entirely"
+- "there is no code here that can do any of them"
+- "no code in this application that can do any of them"
+- "give away your indoor temperature and tick something off your shopping list"
+
+Their replacements say "today" of the to-do tick, "not built yet" of the
+controls, and "never" only of what no row in the table can reach.
+
 ## 12. Phases
 
-1. **The boundary only.** The table, `buildCall`, the rewritten
-   `ha-write-boundary.test.ts`, the claims, the three columns and the migration.
-   Nothing is drawable and no wall can press anything. `weather.get_forecasts`,
-   being a read, may ship in this phase for M5.8.
-2. **Toggles**: lights, switches, fans. The route, the tile button, the audit
-   list, the browser test.
+1. **The boundary only — built.** The table (`modules/homeassistant/services.ts`),
+   `buildCall`, the door's run-time check that a call was issued, the rewritten
+   `ha-write-boundary.test.ts`, the claims, and migration `0056` with two of the
+   three switches as unread columns (`screens.allow_control`,
+   `ha_entity_cache.controllable`). Nothing is drawable and no wall can press
+   anything. `weather.get_forecasts` is a row with no caller until M5.8.
+   **One deviation, deliberate:** the widget's `tapAction` key moves to phase 2.
+   A widget key nothing reads is an option that does nothing, and the e-paper
+   honours tables, which are closed against the widget schema and proved by
+   rendering, would have to describe a behaviour that does not exist yet.
+2. **Toggles**: lights, switches, fans. The route, the tile button, the
+   widget's `tapAction`, the Readings and wall switches, the audit list, the
+   browser test.
 3. **Brightness, colour, position and fan speed**, with the panel.
 4. **Scenes and scripts**, with press-and-hold.
 5. **Webhook buttons.**

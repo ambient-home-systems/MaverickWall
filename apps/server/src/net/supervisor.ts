@@ -12,9 +12,9 @@ import { FETCH_LIMITS, type Fetcher, type UrlPolicy } from '@maverick-wall/core'
  *
  * Read-only, and here that is the whole of it rather than a house style: these
  * are GETs of the add-on's own configuration and the host's network, never a
- * write. Rule 12 permits exactly one write and it is `todo.update_item` through
- * `modules/homeassistant/client.ts`; nothing in this file is on that path or
- * ever should be. It runs once at boot, which is the right granularity:
+ * write. Rule 12's writes all leave through `callService` in
+ * `modules/homeassistant/client.ts`, built from the table in `services.ts`;
+ * nothing in this file is on that path or ever should be. It runs once at boot, which is the right granularity:
  * changing a port mapping in Home Assistant restarts the add-on, so a fresh
  * boot re-detects.
  *
