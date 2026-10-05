@@ -22,9 +22,10 @@ import { haReadingHandle } from '../../api/manifest.js';
  * display draws it (`variant: 'tile'`). That is why a reading carries a `tone`,
  * a `changedAt` and, where its words carry a percentage, a `level` — a tile's
  * circle is coloured by the first, its "5 min ago" is read off the second and
- * its read-only bar is the third. Hard rule 12 is untouched: a tile shows a
- * state and controls nothing — no toggle, no slider, no tap action — and the
- * wall still receives a resolved value and never an entity id, an attribute,
+ * its read-only bar is the third. A tile shows a state, and toggles only where
+ * RFC 018's three switches all say so — the `actions` a module adds is that
+ * switch's hint to the wall, and `/d/ha/act` is what decides. The wall still
+ * receives a resolved value and a handle, never an entity id, an attribute,
  * the token or the address.
  */
 
@@ -630,6 +631,13 @@ export interface EntityReading {
    * sent before a tile had a bar — no ETag moves for a field nothing draws.
    */
   readonly level?: number;
+  /**
+   * The words a wall may press on this reading (RFC 018): `['toggle']` today.
+   * Present only on a reading the household marked controllable whose domain
+   * has a route; added by the module's `contribute`, never by `toReading`,
+   * which knows nothing of the household's switch.
+   */
+  readonly actions?: readonly string[];
 }
 
 export interface WatchedEntity {

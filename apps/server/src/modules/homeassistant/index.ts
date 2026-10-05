@@ -2,6 +2,7 @@ import type { SqliteDatabase } from '../../db/open.js';
 import type { ModuleContext, PanelModule } from '../registry.js';
 import type { Signal } from '@maverick-wall/core';
 import { call, resolveConnection } from './client.js';
+import { wallActionsFor } from './services.js';
 import { parseCalendarList, type CalendarEntity } from './calendars.js';
 import type { Keyring } from '../../secrets/keyring.js';
 import type { Fetcher } from '@maverick-wall/core';
@@ -49,6 +50,30 @@ interface WatchRow {
   readonly lastChangedAt: number | null;
   readonly fetchedAt: number;
   readonly attributes: string | null;
+  /** The household's "can be controlled from walls" switch (RFC 018 §6). */
+  readonly controllable: number;
+}
+
+/**
+ * What a wall may do to this reading, **only when there is something**: the
+ * household marked it controllable and an action has a route for its domain
+ * (`wallActionsFor`). Spread rather than emitted empty, `level`'s argument one
+ * field along — a house where nothing is controllable sends the document it
+ * sent before a wall could operate anything, and no ETag moves for a button no
+ * wall draws. This is a hint for the wall's renderer and nothing more: whether
+ * a press is honoured is `/d/ha/act`'s decision, from the state as it is then.
+ */
+function actionsOf(row: WatchRow): { readonly actions?: readonly string[] } {
+  if (row.controllable !== 1) return {};
+  let attributes: unknown = null;
+  try {
+    attributes = row.attributes === null ? null : JSON.parse(row.attributes);
+  } catch {
+    // An unreadable cache row offers nothing; the next poll rewrites it.
+    return {};
+  }
+  const actions = wallActionsFor(row.entityId, attributes);
+  return actions.length === 0 ? {} : { actions };
 }
 
 const MODES: readonly string[] = ['value', 'label_value', 'icon_state', 'presence'];
@@ -127,7 +152,7 @@ export async function fetchCalendarEntities(
 const SELECT_WATCHED = `SELECT entity_id AS entityId, label, display_mode AS displayMode,
           sort_order AS sortOrder, glyph, state, friendly_name AS friendlyName,
           unit_of_measurement AS unit, last_changed_at AS lastChangedAt,
-          fetched_at AS fetchedAt, attributes
+          fetched_at AS fetchedAt, attributes, controllable
      FROM ha_entity_cache WHERE watched = 1
     ORDER BY sort_order, entity_id`;
 
@@ -176,8 +201,8 @@ export const haModule: PanelModule = {
     const rows = context.db.prepare(SELECT_WATCHED).all() as WatchRow[];
     if (rows.length === 0) return null;
 
-    const readings = rows.map((row) =>
-      toReading(
+    const readings = rows.map((row) => ({
+      ...toReading(
         stateFrom(row),
         {
           entityId: row.entityId,
@@ -189,7 +214,8 @@ export const haModule: PanelModule = {
         row.fetchedAt,
         context.now,
       ),
-    );
+      ...actionsOf(row),
+    }));
 
     const error = context.db
       .prepare(`SELECT last_error AS lastError FROM ha_settings WHERE id = 'singleton'`)

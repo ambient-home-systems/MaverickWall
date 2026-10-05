@@ -362,6 +362,16 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
    * out of every frame. `epaper-ink.test.ts` proves it moves no ink from a
    * tile base whose reading carries a time.
    */
+  /*
+   * Tapping a reading to operate it (RFC 018). A panel has no input at all, so
+   * there is nothing to tap; it draws the reading exactly as it would with the
+   * key absent, which `epaper-ink.test.ts` proves by rendering.
+   */
+  {
+    key: 'tapAction',
+    label: 'Tap to operate',
+    why: 'a panel has nothing to tap, so it shows the reading and operates nothing.',
+  },
   {
     key: 'showChanged',
     label: 'When it changed',

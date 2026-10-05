@@ -6610,12 +6610,31 @@ function boot(): void {
     help.className = 'hint';
     help.dataset['cfgKey'] = 'tileLayout';
     help.textContent =
-      'A tile shows what a thing is doing and changes nothing. There are no switches to press, no ' +
-      'sliders and nothing to tap, because this wall is never allowed to change anything in your ' +
-      'house. And there are no Home Assistant device pictures — the wall would have to fetch them ' +
-      'from Home Assistant, and it is never given its address. Choose a reading’s picture on the ' +
-      'Readings screen.';
+      'A tile shows what a thing is doing. It can switch a light, a switch or a fan only where you ' +
+      'have said so three times — below, on the Readings screen, and in this wall’s Touch controls ' +
+      '— and it never reaches a lock, an alarm or a garage door. There are no sliders, and no Home ' +
+      'Assistant device pictures — the wall would have to fetch them from Home Assistant, and it is ' +
+      'never given its address. Choose a reading’s picture on the Readings screen.';
     configPanel.appendChild(help);
+
+    /*
+     * The third of RFC 018's three switches, and the only one on this screen
+     * (§7). Off is an absence, so a widget nobody touches stores nothing new.
+     * Both looks honour it, so it is keyed to itself rather than to the tile's
+     * controls; the ink lane offers no such key and drops it, because a panel
+     * has nothing to tap.
+     */
+    configPanel.appendChild(
+      switchRow(
+        'Tap to operate',
+        'A reading you marked “Can be controlled from walls” on the Readings screen switches on or ' +
+          'off when pressed — on a wall whose Touch controls allow operating things in the house. ' +
+          'Off, this widget only shows.',
+        cfg['tapAction'] === 'act',
+        (on) => setConfig(widget, 'tapAction', on ? 'act' : undefined),
+        'tapAction',
+      ),
+    );
 
     // What each of those readings says. Its default is per entity rather than
     // per widget, which the ladder's own hint explains.

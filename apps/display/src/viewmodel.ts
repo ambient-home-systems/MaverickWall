@@ -584,6 +584,19 @@ export interface DisplayModel {
    */
   readonly todoNotices: Readonly<Record<string, string>>;
   /**
+   * Whether this screen may operate things in the house (RFC 018 phase 2): the
+   * wall's own switch, the first of three. The other two are a reading's
+   * `actions` (the household's switch on the Readings screen) and the widget's
+   * `tapAction` (its own). A button is drawn only where all three say yes, and
+   * `/d/ha/act` asks all three again.
+   */
+  readonly allowControl: boolean;
+  /**
+   * A press on a reading that did not go through, by widget id (RFC 018 §8.3):
+   * `todoNotices`' mechanism, for the reason it gives.
+   */
+  readonly houseNotices: Readonly<Record<string, string>>;
+  /**
    * When each widget's one-shot effects fired, by widget id and event (plan
    * P4.3) — the confetti on a countdown's day, a page flipping at midnight.
    *
@@ -685,7 +698,18 @@ export interface HouseReadingModel {
    * tile's read-only bar — present exactly when the words carry it too.
    */
   readonly level?: number;
+  /**
+   * What a press may ask of this reading (RFC 018): `toggle`, or nothing.
+   * Present only on a reading the household marked controllable, and only the
+   * words this bundle knows — a newer server's word is no button rather than a
+   * button that posts something this wall cannot describe.
+   */
+  readonly actions?: readonly WallAction[];
 }
+
+/** The words a wall can press, as this bundle knows them. */
+export type WallAction = 'toggle';
+const WALL_ACTIONS: readonly WallAction[] = ['toggle'];
 
 export interface InterruptModel {
   /** The event name. Drawn largest. */
@@ -714,6 +738,13 @@ export interface InterruptModel {
 /** The shape of a reading handle (`haReadingHandle` on the server): hex, and short. */
 const READING_HANDLE = /^[0-9a-f]{8,64}$/;
 
+/** A reading's actions, kept only where every one is a word this bundle can press. */
+function actionsFrom(raw: unknown): { readonly actions?: readonly WallAction[] } {
+  if (!Array.isArray(raw)) return {};
+  const known = raw.filter((word): word is WallAction => WALL_ACTIONS.includes(word as WallAction));
+  return known.length === 0 ? {} : { actions: known };
+}
+
 export function houseFrom(panel: unknown): {
   readings: HouseReadingModel[];
   note: string | undefined;
@@ -728,6 +759,7 @@ export function houseFrom(panel: unknown): {
     const reading = entry as {
       key?: unknown; label?: unknown; value?: unknown; unit?: unknown; glyph?: unknown;
       mode?: unknown; stale?: unknown; tone?: unknown; changedAt?: unknown; level?: unknown;
+      actions?: unknown;
     };
     /*
      * Through the same sanitiser the alert text uses.
@@ -774,6 +806,7 @@ export function houseFrom(panel: unknown): {
       ...(typeof reading.level === 'number' && reading.level >= 0 && reading.level <= 100
         ? { level: reading.level }
         : {}),
+      ...actionsFrom(reading.actions),
     });
   }
 
@@ -1624,6 +1657,8 @@ export interface BuildOptions {
    * tell it.
    */
   readonly todoNotices?: Readonly<Record<string, string>>;
+  /** A press on a reading that did not go through: `todoNotices`' argument. */
+  readonly houseNotices?: Readonly<Record<string, string>>;
   /**
    * The wall's one-shot memory (plan P4.3). Optional and defaulted to none, on
    * `todoNotices`' argument: it is what this page has already shown, which no
@@ -1822,6 +1857,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
     allowDismiss: manifest.screen?.allowDismiss === true,
     allowChores: manifest.screen?.allowChores === true,
     allowTodo: manifest.screen?.allowTodo === true,
+    allowControl: manifest.screen?.allowControl === true,
     // Straight off the document: `gutterValue` is the one place a step becomes
     // a length, and it refuses anything this bundle does not know.
     layoutGutter: manifest.screen?.layoutGutter,
@@ -1831,6 +1867,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
     layoutStyle: styleTokensOf(manifest.screen?.layoutStyleTokens),
     layoutDaytimeStyle: styleTokensOf(manifest.screen?.layoutDaytimeStyleTokens),
     todoNotices: options.todoNotices ?? {},
+    houseNotices: options.houseNotices ?? {},
     oneShots: options.oneShots ?? NO_ONE_SHOTS,
     notices: manifest.notices.map((notice) => ({ level: notice.level, message: notice.message })),
     staleness,

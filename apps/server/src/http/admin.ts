@@ -447,6 +447,7 @@ const screenBody = z.object({
   allow_dismiss: checkbox(),
   allow_chores: checkbox(),
   allow_todo: checkbox(),
+  allow_control: checkbox(),
   // '' follows the household, '1' forces 24-hour, '0' forces 12-hour (RFC 005).
   clock_24: optionalText(1),
   // How much this wall shows. Empty follows the household default; a number is
@@ -2980,6 +2981,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       allow_dismiss: allowDismiss,
       allow_chores: allowChores,
       allow_todo: allowTodo,
+      allow_control: allowControl,
     } = shaped.value;
     // '' follows the household, '1' forces 24-hour, '0' forces 12-hour.
     const clockRaw = shaped.value.clock_24 ?? '';
@@ -3233,6 +3235,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         allowDismiss,
         allowChores,
         allowTodo,
+        allowControl,
         displayTodayEvents: today.value,
         displayNextDays: nextDays.value,
         displayHorizonWeeks: weeks.value,
@@ -5590,6 +5593,24 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           'Puts a tick box beside each item on a Home Assistant to-do list ' +
           'this wall shows. It changes the real list, so it changes what ' +
           'everyone’s phone sees. Off unless you mean it.',
+      }) +
+      /*
+       * And a fourth, because operating the house is a fourth risk (RFC 018
+       * §6). It is the wall's half of three switches: a light is only
+       * operable here when the household has also marked it controllable on
+       * the Readings screen and set the widget showing it to act. The hint
+       * names the consequence a household is deciding about — somebody at
+       * this wall can switch things — rather than "allows input".
+       */
+      switchRow({
+        label: 'Allow operating things in the house',
+        name: 'allow_control',
+        checked: screen.allowControl === 1,
+        hint:
+          'Anyone at this wall can switch the lights, switches and fans you ' +
+          'marked “Can be controlled from walls” under Home Assistant › Readings, ' +
+          'from a widget set to Tap to operate. It never reaches a lock, an alarm ' +
+          'or a garage door. Off unless you mean it.',
       }) +
       `</div>`;
 

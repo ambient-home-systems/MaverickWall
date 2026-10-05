@@ -1,5 +1,15 @@
 import type { Context, Hono } from 'hono';
-import { confirmDestroyPage, errorBlock, escapeHtml, icon, networkAccessLabel, page, selectField, textField } from './html.js';
+import {
+  confirmDestroyPage,
+  errorBlock,
+  escapeHtml,
+  icon,
+  networkAccessLabel,
+  page,
+  selectField,
+  switchRow,
+  textField,
+} from './html.js';
 import { card, dataTable, destructive, emptyState, listRow, section, tag } from './components.js';
 import { call, resolveConnection, testConnection, type ConnectionMode } from '../modules/homeassistant/client.js';
 import {
@@ -20,6 +30,7 @@ import {
   readHaCalendarSources,
   readHaSettings,
   readWatched,
+  setReadingControllable,
   setReadingGlyph,
   unwatchEntity,
   watchedReadingChoices,
@@ -29,6 +40,8 @@ import {
 } from '../modules/homeassistant/store.js';
 import { householdSetUp } from '../modules/index.js';
 import { HOME_BLOCK as HOME_MODULE } from '../modules/homeassistant/index.js';
+import { COVER_CLASSES, wallActionsFor } from '../modules/homeassistant/services.js';
+import { readWallActions } from '../modules/homeassistant/control.js';
 import {
   anyWallShowsReadings,
   shownOnTag,
@@ -127,6 +140,26 @@ const addManyBody = z.object({
  * ours is a page from another release, and storing it would be a picture the
  * wall cannot draw (rule five).
  */
+/**
+ * A reading's "Can be controlled from walls" switch (RFC 018 §6): the entity,
+ * and whether the box was ticked. An unticked box is not sent, so absence is
+ * off — `checkbox()`'s reading, and the reason the form needs no marker.
+ */
+const readingControlBody = z.object({
+  entity_id: text('An entity', 255),
+  controllable: checkbox().optional(),
+});
+
+/**
+ * What can never be operated from a wall, whatever a household ticks
+ * (RFC 018 §5.1, MD12). Named here so the Readings screen can say so beside the
+ * reading rather than offering a switch that would be refused — the table in
+ * `services.ts` is what actually refuses them; this is only the sentence.
+ */
+const NEVER_FROM_A_WALL: readonly string[] = ['lock', 'alarm_control_panel', 'climate', 'input_boolean', 'camera'];
+/** What a later phase of RFC 018 wires, and this release does not. */
+const NOT_YET_FROM_A_WALL: readonly string[] = ['cover', 'scene', 'script', 'media_player'];
+
 const readingGlyphBody = z.object({
   entity_id: text('An entity', 255),
   glyph: z.union([z.literal(''), z.enum(GLYPH_KEYS)], { error: () => 'Choose a picture from the list.' }),
@@ -1073,6 +1106,38 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     return savedRedirect(c, '/admin/home-assistant/readings', 'ha-entity-glyph');
   });
 
+  /**
+   * Mark a reading controllable from walls, or not (RFC 018 §6).
+   *
+   * The second of three switches, and the one that names *what*: the wall's
+   * Touch controls say whether anything may be operated from it, a widget's
+   * "Tap to operate" says which box answers a press, and this says which
+   * things. Turning it on is refused for anything with no route — a lock is
+   * not one a household can tick here even by posting the form by hand, which
+   * is the boundary a page that hides the switch is only a courtesy for. A
+   * token is a claim, so a reading that is no longer watched changed nothing
+   * and is answered with the list.
+   */
+  app.post('/admin/home-assistant/entities/control', async (c: Context) => {
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const chosen = parse(readingControlBody, body);
+    if (!chosen.ok) return renderReadings(c, { message: chosen.message }, 400);
+    const on = chosen.value.controllable === true;
+    const row = readWatched(deps.db).find(
+      (watched) => watched.entityId === chosen.value.entity_id && watched.watched === 1,
+    );
+    if (row === undefined) return c.redirect('/admin/home-assistant/readings', 302);
+    if (on && wallActionsFor(row.entityId, safeJson(row.attributes)).length === 0) {
+      return renderReadings(c, { message: 'That can’t be operated from a wall.' }, 400);
+    }
+    setReadingControllable(deps.db, row.entityId, on);
+    return savedRedirect(
+      c,
+      '/admin/home-assistant/readings',
+      on ? 'ha-entity-control-on' : 'ha-entity-control-off',
+    );
+  });
+
   app.post('/admin/home-assistant/calendars', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     const picked = parse(calendarSourceBody, body);
@@ -1522,12 +1587,15 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     return card(
       `<h2>Maverick Wall reads, and changes only what you pick.</h2>` +
       `<ul class="plain">` +
-      `<li>Today the one thing it changes in Home Assistant is ticking an item ` +
-      `off a to-do list you have chosen to show on a wall — ` +
-      `<code>todo.update_item</code> — and only on a wall you have allowed to.</li>` +
-      `<li>A later release will let a wall operate lights, switches, fans, blinds, ` +
-      `scenes, scripts and media players: only the ones you mark, on walls you ` +
-      `allow, from widgets you set to act. None of that is built yet.</li>` +
+      `<li>It ticks an item off a to-do list you have chosen to show on a wall — ` +
+      `<code>todo.update_item</code> — only on a wall you have allowed to.</li>` +
+      `<li>It switches lights, switches and fans on or off from a wall, and only ` +
+      `the ones you mark <strong>Can be controlled from walls</strong> under ` +
+      `Readings, on walls you allow, from widgets you set to Tap to operate. ` +
+      `Readings lists the last fortnight of presses.</li>` +
+      `<li>A later release will let a wall also dim a light, move a blind and run ` +
+      `a scene, a script or a media player, behind the same three switches. ` +
+      `Those are not built yet.</li>` +
       `<li>No locks, no alarms, no thermostats, and no garage, gate, door or window ` +
       `covers — ever. They are not in the frozen table of actions this application ` +
       `may take, and a test holds the code to that table.</li>` +
@@ -1539,10 +1607,10 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       `</ul>` +
       `<p class="hint">A Home Assistant long-lived access token has full control of ` +
       `your home and cannot be limited to reading. That is why the limit is on this ` +
-      `side: if a wall in your hallway were ever compromised, today the worst it ` +
-      `could do is show somebody your indoor temperature and tick an item off your ` +
-      `shopping list — and whatever you allow later, it could never open your ` +
-      `garage.</p>`,
+      `side: if a wall in your hallway were ever compromised, the worst it could do ` +
+      `is show somebody your indoor temperature, tick an item off your shopping ` +
+      `list and switch the lights and fans you allowed it to — and whatever you ` +
+      `allow, it could never open your garage.</p>`,
     );
   }
 
@@ -1765,6 +1833,91 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
   }
 
   /**
+   * Whether walls may operate a reading (RFC 018 §6), folded away like its
+   * picture, with the summary saying the answer in words.
+   *
+   * Three shapes, and which one is decided by `wallActionsFor` — the table that
+   * refuses a press — rather than by a list of domains kept here: a switch for
+   * anything a wall can toggle; one sentence for what a wall will never reach,
+   * said beside it so nobody goes looking for a switch that does not exist;
+   * one for what a later release will reach; and nothing for a sensor, which
+   * has nothing to operate.
+   */
+  function readingControl(row: WatchedRow, label: string): string {
+    const domain = domainOf(row.entityId);
+    const attributes = safeJson(row.attributes);
+    if (wallActionsFor(row.entityId, attributes).length > 0) {
+      const on = row.controllable === 1;
+      const caution =
+        domain === 'switch'
+          ? ' A switch can be anything — a lamp, or a heater — so only allow it if nothing bad ' +
+            'happens when somebody at the wall presses it.'
+          : '';
+      return (
+        `<details class="disclose"><summary>${on ? 'Walls: can switch it' : 'Walls: show only'}</summary>` +
+        `<form method="post" action="admin/home-assistant/entities/control">` +
+        `<input type="hidden" name="entity_id" value="${escapeHtml(row.entityId)}">` +
+        switchRow({
+          label: `Can be controlled from walls`,
+          name: 'controllable',
+          checked: on,
+          hint:
+            `Pressing ${label} on a wall switches it on or off — only on a wall whose Touch controls ` +
+            `allow operating things in the house, and only in a widget set to Tap to operate.` +
+            caution,
+        }) +
+        `<button type="submit">Save</button></form></details>`
+      );
+    }
+    let deviceClass: string | null = null;
+    if (typeof attributes === 'object' && attributes !== null) {
+      const value = (attributes as Record<string, unknown>)['device_class'];
+      if (typeof value === 'string') deviceClass = value;
+    }
+    const never =
+      NEVER_FROM_A_WALL.includes(domain) ||
+      (domain === 'cover' && !COVER_CLASSES.includes(deviceClass ?? ''));
+    if (never) {
+      return (
+        `<p class="hint">Walls can never operate this. A lock, an alarm, a thermostat or a ` +
+        `garage door is never one press from a wall, whatever is ticked.</p>`
+      );
+    }
+    if (NOT_YET_FROM_A_WALL.includes(domain)) {
+      return `<p class="hint">Walls cannot operate this yet.</p>`;
+    }
+    return '';
+  }
+
+  /**
+   * The last fortnight of presses from walls (RFC 018 §8.4, OQ8): which wall,
+   * which reading, and whether Home Assistant did it. Here and nowhere else —
+   * not in the logs and not in the diagnostics export, because which light was
+   * switched when is a household's own business. Drawn only once a reading is
+   * controllable or a press is remembered, so a household that never turns
+   * this on never sees the heading.
+   */
+  function wallPresses(anyControllable: boolean): string {
+    const presses = readWallActions(deps.db, now());
+    if (presses.length === 0 && !anyControllable) return '';
+    return section(
+      'Recent presses from walls',
+      'The last fourteen days. Kept here only — not in the logs, and not in the diagnostics export.',
+      presses.length === 0
+        ? emptyState('Nothing has been pressed yet.')
+        : dataTable(
+            [{ label: 'When' }, { label: 'Wall' }, { label: 'Reading' }, { label: 'Result' }],
+            presses.map((press) => [
+              escapeHtml(ago(press.at, now())),
+              escapeHtml(press.wall),
+              escapeHtml(press.reading),
+              press.ok ? tag('Done', 'ok') : `${tag('Failed', 'danger')} ${escapeHtml(press.message ?? '')}`,
+            ]),
+          ),
+    );
+  }
+
+  /**
    * The watched readings, each saying which walls draw it (P1.3). The picker
    * that adds one is `addReadings`, on a page of its own (P2.1).
    */
@@ -1812,7 +1965,8 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
           `<button class="ovf-item is-danger" type="submit" ` +
           `aria-label="Remove ${escapeHtml(label)}">Remove…</button></form>` +
           `</div></details></div>` +
-          readingPicture(row, label),
+          readingPicture(row, label) +
+          readingControl(row, label),
         );
       })
       .join('');
@@ -1828,7 +1982,8 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
           'wherever you put one. This is deliberately not a dashboard — Home ' +
           'Assistant already has one, and it is better at it.',
         rows === '' ? emptyState('No readings yet.', READINGS_ADD) : rows,
-      )
+      ) +
+      wallPresses(watched.some((row) => row.controllable === 1))
     );
   }
 

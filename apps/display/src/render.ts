@@ -6,6 +6,7 @@ import type {
   EventModel,
   HorizonCell,
   HorizonShift,
+  HouseReadingModel,
   InterruptModel,
   TodayShiftModel,
   TodoItemModel,
@@ -994,13 +995,16 @@ function playfulColumn(
  * this is ambient context on a family calendar rather than a dashboard and a
  * grid of cards would be competing with Lovelace, badly. Decision D4 (plan
  * item P5.3) took the look and left the argument: `renderHouseTiles` below
- * draws Home Assistant's tile card for a widget that asks for one, and a tile
- * still controls nothing — which is the half of "competing with Lovelace" that
- * was ever about what this wall is for.
+ * draws Home Assistant's tile card for a widget that asks for one. A reading is
+ * a picture of a state unless three switches all say otherwise (RFC 018,
+ * `operable`), and then it is a button that toggles a light, a switch or a fan
+ * — never a lock, an alarm or a garage door, which no switch here can reach.
  *
- * Note what this function receives — a label, a value, a character. There is
- * no entity id in the model and no way to ask for one. That boundary is what
- * keeps a compromised wall from being a way into somebody's house.
+ * Note what this function receives — a label, a value, a character, and for a
+ * button a handle. There is no entity id in the model and no way to ask for
+ * one. That boundary is what keeps a compromised wall from being a way into
+ * somebody's house: it can press what the household made pressable, and name
+ * nothing else.
  */
 /**
  * Which parts of a reading survive a box too narrow for all of them.
@@ -1011,10 +1015,60 @@ function playfulColumn(
  */
 const HOUSE_FIELD_PRIORITY: readonly HouseField[] = ['value', 'label', 'icon'];
 
+/**
+ * Whether a press on this reading operates it (RFC 018 §7): all three switches.
+ *
+ * The wall's (`allowControl`), the household's on the Readings screen (the
+ * reading carries `actions`), and this widget's own (`tapAction: 'act'`). Any
+ * one of them off and the reading is drawn exactly as it always was, as a
+ * picture of a state. All three on and the *same* element becomes a
+ * `<button>` with the same classes, so a reading that can be operated is the
+ * same rectangle as one that cannot — what tells a household it acts is that
+ * it answers, and the focus ring. `/d/ha/act` asks all three again: the
+ * display token is on the wall, so this is a courtesy and never the check.
+ */
+function operable(model: DisplayModel, config: unknown, reading: HouseReadingModel): boolean {
+  return (
+    model.allowControl &&
+    widgetConfig(config)['tapAction'] === 'act' &&
+    reading.key !== undefined &&
+    reading.actions !== undefined &&
+    reading.actions.includes('toggle')
+  );
+}
+
+/**
+ * A reading's element: a `<div>`, or the `<button>` a press lands on.
+ *
+ * What the button carries is a handle and a word — never an entity id, which
+ * this bundle has never been given. `type="button"` because a wall has no
+ * form, and a button with no type is a submit somebody will one day put in
+ * one.
+ */
+function readingNode(className: string, act: boolean, reading: HouseReadingModel, actClass: string): HTMLElement {
+  if (!act || reading.key === undefined) return el('div', className);
+  const button = el('button', `${className} ${actClass}`);
+  button.setAttribute('type', 'button');
+  button.setAttribute('data-ha-act', reading.key);
+  button.setAttribute('data-ha-action', 'toggle');
+  return button;
+}
+
+/**
+ * A press that did not go through, said where it was pressed: `todoNoticeNode`'s
+ * shape and class, so the wall says "that did not happen" one way.
+ */
+function houseNoticeNode(message: string, className: string): HTMLElement {
+  const node = el('div', `td-note ${className}`, message);
+  node.setAttribute('role', 'alert');
+  return node;
+}
+
 function renderHouse(
   model: DisplayModel,
   config?: unknown,
   tier?: WidgetTier,
+  widgetId = '',
 ): HTMLElement | undefined {
   // Which readings to show, by the handle the server minted for each — never
   // an entity id, and no longer the label, which a rename used to break
@@ -1023,8 +1077,17 @@ function renderHouse(
   if (readings.length === 0) return undefined;
 
   const strip = el('section', 'house');
+  // Above the readings, the to-do list's reason: read first, and not counted
+  // as a reading by the belt, which measures `.hs-item`.
+  const notice = model.houseNotices[widgetId];
+  if (notice !== undefined) strip.appendChild(houseNoticeNode(notice, 'hs-act-note'));
   for (const reading of readings) {
-    const cell = el('div', `hs-item hs-${reading.mode}${reading.stale ? ' hs-stale' : ''}`);
+    const cell = readingNode(
+      `hs-item hs-${reading.mode}${reading.stale ? ' hs-stale' : ''}`,
+      operable(model, config, reading),
+      reading,
+      'hs-act',
+    );
     /*
      * Which parts this reading shows, from the widget's own list when it has
      * one and otherwise from the entity's `display_mode`. The two `if`
@@ -1088,11 +1151,12 @@ interface TileDraw {
  * measured against both of a theme's grounds (`paletteTokens`), and contrast
  * is symmetric.
  *
- * **Nothing here is a control.** No toggle, no slider and no tap action — hard
- * rule 12 allows this wall one write to a house and it is a to-do item — and no
- * entity picture, which would be an address on the household's Home Assistant
- * for the wall to fetch. The bar under a light is a picture of the "60%" its
- * state line already says, drawn and never pressed.
+ * **A tile is a control only where RFC 018's three switches all say so**
+ * (`operable`), and then the whole tile is one button that toggles — no
+ * slider, no hold, nothing else. No entity picture either, which would be an
+ * address on the household's Home Assistant for the wall to fetch. The bar
+ * under a light is a picture of the "60%" its state line already says, drawn
+ * and never dragged.
  *
  * Separation is the rule's order: space between the tiles, a hairline round
  * each, a ground step from the canvas, and the theme's `--shadow-card` laid on
@@ -1100,7 +1164,12 @@ interface TileDraw {
  * draw tiles a household can tell apart. A widget's style lane may take the
  * shadow away (`style.shadow`), never add one.
  */
-function renderHouseTiles(model: DisplayModel, config?: unknown, draw: TileDraw = {}): HTMLElement | undefined {
+function renderHouseTiles(
+  model: DisplayModel,
+  config?: unknown,
+  draw: TileDraw = {},
+  widgetId = '',
+): HTMLElement | undefined {
   const readings = houseReadingsFor(model.house, config);
   if (readings.length === 0) return undefined;
   const options = tileOptions(config);
@@ -1110,8 +1179,15 @@ function renderHouseTiles(model: DisplayModel, config?: unknown, draw: TileDraw 
   const grid = el('section', 'house-tiles');
   grid.setAttribute('data-layout', options.layout);
   if (draw.columns !== undefined) grid.style.setProperty('--ht-cols', String(draw.columns));
+  const notice = model.houseNotices[widgetId];
+  if (notice !== undefined) grid.appendChild(houseNoticeNode(notice, 'ht-act-note'));
   for (const reading of readings) {
-    const tile = el('div', reading.stale ? 'ht-tile ht-stale' : 'ht-tile');
+    const tile = readingNode(
+      reading.stale ? 'ht-tile ht-stale' : 'ht-tile',
+      operable(model, config, reading),
+      reading,
+      'ht-act',
+    );
     tile.setAttribute('data-tone', tileTone(reading));
 
     // The circle is drawn whether or not the vocabulary has a picture for the
@@ -2058,8 +2134,8 @@ export function renderWidget(
       return renderWeather(model, config);
     case 'homeassistant':
       return variantOf('homeassistant', config) === 'tile'
-        ? renderHouseTiles(model, config)
-        : renderHouse(model, config);
+        ? renderHouseTiles(model, config, {}, widgetId)
+        : renderHouse(model, config, undefined, widgetId);
     case 'shift':
       return renderShiftWidget(model, config);
     case 'countdown':
@@ -3442,7 +3518,7 @@ function tierHouse(
   const readings = entry.box.querySelectorAll('.hs-item').length;
   stampTier(entry.box, tier, readings);
   if (tier.rungs < HOUSE_FIELD_PRIORITY.length) {
-    const rebuilt = renderHouse(model, entry.widget.config, tier);
+    const rebuilt = renderHouse(model, entry.widget.config, tier, entry.widget.id);
     if (rebuilt !== undefined) replaceBody(entry, rebuilt);
   }
   beltItems(entry.box, [...entry.body.querySelectorAll('.hs-item')] as HTMLElement[]);
@@ -3501,7 +3577,7 @@ function tierHouseTiles(entry: TieredWidget, model: DisplayModel): void {
    * belt then took away. Measured, that is the only count this pass trusts.
    */
   const drawn = (bar: boolean): { readonly shown: number; readonly bars: number } => {
-    const rebuilt = renderHouseTiles(model, config, { words, columns, bar });
+    const rebuilt = renderHouseTiles(model, config, { words, columns, bar }, entry.widget.id);
     if (rebuilt !== undefined) replaceBody(entry, rebuilt);
     const tiles = [...entry.body.querySelectorAll('.ht-tile')] as HTMLElement[];
     const note = entry.body.querySelector('.ht-note');

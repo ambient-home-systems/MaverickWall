@@ -145,6 +145,10 @@ export const SAVED_MESSAGES = {
   // promising a wall over a house with no Home Assistant widget would be
   // P1.3's fault one sentence along.
   'ha-entity-glyph': 'Picture saved.',
+  // RFC 018 §6. "Can" and not "will": a wall still needs its own switch and a
+  // widget set to act, and the page says so beside the switch.
+  'ha-entity-control-on': 'Walls with operating allowed can now switch it.',
+  'ha-entity-control-off': 'Walls can no longer switch it.',
   'ha-calendar-added': 'Calendar added.',
   'ha-rule-added': 'Rule added.',
   'ha-rule-removed': 'Rule removed.',

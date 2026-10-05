@@ -182,15 +182,28 @@ function start(): void {
   const TODO_NOTICE_MS = 20_000;
   const todoNotices = new Map<string, { readonly text: string; readonly until: number }>();
   /** The ones still worth drawing, as the model wants them. */
-  const liveTodoNotices = (): Record<string, string> => {
+  const liveNotices = (
+    notices: Map<string, { readonly text: string; readonly until: number }>,
+  ): Record<string, string> => {
     const at = Date.now();
     const live: Record<string, string> = {};
-    for (const [id, notice] of todoNotices) {
+    for (const [id, notice] of notices) {
       if (notice.until > at) live[id] = notice.text;
-      else todoNotices.delete(id);
+      else notices.delete(id);
     }
     return live;
   };
+  const liveTodoNotices = (): Record<string, string> => liveNotices(todoNotices);
+
+  /*
+   * A press on a reading that did not go through (RFC 018 §8.3), by widget id.
+   * `todoNotices`' mechanism and its two clears — a successful poll, and an
+   * expiry — with the shorter expiry RFC 018 decided: a press is answered at
+   * once or not at all, and a sentence still up when somebody next walks past
+   * is about a press nobody remembers making.
+   */
+  const HOUSE_NOTICE_MS = 8_000;
+  const houseNotices = new Map<string, { readonly text: string; readonly until: number }>();
 
   /*
    * When each widget's one-shot effects fired, by widget id and event (plan
@@ -307,6 +320,7 @@ function start(): void {
       lastConfirmedAt,
       offline,
       todoNotices: liveTodoNotices(),
+      houseNotices: liveNotices(houseNotices),
       oneShots,
     });
     // Events nothing has asked about for an hour are forgotten, on the clock
@@ -422,6 +436,7 @@ function start(): void {
         // The list on the glass is current again, so a sentence about a tick
         // against the last one has nothing left to be about.
         todoNotices.clear();
+        houseNotices.clear();
         /*
          * Kept for the next reload — unless it is the server's stand-in.
          *
@@ -445,6 +460,7 @@ function start(): void {
         // A 304 is the server confirming this document, which is as much a
         // successful poll as a body is.
         todoNotices.clear();
+        houseNotices.clear();
         break;
       case 'unpaired':
         manifest = undefined;
@@ -686,8 +702,8 @@ function start(): void {
      * click on Enter is one the OK key must leave alone, and a second handler
      * with its own copy of this rule is how the two would come to disagree.
      */
-    if (document.activeElement?.closest?.('[data-chore], [data-todo]') !== null &&
-        document.activeElement?.closest?.('[data-chore], [data-todo]') !== undefined) {
+    if (document.activeElement?.closest?.('[data-chore], [data-todo], [data-ha-act]') !== null &&
+        document.activeElement?.closest?.('[data-chore], [data-todo], [data-ha-act]') !== undefined) {
       return;
     }
     const key = dismissTarget();
@@ -806,8 +822,49 @@ function start(): void {
     await poll();
   };
 
+  /**
+   * Operating a reading (RFC 018 phase 2).
+   *
+   * `tickTodo`'s shape exactly, and its two refusals: **no optimistic paint**
+   * — the tile changes when the next document says the light did — and **no
+   * client queue**, because a press that cannot reach the server is a press
+   * that did not happen, and replaying it later would turn a light on in an
+   * empty room. What it sends is the reading's handle, the widget it was
+   * pressed in and the word; the server resolves the entity, checks all three
+   * switches, re-reads the state and decides.
+   */
+  const actOnReading = async (widgetId: string, reading: string, action: string): Promise<void> => {
+    let failure: string | undefined;
+    try {
+      const response = await fetch('/d/ha/act', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        credentials: 'same-origin',
+        body: new URLSearchParams({ reading, widget: widgetId, action }).toString(),
+      });
+      if (!response.ok) failure = await tickMessage(response);
+    } catch {
+      failure = TICK_FAILED;
+    }
+    if (failure !== undefined) {
+      houseNotices.set(widgetId, { text: failure, until: Date.now() + HOUSE_NOTICE_MS });
+      draw();
+      return;
+    }
+    await poll();
+  };
+
   root.addEventListener('click', (event: Event) => {
     const target = event.target as Element | null;
+
+    const act = target?.closest?.('[data-ha-act]');
+    if (act !== null && act !== undefined) {
+      const reading = act.getAttribute('data-ha-act') ?? '';
+      const action = act.getAttribute('data-ha-action') ?? '';
+      const widgetId = (act.closest('.fw') as HTMLElement | null)?.dataset['widgetId'] ?? '';
+      if (reading !== '' && action !== '' && widgetId !== '') void actOnReading(widgetId, reading, action);
+      return;
+    }
 
     const chore = target?.closest?.('[data-chore]');
     if (chore !== null && chore !== undefined) {

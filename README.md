@@ -66,10 +66,10 @@ configure first, no account to create anywhere else, no key to paste.
 - **Shift rotation.** Per person, from a repeating pattern or derived from a
   work calendar, with colours that separate at ten feet. A rest day is drawn as
   a rest day, not as a blank.
-- **Home Assistant, on your terms.** A few readings beside the calendar, and a
-  to-do list you can cross things off from the wall — today the one thing this
-  changes in your house, off on every wall until you turn it on for that wall.
-  It can never unlock a door or open a garage. See below.
+- **Home Assistant, on your terms.** A few readings beside the calendar, a
+  to-do list you can cross things off from the wall, and lights, switches and
+  fans you can switch from it — each off on every wall until you turn it on for
+  that wall. It can never unlock a door or open a garage. See below.
 - **Weather alerts.** National Weather Service, United States only. A banner
   for an advisory, the whole screen for a severe warning, and for an Extreme
   warning it can light a screen that has gone dark.
@@ -152,19 +152,25 @@ Full detail in [the add-on docs](addon/maverick-wall/DOCS.md).
 A Home Assistant long-lived access token has full control of a home and cannot
 be limited to reading, so the limit lives on this side instead:
 
-- Today the **one** thing this application changes in your house is ticking an
-  item off a to-do list you chose to show on a wall: `todo.update_item`.
+- It changes two kinds of thing in your house, and only once you ask: ticking
+  an item off a to-do list you chose to show on a wall (`todo.update_item`),
+  and switching a light, a switch or a fan on or off from a wall.
 - Even that is **off by default on every wall**. A wall gets a tick box only
   once you turn on "Allow ticking to-do items off" for that particular wall —
   its own switch, separate from clearing an alert and from ticking a chore,
   because this is the only one of the three that changes anything outside this
   application. An eInk panel shows the list and never offers a box: a sleeping
   battery panel cannot honour a tap.
-- The rules this project holds itself to now also allow a wall to operate
-  lights, switches, fans, blinds, scenes, scripts and media players, and a phone
-  to add to a to-do list. **None of that is built yet.** When it is, a wall will
-  operate only the things you mark as controllable, only on walls you allow,
-  and only from widgets you set to act — all three off by default.
+- A wall switches something only when three things are all on, and all three
+  are off by default: you marked it **Can be controlled from walls** on the
+  Readings screen, that wall's own **Allow operating things in the house** is
+  on, and the widget it is pressed in is set to **Tap to operate**. The
+  Readings screen lists the last fortnight of presses — which wall, which
+  thing, and whether it worked.
+- The rules this project holds itself to also allow a wall, later, to dim a
+  light, move a blind and run a scene, a script or a media player, and a phone
+  to add to a to-do list. **Those are not built yet**, and each will sit behind
+  the same three switches.
 - It can **never** unlock a door, disarm an alarm, change a thermostat, or open
   a garage, gate, door or window. Those are not in the frozen table of actions
   this application may take, and a test asserts nothing leaves that table.
@@ -174,9 +180,10 @@ be limited to reading, so the limit lives on this side instead:
 - The token is stored encrypted and never appears in a log, an error message,
   or the diagnostics export.
 
-If a tablet in your hallway is ever compromised, today the worst it can do is
-show somebody your indoor temperature and tick an item off your shopping list.
-Whatever you allow later, it can never open your garage.
+If a tablet in your hallway is ever compromised, the worst it can do is show
+somebody your indoor temperature, tick an item off your shopping list, and
+switch the lights and fans you allowed it to. Whatever you allow, it can never
+open your garage.
 
 ## Weather alerts
 

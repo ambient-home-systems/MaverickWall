@@ -146,13 +146,15 @@ export interface WatchedRow {
   readonly glyph: string | null;
   /** The cached attributes JSON, which the Readings screen reads a device class out of. */
   readonly attributes: string | null;
+  /** Whether a wall may operate it: the household's switch (RFC 018 §6). */
+  readonly controllable: number;
 }
 
 export function readWatched(db: SqliteDatabase): WatchedRow[] {
   return db
     .prepare(
       `SELECT entity_id AS entityId, label, display_mode AS displayMode,
-              sort_order AS sortOrder, watched, state, glyph, attributes,
+              sort_order AS sortOrder, watched, state, glyph, attributes, controllable,
               friendly_name AS friendlyName,
               unit_of_measurement AS unitOfMeasurement, fetched_at AS fetchedAt
          FROM ha_entity_cache
@@ -211,7 +213,10 @@ export function watchEntity(db: SqliteDatabase, input: WatchInput): void {
          -- back to whatever the add form said: a reading added again starts
          -- from what it was added with, not from a choice made about it once
          -- and since removed (P5.3).
-         glyph = NULL`,
+         glyph = NULL,
+         -- And not controllable: a reading added again starts switched off,
+         -- whatever it was before it was removed (RFC 018 §6).
+         controllable = 0`,
     ).run(input.entityId, input.friendlyName, input.label, input.displayMode, at);
 
     ensureBlock(db);
@@ -251,6 +256,18 @@ function ensureBlock(db: SqliteDatabase): void {
  * stores what it is handed. Says whether a reading was there to change, so the
  * handler can tell a stale page from a save.
  */
+/**
+ * Mark a reading controllable from walls, or not (RFC 018 §6). The caller
+ * checks eligibility first; this stores what it is handed, on a watched row
+ * only, and says whether there was one to change.
+ */
+export function setReadingControllable(db: SqliteDatabase, entityId: string, on: boolean): boolean {
+  const changed = db
+    .prepare('UPDATE ha_entity_cache SET controllable = ? WHERE entity_id = ? AND watched = 1')
+    .run(on ? 1 : 0, entityId);
+  return changed.changes > 0;
+}
+
 export function setReadingGlyph(db: SqliteDatabase, entityId: string, glyph: string | null): boolean {
   const changed = db
     .prepare('UPDATE ha_entity_cache SET glyph = ? WHERE entity_id = ? AND watched = 1')

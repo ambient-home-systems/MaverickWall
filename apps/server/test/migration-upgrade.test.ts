@@ -287,6 +287,19 @@ describe('upgrading a database that is already in use', () => {
     ).toEqual([
       { entity_id: 'light.kitchen', watched: 1, label: 'Kitchen light', sort_order: 2, controllable: 0 },
     ]);
+    /*
+     * Phase 2's 0057 is one generated `CREATE TABLE` for the history of presses
+     * (RFC 018 §8.4), and the upgrade has to arrive with it empty: a press is a
+     * thing a wall did, and nothing did one before the route existed.
+     */
+    expect(db.prepare(`SELECT count(*) AS n FROM ha_wall_actions`).get()).toEqual({ n: 0 });
+    db.prepare(
+      `INSERT INTO ha_wall_actions (at, screen_id, entity_id, action, ok, message)
+       VALUES (?, 'scr-hall', 'light.kitchen', 'toggle', 1, NULL)`,
+    ).run(stamp);
+    expect(db.prepare(`SELECT screen_id, ok FROM ha_wall_actions`).all()).toEqual([
+      { screen_id: 'scr-hall', ok: 1 },
+    ]);
     db.close();
   });
 

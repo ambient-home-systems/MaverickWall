@@ -26,9 +26,9 @@
  * is refused rather than clamped (rule five), and nothing a wall typed reaches
  * Home Assistant as a key.
  *
- * Phase 1 of RFC 018 lands this table and nothing that calls its control rows:
- * no route reaches them yet and no wall can press anything. The to-do rows are
- * the ones RFC 012 already used, now built through the same constructor.
+ * Phase 1 of RFC 018 landed this table; phase 2 wires the first control rows
+ * to a route — the toggles in `WALL_ACTIONS` below, reached from `/d/ha/act`
+ * through `control.ts`. Every other control row still has no caller.
  */
 
 /** Whether a call can change anything in a house. */
@@ -200,7 +200,7 @@ const ENTITY_ID = /^[a-z0-9_]+\.[a-z0-9_]+$/;
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
 const MAX_TEXT = 255;
 
-function refuse(code: RefusalCode, message: string): BuildResult {
+function refuse(code: RefusalCode, message: string): { readonly ok: false; readonly code: RefusalCode; readonly message: string } {
   return { ok: false, code, message };
 }
 
@@ -325,16 +325,19 @@ function controlData(
   }
 }
 
+type Validated =
+  | { readonly ok: true; readonly row: ServiceRow; readonly body: Readonly<Record<string, unknown>> }
+  | { readonly ok: false; readonly code: RefusalCode; readonly message: string };
+
 /**
- * Make a call from the table, or say why not. The only constructor of an
- * `HaCall` in this repository, and it never throws: every refusal is a code
- * for the route and a sentence for somebody standing in a kitchen.
+ * Every check `buildCall` makes, with nothing issued.
  *
- * The body is always `{ entity_id: <one id>, ...the row's data }` — never an
- * `area_id`, `device_id`, `label_id` or `all`, and never a key the row does not
- * name.
+ * Exported so the admin and the manifest can ask "could a wall operate this?"
+ * with exactly the rule the door will apply, rather than a second opinion that
+ * drifts from it — the shape this project keeps finding when two places hold
+ * one rule. It registers nothing, so its answer cannot be posted.
  */
-export function buildCall(request: CallRequest): BuildResult {
+export function validateCall(request: CallRequest): Validated {
   const row = (HA_SERVICES as Record<string, ServiceRow | undefined>)[request.key];
   if (row === undefined) return refuse('unknown-service', 'That is not something this wall can do.');
 
@@ -383,12 +386,57 @@ export function buildCall(request: CallRequest): BuildResult {
     }
   }
 
+  return { ok: true, row, body: Object.freeze({ entity_id: entityId, ...data }) };
+}
+
+/**
+ * Make a call from the table, or say why not. The only constructor of an
+ * `HaCall` in this repository, and it never throws: every refusal is a code
+ * for the route and a sentence for somebody standing in a kitchen.
+ *
+ * The body is always `{ entity_id: <one id>, ...the row's data }` — never an
+ * `area_id`, `device_id`, `label_id` or `all`, and never a key the row does not
+ * name.
+ */
+export function buildCall(request: CallRequest): BuildResult {
+  const checked = validateCall(request);
+  if (!checked.ok) return checked;
   const call: HaCall = Object.freeze({
     key: request.key,
-    service: row.service,
-    body: Object.freeze({ entity_id: entityId, ...data }),
-    returnResponse: row.returnResponse,
+    service: checked.row.service,
+    body: checked.body,
+    returnResponse: checked.row.returnResponse,
   });
   ISSUED.add(call);
   return { ok: true, call };
+}
+
+/**
+ * What a wall may ask for, in its own words, and the row each word reaches per
+ * domain — only the rows a route exists for (RFC 018 §12). Phase 2 is the
+ * toggles; later phases add brightness, colour, position, speed, scenes,
+ * scripts and media transport here as their routes and buttons land.
+ */
+export const WALL_ACTIONS: Readonly<Record<string, Readonly<Record<string, ControlKey>>>> = Object.freeze({
+  toggle: Object.freeze({ light: 'light.toggle', switch: 'switch.toggle', fan: 'fan.toggle' }),
+});
+
+export type WallAction = keyof typeof WALL_ACTIONS;
+
+/** The row a wall's word reaches for this entity, or `undefined`. */
+export function wallActionKey(action: string, entityId: string): ControlKey | undefined {
+  const byDomain = (WALL_ACTIONS as Record<string, Readonly<Record<string, ControlKey>> | undefined>)[action];
+  return byDomain?.[entityId.slice(0, entityId.indexOf('.'))];
+}
+
+/**
+ * The words a wall may use on this entity right now: every action with a route
+ * whose row `validateCall` accepts for these attributes. Empty for a sensor, a
+ * lock, a garage door, or anything a later phase has not wired yet.
+ */
+export function wallActionsFor(entityId: string, attributes: unknown): readonly string[] {
+  return Object.keys(WALL_ACTIONS).filter((action) => {
+    const key = wallActionKey(action, entityId);
+    return key !== undefined && validateCall({ key, entityId, attributes }).ok;
+  });
 }

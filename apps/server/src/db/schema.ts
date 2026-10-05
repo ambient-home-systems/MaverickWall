@@ -1907,8 +1907,9 @@ export const haEntityCache = sqliteTable(
      * the half about tiles: a Home Assistant widget may now wear a tile-card
      * *look* (`variant: 'tile'`), which reads none of these four shapes —
      * a tile is always its mark, its name and its state. What did not change
-     * is the half about competing: a tile shows a state and controls nothing
-     * (hard rule 12), so it is Lovelace's look and not Lovelace's job.
+     * is the half about competing: a tile shows a state, and toggles a light,
+     * a switch or a fan only behind RFC 018's three switches, so it is
+     * Lovelace's look and not Lovelace's job.
      */
     displayMode: text('display_mode', {
       enum: ['value', 'label_value', 'icon_state', 'presence'],
@@ -1953,6 +1954,36 @@ export const haEntityCache = sqliteTable(
   },
   (table) => ({
     byWatched: index('ha_entity_watched_idx').on(table.watched),
+  }),
+);
+
+/**
+ * What walls did to the house, for the last fourteen days (RFC 018 §7.4).
+ *
+ * One row per press Home Assistant was asked about — accepted by it or refused
+ * by it — so a household can see which wall turned
+ * the landing light off at 3 a.m. Kept for the household on the Readings
+ * screen and nowhere else: not in the logs and not in the diagnostics export,
+ * which keep their rule of carrying no household content. The entity id is
+ * stored because the screen joins it to the reading's own label; the wall id
+ * because the screen names the wall. Pruned to fourteen days on every write,
+ * so it cannot grow for ever on a busy kitchen wall.
+ */
+export const haWallActions = sqliteTable(
+  'ha_wall_actions',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    at: integer('at', { mode: 'number' }).notNull(),
+    screenId: text('screen_id').notNull(),
+    entityId: text('entity_id').notNull(),
+    /** The wall's word: `toggle`, and later phases' words. */
+    action: text('action').notNull(),
+    ok: integer('ok', { mode: 'boolean' }).notNull(),
+    /** Home Assistant's diagnosis when it refused, already a kitchen sentence. */
+    message: text('message'),
+  },
+  (table) => ({
+    byAt: index('ha_wall_actions_at_idx').on(table.at),
   }),
 );
 
