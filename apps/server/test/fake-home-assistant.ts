@@ -126,6 +126,26 @@ export function statesBody(
       ...stamp(at - 86_400_000),
       context: { id: '01X', parent_id: null, user_id: null },
     },
+    /*
+     * A media player (RFC 018 phase 6), carrying the track a wall must never
+     * be sent: the title and artist are a stranger's strings, and the picture
+     * is an address on the household's Home Assistant.
+     * PAUSE (1) | VOLUME_SET (4) | PREVIOUS_TRACK (16) | NEXT_TRACK (32) | PLAY (16384).
+     */
+    {
+      entity_id: 'media_player.kitchen',
+      state: 'playing',
+      attributes: {
+        friendly_name: 'Kitchen speaker',
+        supported_features: 1 | 4 | 16 | 32 | 16384,
+        volume_level: 0.4,
+        media_title: 'A track title that must not travel',
+        media_artist: 'An artist',
+        entity_picture: '/api/media_player_proxy/media_player.kitchen?token=picture-token-that-must-not-travel',
+      },
+      ...stamp(at - 600_000),
+      context: { id: '01Z', parent_id: null, user_id: null },
+    },
     {
       // Not a reading. Must never reach the picker or the wall.
       entity_id: 'automation.morning_routine',
@@ -155,6 +175,9 @@ export const UNLISTED_ATTRIBUTE_MARKERS = [
   'Keypad 3',
   'hvac_modes',
   'target_temp_step',
+  // A media player's track (RFC 018 phase 6): the wall reads what it is doing.
+  'A track title that must not travel',
+  'An artist',
 ] as const;
 
 const READ_ONLY_DOMAINS: readonly {
@@ -630,6 +653,15 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
             state.toggled[entity] = new Date().toISOString();
           },
           'script/turn_on': () => {},
+          'media_player/media_play_pause': () => {
+            const now = state.toggled[entity] ?? 'playing';
+            state.toggled[entity] = now === 'playing' ? 'paused' : 'playing';
+          },
+          'media_player/media_next_track': () => {},
+          'media_player/media_previous_track': () => {},
+          'media_player/volume_set': (data) => {
+            state.set[entity] = { ...(state.set[entity] ?? {}), volume_level: data['volume_level'] };
+          },
           'cover/set_cover_position': (data) => {
             state.toggled[entity] = data['position'] === 0 ? 'closed' : 'open';
             state.set[entity] = { ...(state.set[entity] ?? {}), current_position: data['position'] };

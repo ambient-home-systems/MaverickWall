@@ -251,7 +251,8 @@ describe('and the page says what it can do instead', () => {
     // permission without its limits is not a boundary a household can read.
     expect(html).toContain('lights, switches, fans and blinds');
     expect(html).toContain('Can be controlled from walls');
-    expect(html).toContain('Those are not built yet');
+    // What is still to come is named as such, so "today" is not read as "ever".
+    expect(html).toContain('That is not built yet');
     expect(html).toContain('No locks, no alarms, no thermostats');
     // And the one way round it is named beside the never-list, not left out.
     expect(html).toContain('A script cannot be checked that way');

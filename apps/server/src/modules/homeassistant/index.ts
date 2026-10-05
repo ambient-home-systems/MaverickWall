@@ -98,10 +98,14 @@ function actionsOf(row: WatchRow): ControlFields {
         }
       : {}),
     ...(actions.includes('speed') && step !== undefined ? { step } : {}),
+    // A player's volume as the wall's own 0-100, beside the slider that sets it.
+    ...(actions.includes('volume') && picked.volume_level !== undefined
+      ? { volume: Math.round(picked.volume_level * 100) }
+      : {}),
   };
 }
 
-type ControlFields = Pick<EntityReading, 'actions' | 'kelvin' | 'step'>;
+type ControlFields = Pick<EntityReading, 'actions' | 'kelvin' | 'step' | 'volume'>;
 
 const MODES: readonly string[] = ['value', 'label_value', 'icon_state', 'presence'];
 

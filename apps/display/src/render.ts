@@ -1196,6 +1196,12 @@ function renderControlPanel(
   if (actions.includes('open')) buttons.appendChild(controlButton('Open', 'open'));
   if (actions.includes('stop')) buttons.appendChild(controlButton('Stop', 'stop'));
   if (actions.includes('close')) buttons.appendChild(controlButton('Close', 'close'));
+  // A media player's transport (RFC 018 phase 6), in the order a remote has it.
+  if (actions.includes('previous')) buttons.appendChild(controlButton('Previous', 'previous'));
+  if (actions.includes('play_pause')) {
+    buttons.appendChild(controlButton(reading.tone === 'active' ? 'Pause' : 'Play', 'play_pause'));
+  }
+  if (actions.includes('next')) buttons.appendChild(controlButton('Next', 'next'));
   if (buttons.childElementCount > 0) panel.appendChild(buttons);
 
   if (actions.includes('brightness')) {
@@ -1206,6 +1212,9 @@ function renderControlPanel(
   }
   if (actions.includes('position')) {
     panel.appendChild(controlSlider('Position', 'position', { min: 0, max: 100, step: 1, value: reading.level ?? 0 }, '%'));
+  }
+  if (actions.includes('volume')) {
+    panel.appendChild(controlSlider('Volume', 'volume', { min: 0, max: 100, step: 1, value: reading.volume ?? 0 }, '%'));
   }
   if (actions.includes('colour_temp') && reading.kelvin !== undefined) {
     const { min, max } = reading.kelvin;

@@ -87,13 +87,13 @@ describe('reading entities', () => {
      * wall must never reach, and an alarm panel, an automation, a camera and a
      * button press are that.
      */
-    for (const domain of ['scene', 'script']) {
+    for (const domain of ['scene', 'script', 'media_player']) {
       expect(isSupported(`${domain}.thing`), domain).toBe(true);
     }
     for (const domain of ['alarm_control_panel', 'automation', 'camera', 'button', 'input_button']) {
       expect(isSupported(`${domain}.thing`), domain).toBe(false);
     }
-    expect(SUPPORTED_DOMAINS).toHaveLength(14);
+    expect(SUPPORTED_DOMAINS).toHaveLength(15);
     expect(domainOf('no-dot-here')).toBe('');
   });
 
@@ -262,6 +262,9 @@ const TONES: readonly (readonly [
   ['script', null, 'on', {}, 'active'],
   ['script', null, 'off', {}, null],
   ['scene', null, '2026-10-05T18:00:00+00:00', {}, null],
+  // RFC 018 phase 6: a player playing is doing something.
+  ['media_player', null, 'playing', {}, 'active'],
+  ['media_player', null, 'paused', {}, null],
 ];
 
 describe('the tone table', () => {
@@ -289,6 +292,12 @@ describe('the seven read-only domains, in a household\'s words', () => {
     expect(read('scene', 'unknown')).toBe('Scene');
     expect(read('script', 'off')).toBe('Ready');
     expect(read('script', 'on')).toBe('Running');
+  });
+
+  it('says what a media player is doing, never what it plays', () => {
+    expect(read('media_player', 'playing')).toBe('Playing');
+    expect(read('media_player', 'paused')).toBe('Paused');
+    expect(read('media_player', 'off')).toBe('Off');
   });
 
   it('says what a light, a switch and a fan are doing', () => {
@@ -429,8 +438,14 @@ describe('the attributes a reading may keep', () => {
     );
   });
 
-  it('names only the four domains that need one', () => {
-    expect(Object.keys(ATTRIBUTE_ALLOWLIST).sort()).toEqual(['climate', 'cover', 'fan', 'light']);
+  it('names only the five domains that need one', () => {
+    // A media player since RFC 018 phase 6: its features and its volume, for
+    // the panel — and not its title, artist or picture.
+    expect(Object.keys(ATTRIBUTE_ALLOWLIST).sort()).toEqual(['climate', 'cover', 'fan', 'light', 'media_player']);
+    expect(pickAttributes('media_player', {
+      supported_features: 21, volume_level: 0.4, media_title: 'x', media_artist: 'y', entity_picture: '/z',
+    })).toEqual({ supported_features: 21, volume_level: 0.4 });
+    expect(pickAttributes('media_player', { volume_level: 1.5 })).toEqual({});
   });
 });
 

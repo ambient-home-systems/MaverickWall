@@ -46,8 +46,8 @@ Violating any of these is a failed task.
 12. **Home Assistant writes are confined to what the household picked, through
     one door.** *(Amended 2026-10-05 by `docs/rfc-018-wall-control.md`, accepted
     as decision MD13; its last clause qualified 2026-10-05 for scripts, by the
-    owner, in phase 4, and carried to webhook buttons in phase 5. Phases 1–5
-    have landed.)* Three kinds of
+    owner, in phase 4, and carried to webhook buttons in phase 5. Every
+    wall phase, 1–6, has landed.)* Three kinds of
     write are permitted.
     `todo.update_item` sets an item's status on a to-do list the household added
     (RFC 012). `todo.add_item` adds an item to such a list, from the companion
@@ -522,7 +522,7 @@ knowing before reading either rule as settled or as obsolete:
   three opt-ins that are all off by default; and it lets the companion API,
   never a wall, add to a household's to-do list. Locks, alarms, `input_boolean`
   helpers, thermostats and garage, gate, door and window covers stay excluded.
-  **Phases 1–5 have landed**: `HA_SERVICES` is RFC 018's frozen table,
+  **Phases 1–6 have landed**: `HA_SERVICES` is RFC 018's frozen table,
   `buildCall` its only constructor and `callService` its only door, all held by
   `ha-write-boundary.test.ts`; a wall can toggle a light, a switch or a fan
   behind the three switches; and a light's brightness, colour and white, a
@@ -533,7 +533,8 @@ knowing before reading either rule as settled or as obsolete:
   script allowed with every "never" sentence qualified ("A scene or a script
   reaches past the table" below); and webhook buttons, set on a Buttons
   screen and drawn by a Buttons widget ("A wall presses a webhook button"
-  below). Media is the last phase.
+  below); and a media player's transport and volume from the panel. Every
+  wall phase is built; `todo.add_item` waits for the companion API.
 - **Q4 (no blur behind widgets) — still a proposal.** A Glass ground is to be
   prototyped behind a flag, with its opacity measured per picture, and Q4 flips
   only if the prototype passes the plan's MQ1 measurement. Until then
@@ -3606,6 +3607,27 @@ skipped, over 339 files**: calendar 153 over 10 · core 314 over 9 · display 90
 over 50 · server 3562 over 270, measured with `pnpm test` and a real Chromium.
 **Still unproven where it counts:** no real webhook has been pressed from a
 real wall.
+
+**A speaker plays, pauses, skips and turns up from the wall, and that is the
+last of RFC 018's wall phases (phase 6).** Media players became watchable
+readings that say what the player is doing — "Playing", "Paused" — and never
+what it plays: the allowlist keeps `supported_features` and `volume_level` and
+refuses the title, the artist and the picture, held by a track in the fake
+house and the player in `homeassistant.test.ts`'s watched list, and proved by a
+mutation that caches a player's raw attributes. The words are `play_pause`,
+`next`, `previous` and `volume`, each eligible by the player's own features, and
+they open phase 3's panel — Previous, Play or Pause by state, Next, and a
+volume slider starting at the player's volume, which travels as `volume` only
+beside its slider. The wall's 0–100 reaches Home Assistant as 0.0–1.0. With no
+later wall phase, the Readings screen's "Walls cannot operate this yet" and its
+list are deleted rather than left empty, and the only "not built yet" left in
+the claims is a phone adding to a to-do list, which waits for the companion API.
+10 mutations checked, all red; one proved nothing as first written — an
+allowlist key that was not the title — and was replaced. **4937 tests passing,
+and 1 skipped, over 339 files**: calendar 153 over 10 · core 314 over 9 ·
+display 901 over 50 · server 3569 over 270, measured with `pnpm test` and a real
+Chromium. **Still unproven where it counts:** no real speaker has been paused
+from a wall.
 
 **Rule 12 changed, and the interesting part is how many places said otherwise
 (RFC 012 phase 1).** The rule is no longer "READ-ONLY, no service calls": it

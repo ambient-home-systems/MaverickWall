@@ -79,13 +79,12 @@ It changes two kinds of thing in your house, and only once you ask: ticking an
 item off a to-do list you chose to show on a wall, and operating lights,
 switches, fans and blinds from a wall — switching them, dimming a light or
 changing its colour, setting a fan's speed, opening, closing or moving a
-blind, and running a scene or a script, which a wall asks you to press and
-hold. A wall operates something only when you
+blind, playing, pausing or skipping on a speaker and setting its volume, and
+running a scene or a script, which a wall asks you to press and hold. A wall
+operates something only when you
 have marked it **Can be controlled from walls** on the Readings screen, turned on
 **Allow operating things in the house** for that wall, and set the widget to
-**Tap to operate** — all three off by default. A later release will let a wall
-also work a media player, behind the same three switches; that is not built
-yet.
+**Tap to operate** — all three off by default.
 
 It can never unlock a door, disarm an alarm, change a thermostat, or open a
 garage, gate, door or window. Those are not in its frozen table of permitted
@@ -107,6 +106,6 @@ The wall itself receives resolved values — "19.4 °C", "Open" — never an ent
 id and never a way to ask Home Assistant a question of its own. If a tablet in
 your hallway is ever compromised, the worst it can do is show somebody your
 indoor temperature, tick an item off your shopping list and operate the
-lights, fans and blinds, run the scenes and scripts and press the buttons you
+lights, fans, blinds and speakers, run the scenes and scripts and press the buttons you
 allowed it to — and it can never open your garage, unless a script or a webhook
 button you allowed does.

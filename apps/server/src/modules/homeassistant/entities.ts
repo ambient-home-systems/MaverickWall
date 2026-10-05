@@ -71,6 +71,14 @@ export const SUPPORTED_DOMAINS = [
    */
   'scene',
   'script',
+  /*
+   * Media players, since RFC 018 phase 6 — watched so a wall can play, pause,
+   * skip and set the volume, behind the same three switches. The reading is
+   * what the player is doing, never what it is playing: a track title is a
+   * stranger's string that changes every three minutes, and the now-playing
+   * card (plan item M6.9) is where that belongs.
+   */
+  'media_player',
 ] as const;
 
 /*
@@ -149,6 +157,9 @@ export const ATTRIBUTE_ALLOWLIST: Readonly<Partial<Record<SupportedDomain, reado
   cover: ['current_position', 'supported_features'],
   climate: ['current_temperature', 'temperature', 'hvac_action'],
   fan: ['percentage', 'supported_features', 'percentage_step'],
+  // What a wall needs to offer transport and a volume slider (RFC 018 phase
+  // 6): the features it supports and where its volume is. Not the title.
+  media_player: ['supported_features', 'volume_level'],
 };
 
 export type AttributeKey =
@@ -163,7 +174,8 @@ export type AttributeKey =
   | 'min_color_temp_kelvin'
   | 'max_color_temp_kelvin'
   | 'color_temp_kelvin'
-  | 'percentage_step';
+  | 'percentage_step'
+  | 'volume_level';
 
 export type HaAttributes = Readonly<Partial<{
   /** Home Assistant's 0-255, not a percentage. */
@@ -187,6 +199,8 @@ export type HaAttributes = Readonly<Partial<{
   color_temp_kelvin: number;
   /** How far one speed step moves a fan, 0-100. */
   percentage_step: number;
+  /** A media player's volume, 0.0-1.0 as Home Assistant says it. */
+  volume_level: number;
 }>>;
 
 /**
@@ -213,6 +227,7 @@ const ATTRIBUTE_SCHEMAS: Readonly<Record<AttributeKey, z.ZodType<number | string
   max_color_temp_kelvin: KELVIN,
   color_temp_kelvin: KELVIN,
   percentage_step: z.number().finite().gt(0).max(100),
+  volume_level: z.number().finite().min(0).max(1),
 };
 
 /**
@@ -420,6 +435,9 @@ export function readState(state: HaState): string {
    */
   if (state.domain === 'scene') return 'Scene';
   if (state.domain === 'script') return state.state === 'on' ? 'Running' : 'Ready';
+  // What the player is doing, in a household's words — `playing`, `paused`,
+  // `idle`, `off`, `standby`, `buffering` — and never the track.
+  if (state.domain === 'media_player') return word(state.state);
 
   const own = readOwnDomain(state);
   if (own !== undefined) return own;
@@ -576,6 +594,7 @@ const DOMAIN_TONES: Readonly<Record<string, Readonly<Record<string, ReadingTone>
   cover: { open: 'active' },
   // A script that is running is doing something now; a scene never is.
   script: { on: 'active' },
+  media_player: { playing: 'active' },
 };
 
 /** What a thermostat is doing that makes it `active`. Its mode never does. */
@@ -700,6 +719,8 @@ export interface EntityReading {
   readonly kelvin?: { readonly min: number; readonly max: number; readonly value?: number };
   /** How far one step moves a fan's speed — only beside a `speed` action. */
   readonly step?: number;
+  /** A media player's volume, 0-100 — only beside a `volume` action. */
+  readonly volume?: number;
 }
 
 export interface WatchedEntity {

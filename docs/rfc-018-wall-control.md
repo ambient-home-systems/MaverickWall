@@ -1,13 +1,15 @@
 # RFC 018 — Wall control, and a narrow amendment to rule 12
 
-Status: **accepted 2026-10-05 (MD13); phases 1–5 built — lights, switches,
-fans and blinds operate from a wall, scenes and scripts run by press-and-hold,
-and webhook buttons call addresses set in the admin.** Hard rule 12 in `CLAUDE.md` now reads as §3.1 below, with its
+Status: **accepted 2026-10-05 (MD13); every wall phase built (1–6) — lights,
+switches, fans, blinds and speakers operate from a wall, scenes and scripts run
+by press-and-hold, and webhook buttons call addresses set in the admin.** What
+remains is `todo.add_item`, which waits for the companion API (M2.2). Hard rule 12 in `CLAUDE.md` now reads as §3.1 below, with its
 last clause qualified for scripts (§3.3). Phase 1 (§12) landed the table,
 `buildCall`, the door's issued check and the claims; phase 2 the route, all
 three switches, the button, the history and the browser test; phase 3
 brightness, colour, white, fan speed, a blind's movement and the panel; phase 4
-scenes and scripts; phase 5 webhook buttons. Phase 6 is next. Every open question was
+scenes and scripts; phase 5 webhook buttons; phase 6 a media player's
+transport and volume. Every open question was
 decided by the owner the same day: the five items in §5.2 are folded into §5
 and §5.1, and OQ6–OQ10 are settled in §14 ·
 Owner: — · First drafted 2026-10-05 · Relates to
@@ -481,7 +483,21 @@ controls, and "never" only of what no row in the table can reach.
    2's `operate` had the same, also removed), and a "no panel" branch the
    module registry never reaches.
 6. **Media transport**: play/pause, next, previous and volume, for the
-   now-playing card (M6.9).
+   now-playing card (M6.9) — **built.** Media players became watchable
+   readings that say what the player is doing ("Playing", "Paused") and never
+   what it plays: the attribute allowlist keeps `supported_features` and
+   `volume_level` and refuses the title, the artist and the picture, which
+   `homeassistant.test.ts` holds by putting a track in the fixture and the
+   player in the watched list. The words are `play_pause`, `next`, `previous`
+   and `volume`, each eligible by the player's own features, and they open
+   phase 3's panel — Previous, Play or Pause by the player's state, Next, and
+   a volume slider starting at the player's own volume, carried as `volume`
+   only beside its slider. The wall's 0–100 reaches Home Assistant as
+   `volume_level` 0.0–1.0 (§13). With nothing left for a later wall phase,
+   the Readings screen's "Walls cannot operate this yet" sentence and its list
+   are deleted rather than left empty. 10 mutations checked, all red; one
+   proved nothing as first written (an allowlist key that was not the title)
+   and was replaced by one that caches a player's raw attributes.
 
 `todo.add_item` is not a wall phase. Its row lands with phase 1's table and is
 used by the companion API's list endpoint (plan item M2.2) when that is built.

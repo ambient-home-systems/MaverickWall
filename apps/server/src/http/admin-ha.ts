@@ -157,8 +157,6 @@ const readingControlBody = z.object({
  * `services.ts` is what actually refuses them; this is only the sentence.
  */
 const NEVER_FROM_A_WALL: readonly string[] = ['lock', 'alarm_control_panel', 'climate', 'input_boolean', 'camera'];
-/** What a later phase of RFC 018 wires, and this release does not. */
-const NOT_YET_FROM_A_WALL: readonly string[] = ['media_player'];
 
 /**
  * What each choice costs, beside the switch that makes it (RFC 018 §7.3) —
@@ -188,6 +186,10 @@ function whatAWallCanDo(actions: readonly string[]): string {
     words.push('opened, closed or moved');
   }
   if (actions.includes('run')) words.push('run, by pressing and holding it');
+  if (actions.includes('play_pause') || actions.includes('next') || actions.includes('previous')) {
+    words.push('played, paused or skipped');
+  }
+  if (actions.includes('volume')) words.push('turned up or down');
   if (words.length <= 1) return words[0] ?? 'operated';
   return `${words.slice(0, -1).join(', ')} or ${words[words.length - 1]}`;
 }
@@ -1007,7 +1009,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
           suggestion:
             'Sensors, binary sensors, weather, people and device trackers, and the ' +
             'state of lights, switches, helper toggles, fans, blinds, locks, ' +
-            'thermostats, scenes and scripts. Anything else is not a reading a wall can show.',
+            'thermostats, scenes, scripts and media players. Anything else is not a reading a wall can show.',
         },
         400,
       );
@@ -1644,13 +1646,14 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       `<code>todo.update_item</code> — only on a wall you have allowed to.</li>` +
       `<li>It operates lights, switches, fans and blinds from a wall — switching ` +
       `them, dimming a light or changing its colour, setting a fan's speed, opening, ` +
-      `closing or moving a blind, running a scene or a script with a press and hold ` +
+      `closing or moving a blind, playing, pausing or skipping on a speaker and setting ` +
+      `its volume, running a scene or a script with a press and hold ` +
       `— and only the ones you mark <strong>Can be ` +
       `controlled from walls</strong> under Readings, on walls you allow, from ` +
       `widgets you set to Tap to operate. Readings lists the last fortnight of ` +
       `presses.</li>` +
-      `<li>A later release will let a wall also work a media player, behind the ` +
-      `same three switches. Those are not built yet.</li>` +
+      `<li>A later release will let a phone add to a to-do list you chose, through ` +
+      `an app token and never from a wall. That is not built yet.</li>` +
       `<li>No locks, no alarms, no thermostats, and no garage, gate, door or window ` +
       `covers — ever. They are not in the frozen table of actions this application ` +
       `may take, and a test holds the code to that table. A scene that sets any of ` +
@@ -1667,7 +1670,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       `your home and cannot be limited to reading. That is why the limit is on this ` +
       `side: if a wall in your hallway were ever compromised, the worst it could do ` +
       `is show somebody your indoor temperature, tick an item off your shopping ` +
-      `list, and operate the lights, fans and blinds, run the scenes and scripts and ` +
+      `list, and operate the lights, fans, blinds and speakers, run the scenes and scripts and ` +
       `press the buttons you allowed it to — and it could never open your garage, ` +
       `unless a script or a webhook button you allowed does.</p>`,
     );
@@ -1895,12 +1898,12 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
    * Whether walls may operate a reading (RFC 018 §6), folded away like its
    * picture, with the summary saying the answer in words.
    *
-   * Three shapes, and which one is decided by `wallActionsFor` — the table that
-   * refuses a press — rather than by a list of domains kept here: a switch for
-   * anything a wall can toggle; one sentence for what a wall will never reach,
-   * said beside it so nobody goes looking for a switch that does not exist;
-   * one for what a later release will reach; and nothing for a sensor, which
-   * has nothing to operate.
+   * Which shape is decided by `wallActionsFor` — the table that refuses a
+   * press — rather than by a list of domains kept here: a switch for anything a
+   * wall can operate; one sentence for what a wall will never reach, said
+   * beside it so nobody goes looking for a switch that does not exist; one for
+   * a blind that reports nothing a wall could move; and nothing for a sensor,
+   * which has nothing to operate. ("Not yet" went with RFC 018's last phase.)
    */
   function readingControl(row: WatchedRow, label: string): string {
     const domain = domainOf(row.entityId);
@@ -1938,9 +1941,6 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
         `<p class="hint">Walls can never operate this. A lock, an alarm, a thermostat or a ` +
         `garage door is never one press from a wall, whatever is ticked.</p>`
       );
-    }
-    if (NOT_YET_FROM_A_WALL.includes(domain)) {
-      return `<p class="hint">Walls cannot operate this yet.</p>`;
     }
     // A blind, an awning or a shutter that reports nothing a wall could move.
     if (domain === 'cover') {

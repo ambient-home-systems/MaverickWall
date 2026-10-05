@@ -479,6 +479,12 @@ export const WALL_ACTIONS: Readonly<Record<string, Readonly<Record<string, Contr
   // press-and-hold before it sends this word; the server cannot tell a hold
   // from a tap and does not pretend to — the three switches are its check.
   run: Object.freeze({ scene: 'scene.run', script: 'script.run' }),
+  // Phase 6: a media player's transport and its volume, the now-playing
+  // card's controls (plan item M6.9) and nothing else a player can do.
+  play_pause: Object.freeze({ media_player: 'media_player.play_pause' }),
+  next: Object.freeze({ media_player: 'media_player.next' }),
+  previous: Object.freeze({ media_player: 'media_player.previous' }),
+  volume: Object.freeze({ media_player: 'media_player.volume' }),
 });
 
 /** The words that carry a value, and what shape it takes. */
@@ -488,6 +494,8 @@ export const WALL_ACTION_VALUES: Readonly<Record<string, 'number' | 'rgb'>> = Ob
   colour_temp: 'number',
   speed: 'number',
   position: 'number',
+  // 0-100 from the wall; `controlData` turns it into Home Assistant's 0.0-1.0.
+  volume: 'number',
 });
 
 export type WallAction = keyof typeof WALL_ACTIONS;

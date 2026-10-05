@@ -722,6 +722,8 @@ export interface HouseReadingModel {
   readonly kelvin?: { readonly min: number; readonly max: number; readonly value?: number };
   /** How far one step moves a fan's speed — beside `speed` only. */
   readonly step?: number;
+  /** A media player's volume, 0-100 — beside `volume` only. */
+  readonly volume?: number;
 }
 
 /** The words a wall can press, as this bundle knows them. */
@@ -735,9 +737,14 @@ export type WallAction =
   | 'close'
   | 'stop'
   | 'position'
-  | 'run';
+  | 'run'
+  | 'play_pause'
+  | 'next'
+  | 'previous'
+  | 'volume';
 const WALL_ACTIONS: readonly WallAction[] = [
   'toggle', 'brightness', 'colour', 'colour_temp', 'speed', 'open', 'close', 'stop', 'position', 'run',
+  'play_pause', 'next', 'previous', 'volume',
 ];
 
 /**
@@ -850,7 +857,7 @@ export function houseFrom(panel: unknown): {
     const reading = entry as {
       key?: unknown; label?: unknown; value?: unknown; unit?: unknown; glyph?: unknown;
       mode?: unknown; stale?: unknown; tone?: unknown; changedAt?: unknown; level?: unknown;
-      actions?: unknown; kelvin?: unknown; step?: unknown;
+      actions?: unknown; kelvin?: unknown; step?: unknown; volume?: unknown;
     };
     /*
      * Through the same sanitiser the alert text uses.
@@ -902,6 +909,10 @@ export function houseFrom(panel: unknown): {
       // A step of a percentage, refused outside it rather than clamped.
       ...(typeof reading.step === 'number' && reading.step > 0 && reading.step <= 100
         ? { step: reading.step }
+        : {}),
+      ...(typeof reading.volume === 'number' && Number.isInteger(reading.volume) &&
+        reading.volume >= 0 && reading.volume <= 100
+        ? { volume: reading.volume }
         : {}),
     });
   }
