@@ -8415,7 +8415,29 @@ under 1.3s in isolation; taking `count` out of `PANEL_HONOURS.calendar` still
 turns a part red, so the split did not blind it. The second run also read
 `browser-weather-today`'s glow phase at 328ms against a 300ms tolerance, a file
 this diff does not touch; it passed 3 of 3 alone and on the first and third
-runs, and is recorded here rather than chased.
+runs, and is recorded here rather than chased. **It was chased later, and it
+was a real jump on the glass rather than noise** — the paragraph below.
+
+**A looping effect landed the draw's own duration behind the clock, and two
+draws are not the same length.** `browser-weather-today`'s glow went red a
+second time on CI (305ms) on a docs-only pull request. The two phases it
+compares are read off one document timeline, so the difference was what the
+glass did. Two suspects were measured on a real wall with an instrumented page:
+the clock offset, re-estimated on every poll, and the draw. The offset moved by
+under 30ms per poll even at 20x CPU throttling with a fresh body to parse, and
+the failing run had no poll between its two readings. The draw was the cause.
+A lock was taken from the clock `draw()` read at its start, and the animation
+starts on the frame after the draw ends. A tick's draw put the glow 15–25ms
+behind the clock idle, about 60ms behind at 6x and 215–270ms behind at 20x.
+The first draw after load was cheap, so the jump at the first tick was 236ms
+at 20x on a laptop, and more on a loaded runner. `advanceLocks` in `motion.ts`
+is now the last thing `draw()` does: it moves every loop and every playing
+one-shot on by the time the draw took. The same measurement then reads
+23–29ms behind at 20x, with jumps under 25ms. The 300ms tolerance is
+unchanged. A new case holds the glow within 150ms of the server's clock with
+the draw under 20x throttling. Without `advanceLocks` it reads 239ms and
+244ms, red. With the negative delay reverted, the continuity case reads
+3,024ms, red.
 
 **4779 tests passing and 1 skipped, over 332 files**: calendar 153 over 10 ·
 core 314 over 9 · display 873 over 49 · server 3439 over 264. Measured with
