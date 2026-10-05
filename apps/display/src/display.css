@@ -1405,6 +1405,77 @@ body {
 .ht-act-note { grid-column: 1 / -1; }
 .hs-act-note { flex: 1 0 100%; }
 
+/*
+ * A reading's controls (RFC 018 phase 3): an overlay beside the canvas, never
+ * in it, so opening one moves no widget — `browser-ha-act.test.ts` reads every
+ * box's rectangle with it open and shut. Sized in the wall's own roles, so on a
+ * measured wall it is the reader's angle like everything else.
+ *
+ * The scrim is the theme's ground at a reduced opacity rather than a colour
+ * named here, and pressing it closes the panel. The panel paints `--panel`
+ * with a hairline, and the theme's shadow on top where the theme has one —
+ * the rule's order, as the tiles take it.
+ */
+.hc-scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--bg);
+  opacity: 0.72;
+}
+.hc-panel {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(92%, 30em);
+  max-height: 92%;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  padding: var(--s4);
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius, 0.4rem);
+  box-shadow: var(--shadow-card, none);
+  font-size: var(--t-wall-event, var(--t-event));
+  line-height: 1.15;
+}
+.hc-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); }
+.hc-name { font-size: inherit; font-weight: 600; }
+.hc-state { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.hc-buttons { display: flex; flex-wrap: wrap; gap: var(--s2); }
+/* Every control is at least the 44px a fingertip needs, at any wall size. */
+.hc-button {
+  min-height: 44px;
+  min-width: 44px;
+  padding: var(--s1) var(--s3);
+  font: inherit;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius, 0.4rem);
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.hc-slider { display: flex; flex-direction: column; gap: var(--s1); }
+.hc-slider-head { display: flex; justify-content: space-between; gap: var(--s3); }
+.hc-readout { font-variant-numeric: tabular-nums; color: var(--muted); }
+.hc-range { width: 100%; min-height: 44px; accent-color: var(--accent); cursor: pointer; }
+.hc-swatches { display: flex; flex-wrap: wrap; gap: var(--s2); }
+/* A swatch is the colour it sends, and its ring is the theme's ink, so a
+   swatch on a ground of nearly its own colour is still a shape. */
+.hc-swatch { padding: 0; width: 44px; border-color: var(--ink); }
+.hc-done { align-self: flex-end; }
+/* Both selectors, for `.td-tick`'s reason: a wall has no cursor. */
+.hc-button:focus,
+.hc-button:focus-visible,
+.hc-range:focus,
+.hc-range:focus-visible { outline: 0.2rem solid var(--accent); outline-offset: 0.2rem; }
+.hc-button:active { opacity: 0.6; }
+
 /* --- BLOCK 2 — NEXT --------------------------------------------------- */
 
 .next { display: grid; gap: 0; align-content: start; min-height: 0; overflow: hidden; }

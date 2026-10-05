@@ -514,12 +514,14 @@ knowing before reading either rule as settled or as obsolete:
   three opt-ins that are all off by default; and it lets the companion API,
   never a wall, add to a household's to-do list. Locks, alarms, `input_boolean`
   helpers, thermostats and garage, gate, door and window covers stay excluded.
-  **Phases 1 and 2 have landed**: `HA_SERVICES` is RFC 018's frozen table,
+  **Phases 1–3 have landed**: `HA_SERVICES` is RFC 018's frozen table,
   `buildCall` its only constructor and `callService` its only door, all held by
-  `ha-write-boundary.test.ts`; and a wall can now toggle a light, a switch or a
-  fan behind the three switches (see "Home Assistant writes go through a frozen
-  table" and "A wall switches a light" below). Brightness, colour, position,
-  scenes, scripts, webhooks and media are later phases.
+  `ha-write-boundary.test.ts`; a wall can toggle a light, a switch or a fan
+  behind the three switches; and a light's brightness, colour and white, a
+  fan's speed and a blind's movement open a panel over the wall (see "Home
+  Assistant writes go through a frozen table", "A wall switches a light" and
+  "A light dims from a panel" below). Scenes, scripts, webhooks and media are
+  later phases.
 - **Q4 (no blur behind widgets) — still a proposal.** A Glass ground is to be
   prototyped behind a flag, with its opacity measured per picture, and Q4 flips
   only if the prototype passes the plan's MQ1 measurement. Until then
@@ -3429,8 +3431,8 @@ that are RFC 018's first two switches, `screens.allow_control` and
 light through it to prove both arrive **off**. The display still receives resolved
 *values* — "19.4 °C", "Open" — never an entity id, never a proxy endpoint, never
 the token. The blast radius of a compromised wall tablet is "somebody saw my
-indoor temperature, ticked something off my shopping list, and switched the
-lights and fans the household marked controllable on that wall"; and it is not, and must never become, "somebody opened my garage" — no row in the
+indoor temperature, ticked something off my shopping list, and operated the
+lights, fans and blinds the household marked controllable on that wall"; and it is not, and must never become, "somebody opened my garage" — no row in the
 table can reach a lock, an alarm, a thermostat or a garage, gate, door or
 window cover.
 
@@ -3497,6 +3499,40 @@ core 314 over 9 · display 892 over 50 · server 3493 over 266, measured with
 browser, 2 model) — agreement, recorded as the observation it is. **Still
 unproven where it counts:** no real Home Assistant has switched a real light
 for a wall.
+
+**A light dims from a panel, and a blind moves (RFC 018 phase 3).** The route
+takes a `value` — a number, or three for a colour — whose shape `valueFor`
+checks against the word and whose bounds `buildCall` checks against the light's
+own range, so a white outside a bulb's kelvin is a 400 the house never sees.
+The words are `brightness`, `colour`, `colour_temp`, `speed`, `open`, `close`,
+`stop` and `position`, and **which a reading is offered is the door's own rule
+asked one step short of the value**: `wallActionsFor` counts a value word as
+eligible where `validateCall` refuses it only for want of one. That needed the
+cache to know more, so the attribute allowlist gained the control facts and
+nothing else — colour modes, the kelvin range and current white, fan and cover
+`supported_features`, `percentage_step` — with `rgb_color` still refused, and
+the manifest carries `kelvin` and `step` only beside the word that uses them.
+**A reading with any word but a lone switch opens a panel on a press**, drawn
+from model state beside the canvas rather than in it, so it moves no widget,
+outlives the fifteen-second rebuild, and is out of reach of a household's CSS.
+A slider sends on `change`, once; a finger on one holds the redraw until it
+lifts, because a rebuild under a drag destroys the input being dragged; colour
+is eight named swatches rather than a picker; and the panel closes itself after
+45 seconds untouched, because a wall has no pointer. Step 6's 409 is reachable
+now, and refined: a light narrowed to on/off is refused the dimmer and keeps
+its switch, and the flag is cleared only when nothing a wall could do is left.
+
+**Two things came out of measuring it.** A range's steps start at its minimum,
+so a default white of 4350 on a 2202 K bulb is drawn by the browser as 4402
+before anybody touches it; the default is computed on the grid now. And one of
+22 mutations stayed green — sending a fan's `step` without its `speed` — because
+no fixture had a fan with a step and no settable speed; one does now. **4869
+tests passing, and 1 skipped, over 336 files**: calendar 153 over 10 · core 314
+over 9 · display 894 over 50 · server 3508 over 267, measured with `pnpm test`
+and a real Chromium. Against phase 2's 4852 over 335, +17 and +1, which is this
+change's count (10 route, 5 browser, 2 model). **Still unproven where it
+counts:** no real Home Assistant has dimmed a real bulb for a wall, and nobody
+has dragged a slider on a real tablet.
 
 **Rule 12 changed, and the interesting part is how many places said otherwise
 (RFC 012 phase 1).** The rule is no longer "READ-ONLY, no service calls": it

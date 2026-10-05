@@ -8,9 +8,11 @@
  * light, a fan or a blind, a bar showing how far along it is. The look is
  * Lovelace's. **The job is not**: a tile shows a state, and does one thing
  * more only where RFC 018's three switches all say so — the whole tile becomes
- * a button that toggles a light, a switch or a fan (`operable` in
- * `render.ts`). No slider and no hold, until a later phase of that RFC adds
- * them behind the same switches; and there is no entity picture, because a picture is an address on the household's Home
+ * a button that switches a light, a switch or a fan, or opens the panel of
+ * sliders and swatches for one that does more (`operable` and
+ * `renderControlPanel` in `render.ts`). The tile itself is never a slider —
+ * a drag on a wall is a scroll somebody did not mean — and there is no hold
+ * until scenes and scripts need one; and there is no entity picture, because a picture is an address on the household's Home
  * Assistant that the wall would have to fetch, and the wall is never handed
  * one. The widget's help in the editor says both.
  *

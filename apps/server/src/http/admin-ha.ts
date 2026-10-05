@@ -158,7 +158,27 @@ const readingControlBody = z.object({
  */
 const NEVER_FROM_A_WALL: readonly string[] = ['lock', 'alarm_control_panel', 'climate', 'input_boolean', 'camera'];
 /** What a later phase of RFC 018 wires, and this release does not. */
-const NOT_YET_FROM_A_WALL: readonly string[] = ['cover', 'scene', 'script', 'media_player'];
+const NOT_YET_FROM_A_WALL: readonly string[] = ['scene', 'script', 'media_player'];
+
+/**
+ * What a wall could do to a reading, in a household's words, from the actions
+ * the door would accept (`wallActionsFor`) — so the hint beside the switch
+ * names exactly what turning it on hands to a wall, and a light that only
+ * switches is not described as one that dims.
+ */
+function whatAWallCanDo(actions: readonly string[]): string {
+  const words: string[] = [];
+  if (actions.includes('toggle')) words.push('switched on or off');
+  if (actions.includes('brightness')) words.push('dimmed');
+  if (actions.includes('colour')) words.push('given a colour');
+  if (actions.includes('colour_temp')) words.push('made a warmer or cooler white');
+  if (actions.includes('speed')) words.push('set to a speed');
+  if (actions.includes('open') || actions.includes('close') || actions.includes('position')) {
+    words.push('opened, closed or moved');
+  }
+  if (words.length <= 1) return words[0] ?? 'operated';
+  return `${words.slice(0, -1).join(', ')} or ${words[words.length - 1]}`;
+}
 
 const readingGlyphBody = z.object({
   entity_id: text('An entity', 255),
@@ -1589,13 +1609,14 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       `<ul class="plain">` +
       `<li>It ticks an item off a to-do list you have chosen to show on a wall — ` +
       `<code>todo.update_item</code> — only on a wall you have allowed to.</li>` +
-      `<li>It switches lights, switches and fans on or off from a wall, and only ` +
-      `the ones you mark <strong>Can be controlled from walls</strong> under ` +
-      `Readings, on walls you allow, from widgets you set to Tap to operate. ` +
-      `Readings lists the last fortnight of presses.</li>` +
-      `<li>A later release will let a wall also dim a light, move a blind and run ` +
-      `a scene, a script or a media player, behind the same three switches. ` +
-      `Those are not built yet.</li>` +
+      `<li>It operates lights, switches, fans and blinds from a wall — switching ` +
+      `them, dimming a light or changing its colour, setting a fan's speed, opening, ` +
+      `closing or moving a blind — and only the ones you mark <strong>Can be ` +
+      `controlled from walls</strong> under Readings, on walls you allow, from ` +
+      `widgets you set to Tap to operate. Readings lists the last fortnight of ` +
+      `presses.</li>` +
+      `<li>A later release will let a wall also run a scene, a script or a media ` +
+      `player, behind the same three switches. Those are not built yet.</li>` +
       `<li>No locks, no alarms, no thermostats, and no garage, gate, door or window ` +
       `covers — ever. They are not in the frozen table of actions this application ` +
       `may take, and a test holds the code to that table.</li>` +
@@ -1609,7 +1630,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       `your home and cannot be limited to reading. That is why the limit is on this ` +
       `side: if a wall in your hallway were ever compromised, the worst it could do ` +
       `is show somebody your indoor temperature, tick an item off your shopping ` +
-      `list and switch the lights and fans you allowed it to — and whatever you ` +
+      `list and operate the lights, fans and blinds you allowed it to — and whatever you ` +
       `allow, it could never open your garage.</p>`,
     );
   }
@@ -1846,7 +1867,8 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
   function readingControl(row: WatchedRow, label: string): string {
     const domain = domainOf(row.entityId);
     const attributes = safeJson(row.attributes);
-    if (wallActionsFor(row.entityId, attributes).length > 0) {
+    const actions = wallActionsFor(row.entityId, attributes);
+    if (actions.length > 0) {
       const on = row.controllable === 1;
       const caution =
         domain === 'switch'
@@ -1862,8 +1884,8 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
           name: 'controllable',
           checked: on,
           hint:
-            `Pressing ${label} on a wall switches it on or off — only on a wall whose Touch controls ` +
-            `allow operating things in the house, and only in a widget set to Tap to operate.` +
+            `With this on, ${label} can be ${whatAWallCanDo(actions)} from a wall whose Touch ` +
+            `controls allow operating things in the house, in a widget set to Tap to operate.` +
             caution,
         }) +
         `<button type="submit">Save</button></form></details>`
@@ -1885,6 +1907,10 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     }
     if (NOT_YET_FROM_A_WALL.includes(domain)) {
       return `<p class="hint">Walls cannot operate this yet.</p>`;
+    }
+    // A blind, an awning or a shutter that reports nothing a wall could move.
+    if (domain === 'cover') {
+      return `<p class="hint">Home Assistant does not say this can be opened, closed or moved.</p>`;
     }
     return '';
   }

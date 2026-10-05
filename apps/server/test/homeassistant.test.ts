@@ -904,9 +904,18 @@ describe('readings on the wall', () => {
     // must not have found its way in by some other column.
     const table = JSON.stringify(h.db.prepare('SELECT * FROM ha_entity_cache').all());
     for (const marker of UNLISTED_ATTRIBUTE_MARKERS) expect(table).not.toContain(marker);
-    // What *is* kept is what the tiles need.
+    // What *is* kept is what the tiles need, and since RFC 018 phase 3 what a
+    // wall's controls need: the colour modes and the white range. The letter
+    // moved and the rule did not — `rgb_color`, `effect_list` and the picture
+    // are still refused above, and nothing here is a current colour.
     const light = rows.find((row) => row.entityId === 'light.living_room');
-    expect(JSON.parse(light?.attributes ?? '{}')).toEqual({ device_class: null, brightness: 153 });
+    expect(JSON.parse(light?.attributes ?? '{}')).toEqual({
+      device_class: null,
+      brightness: 153,
+      supported_color_modes: ['color_temp', 'rgb'],
+      min_color_temp_kelvin: 2202,
+      max_color_temp_kelvin: 6535,
+    });
     // An old domain is stored exactly as it was before the allowlist existed.
     const door = rows.find((row) => row.entityId === 'binary_sensor.freezer_door');
     expect(door?.attributes).toBe('{"device_class":"door"}');

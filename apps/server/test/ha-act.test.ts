@@ -57,6 +57,8 @@ beforeEach(() => resetOperateLimits());
 
 const LIGHT = 'light.living_room';
 const LIGHT_KEY = haReadingHandle(LIGHT);
+const FAN = 'fan.bedroom';
+const BLIND = 'cover.kitchen_blind';
 
 interface Harness {
   readonly db: SqliteDatabase;
@@ -148,7 +150,9 @@ async function harness(): Promise<Harness> {
   ).toBe(302);
   // Through the real form, in the order a household would: a light, a switch,
   // a lock and a temperature.
-  for (const entity of [LIGHT, 'switch.kettle', 'lock.front_door', 'sensor.kitchen_temperature']) {
+  for (const entity of [
+    LIGHT, 'switch.kettle', 'lock.front_door', 'sensor.kitchen_temperature', FAN, BLIND,
+  ]) {
     expect((await form('/admin/home-assistant/entities', { entity_id: entity, label: '' })).status).toBe(302);
   }
   const poll = (): Promise<void> =>
@@ -398,7 +402,14 @@ describe('a press that goes through', () => {
     const { body, text } = await h.manifest();
     expect((body.screen as Record<string, unknown>)['allowControl']).toBe(true);
     const readings = readingsOf(body);
-    expect(readings.find((r) => r.key === LIGHT_KEY)?.actions).toEqual(['toggle']);
+    // Everything the door would accept for this light, and nothing it would not:
+    // it dims, takes a colour and a white (RFC 018 phase 3), and switches.
+    expect(readings.find((r) => r.key === LIGHT_KEY)?.actions).toEqual([
+      'toggle',
+      'brightness',
+      'colour',
+      'colour_temp',
+    ]);
     // Only on the reading marked controllable; a sensor has nothing to press.
     expect(readings.filter((r) => r.actions !== undefined)).toHaveLength(1);
     // Rule 12's surviving clause: a handle, never the id.
@@ -451,7 +462,8 @@ describe('Can be controlled from walls', () => {
     const html = await (await h.get('/admin/home-assistant/readings')).text();
     const controls = [...html.matchAll(/action="admin\/home-assistant\/entities\/control">\s*<input type="hidden" name="entity_id" value="([^"]+)"/g)]
       .map((match) => match[1]);
-    expect(controls.sort()).toEqual([LIGHT, 'switch.kettle']);
+    // A blind since phase 3: it shades a room and reports what can be moved.
+    expect(controls.sort()).toEqual([BLIND, FAN, LIGHT, 'switch.kettle'].sort());
     // The lock is told why, beside it, rather than left without a switch.
     expect(html).toContain('Walls can never operate this.');
     // And a switch carries its caution: it can be anything.
@@ -546,5 +558,180 @@ describe('Can be controlled from walls', () => {
     expect(await (await h.get('/admin/walls/wall')).text()).toMatch(/name="allow_control"[^>]*checked/);
     expect((await save(false)).status).toBe(302);
     expect(column()).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3: a value — brightness, colour, white, speed, position
+// ---------------------------------------------------------------------------
+
+describe('a press that carries a value (RFC 018 phase 3)', () => {
+  /** Everything on for one entity, with a widget that shows every reading. */
+  async function readyFor(h: Harness, entityId: string): Promise<string> {
+    h.allowControl();
+    expect((await markControllable(h, entityId)).status).toBe(302);
+    return h.widget({ tapAction: 'act' });
+  }
+  const posted = (h: Harness): { path: string; body: unknown }[] =>
+    h.ha.posts
+      .filter((post) => post.path.startsWith('/api/services/') && !post.path.includes('/todo/'))
+      .map((post) => ({ path: post.path.slice('/api/services/'.length), body: JSON.parse(post.body) }));
+  const readingFor = async (h: Harness, entityId: string): Promise<Reading & Record<string, unknown>> =>
+    readingsOf((await h.manifest()).body).find((r) => r.key === haReadingHandle(entityId)) as Reading &
+      Record<string, unknown>;
+
+  it('dims the light to the percentage the wall sent, and the next manifest says so', async () => {
+    const h = await harness();
+    const widget = await readyFor(h, LIGHT);
+    const response = await h.act({ reading: LIGHT_KEY, widget, action: 'brightness', value: '40' });
+    expect(response.status).toBe(200);
+    expect(posted(h)).toEqual([
+      { path: HA_SERVICES['light.brightness'].service, body: { entity_id: LIGHT, brightness_pct: 40 } },
+    ]);
+    expect((await readingFor(h, LIGHT)).value).toBe('On · 40%');
+  });
+
+  it('sends a colour as the three numbers it is, and a white in kelvin inside the light’s own range', async () => {
+    const h = await harness();
+    const widget = await readyFor(h, LIGHT);
+    expect((await h.act({ reading: LIGHT_KEY, widget, action: 'colour', value: '255,120,0' })).status).toBe(200);
+    expect((await h.act({ reading: LIGHT_KEY, widget, action: 'colour_temp', value: '3000' })).status).toBe(200);
+    expect(posted(h)).toEqual([
+      { path: 'light/turn_on', body: { entity_id: LIGHT, rgb_color: [255, 120, 0] } },
+      { path: 'light/turn_on', body: { entity_id: LIGHT, color_temp_kelvin: 3000 } },
+    ]);
+  });
+
+  it('carries the white range and the fan’s step beside the words that use them, and nothing else', async () => {
+    const h = await harness();
+    h.allowControl();
+    for (const entity of [LIGHT, FAN, BLIND]) await markControllable(h, entity);
+    const light = await readingFor(h, LIGHT);
+    // The light is not showing a white, so the range comes without a value.
+    expect(light['kelvin']).toEqual({ min: 2202, max: 6535 });
+    expect('step' in light).toBe(false);
+    const fan = await readingFor(h, FAN);
+    expect(fan.actions).toEqual(['toggle', 'speed']);
+    expect(fan['step']).toBe(20);
+    expect('kelvin' in fan).toBe(false);
+    const blind = await readingFor(h, BLIND);
+    expect(blind.actions).toEqual(['open', 'close', 'stop', 'position']);
+    expect('kelvin' in blind || 'step' in blind).toBe(false);
+    // And after a white is set, the slider starts where the light is.
+    const widget = h.widget({ tapAction: 'act' });
+    await h.act({ reading: LIGHT_KEY, widget, action: 'colour_temp', value: '4000' });
+    expect((await readingFor(h, LIGHT))['kelvin']).toEqual({ min: 2202, max: 6535, value: 4000 });
+  });
+
+  it('sends a fan’s step only where its speed can be set', async () => {
+    // A fan that reports a step and no SET_SPEED: it switches, and the step it
+    // reports would be a number for a slider the wall will never draw.
+    const h = await harness();
+    h.ha.set[FAN] = { supported_features: 0 };
+    await h.poll();
+    h.allowControl();
+    await markControllable(h, FAN);
+    const fan = await readingFor(h, FAN);
+    expect(fan.actions).toEqual(['toggle']);
+    expect('step' in fan).toBe(false);
+  });
+
+  it('refuses a value of the wrong shape, out of range, or where the word takes none — and sends nothing', async () => {
+    const h = await harness();
+    const widget = await readyFor(h, LIGHT);
+    const cases: Record<string, string>[] = [
+      { action: 'brightness' },
+      { action: 'brightness', value: '0' },
+      { action: 'brightness', value: '101' },
+      { action: 'brightness', value: '-5' },
+      { action: 'brightness', value: '40.5' },
+      { action: 'colour', value: '40' },
+      { action: 'colour', value: '255,0,256' },
+      { action: 'colour_temp', value: '1500' },
+      { action: 'colour_temp', value: '9000' },
+      { action: 'toggle', value: '1' },
+      { action: 'speed', value: '50' },
+    ];
+    for (const fields of cases) {
+      const response = await h.act({ reading: LIGHT_KEY, widget, ...fields });
+      expect(response.status, JSON.stringify(fields)).toBe(400);
+    }
+    expect(posted(h)).toEqual([]);
+  });
+
+  it('sets a fan’s speed', async () => {
+    const h = await harness();
+    const widget = await readyFor(h, FAN);
+    const key = haReadingHandle(FAN);
+    expect((await h.act({ reading: key, widget, action: 'speed', value: '60' })).status).toBe(200);
+    expect(posted(h)).toEqual([{ path: 'fan/set_percentage', body: { entity_id: FAN, percentage: 60 } }]);
+    expect((await readingFor(h, FAN)).value).toBe('On · 60%');
+  });
+
+  it('opens, stops, closes and positions a blind, each through its own row', async () => {
+    const h = await harness();
+    const widget = await readyFor(h, BLIND);
+    const key = haReadingHandle(BLIND);
+    for (const fields of [
+      { action: 'open' },
+      { action: 'stop' },
+      { action: 'close' },
+      { action: 'position', value: '70' },
+    ]) {
+      expect((await h.act({ reading: key, widget, ...fields })).status, fields.action).toBe(200);
+    }
+    expect(posted(h).map((post) => post.path)).toEqual([
+      'cover/open_cover',
+      'cover/stop_cover',
+      'cover/close_cover',
+      'cover/set_cover_position',
+    ]);
+    expect(posted(h)[3]?.body).toEqual({ entity_id: BLIND, position: 70 });
+    expect((await readingFor(h, BLIND)).value).toBe('Open · 70%');
+    // A blind has no toggle: the word with no row is a 400.
+    expect((await h.act({ reading: key, widget, action: 'toggle' })).status).toBe(400);
+  });
+
+  it('refuses a light that stopped dimming since it was marked, and still lets it switch', async () => {
+    /*
+     * Step 6, which phase 2 could not reach: a toggle's eligibility is its
+     * domain alone. An integration that narrows a light to on/off between
+     * marking and pressing gets a 409 for the dimmer — and the flag stays,
+     * because the light still switches and the household still asked for that.
+     */
+    const h = await harness();
+    const widget = await readyFor(h, LIGHT);
+    h.ha.set[LIGHT] = { supported_color_modes: ['onoff'] };
+    const response = await h.act({ reading: LIGHT_KEY, widget, action: 'brightness', value: '40' });
+    expect(response.status).toBe(409);
+    expect(((await response.json()) as { message: string }).message).toBe(
+      "That can't be operated from a wall any more.",
+    );
+    expect(posted(h)).toEqual([]);
+    expect((await h.act({ reading: LIGHT_KEY, widget, action: 'toggle' })).status).toBe(200);
+  });
+
+  it('refuses a blind that became a garage door, and takes the switch away', async () => {
+    const h = await harness();
+    const widget = await readyFor(h, BLIND);
+    h.ha.set[BLIND] = { device_class: 'garage' };
+    const key = haReadingHandle(BLIND);
+    expect((await h.act({ reading: key, widget, action: 'open' })).status).toBe(409);
+    expect(posted(h)).toEqual([]);
+    const row = h.db
+      .prepare('SELECT controllable FROM ha_entity_cache WHERE entity_id = ?')
+      .get(BLIND) as { controllable: number };
+    expect(row.controllable).toBe(0);
+    expect((await h.act({ reading: key, widget, action: 'open' })).status).toBe(403);
+  });
+
+  it('names what a wall could do beside the switch, from the actions the door would accept', async () => {
+    const h = await harness();
+    const html = await (await h.get('/admin/home-assistant/readings')).text();
+    expect(html).toContain(
+      'Living room can be switched on or off, dimmed, given a colour or made a warmer or cooler white',
+    );
+    expect(html).toContain('Kettle can be switched on or off from a wall');
+    expect(html).toContain('Kitchen blind can be opened, closed or moved');
   });
 });

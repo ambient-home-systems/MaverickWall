@@ -597,6 +597,13 @@ export interface DisplayModel {
    */
   readonly houseNotices: Readonly<Record<string, string>>;
   /**
+   * The reading whose controls are open, and the widget they were opened from
+   * (RFC 018 phase 3) — or nothing. Model state for `todoNotices`' reason: a
+   * draw rebuilds the document every fifteen seconds, so an open panel has to
+   * be something the next draw is told rather than a node it would destroy.
+   */
+  readonly controlPanel: { readonly widgetId: string; readonly reading: string } | undefined;
+  /**
    * When each widget's one-shot effects fired, by widget id and event (plan
    * P4.3) — the confetti on a countdown's day, a page flipping at midnight.
    *
@@ -705,11 +712,36 @@ export interface HouseReadingModel {
    * button that posts something this wall cannot describe.
    */
   readonly actions?: readonly WallAction[];
+  /** A light's white range in kelvin, and its current white — beside `colour_temp` only. */
+  readonly kelvin?: { readonly min: number; readonly max: number; readonly value?: number };
+  /** How far one step moves a fan's speed — beside `speed` only. */
+  readonly step?: number;
 }
 
 /** The words a wall can press, as this bundle knows them. */
-export type WallAction = 'toggle';
-const WALL_ACTIONS: readonly WallAction[] = ['toggle'];
+export type WallAction =
+  | 'toggle'
+  | 'brightness'
+  | 'colour'
+  | 'colour_temp'
+  | 'speed'
+  | 'open'
+  | 'close'
+  | 'stop'
+  | 'position';
+const WALL_ACTIONS: readonly WallAction[] = [
+  'toggle', 'brightness', 'colour', 'colour_temp', 'speed', 'open', 'close', 'stop', 'position',
+];
+
+/**
+ * The words that open the reading's panel rather than act at once (RFC 018
+ * §10): every word but a lone toggle. A light that dims is pressed open and
+ * switched from inside, so a press on a dimmable light is never a light
+ * turning off by surprise, and a blind — which has no toggle — always opens.
+ */
+export function opensPanel(actions: readonly WallAction[] | undefined): boolean {
+  return actions !== undefined && actions.some((action) => action !== 'toggle');
+}
 
 export interface InterruptModel {
   /** The event name. Drawn largest. */
@@ -738,7 +770,16 @@ export interface InterruptModel {
 /** The shape of a reading handle (`haReadingHandle` on the server): hex, and short. */
 const READING_HANDLE = /^[0-9a-f]{8,64}$/;
 
-/** A reading's actions, kept only where every one is a word this bundle can press. */
+/** A white range a slider can be drawn over, or nothing: an inverted or absurd one is no range. */
+function kelvinFrom(raw: unknown): { readonly kelvin?: NonNullable<HouseReadingModel['kelvin']> } {
+  if (typeof raw !== 'object' || raw === null) return {};
+  const { min, max, value } = raw as { min?: unknown; max?: unknown; value?: unknown };
+  const k = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 1000 && v <= 20_000;
+  if (!k(min) || !k(max) || min >= max) return {};
+  return { kelvin: { min, max, ...(k(value) && value >= min && value <= max ? { value } : {}) } };
+}
+
+/** A reading's actions, keeping only the words this bundle can press: a newer server's word costs that word, not the rest. */
 function actionsFrom(raw: unknown): { readonly actions?: readonly WallAction[] } {
   if (!Array.isArray(raw)) return {};
   const known = raw.filter((word): word is WallAction => WALL_ACTIONS.includes(word as WallAction));
@@ -759,7 +800,7 @@ export function houseFrom(panel: unknown): {
     const reading = entry as {
       key?: unknown; label?: unknown; value?: unknown; unit?: unknown; glyph?: unknown;
       mode?: unknown; stale?: unknown; tone?: unknown; changedAt?: unknown; level?: unknown;
-      actions?: unknown;
+      actions?: unknown; kelvin?: unknown; step?: unknown;
     };
     /*
      * Through the same sanitiser the alert text uses.
@@ -807,6 +848,11 @@ export function houseFrom(panel: unknown): {
         ? { level: reading.level }
         : {}),
       ...actionsFrom(reading.actions),
+      ...kelvinFrom(reading.kelvin),
+      // A step of a percentage, refused outside it rather than clamped.
+      ...(typeof reading.step === 'number' && reading.step > 0 && reading.step <= 100
+        ? { step: reading.step }
+        : {}),
     });
   }
 
@@ -1659,6 +1705,8 @@ export interface BuildOptions {
   readonly todoNotices?: Readonly<Record<string, string>>;
   /** A press on a reading that did not go through: `todoNotices`' argument. */
   readonly houseNotices?: Readonly<Record<string, string>>;
+  /** The reading whose controls are open, from `main.ts`; absent everywhere else. */
+  readonly controlPanel?: { readonly widgetId: string; readonly reading: string };
   /**
    * The wall's one-shot memory (plan P4.3). Optional and defaulted to none, on
    * `todoNotices`' argument: it is what this page has already shown, which no
@@ -1868,6 +1916,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
     layoutDaytimeStyle: styleTokensOf(manifest.screen?.layoutDaytimeStyleTokens),
     todoNotices: options.todoNotices ?? {},
     houseNotices: options.houseNotices ?? {},
+    controlPanel: options.controlPanel,
     oneShots: options.oneShots ?? NO_ONE_SHOTS,
     notices: manifest.notices.map((notice) => ({ level: notice.level, message: notice.message })),
     staleness,

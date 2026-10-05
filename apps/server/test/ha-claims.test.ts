@@ -229,7 +229,7 @@ describe('and the page says what it can do instead', () => {
     // What a later release may allow is named, so "today" is not a promise
     // somebody reads as "for ever"; and the never-list stays named, because a
     // permission without its limits is not a boundary a household can read.
-    expect(html).toContain('lights, switches and fans');
+    expect(html).toContain('lights, switches, fans and blinds');
     expect(html).toContain('Can be controlled from walls');
     expect(html).toContain('Those are not built yet');
     expect(html).toContain('No locks, no alarms, no thermostats');

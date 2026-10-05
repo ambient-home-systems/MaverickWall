@@ -414,11 +414,34 @@ export function buildCall(request: CallRequest): BuildResult {
 /**
  * What a wall may ask for, in its own words, and the row each word reaches per
  * domain — only the rows a route exists for (RFC 018 §12). Phase 2 is the
- * toggles; later phases add brightness, colour, position, speed, scenes,
- * scripts and media transport here as their routes and buttons land.
+ * toggles; phase 3 is brightness, colour, white, fan speed and a shading
+ * cover's open, close, stop and position. Scenes, scripts and media transport
+ * land here as their phases do.
+ *
+ * Open, close and stop are in phase 3 although RFC 018's phase list names only
+ * position: a blind has no toggle, so a blind whose panel could set a position
+ * and could not open it would be a strange thing to hand a household, and the
+ * three are rows phase 1 already built.
  */
 export const WALL_ACTIONS: Readonly<Record<string, Readonly<Record<string, ControlKey>>>> = Object.freeze({
   toggle: Object.freeze({ light: 'light.toggle', switch: 'switch.toggle', fan: 'fan.toggle' }),
+  brightness: Object.freeze({ light: 'light.brightness' }),
+  colour: Object.freeze({ light: 'light.colour' }),
+  colour_temp: Object.freeze({ light: 'light.colour_temp' }),
+  speed: Object.freeze({ fan: 'fan.speed' }),
+  open: Object.freeze({ cover: 'cover.open' }),
+  close: Object.freeze({ cover: 'cover.close' }),
+  stop: Object.freeze({ cover: 'cover.stop' }),
+  position: Object.freeze({ cover: 'cover.position' }),
+});
+
+/** The words that carry a value, and what shape it takes. */
+export const WALL_ACTION_VALUES: Readonly<Record<string, 'number' | 'rgb'>> = Object.freeze({
+  brightness: 'number',
+  colour: 'rgb',
+  colour_temp: 'number',
+  speed: 'number',
+  position: 'number',
 });
 
 export type WallAction = keyof typeof WALL_ACTIONS;
@@ -433,10 +456,17 @@ export function wallActionKey(action: string, entityId: string): ControlKey | un
  * The words a wall may use on this entity right now: every action with a route
  * whose row `validateCall` accepts for these attributes. Empty for a sensor, a
  * lock, a garage door, or anything a later phase has not wired yet.
+ *
+ * A row that takes a value is asked with none, so its answer is "out of range"
+ * for an eligible entity and "not eligible" for one it may never reach — and
+ * only the second is a no. That is the door's own rule, asked one step short of
+ * the value, rather than a second list of which lights dim.
  */
 export function wallActionsFor(entityId: string, attributes: unknown): readonly string[] {
   return Object.keys(WALL_ACTIONS).filter((action) => {
     const key = wallActionKey(action, entityId);
-    return key !== undefined && validateCall({ key, entityId, attributes }).ok;
+    if (key === undefined) return false;
+    const checked = validateCall({ key, entityId, attributes });
+    return checked.ok || (WALL_ACTION_VALUES[action] !== undefined && checked.code === 'bad-value');
   });
 }

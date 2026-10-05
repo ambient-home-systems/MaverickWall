@@ -5,7 +5,7 @@ import type { Keyring } from '../../secrets/keyring.js';
 import { haReadingHandle, readingEntityIds } from '../../api/manifest.js';
 import { buildCall, call, callService, resolveConnection } from './client.js';
 import { cachedAttributes, parseStates } from './entities.js';
-import { wallActionKey } from './services.js';
+import { WALL_ACTIONS, WALL_ACTION_VALUES, wallActionKey, wallActionsFor } from './services.js';
 import { watchedReadingChoices } from './store.js';
 
 /**
@@ -47,8 +47,33 @@ import { watchedReadingChoices } from './store.js';
 export const haActBody = z.object({
   reading: z.string().regex(/^[0-9a-f]{16}$/),
   widget: z.string().min(1).max(64),
-  action: z.enum(['toggle']),
+  action: z.string().refine((word) => Object.prototype.hasOwnProperty.call(WALL_ACTIONS, word)),
+  /*
+   * A number, or three numbers for a colour — and nothing else (RFC 018 §8.1).
+   * Arrives as the form's text, so its *shape* is checked here and its bounds
+   * by `buildCall`, which knows the light's own range. Whether this word takes
+   * one at all is `valueFor`'s question.
+   */
+  value: z
+    .string()
+    .regex(/^(\d{1,5}|\d{1,3},\d{1,3},\d{1,3})$/)
+    .optional(),
 });
+
+/**
+ * The wall's value, turned into the shape the word takes — or `null` when the
+ * two disagree: a word that takes no value sent one, a word that takes one sent
+ * none, or a number arrived where a colour belongs. Refused rather than
+ * coerced (rule five), with the 400 that goes with it.
+ */
+export function valueFor(action: string, raw: string | undefined): number | readonly number[] | undefined | null {
+  const shape = WALL_ACTION_VALUES[action];
+  if (shape === undefined) return raw === undefined ? undefined : null;
+  if (raw === undefined) return null;
+  const parts = raw.split(',').map(Number);
+  if (shape === 'rgb') return parts.length === 3 ? parts : null;
+  return parts.length === 1 ? (parts[0] as number) : null;
+}
 
 /** RFC 018 OQ7, decided: twenty presses a minute per wall. */
 export const PRESSES_PER_MINUTE = 20;
@@ -70,8 +95,10 @@ export interface OperateInput {
   readonly reading: string;
   /** The widget the press landed in. */
   readonly widget: string;
-  /** The wall's word for what to do: `toggle`. */
+  /** The wall's word for what to do: `toggle`, `brightness`, `position` and so on. */
   readonly action: string;
+  /** A percentage, a kelvin or a colour, already in the word's shape (`valueFor`). */
+  readonly value?: number | readonly number[];
 }
 
 export type OperateResult =
@@ -267,7 +294,9 @@ export async function operate(context: OperateContext, input: OperateInput): Pro
     return refused(403, 'widget-does-not-act', NOT_CONTROLLABLE);
   }
 
-  // 5. A word with a route, for this domain.
+  // 5. A word with a route, for this domain. Whether it carries a value in
+  // its own shape was the route's question (`valueFor`); its bounds are
+  // `buildCall`'s, below, which knows the light's own range.
   const key = wallActionKey(input.action, entityId);
   if (key === undefined) return refused(400, 'bad-action', NOT_CONTROLLABLE);
 
@@ -289,9 +318,24 @@ export async function operate(context: OperateContext, input: OperateInput): Pro
     // 7. Still eligible, from the state as it is now.
     const before = await readEntity(context, connection, entityId);
     if (!before.ok) return refused(502, 'upstream', before.message);
-    const built = buildCall({ key, entityId, attributes: before.attributes });
+    const built = buildCall({
+      key,
+      entityId,
+      attributes: before.attributes,
+      ...(input.value === undefined ? {} : { value: input.value }),
+    });
     if (!built.ok) {
-      if (built.code === 'not-eligible' || built.code === 'wrong-domain') {
+      // A value out of the light's own range is the press's fault, not the
+      // light's, and says so.
+      if (built.code === 'bad-value') return refused(400, 'bad-value', built.message);
+      /*
+       * The entity no longer supports this — a light whose colour modes an
+       * integration narrowed, a blind that lost its position. The flag is
+       * cleared only when it has nothing left a wall could do: a light that
+       * stopped dimming still switches, and taking that away too would punish
+       * the household for something the integration did.
+       */
+      if (wallActionsFor(entityId, before.attributes).length === 0) {
         db.prepare(`UPDATE ha_entity_cache SET controllable = 0 WHERE entity_id = ?`).run(entityId);
       }
       return refused(409, 'not-eligible', NOT_ANY_MORE);

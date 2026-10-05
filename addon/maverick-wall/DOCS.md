@@ -2,8 +2,8 @@
 
 A family calendar for a wall display. It reads your Home Assistant calendars
 and a few sensors. It writes back only what you allow: ticking an item off a
-to-do list you chose to show, and switching a light, a switch or a fan you
-marked controllable, each only from a wall you have turned that on for — see
+to-do list you chose to show, and operating a light, a switch, a fan or a blind
+you marked controllable, each only from a wall you have turned that on for — see
 **What it will not do**, below.
 
 ## Installing
@@ -76,13 +76,15 @@ alone restores everything except your calendar addresses — those are encrypted
 ## What it will not do
 
 It changes two kinds of thing in your house, and only once you ask: ticking an
-item off a to-do list you chose to show on a wall, and switching a light, a
-switch or a fan on or off from a wall. A wall switches something only when you
+item off a to-do list you chose to show on a wall, and operating lights,
+switches, fans and blinds from a wall — switching them, dimming a light or
+changing its colour, setting a fan's speed, and opening, closing or moving a
+blind. A wall operates something only when you
 have marked it **Can be controlled from walls** on the Readings screen, turned on
 **Allow operating things in the house** for that wall, and set the widget to
 **Tap to operate** — all three off by default. A later release will let a wall
-also dim a light, move a blind and run a scene, a script or a media player,
-behind the same three switches; those are not built yet.
+also run a scene, a script or a media player, behind the same three switches;
+those are not built yet.
 
 It can never unlock a door, disarm an alarm, change a thermostat, or open a
 garage, gate, door or window. Those are not in its frozen table of permitted
@@ -99,6 +101,6 @@ reason and more so. An eInk panel shows the list and never offers a box at all.
 The wall itself receives resolved values — "19.4 °C", "Open" — never an entity
 id and never a way to ask Home Assistant a question of its own. If a tablet in
 your hallway is ever compromised, the worst it can do is show somebody your
-indoor temperature, tick an item off your shopping list and switch the lights
-and fans you allowed it to — and whatever you allow, it can never open your
-garage.
+indoor temperature, tick an item off your shopping list and operate the
+lights, fans and blinds you allowed it to — and whatever you allow, it can never
+open your garage.

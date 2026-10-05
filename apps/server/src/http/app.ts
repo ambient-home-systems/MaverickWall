@@ -48,7 +48,7 @@ import {
   setTodoItemStatus,
   tickTodoItem,
 } from '../modules/todo/index.js';
-import { haActBody, operate } from '../modules/homeassistant/control.js';
+import { haActBody, operate, valueFor } from '../modules/homeassistant/control.js';
 import { activeOn, localToday, readChores, setChoreDone } from '../api/chores.js';
 import { evaluateInterrupts } from '@maverick-wall/core';
 import { dismissInterrupt, readDismissals, readRules } from '../api/rules.js';
@@ -988,6 +988,7 @@ export function createApp(deps: AppDeps): Hono {
       reading: field('reading'),
       widget: field('widget'),
       action: field('action'),
+      ...(field('value') === '' ? {} : { value: field('value') }),
     });
     // The wall's own switch is checked before the body is looked at, so a
     // wall with control off reads one sentence whatever it posted.
@@ -998,6 +999,10 @@ export function createApp(deps: AppDeps): Hono {
       );
     }
     if (!parsed.success) return c.json({ error: 'bad-request' }, 400);
+    const value = valueFor(parsed.data.action, parsed.data.value);
+    if (value === null) {
+      return c.json({ error: 'bad-value', message: 'That setting is out of range.' }, 400);
+    }
 
     const result = await operate(
       {
@@ -1012,6 +1017,7 @@ export function createApp(deps: AppDeps): Hono {
         reading: parsed.data.reading,
         widget: parsed.data.widget,
         action: parsed.data.action,
+        ...(value === undefined ? {} : { value }),
       },
     );
     if (result.ok) return c.json({ ok: true });

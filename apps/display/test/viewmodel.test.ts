@@ -9,6 +9,7 @@ import {
   NEXT_DAY_COUNT,
   TODAY_EVENT_LIMIT,
   houseFrom,
+  opensPanel,
   interruptsFrom,
 } from '../src/viewmodel.js';
 import type { Manifest, ManifestDay, ManifestEvent } from '../src/manifest.js';
@@ -643,17 +644,50 @@ describe('text from somewhere else', () => {
      */
     const shaped = houseFrom({ readings: [
       { key: '0123456789abcdef', label: 'Lamp', value: 'On', actions: ['toggle'] },
-      { key: '1123456789abcdef', label: 'Blind', value: 'Open', actions: ['open', 'close'] },
+      { key: '1123456789abcdef', label: 'Blind', value: 'Open', actions: ['open', 'close', 'tilt'] },
       { key: '2123456789abcdef', label: 'Fan', value: 'On', actions: 'toggle' },
       { key: '3123456789abcdef', label: 'Kitchen', value: '19.4' },
     ] });
+    // Since phase 3 a blind's words are words this bundle knows; a word it does
+    // not ("tilt") is dropped and the rest kept, so a newer server's extra word
+    // costs only that word.
     expect(shaped.readings.map((reading) => reading.actions)).toEqual([
       ['toggle'],
-      undefined,
+      ['open', 'close'],
       undefined,
       undefined,
     ]);
-    expect(shaped.readings.slice(1).every((reading) => !('actions' in reading))).toBe(true);
+    expect(shaped.readings.slice(2).every((reading) => !('actions' in reading))).toBe(true);
+  });
+
+  it('reads a white range only when it is one, and a fan’s step only inside a percentage (RFC 018 phase 3)', () => {
+    const shaped = houseFrom({ readings: [
+      { key: '0123456789abcdef', label: 'Lamp', value: 'On', actions: ['toggle', 'colour_temp'],
+        kelvin: { min: 2202, max: 6535, value: 4000 } },
+      { key: '1123456789abcdef', label: 'Lamp 2', value: 'On', kelvin: { min: 6535, max: 2202 } },
+      { key: '2123456789abcdef', label: 'Lamp 3', value: 'On', kelvin: { min: 2202, max: 6535, value: 9000 } },
+      { key: '3123456789abcdef', label: 'Fan', value: 'On', step: 20 },
+      { key: '4123456789abcdef', label: 'Fan 2', value: 'On', step: 0 },
+      { key: '5123456789abcdef', label: 'Fan 3', value: 'On', step: 140 },
+    ] });
+    expect(shaped.readings.map(({ kelvin, step }) => ({ kelvin, step }))).toEqual([
+      { kelvin: { min: 2202, max: 6535, value: 4000 }, step: undefined },
+      // Inverted: no range rather than a slider that cannot move.
+      { kelvin: undefined, step: undefined },
+      // A value outside its own range is dropped, the range kept.
+      { kelvin: { min: 2202, max: 6535 }, step: undefined },
+      { kelvin: undefined, step: 20 },
+      { kelvin: undefined, step: undefined },
+      { kelvin: undefined, step: undefined },
+    ]);
+  });
+
+  it('opens a panel for every word but a lone switch', () => {
+    expect(opensPanel(undefined)).toBe(false);
+    expect(opensPanel(['toggle'])).toBe(false);
+    expect(opensPanel(['toggle', 'brightness'])).toBe(true);
+    // A blind has no switch at all, so a press always opens it.
+    expect(opensPanel(['open', 'close', 'stop', 'position'])).toBe(true);
   });
 
   it('reads the wall’s operating switch as true only when the manifest says true', () => {

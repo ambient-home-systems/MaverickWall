@@ -1,10 +1,11 @@
 # RFC 018 — Wall control, and a narrow amendment to rule 12
 
-Status: **accepted 2026-10-05 (MD13); phases 1 and 2 built — lights, switches
-and fans toggle from a wall.** Hard rule 12 in `CLAUDE.md` now reads as §3.1
-below. Phase 1 (§12) landed the table, `buildCall`, the door's issued check and
-the claims; phase 2 landed the route, all three switches, the button, the
-history and the browser test. Phase 3 is next. Every open question was
+Status: **accepted 2026-10-05 (MD13); phases 1–3 built — lights, switches,
+fans and blinds operate from a wall.** Hard rule 12 in `CLAUDE.md` now reads as
+§3.1 below. Phase 1 (§12) landed the table, `buildCall`, the door's issued check
+and the claims; phase 2 the route, all three switches, the button, the history
+and the browser test; phase 3 brightness, colour, white, fan speed, a blind's
+open, close, stop and position, and the panel. Phase 4 is next. Every open question was
 decided by the owner the same day: the five items in §5.2 are folded into §5
 and §5.1, and OQ6–OQ10 are settled in §14 ·
 Owner: — · First drafted 2026-10-05 · Relates to
@@ -385,7 +386,34 @@ controls, and "never" only of what no row in the table can reach.
    ring assertion on `outline-width` alone passed with the `:focus` half of the
    rule deleted, because this browser reports the initial `medium` (3px) for an
    outline whose style is `none`; it asserts the style too.
-3. **Brightness, colour, position and fan speed**, with the panel.
+3. **Brightness, colour, position and fan speed**, with the panel — **built.**
+   The route takes `value` (a number, or three for a colour), shaped by
+   `valueFor` and bounded by `buildCall` against the light's own range; the
+   wall's words are `brightness`, `colour`, `colour_temp`, `speed`, `open`,
+   `close`, `stop` and `position`, and `wallActionsFor` offers a value word
+   where the door would refuse it only for want of a value. The cache's
+   attribute allowlist gained the control facts and nothing else
+   (`supported_color_modes`, the kelvin range and current white,
+   `supported_features` for fans and covers, `percentage_step`) — `rgb_color`
+   is still refused. The manifest carries `kelvin` and `step` only beside the
+   word that uses them. **Four decisions the RFC left open, taken here.** A
+   cover's open, close and stop came with position, because a blind has no
+   toggle and a panel that could set a position and not open it would be
+   strange; they were phase 1 rows already. A reading with any word but a
+   lone toggle **opens its panel on a press** rather than switching —
+   Lovelace splits the tile into an icon that toggles and a body that opens,
+   and a wall has no hover to say which half is which, so the safer press
+   wins and the panel's first control is the switch. Colour is **eight named
+   swatches**, not a picker: a picker is a drag that streams and starts from a
+   current colour the wall is never sent. And the panel **closes itself after
+   45 seconds untouched**, because a wall has no pointer and a panel left over
+   the calendar is a calendar nobody can read. The panel is drawn from model
+   state beside the canvas, never in it; a finger on a slider holds the
+   fifteen-second redraw until it lifts; a slider sends on `change`, once.
+   Step 6's 409 is reached now — a light narrowed to on/off is refused a
+   dimmer and keeps its switch, and the flag is cleared only when nothing a
+   wall could do is left. Held by `ha-act.test.ts` (33) and
+   `browser-ha-panel.test.ts` (5); 22 mutations checked, all red.
 4. **Scenes and scripts**, with press-and-hold.
 5. **Webhook buttons.**
 6. **Media transport**: play/pause, next, previous and volume, for the
