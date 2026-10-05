@@ -493,6 +493,27 @@ shadow token under `builtin-themes-parity.test.ts`. A rule that permits more
 than its test does is the right way round for a few releases; the other way
 round is a rule nothing enforces.
 
+**On 2026-10-05 the owner reviewed Magic Frame against this product and took
+nine more decisions (MD1–MD9); none of them changes a rule yet.** The review,
+the decisions and the work they imply are
+`docs/plan-2026-10-magic-frame-parity.md`, with the sandbox design in
+`docs/rfc-017-sandboxed-module-code.md`. Two of its items are **proposals
+against rules on this page, not changes to them**, and are worth knowing before
+reading either rule as settled or as obsolete:
+
+- **Hard Rule 12** — a narrow amendment (RFC 018, not yet written) to let a
+  wall toggle lights, switches and fans, set brightness, colour and position,
+  and press scene, script and webhook buttons. Locks, alarms and garage, gate
+  and door covers stay excluded. Until RFC 018 is accepted, the rule above
+  stands as written and `ha-write-boundary.test.ts` keeps holding it.
+- **Q4** (no blur behind widgets) — a Glass ground is to be prototyped behind a
+  flag, with its opacity measured per picture, and Q4 flips only if the
+  prototype passes the plan's MQ1 measurement. Until then `DESIGN.md`'s "Blur
+  stays out" stands.
+
+Hard Rule 3 is unchanged on purpose: custom widgets stay data only (MD3), and
+the sandbox that RFC 017 describes runs on the server and produces only data.
+
 **0.61.0 is the current release.** `main`, the tag and the published image
 agree with each other, and `advertise` is what keeps them that way — it writes
 `config.yaml`'s version last, after the image is built for both architectures,
