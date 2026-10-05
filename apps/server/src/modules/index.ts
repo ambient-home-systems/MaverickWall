@@ -7,6 +7,7 @@ import { weatherModule } from './weather/index.js';
 import { haModule } from './homeassistant/index.js';
 import { calendarModule } from './calendar/index.js';
 import { externalPanelModules } from './external/index.js';
+import { buttonsModule } from './webhooks/index.js';
 
 /**
  * Every first-party panel module, in one list.
@@ -21,6 +22,7 @@ export const MODULES: readonly PanelModule[] = [
   calendarModule,
   choresModule,
   todoModule,
+  buttonsModule,
 ];
 
 /** First-party plus whatever the household has registered. */

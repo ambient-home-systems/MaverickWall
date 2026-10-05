@@ -146,6 +146,16 @@ function manifest(): Manifest {
           },
         ],
       },
+      /*
+       * Two webhook buttons (RFC 018 phase 5), one pressable — which a panel
+       * cannot show and must not try to: the frame draws both names alike.
+       */
+      buttons: {
+        buttons: [
+          { key: 'wh-aaaaaaaaaaaa', label: 'Chime', actions: ['press'] },
+          { key: 'wh-bbbbbbbbbbbb', label: 'Garden lights' },
+        ],
+      },
     },
   } as unknown as Manifest;
 }
@@ -228,6 +238,7 @@ const BASES: Readonly<Record<string, readonly Record<string, unknown>[]>> = {
   homeassistant: [{}],
   external: [{ module: 'mymod' }],
   image: [{ image: `${'a'.repeat(64)}.png` }],
+  buttons: [{}],
   // Both a row and a grid, because `columns` can only move ink on a grid —
   // probed from a row alone it would have "proved" the key is not honoured.
   group: [{ layout: 'row' }, { layout: 'grid' }],
@@ -351,6 +362,8 @@ const PROBES: Readonly<Record<string, readonly unknown[]>> = {
   items: [['Cheese']],
   list: ['todo.shopping'],
   showDone: [true],
+  // One of the two, so the frame has a name fewer on it.
+  buttons: [['wh-bbbbbbbbbbbb']],
   background: ['#ff0000'],
   opacity: [40],
   corners: ['rounded'],

@@ -51,6 +51,14 @@ export type SecretPurpose =
    * feed's password and the credential to a household's whole Apple account.
    */
   | 'caldav-password'
+  /**
+   * A webhook button's address (RFC 018 §9). Its own purpose, for the reason
+   * every secret here has one: an address swapped into another column must not
+   * decrypt there.
+   */
+  | 'webhook-url'
+  /** The optional secret header a webhook button sends with its POST. */
+  | 'webhook-secret'
   /** Session signing. */
   | 'session';
 

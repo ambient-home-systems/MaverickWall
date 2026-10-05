@@ -510,6 +510,12 @@ export interface DisplayModel {
   readonly todo: readonly TodoListModel[];
   /** Readings from the house, when a module contributed any. */
   readonly house: readonly HouseReadingModel[];
+  /**
+   * The household's webhook buttons (RFC 018 phase 5): an id the server minted
+   * and a name, and `pressable` only where the household marked it so. Never
+   * an address — the wall is never handed one.
+   */
+  readonly buttons: readonly ButtonModel[];
   /** Something quiet to say about them, such as a connection that is failing. */
   readonly houseNote: string | undefined;
   /**
@@ -794,6 +800,40 @@ function actionsFrom(raw: unknown): { readonly actions?: readonly WallAction[] }
   if (!Array.isArray(raw)) return {};
   const known = raw.filter((word): word is WallAction => WALL_ACTIONS.includes(word as WallAction));
   return known.length === 0 ? {} : { actions: known };
+}
+
+/** One webhook button, as a Buttons widget draws it. */
+export interface ButtonModel {
+  readonly key: string;
+  readonly label: string;
+  readonly pressable: boolean;
+}
+
+/** The shape of a button id (`wh-` and twelve hex digits), and nothing else. */
+const BUTTON_ID = /^wh-[0-9a-f]{12}$/;
+
+/**
+ * The buttons panel, read defensively: a name through the same sanitiser a
+ * reading's goes through, an id only in the shape the server mints, and
+ * `pressable` only on the one word this bundle knows.
+ */
+export function buttonsFrom(panel: unknown): ButtonModel[] {
+  if (typeof panel !== 'object' || panel === null) return [];
+  const raw = (panel as { buttons?: unknown }).buttons;
+  if (!Array.isArray(raw)) return [];
+  const buttons: ButtonModel[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const button = entry as { key?: unknown; label?: unknown; actions?: unknown };
+    const label = text(button.label, 40);
+    if (typeof button.key !== 'string' || !BUTTON_ID.test(button.key) || label === undefined) continue;
+    buttons.push({
+      key: button.key,
+      label,
+      pressable: Array.isArray(button.actions) && button.actions.includes('press'),
+    });
+  }
+  return buttons;
 }
 
 export function houseFrom(panel: unknown): {
@@ -1909,6 +1949,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
     chores,
     todo,
     house: house.readings,
+    buttons: buttonsFrom(manifest.panels?.['buttons']),
     houseNote: house.note,
     now,
     interrupts: interruptsFrom(manifest.interrupts),

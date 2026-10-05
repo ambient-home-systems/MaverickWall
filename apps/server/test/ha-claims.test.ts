@@ -205,7 +205,7 @@ describe('nothing still promises Home Assistant is read-only', () => {
       // Read as prose: a phrase wrapped at a line break is the same sentence.
       const prose = text.replace(/\s+/g, ' ');
       expect(prose, name).toContain('script cannot be checked that way');
-      expect(prose, name).toContain('unless a script you allowed does');
+      expect(prose, name).toContain('unless a script or a webhook button you allowed does');
     }
   });
 

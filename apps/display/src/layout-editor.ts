@@ -194,6 +194,8 @@ interface LayoutState {
    * it into, so the preview can find the list the box names.
    */
   todoLists: readonly { readonly id: string; readonly name: string; readonly key: string }[];
+  /** The household's webhook buttons, for the Buttons widget's picker (RFC 018 phase 5). */
+  buttons: readonly { readonly id: string; readonly name: string }[];
 }
 
 /** The editor is on the admin page, so its preview reads media behind the session. */
@@ -463,6 +465,7 @@ function boot(): void {
       readonly notDrawn?: unknown;
       readonly omission?: unknown;
       readonly todoLists?: unknown;
+      readonly buttons?: unknown;
       readonly fonts?: unknown;
       readonly wallpapers?: unknown;
       readonly wallTone?: unknown;
@@ -633,13 +636,21 @@ function boot(): void {
               typeof (one as { key?: unknown }).key === 'string',
           )
         : [],
+      buttons: Array.isArray(parsed.buttons)
+        ? (parsed.buttons as unknown[]).filter(
+            (one): one is LayoutState['buttons'][number] =>
+              typeof one === 'object' && one !== null &&
+              typeof (one as { id?: unknown }).id === 'string' &&
+              typeof (one as { name?: unknown }).name === 'string',
+          )
+        : [],
     };
   } catch {
     state = {
       screen: null, mode: 'auto', orientation: 'portrait', slot: null, aspect: 0.5625, widgets: [],
       stash: { [canvasKey('landscape', null)]: { aspect: 1.7778, widgets: [] } },
       slots: [], maxSlots: 4,
-      calendars: [], readings: [], modules: [], people: [], todoLists: [],
+      calendars: [], readings: [], modules: [], people: [], todoLists: [], buttons: [],
     };
   }
 
@@ -4192,6 +4203,7 @@ function boot(): void {
     else if (widget.type === 'notes') buildNotesConfig(widget, cfg);
     else if (widget.type === 'todo') buildTodoConfig(widget, cfg);
     else if (widget.type === 'chores') buildChoresConfig(widget, cfg);
+    else if (widget.type === 'buttons') buildButtonsConfig(widget, cfg);
     else if (widget.type === 'image') buildImageConfig(widget, cfg);
     else if (widget.type === 'shift') buildShiftConfig(widget, cfg);
     else if (widget.type === 'clock') buildClockConfig(widget, cfg);
@@ -5073,6 +5085,41 @@ function boot(): void {
     note.className = 'hint';
     note.textContent = 'None ticked shows everybody, including chores nobody owns.';
     configPanel.appendChild(note);
+  }
+
+  /**
+   * The Buttons widget (RFC 018 phase 5): which of the household's webhook
+   * buttons it draws, and whether a press — held — calls them. The third of
+   * RFC 018's three switches is here, as on the Home Assistant widget; the
+   * button's own is on Buttons, and the wall's under Touch controls.
+   */
+  function buildButtonsConfig(widget: Widget, cfg: Record<string, unknown>): void {
+    const which = cfgField('Buttons to show', 'buttons');
+    which.appendChild(
+      checkList(
+        state.buttons.map((button) => ({ value: button.id, label: button.name })),
+        Array.isArray(cfg['buttons']) ? (cfg['buttons'] as string[]) : [],
+        (values) => setConfig(widget, 'buttons', values),
+        'No buttons yet — add one on the Buttons page.',
+      ),
+    );
+    configPanel.appendChild(which);
+    const note = document.createElement('p');
+    note.className = 'hint';
+    note.textContent = 'None ticked shows them all.';
+    note.dataset['cfgKey'] = 'buttons';
+    configPanel.appendChild(note);
+    configPanel.appendChild(
+      switchRow(
+        'Tap to operate',
+        'A button marked “Can be pressed from walls” on the Buttons page calls its address when ' +
+          'pressed and held — on a wall whose Touch controls allow operating things in the house. ' +
+          'Off, this widget only shows the names.',
+        cfg['tapAction'] === 'act',
+        (on) => setConfig(widget, 'tapAction', on ? 'act' : undefined),
+        'tapAction',
+      ),
+    );
   }
 
   /**

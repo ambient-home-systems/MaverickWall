@@ -9,6 +9,7 @@ import {
   NEXT_DAY_COUNT,
   TODAY_EVENT_LIMIT,
   houseFrom,
+  buttonsFrom,
   opensPanel,
   needsHold,
   interruptsFrom,
@@ -707,6 +708,23 @@ describe('text from somewhere else', () => {
     expect(
       model([], { screen: { ...screen, allowControl: 'yes' } } as unknown as Partial<Manifest>).allowControl,
     ).toBe(false);
+  });
+
+  it('reads webhook buttons by an id in the server’s shape, a clean name, and press only as a word it knows', () => {
+    expect(
+      buttonsFrom({ buttons: [
+        { key: 'wh-0123456789ab', label: 'Chime', actions: ['press'] },
+        { key: 'wh-1123456789ab', label: 'Garden\u202Elights' },
+        { key: 'wh-2123456789ab', label: 'Gate', actions: ['open'] },
+        { key: 'https://example.com/hook', label: 'Leaked' },
+        { key: 'wh-3123456789ab', label: '\u200B' },
+      ] }),
+    ).toEqual([
+      { key: 'wh-0123456789ab', label: 'Chime', pressable: true },
+      { key: 'wh-1123456789ab', label: 'Gardenlights', pressable: false },
+      { key: 'wh-2123456789ab', label: 'Gate', pressable: false },
+    ]);
+    expect(buttonsFrom(undefined)).toEqual([]);
   });
 
   it('drops a reading that is nothing but invisible characters', () => {

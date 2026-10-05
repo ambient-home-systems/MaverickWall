@@ -1411,6 +1411,44 @@ body {
  */
 .hs-act[data-holding],
 .ht-act[data-holding] { outline: 0.35rem solid var(--accent); outline-offset: 0.25rem; }
+
+/*
+ * A Buttons widget (RFC 018 phase 5): a grid of cards, each a name. The tile
+ * look's ground, hairline and shadow, so a button reads as one of the wall's
+ * cards; a pressable one is a <button> with the same rectangle and the focus
+ * rings every operable thing on the wall has.
+ */
+.bt {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 9em), 1fr));
+  gap: var(--s2);
+  align-content: start;
+  font-size: var(--t-wall-event, var(--t-event));
+  line-height: 1.15;
+}
+.bt-button {
+  min-height: 44px;
+  padding: var(--s3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius, 0.4rem);
+  box-shadow: var(--shadow-card, none);
+  overflow-wrap: break-word;
+}
+.bt-act { cursor: pointer; -webkit-appearance: none; appearance: none; }
+.bt-act:focus,
+.bt-act:focus-visible { outline: 0.2rem solid var(--accent); outline-offset: 0.25rem; }
+.bt-act:active { opacity: 0.6; }
+/* After the focus ring, so a held button shows the hold and not the focus. */
+.bt-act[data-holding] { outline: 0.35rem solid var(--accent); outline-offset: 0.25rem; }
+.bt-note { grid-column: 1 / -1; }
 /* A press that did not go through, in the box it was pressed in. A grid of
    tiles gives it the whole row. */
 .ht-act-note { grid-column: 1 / -1; }

@@ -2257,6 +2257,22 @@ export type PanelInput =
 
 const NO_INPUT: PanelInput = { kind: 'none' };
 
+/** The names a Buttons widget shows, in order, read defensively from the panel. */
+function buttonNames(panel: unknown, config: Config): readonly string[] {
+  const raw = typeof panel === 'object' && panel !== null ? (panel as { buttons?: unknown }).buttons : undefined;
+  if (!Array.isArray(raw)) return [];
+  const chosen = Array.isArray(config['buttons']) ? (config['buttons'] as unknown[]) : [];
+  const names: string[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const { key, label } = entry as { key?: unknown; label?: unknown };
+    if (typeof key !== 'string' || typeof label !== 'string') continue;
+    if (chosen.length > 0 && !chosen.includes(key)) continue;
+    names.push(label);
+  }
+  return names;
+}
+
 export function panelInput(type: string, manifest: Manifest, config: Config): PanelInput {
   const panels = manifest.panels;
   switch (type) {
@@ -2288,6 +2304,10 @@ export function panelInput(type: string, manifest: Manifest, config: Config): Pa
     }
     case 'chores':
       return { kind: 'panel', panel: panels['chores'] };
+    // The names alone, so a button marked pressable — which a panel never
+    // draws — does not refresh one (RFC 018 phase 5).
+    case 'buttons':
+      return { kind: 'panel', panel: buttonNames(panels['buttons'], config) };
     case 'homeassistant': {
       const panel = panels['home'] ?? panels['homeassistant'];
       /*
@@ -2385,6 +2405,22 @@ function drawWidget(
     }
     case 'image':
       return drawImage(fb, m, box, config);
+    case 'buttons': {
+      /*
+       * A panel has nothing to tap (RFC 018 §10.1), so a Buttons widget draws
+       * the names its wall would draw as buttons, one a line — what the
+       * household set up, and nothing that looks pressable.
+       */
+      const names = input.kind === 'panel' && Array.isArray(input.panel) ? (input.panel as string[]) : [];
+      return drawLines(
+        fb,
+        m,
+        names.length === 0 ? ['No buttons yet'] : names.map((name) => asciiTitle(name)),
+        box,
+        m.body,
+        alignOf(config),
+      );
+    }
     default:
       return drawLines(fb, m, [asciiTitle(type)], box, m.body, 'left');
   }

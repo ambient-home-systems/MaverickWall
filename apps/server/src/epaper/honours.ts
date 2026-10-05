@@ -101,6 +101,9 @@ export const PANEL_HONOURS: Readonly<Record<string, readonly string[]>> = {
   // a list absent means the typed items, present means that list's rows.
   todo: ['title', 'showTitle', 'items', 'list', 'showDone', STYLE_INSET, WHEN_EMPTY],
   image: ['title', 'showTitle', 'image', STYLE_INSET],
+  // RFC 018 phase 5: the names of the chosen buttons, a line each. Nothing to
+  // press — `tapAction` is in `PANEL_IGNORES`.
+  buttons: ['title', 'showTitle', 'align', 'buttons', STYLE_INSET, WHEN_EMPTY],
   /*
    * A group (RFC 014 §5.1) draws its frame, its title and its children's
    * cells: `layout` moves every child and `columns` moves a grid's. Not
@@ -159,6 +162,8 @@ export const INK_LANE: Readonly<Record<string, readonly string[]>> = {
   // way, and stays with the wall's own settings.
   todo: [],
   image: [],
+  // Which buttons is the widget's identity, as a to-do widget's list is.
+  buttons: [],
   // A panel could honestly lay a group out differently from the wall it
   // follows — a row on the wall, a column on a narrow panel — and that is
   // density and shape, which is what the lane is for. Empty until the editor
@@ -363,14 +368,15 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
    * tile base whose reading carries a time.
    */
   /*
-   * Tapping a reading to operate it (RFC 018). A panel has no input at all, so
-   * there is nothing to tap; it draws the reading exactly as it would with the
-   * key absent, which `epaper-ink.test.ts` proves by rendering.
+   * Tapping a reading or a button to operate it (RFC 018). A panel has no
+   * input at all, so there is nothing to tap; it draws the reading, or the
+   * button's name, exactly as it would with the key absent, which
+   * `epaper-ink.test.ts` proves by rendering.
    */
   {
     key: 'tapAction',
     label: 'Tap to operate',
-    why: 'a panel has nothing to tap, so it shows the reading and operates nothing.',
+    why: 'a panel has nothing to tap, so it shows what is there and operates nothing.',
   },
   {
     key: 'showChanged',

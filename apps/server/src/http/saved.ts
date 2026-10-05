@@ -149,6 +149,12 @@ export const SAVED_MESSAGES = {
   // widget set to act, and the page says so beside the switch.
   'ha-entity-control-on': 'Walls with operating allowed can now switch it.',
   'ha-entity-control-off': 'Walls can no longer switch it.',
+  // RFC 018 phase 5. "Added" and not "on the wall": a button reaches a wall
+  // only once it is pressable and a Buttons widget there is set to act.
+  'button-added': 'Button added. Turn on “Can be pressed from walls” when you want a wall to use it.',
+  'button-pressable': 'Walls with operating allowed can now press it.',
+  'button-not-pressable': 'Walls can no longer press it.',
+  'button-removed': 'Button removed.',
   'ha-calendar-added': 'Calendar added.',
   'ha-rule-added': 'Rule added.',
   'ha-rule-removed': 'Rule removed.',

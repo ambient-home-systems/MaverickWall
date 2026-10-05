@@ -300,6 +300,19 @@ describe('upgrading a database that is already in use', () => {
     expect(db.prepare(`SELECT screen_id, ok FROM ha_wall_actions`).all()).toEqual([
       { screen_id: 'scr-hall', ok: 1 },
     ]);
+    /*
+     * And 0058's webhook buttons (RFC 018 phase 5): one generated `CREATE TABLE`,
+     * arriving empty, and a button made later starts not pressable — the
+     * second of the three switches is off by the column's own default.
+     */
+    expect(db.prepare(`SELECT count(*) AS n FROM webhook_targets`).get()).toEqual({ n: 0 });
+    db.prepare(
+      `INSERT INTO webhook_targets (id, name, url_encrypted, created_at, updated_at)
+       VALUES ('wh-000000000000', 'Chime', 'sealed', ?, ?)`,
+    ).run(stamp, stamp);
+    expect(
+      db.prepare(`SELECT pressable, allow_lan, allow_http FROM webhook_targets`).get(),
+    ).toEqual({ pressable: 0, allow_lan: 0, allow_http: 0 });
     db.close();
   });
 

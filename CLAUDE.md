@@ -46,7 +46,8 @@ Violating any of these is a failed task.
 12. **Home Assistant writes are confined to what the household picked, through
     one door.** *(Amended 2026-10-05 by `docs/rfc-018-wall-control.md`, accepted
     as decision MD13; its last clause qualified 2026-10-05 for scripts, by the
-    owner, in phase 4. Phases 1–4 have landed.)* Three kinds of
+    owner, in phase 4, and carried to webhook buttons in phase 5. Phases 1–5
+    have landed.)* Three kinds of
     write are permitted.
     `todo.update_item` sets an item's status on a to-do list the household added
     (RFC 012). `todo.add_item` adds an item to such a list, from the companion
@@ -60,12 +61,14 @@ Violating any of these is a failed task.
     `automation`, `update`, `notify`, `hassio`, or a generic
     `homeassistant.*` service — nor a **scene** that sets any of them, which is
     checked member by member when it is marked and again at every press. A
-    **script** cannot be checked that way, so a script the household allows
-    can do whatever it was written to do, and the Readings screen says so
-    before they allow it. The display still receives handles this server
-    minted, never an entity id and never the token — so a compromised wall
-    tablet can turn off the kitchen light and cannot open the garage, unless a
-    script the household allowed on that wall does.
+    **script** cannot be checked that way, and nor can a **webhook button**,
+    which calls whatever is behind its address — a Home Assistant webhook is a
+    script by another name — so either, once the household allows it, can do
+    whatever it was written to do, and the admin says so before they allow it.
+    The display still receives handles this server minted, never an entity id,
+    an address or the token — so a compromised wall tablet can turn off the
+    kitchen light and cannot open the garage, unless a script or a webhook
+    button the household allowed on that wall does.
 
 ---
 
@@ -519,7 +522,7 @@ knowing before reading either rule as settled or as obsolete:
   three opt-ins that are all off by default; and it lets the companion API,
   never a wall, add to a household's to-do list. Locks, alarms, `input_boolean`
   helpers, thermostats and garage, gate, door and window covers stay excluded.
-  **Phases 1–4 have landed**: `HA_SERVICES` is RFC 018's frozen table,
+  **Phases 1–5 have landed**: `HA_SERVICES` is RFC 018's frozen table,
   `buildCall` its only constructor and `callService` its only door, all held by
   `ha-write-boundary.test.ts`; a wall can toggle a light, a switch or a fan
   behind the three switches; and a light's brightness, colour and white, a
@@ -528,7 +531,9 @@ knowing before reading either rule as settled or as obsolete:
   "A light dims from a panel" below); and scenes and scripts run by
   press-and-hold — a scene refused if it sets anything on the never-list, a
   script allowed with every "never" sentence qualified ("A scene or a script
-  reaches past the table" below). Webhooks and media are later phases.
+  reaches past the table" below); and webhook buttons, set on a Buttons
+  screen and drawn by a Buttons widget ("A wall presses a webhook button"
+  below). Media is the last phase.
 - **Q4 (no blur behind widgets) — still a proposal.** A Glass ground is to be
   prototyped behind a flag, with its opacity measured per picture, and Q4 flips
   only if the prototype passes the plan's MQ1 measurement. Until then
@@ -3571,6 +3576,36 @@ passing, and 1 skipped, over 337 files**: calendar 153 over 10 · core 314 over
 real Chromium. Against the 4873 over 336 measured on `main` with phases 1–3,
 +25 and +1. **Still unproven where it counts:** no real Home Assistant scene or
 script has been run from a wall.
+
+**A wall presses a webhook button, and it is the one POST outside the Home
+Assistant table (RFC 018 phase 5).** The owner took two decisions: a webhook
+button is drawn by **a new Buttons widget** (`buttons` in `WIDGET_TYPES`, with
+its own palette entry, view, tier table — the to-do list's, by identity —
+editor picker, e-paper draw of the names, and `PANEL_HONOURS` row), not inside
+the Home Assistant widget, so a household with no Home Assistant can have one;
+and **all three switches apply**, the widget's Tap to operate included. Targets
+live on a new **Buttons** admin screen and nav row (`webhook_targets`, migration
+`0058`): the address is sealed (`webhook-url`) and so is an optional header's
+value (`webhook-secret`), and only the host is ever shown again. A press is
+`POST /d/buttons/press` with the button's id and widget; the server sends an
+empty POST through the fetcher with the target's own opt-ins — its LAN switch
+covers this machine, as the Home Assistant connection's does — never following
+a redirect, sharing the wall's twenty presses a minute (`takePress`), after a
+600 ms hold. **`ha-write-boundary.test.ts` used to hold `.fetch()` POSTs to
+zero**, and now holds them to exactly one file and to no body: the webhook
+press is the reason, given in the commit that changed it, and a second caller or
+a body on this one fails it again. A Home Assistant webhook is "a script by
+another name" (§9), so §3.3's qualifier now reads "unless a script or a webhook
+button you allowed does", in Rule 12 and everywhere `ha-claims` reads. 19
+mutations checked, all red; two were green first and were dead code — the press
+modules' own copy of the wall's switch, which the route checks before reading
+the body (phase 2's `operate` had one too; both gone), and a "no panel" branch
+the registry never reaches. The full run also caught a hand-written network
+switch name, which `networkAccessLabel` owns. **4929 tests passing, and 1
+skipped, over 339 files**: calendar 153 over 10 · core 314 over 9 · display 900
+over 50 · server 3562 over 270, measured with `pnpm test` and a real Chromium.
+**Still unproven where it counts:** no real webhook has been pressed from a
+real wall.
 
 **Rule 12 changed, and the interesting part is how many places said otherwise
 (RFC 012 phase 1).** The rule is no longer "READ-ONLY, no service calls": it

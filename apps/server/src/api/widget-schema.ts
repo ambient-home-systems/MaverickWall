@@ -343,9 +343,17 @@ const widgetConfigFields = z
      * household must have marked the reading controllable on the Readings
      * screen, and this widget must be set to act — so a reading shown in two
      * places can be a button by the door and a picture in the kitchen.
-     * `/d/ha/act` reads it from the stored row, never from the wall.
+     * `/d/ha/act` reads it from the stored row, never from the wall. A Buttons
+     * widget (phase 5) reads the same key the same way, at `/d/buttons/press`.
      */
     tapAction: z.literal('act').optional(),
+    /*
+     * Buttons (RFC 018 phase 5) — which of the household's webhook buttons this
+     * widget draws, by the id the server minted; absent or empty is all of
+     * them. An id is not a secret (the address is, and stays sealed on the
+     * server), so it travels to the wall as it is stored.
+     */
+    buttons: z.array(z.string().regex(/^wh-[0-9a-f]{12}$/)).max(12).optional(),
     // Countdown — a target date (YYYY-MM-DD); the label rides in `title`.
     target: z
       .string()

@@ -384,7 +384,8 @@ describe('the sidebar is grouped by subject', () => {
     expect(groups).toEqual([
       { label: null, items: ['Overview'] },
       { label: 'Household', items: ['Calendars', 'People', 'Work Schedule', 'Chores'] },
-      { label: 'Integrations', items: ['Weather', 'Home Assistant', 'Outside temperature', 'Store'] },
+      // Buttons since RFC 018 phase 5: webhook buttons, an integration with anything.
+      { label: 'Integrations', items: ['Weather', 'Home Assistant', 'Buttons', 'Outside temperature', 'Store'] },
       { label: 'Walls', items: ['Walls', 'Themes'] },
       { label: null, items: ['System'] },
     ]);

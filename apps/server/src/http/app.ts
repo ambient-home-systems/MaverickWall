@@ -49,6 +49,7 @@ import {
   tickTodoItem,
 } from '../modules/todo/index.js';
 import { haActBody, operate, valueFor } from '../modules/homeassistant/control.js';
+import { pressWebhook } from '../modules/webhooks/index.js';
 import { activeOn, localToday, readChores, setChoreDone } from '../api/chores.js';
 import { evaluateInterrupts } from '@maverick-wall/core';
 import { dismissInterrupt, readDismissals, readRules } from '../api/rules.js';
@@ -1013,12 +1014,44 @@ export function createApp(deps: AppDeps): Hono {
       },
       {
         screenId: screen.id,
-        allowControl: true,
         reading: parsed.data.reading,
         widget: parsed.data.widget,
         action: parsed.data.action,
         ...(value === undefined ? {} : { value }),
       },
+    );
+    if (result.ok) return c.json({ ok: true });
+    return c.json({ error: result.error, message: result.message }, result.status);
+  });
+
+  /**
+   * A webhook button pressed on a wall (RFC 018 §9, phase 5).
+   *
+   * `/d/ha/act`'s shape for a button that is not a Home Assistant entity: the
+   * wall sends the button's id and the widget it was pressed in, never an
+   * address. `pressWebhook` runs the same order of checks — the wall's switch,
+   * the button, its "Can be pressed from walls", the widget set to act and
+   * showing it, the shared rate — and then the one POST, with nothing in it.
+   */
+  app.post('/d/buttons/press', async (c: Context) => {
+    const screen = c.get('screen') as ScreenRow;
+    if (screen.allowControl !== 1) {
+      return c.json(
+        { error: 'not-allowed', message: 'This wall cannot operate things in the house.' },
+        403,
+      );
+    }
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const field = (key: string): string =>
+      typeof body[key] === 'string' ? (body[key] as string).trim() : '';
+    const button = field('button');
+    const widget = field('widget');
+    if (!/^wh-[0-9a-f]{12}$/.test(button) || widget === '' || widget.length > 64) {
+      return c.json({ error: 'bad-request' }, 400);
+    }
+    const result = await pressWebhook(
+      { db: deps.db, fetcher: deps.fetcher, keyring: deps.keyring, now: (deps.now ?? Date.now)() },
+      { screenId: screen.id, button, widget },
     );
     if (result.ok) return c.json({ ok: true });
     return c.json({ error: result.error, message: result.message }, result.status);
