@@ -494,8 +494,9 @@ than its test does is the right way round for a few releases; the other way
 round is a rule nothing enforces.
 
 **On 2026-10-05 the owner reviewed Magic Frame against this product and took
-eleven more decisions (MD1–MD11); none of them changes a rule yet.** The review,
-the decisions and the work they imply are
+twelve more decisions (MD1–MD12), settling every question the review raised;
+none of them changes a rule yet.** The review, the decisions and the work they
+imply are
 `docs/plan-2026-10-magic-frame-parity.md`, with the sandbox design in
 `docs/rfc-017-sandboxed-module-code.md`. Two of its items are **proposals
 against rules on this page, not changes to them**, and are worth knowing before

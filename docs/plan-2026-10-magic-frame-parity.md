@@ -39,7 +39,7 @@ must not move for a wall that has not opted into anything new.
 - [Part 2: custom widgets](#part-2-custom-widgets)
 - [Part 3: backgrounds and glass](#part-3-backgrounds-and-glass)
 - [Order of work](#order-of-work)
-- [Open questions, with proposed defaults](#open-questions-with-proposed-defaults)
+- [Questions, all decided](#questions-all-decided)
 - [Considered, not planned](#considered-not-planned)
 - [Appendix A: Magic Frame inventory](#appendix-a-magic-frame-inventory)
 - [Appendix B: what was read](#appendix-b-what-was-read)
@@ -77,6 +77,7 @@ feature in this plan.
 | MD9 | `CLAUDE.md` | Gets a short pointer paragraph naming this plan and its two open proposals. |
 | MD10 | RFC 018 §5.2, the five items argued separately | Every recommendation accepted: media transport, `todo.add_item` from the companion API only, and fan speed are **in**; `input_boolean` helpers and thermostat setpoints are **out**. The RFC as a whole still awaits acceptance. |
 | MD11 | RFC 018's remaining open questions, OQ6–OQ10 | Every proposed default accepted: press-and-hold of 600 ms for scenes, scripts and webhooks; 20 presses a minute per wall and one in flight per entity; 14 days of wall-action history, admin only; persistent-notification dismiss waits for a WebSocket client; a signed-in admin may test a control from the editor. RFC 018 has no open questions left and awaits acceptance as a whole. |
+| MD12 | The plan's open questions, MQ1, MQ2 and MQ4–MQ12 | Every proposed default accepted, as written in the questions table below. None is open. |
 
 ## Where Maverick Wall already leads
 
@@ -382,26 +383,25 @@ did.
 
 ---
 
-## Open questions, with proposed defaults
+## Questions, all decided
 
-MQ3 is decided (MD10). Nobody has decided the other eleven yet. Each has a
-default the work builds unless the owner says otherwise, as the September
-plan's Q1–Q10 did.
+All twelve are decided. MQ3 was settled with RFC 018 (MD10); the owner accepted
+the proposed default for each of the other eleven on 2026-10-05 (MD12).
 
-| ID | Question | Proposed default |
+| ID | Question | Decision |
 | --- | --- | --- |
-| MQ1 | What must the Glass prototype measure to flip Q4? | Tick main-thread time within 20% of Soft at 6× CPU throttling (S22 measured 645–750 ms throttled for Soft); no new long task over 50 ms; every shipped picture holds 4.5:1 under its `glassAlpha`. |
-| MQ2 | How are uploaded photos resized, with no image library in the image today? | Resize in the admin browser with a canvas before upload; the server stores what it receives, capped in size. No native image dependency. |
+| MQ1 | What must the Glass prototype measure to flip Q4? | **Decided (MD12):** Tick main-thread time within 20% of Soft at 6× CPU throttling (S22 measured 645–750 ms throttled for Soft); no new long task over 50 ms; every shipped picture holds 4.5:1 under its `glassAlpha`. |
+| MQ2 | How are uploaded photos resized, with no image library in the image today? | **Decided (MD12):** Resize in the admin browser with a canvas before upload; the server stores what it receives, capped in size. No native image dependency. |
 | MQ3 | Adding to an HA shopping list from a phone needs `todo.add_item`, which Rule 12 excludes. | **Decided (MD10):** permitted by RFC 018 from the companion API only, never from a wall; until RFC 018 is accepted the API adds to Todoist only. |
-| MQ4 | A timer showing seconds cannot be right on a wall that redraws every 15 s. | Show minutes ("4 min left"); only the last minute counts seconds, through a phase-locked animation under D7. |
-| MQ5 | What may a View-only account do? | Look at everything, change nothing. Stricter than Magic Frame, whose View-only can still edit layouts. |
-| MQ6 | Which account does an HA sidebar visitor sign in as once there are several? | A setting naming one account for ingress; with none set, the normal sign-in page (fail closed, as `isTrustedIngress` already does). |
-| MQ7 | Animated icon sets carry their own SVG animation, which bypasses `motion.test.ts`. | Ship them still, or re-animate them through `motion.ts`; never SVG's own animation. |
-| MQ8 | The wall empties and rebuilds its tree every 15 s; a photo layer rebuilt each tick restarts its transition. | A persistent background layer outside the rebuilt root, phase-locked to the wall clock. |
-| MQ9 | Where are webhook button targets set? | In the admin only, through the SSRF-guarded fetcher with the LAN opt-in. |
-| MQ10 | Household photos (Immich, NAS, uploads) cannot have a pre-measured `glassAlpha`. | The wall measures each picture once at load on a small canvas; until it has, it uses Soft's opacity. |
-| MQ11 | Should an e-paper panel draw photos, dithered? | No. Panels ignore photo backgrounds, and the editor says so. |
-| MQ12 | Google OAuth needs a public HTTPS address, which most installs and the add-on do not have. | Document the limitation; point those households at the HA calendar route (RFC 013 B) or CalDAV. |
+| MQ4 | A timer showing seconds cannot be right on a wall that redraws every 15 s. | **Decided (MD12):** Show minutes ("4 min left"); only the last minute counts seconds, through a phase-locked animation under D7. |
+| MQ5 | What may a View-only account do? | **Decided (MD12):** Look at everything, change nothing. Stricter than Magic Frame, whose View-only can still edit layouts. |
+| MQ6 | Which account does an HA sidebar visitor sign in as once there are several? | **Decided (MD12):** A setting naming one account for ingress; with none set, the normal sign-in page (fail closed, as `isTrustedIngress` already does). |
+| MQ7 | Animated icon sets carry their own SVG animation, which bypasses `motion.test.ts`. | **Decided (MD12):** Ship them still, or re-animate them through `motion.ts`; never SVG's own animation. |
+| MQ8 | The wall empties and rebuilds its tree every 15 s; a photo layer rebuilt each tick restarts its transition. | **Decided (MD12):** A persistent background layer outside the rebuilt root, phase-locked to the wall clock. |
+| MQ9 | Where are webhook button targets set? | **Decided (MD12):** In the admin only, through the SSRF-guarded fetcher with the LAN opt-in. |
+| MQ10 | Household photos (Immich, NAS, uploads) cannot have a pre-measured `glassAlpha`. | **Decided (MD12):** The wall measures each picture once at load on a small canvas; until it has, it uses Soft's opacity. |
+| MQ11 | Should an e-paper panel draw photos, dithered? | **Decided (MD12):** No. Panels ignore photo backgrounds, and the editor says so. |
+| MQ12 | Google OAuth needs a public HTTPS address, which most installs and the add-on do not have. | **Decided (MD12):** Document the limitation; point those households at the HA calendar route (RFC 013 B) or CalDAV. |
 
 ---
 
