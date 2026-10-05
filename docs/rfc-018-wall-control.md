@@ -1,0 +1,393 @@
+# RFC 018 — Wall control, and a narrow amendment to rule 12
+
+Status: **proposed, nothing built; amends hard rule 12 only if accepted** ·
+Owner: — · First drafted 2026-10-05 · Relates to
+`apps/server/src/modules/homeassistant/client.ts` (`HA_SERVICES`,
+`callService`), `apps/server/src/modules/homeassistant/entities.ts`
+(`SUPPORTED_DOMAINS`), `apps/server/src/api/manifest.ts` (`haReadingHandle`,
+`displayConfig`), `apps/server/src/http/app.ts` (`/d/todo/tick`),
+`apps/server/src/http/admin-ha.ts`, `apps/display/src/render.ts`,
+`apps/display/src/house-tiles.ts`, `apps/server/src/epaper/honours.ts`,
+`apps/server/test/ha-write-boundary.test.ts`, `apps/server/test/ha-claims.test.ts`
+· Builds on RFC 012 (the to-do write and its door), P1.3 (readings by handle),
+P5.3 (the tile look) · Decision MD2 and plan items M6.0, M6.9, M6.11–M6.13 in
+[`plan-2026-10-magic-frame-parity.md`](plan-2026-10-magic-frame-parity.md)
+
+## 1. Summary
+
+This RFC proposes letting a wall **operate a small, named set of things in the
+house**: toggle lights, switches and fans; set a light's brightness and colour
+and a blind's position; run a scene or a script the household picked; and press
+a webhook button the household defined. Locks, alarms, and any cover that is a
+garage, gate, door or window stay out of reach, by the rule and by a test.
+
+Three switches must all be on before a wall can change anything: the **wall's**
+own switch, the **entity's** "can be controlled from walls" in the admin, and the
+**widget's** tap action. Every one is off by default. The wall still receives
+handles and never an entity id, and every call still leaves through the one door
+RFC 012 built, now holding a table of verbs instead of two names.
+
+The sentence this product has always been able to say survives, narrowed and
+still true: **a compromised wall tablet can turn off the kitchen light and cannot
+open the garage.**
+
+Nothing is built until this is accepted, and the first phase after acceptance
+changes the boundary and its tests and draws nothing (§12), as RFC 012's did.
+
+## 2. Why now
+
+The Magic Frame review (the parity plan, Part 1) found that the most-used thing
+on a Magic Frame wall is the thing we refuse: tapping a light. Three of its 19
+widgets exist mostly to switch things, and its households ask for more of it.
+The owner decided (MD2) to propose a narrow version rather than adopt theirs.
+
+Theirs is worth reading as the shape to avoid. Its `/api/ha/action` has no
+session check. Since v1.4.0 it limits the entity to one placed on a saved view
+and the service to a list of verbs, but before that one lamp on a public view
+reached `hassio.host_reboot`, and its default service is the generic
+`homeassistant.toggle`, which works on any domain. Every display, and anyone on
+the network, can call it.
+
+## 3. The decision this RFC asks for
+
+### 3.1 Rule 12, proposed
+
+> 12. **Home Assistant writes are confined to what the household picked, through
+> one door.** Two kinds of write are permitted. `todo.update_item` sets an
+> item's status on a to-do list the household added (RFC 012). And a wall may
+> operate an entity the household marked controllable, on a wall they allowed,
+> from a widget they set to act, using only the verbs in §5 of RFC 018. The
+> allowlist is a frozen table and a test asserts no outbound request to Home
+> Assistant leaves it. **Never** `lock`, `alarm_control_panel`, a cover whose
+> device class is `garage`, `gate`, `door` or `window` or is unset, `button`,
+> `input_button`, `valve`, `siren`, `camera`, `automation`, `update`, `notify`,
+> `hassio`, or a generic `homeassistant.*` service. The display still receives
+> handles this server minted, never an entity id and never the token — so a
+> compromised wall tablet can turn off the kitchen light and cannot open the
+> garage.
+
+### 3.2 What changes for the blast radius
+
+| | Today | With this RFC |
+| --- | --- | --- |
+| A stolen display token, or a compromised tablet | Read what the wall shows; tick to-do items on lists the household added. | The same, plus operate the entities marked controllable, **on walls allowed to**, within the verbs and rate limits here. |
+| Somebody standing at the wall | The same as above. | The same as above. |
+| What stays impossible | Every other service, every other entity. | Locks, alarms, garage/gate/door/window covers, any entity not marked, any wall not allowed, any free-form service data, any target but one entity. |
+
+The honest cost is the first row. The household decides how large it is, entity
+by entity and wall by wall, and the admin says so in those words (§7.3).
+
+## 4. What Home Assistant gives us, and does not
+
+- **The token has no scopes.** The same long-lived token that reads a
+  temperature can unlock a door, and Home Assistant offers a household no
+  per-entity permissions to narrow it. Every limit in this RFC is therefore
+  ours, enforced in this process, and tested here.
+- **Services are domain-specific.** `light.turn_on` cannot touch a lock. A
+  generic service (`homeassistant.toggle`, `homeassistant.turn_on`) takes an
+  entity of any domain, so a domain check would have to be on the target rather
+  than the service. We never call one.
+- **A target can be more than one entity.** `area_id`, `device_id`, `label_id`
+  and `entity_id: all` each reach a set this server cannot see. We send exactly
+  one `entity_id`, always.
+- **Device class and supported features are in the state.** `device_class` on a
+  cover, `supported_color_modes` and the colour-temperature range on a light,
+  and the `supported_features` bitmask are all on `GET /api/states/<id>`, which
+  this module already reads. They can change when an integration updates, so
+  they are re-read at call time (§8.2).
+- **Persistent notifications are no longer entities.** Listing them needs Home
+  Assistant's WebSocket API, which this client does not speak (§13).
+
+## 5. The allowlist
+
+`HA_SERVICES` becomes a frozen table. Each row is a domain, a service, the wall
+action that reaches it, and the only data the server may send with it. Data is
+built by the server from a bounded value; **the wall never sends service data.**
+
+| Domain | Service | Wall action | Data the server sends | Eligible when |
+| --- | --- | --- | --- | --- |
+| `todo` | `get_items` (read) | — | `status` | A list the household added (RFC 012). |
+| `todo` | `update_item` | tick | `item`, `status` | The same. |
+| `weather` | `get_forecasts` (read) | — | `type` | The household picked this entity as a weather source (M5.8). |
+| `light` | `toggle` | toggle | — | Marked controllable. |
+| `light` | `turn_on` | brightness | `brightness_pct` 1–100 | Marked controllable; a dimmable colour mode is supported. |
+| `light` | `turn_on` | colour | `rgb_color` (0–255 each) or `color_temp_kelvin` within the light's own range | Marked controllable; that colour mode is supported. |
+| `switch` | `toggle` | toggle | — | Marked controllable. |
+| `fan` | `toggle` | toggle | — | Marked controllable. |
+| `cover` | `open_cover`, `close_cover`, `stop_cover` | open, close, stop | — | Marked controllable; `device_class` is `awning`, `blind`, `curtain`, `shade` or `shutter`. |
+| `cover` | `set_cover_position` | position | `position` 0–100 | As above, and position is in `supported_features`. |
+| `scene` | `turn_on` | run | — | Marked controllable. |
+| `script` | `turn_on` | run | — (no variables) | Marked controllable. |
+| `persistent_notification` | `dismiss` | dismiss | `notification_id` | A notification shown on this wall (M6.11). |
+
+Every row sends `entity_id` as a single string, except the two `todo` rows,
+which keep RFC 012's shape. `ha-write-boundary.test.ts` asserts this table
+exactly, row by row, including the data keys.
+
+Webhook buttons are not Home Assistant service calls and have their own section
+(§9).
+
+### 5.1 Never
+
+The rule names them so nobody adds them by analogy: `lock`,
+`alarm_control_panel`, covers whose `device_class` is `garage`, `gate`, `door`,
+`window`, `damper` or **unset** (fail closed), `button` and `input_button` (a
+"press" is often an "open the gate" relay), `valve`, `siren`, `camera`,
+`automation`, `update`, `notify`, `hassio`, `homeassistant.*`, and every domain
+and service not in the table. Also never: `area_id`, `device_id`, `label_id`,
+`entity_id: all`, or any service data the wall supplied.
+
+### 5.2 Argued separately, each the owner's call
+
+Each is a row that could be added. None is in the table above until the owner
+says so; the recommendation is mine.
+
+| Item | Recommendation | Why |
+| --- | --- | --- |
+| `media_player` transport: `media_play_pause`, `media_next_track`, `media_previous_track`, `volume_set` (0–100) | **Include**, in its own phase. | Needed by the now-playing card (M6.9). Low harm: the worst case is music stopping. |
+| `todo.add_item`, from the **companion API only**, never the wall | **Include.** | The phone-to-shopping-list case (MQ3). It adds to a list the household added; the API needs a token; the wall has no keyboard. |
+| `fan.set_percentage` (0–100) | **Include** with position. | The same shape as brightness. |
+| `input_boolean.toggle` | **Exclude by default.** | These helpers often gate automations: "vacation mode", "alarm armed", "guest mode". A toggle can disarm something the household never thought of as a switch. |
+| `climate.set_temperature` | **Exclude.** | Not asked for, and a heating setpoint left at 30 °C by a child costs real money. |
+
+## 6. Three switches, all off by default
+
+1. **The wall: `screens.allow_control`.** Its own column, beside `allow_dismiss`,
+   `allow_chores` and `allow_todo`, for the reason RFC 012 gave for separating
+   those: each is a different risk. On the wall's own settings, in the same
+   group, with one sentence: "Anyone at this wall can operate the things you
+   marked controllable." Never offered on an e-paper panel.
+2. **The entity: "Can be controlled from walls".** A column on
+   `ha_entity_cache`, set on the Readings screen. It is offered only for an
+   entity whose domain and device class are eligible under §5, and the screen
+   says why when it is not offered ("A garage door is never controllable from a
+   wall"). Scripts, scenes and switches carry a warning, because each can do
+   more than its name suggests (§7.3).
+3. **The widget: a tap action.** A Home Assistant widget gains `tapAction`:
+   `none` (absent, the default) or `act`. So a household can show a light's
+   state on the hall wall without making it tappable there.
+
+All three are re-checked by the server on every press. The display only hides
+what it would not be allowed to do.
+
+## 7. The admin
+
+### 7.1 The Readings screen
+
+Each eligible reading gains a switch, "Can be controlled from walls", stored on
+`ha_entity_cache`. The saved strip says what is true ("Kitchen light can be
+operated from walls that allow it. No wall allows it yet."), following P1.3's
+rule that a token is a claim.
+
+### 7.2 The wall's settings
+
+`allow_control` sits in Touch controls, with the other three switches.
+
+### 7.3 Saying what each choice costs
+
+- A script: "A script can do anything Home Assistant can do. Allow only scripts
+  you would let a guest in your kitchen run."
+- A scene: "A scene sets every entity in it, including any lock or cover it
+  names."
+- A switch: "A switch can be wired to anything. Check what this one powers."
+
+### 7.4 Recent wall actions
+
+The admin lists the last 14 days of presses: when, which wall, which reading
+(by its label, which is the household's own), what, and whether Home Assistant
+accepted it. Stored in an `ha_wall_actions` table, kept 14 days. Not in the logs
+and not in the diagnostics export, which keep their rule of carrying no
+household content.
+
+## 8. The write path
+
+### 8.1 The route
+
+`POST /d/ha/act`, built from `/d/todo/tick`: the same gate (`requireScreen`),
+the same "the server is the authority, not the button".
+
+Body: `{ reading: <handle>, action, value? }`, parsed with Zod. `value` is a
+number or an `[r, g, b]` triple and nothing else.
+
+### 8.2 The checks, in order
+
+Each check is cheaper than the next, and the order decides which sentence a
+household reads.
+
+1. **This wall may operate things.** `screens.allow_control`. 403, "This wall
+   cannot operate things in the house."
+2. **The reading exists.** Resolve the handle against the watched entities
+   (`haReadingHandle`). 404, "That is not on this wall any more."
+3. **It is marked controllable.** 403, "That can't be operated from a wall."
+4. **The widget that drew it acts.** The press carries the widget id; the stored
+   widget's `tapAction` must be `act`. 403, the same sentence as 3.
+5. **The action is in the table for that domain, and the value is in bounds.**
+   400.
+6. **The entity is still eligible.** Re-read `GET /api/states/<id>`: domain,
+   `device_class`, `supported_features`, colour modes and range. A cover that
+   became a `garage` since it was marked is refused here, and its controllable
+   flag is cleared. 409, "That can't be operated from a wall any more."
+7. **Rate.** At most 20 presses a minute per wall, and one in flight per entity.
+   429, "Too many presses. Try again in a moment."
+
+Then `buildCall(entry, entity, value)` makes the one call. It is the **only
+constructor** of a service call, and `callService` accepts nothing else, so a
+call outside the table is a compile error as well as a test failure.
+
+### 8.3 After the call
+
+On a 200, the server re-reads that entity's state, writes the cache, records the
+action, and answers `{ ok: true }`. The wall does nothing with the answer but
+re-poll, exactly as `/d/todo/tick` does, so there is one authority and one
+drawing. On a failure, nothing is written and Home Assistant's own diagnosis
+comes back as a sentence with a 502, through `describe`.
+
+### 8.4 The cross-origin guard
+
+`/d/*` POSTs carry the display cookie. The app-wide guard that refuses a non-GET
+with a foreign `Origin` already covers this route; a test asserts it does.
+
+## 9. Webhook buttons
+
+A webhook button POSTs to an address the household set up in the admin. It is
+not a Home Assistant service call, so it does not go through `HA_SERVICES`. It
+is in this RFC because pressing it from a wall is the same kind of act.
+
+- **Targets live in the admin**, each with a name. The address is sealed with
+  the keyring, because a webhook address is usually its own secret (a Home
+  Assistant webhook id is).
+- **The wall sends a handle.** Method POST, an empty body, no headers beyond an
+  optional sealed secret header, through `Fetcher` with the target's own network
+  options (public https by default; the LAN opt-in per target). The response
+  body is discarded; only success or failure comes back, as a sentence.
+- **A webhook into Home Assistant is a script by another name.** An address on
+  the connected Home Assistant's host under `/api/webhook/` carries the script
+  warning (§7.3).
+- The same three switches apply, with the target's own "can be pressed from
+  walls" in place of the entity's.
+
+## 10. The wall
+
+- A tile or reading with `act` becomes a real `<button>`: 44×44 px target,
+  `:focus` and `:focus-visible` rings (a wall has `cursor: none`), `Enter`
+  activates, `Escape` is never bound.
+- **Tap** toggles. **Brightness, colour and position** open a panel drawn from
+  model state, as the to-do failure sentence is, so it survives the 15 s
+  rebuild. A slider sends its value once, on release; never a stream while
+  dragging.
+- **Scenes, scripts and webhooks need a press-and-hold** of 600 ms, with the
+  hold drawn as a ring, because tapping again cannot undo them (open question
+  OQ6). On a keyboard, `Enter` held for the same time.
+- A failure shows its sentence in the widget, from model state, for 8 s or
+  until the next good poll, as RFC 012's tick does.
+- **Nothing moves.** A button is the same rectangle as the tile it replaces; a
+  panel is an overlay. The reflow-stability test gains a wall with controls.
+
+### 10.1 E-paper
+
+A panel never operates anything. `tapAction` joins `PANEL_IGNORES` with its
+sentence, and `allow_control` is in neither honours table, for the reason
+`allow_todo` is not (it is a fact about the screen, not a widget key).
+
+### 10.2 The manifest
+
+A reading that the wall may operate carries `actions` — the verbs the server
+resolved for it on this wall, such as `["toggle", "brightness"]` — spread, never
+emitted empty. A household that turns nothing on sends a byte-identical manifest
+and keeps its ETag. Still no entity id: the existing assertion in
+`homeassistant.test.ts` runs again with controls on.
+
+## 11. The sentences this falsifies
+
+RFC 012 named four places that said "never writes" and the truth was ten. So
+this RFC names what a search found, and §13 requires the search again before
+merge rather than trusting this list:
+
+- `CLAUDE.md`, hard rule 12, and the security paragraph under "Home Assistant
+  writes go through one door".
+- `client.ts`, the header ("Two service calls, one of them a write") and the
+  `HA_SERVICES` comment.
+- `entities.ts`, the comment on the seven read-only domains.
+- `README.md` around lines 152–175 ("tick something off your shopping list").
+- `addon/maverick-wall/DOCS.md` line 4 ("The only thing it will ever write back
+  is ticking an item off") and lines 86–91.
+- `admin-ha.ts` around lines 1516–1535 ("Maverick Wall reads, and can tick one
+  kind of box").
+- `docs/exposing-safely.md`, which should say what a display token can now do.
+
+`ha-claims.test.ts` gains these as retired sentences, and the Home Assistant
+screen is held to naming the controls it permits, as it is held today to naming
+the to-do write.
+
+## 12. Phases
+
+1. **The boundary only.** The table, `buildCall`, the rewritten
+   `ha-write-boundary.test.ts`, the claims, the three columns and the migration.
+   Nothing is drawable and no wall can press anything. `weather.get_forecasts`,
+   being a read, may ship in this phase for M5.8.
+2. **Toggles**: lights, switches, fans. The route, the tile button, the audit
+   list, the browser test.
+3. **Brightness, colour and position**, with the panel.
+4. **Scenes and scripts**, with press-and-hold.
+5. **Webhook buttons.**
+6. **Each item in §5.2** the owner accepts, one at a time.
+
+## 13. How this gets proven
+
+- **The table.** `ha-write-boundary.test.ts` asserts the table row by row,
+  including data keys; that it is frozen; that `callService` is still the only
+  caller of `postJson`; and that `buildCall` is the only constructor.
+- **The refusal matrix.** Every domain in §5.1 times every wall action, against
+  a fake Home Assistant: no request leaves. A cover with `device_class` unset,
+  `window` and `garage` is refused. A light whose `device_class` or colour modes
+  change between marking and pressing is refused at step 6.
+- **The runtime.** A fake Home Assistant records every path and body posted; a
+  wall pressing each permitted action posts exactly the table's row and one
+  `entity_id`, and nothing else ever.
+- **The switches.** Each of the three, turned off alone, refuses the press with
+  its own sentence.
+- **The manifest.** No entity id anywhere with controls on, in both
+  orientations and on a named layout; a household with nothing turned on keeps
+  a byte-identical manifest and ETag.
+- **A real wall.** A browser test pairs a wall, taps a fake light, reads the new
+  state off the tile after the re-poll, holds a script button, and reads a
+  failure sentence when the fake answers 502. Measured by the computed state of
+  the tile, never a class.
+- **Mutations.** Each check in §8.2 removed in turn turns at least one test red;
+  `homeassistant.toggle` added to the table turns the matrix red; `area_id`
+  accepted turns it red; `actions` emitted on a panel turns `epaper-ink` red.
+- **The claims.** A fresh search of household-facing text for "write",
+  "control", "tick", "garage" and "door" before merge, and its result in the PR.
+
+## 14. Open questions
+
+| ID | Question | Proposed default |
+| --- | --- | --- |
+| OQ1 | §5.2: media transport | Include, phase 6. |
+| OQ2 | §5.2: `todo.add_item` from the companion API | Include, companion API only. |
+| OQ3 | §5.2: fan speed | Include with phase 3. |
+| OQ4 | §5.2: `input_boolean` | Exclude. |
+| OQ5 | §5.2: climate setpoints | Exclude. |
+| OQ6 | Press-and-hold or a two-step confirm for scenes, scripts and webhooks? | Press-and-hold, 600 ms. |
+| OQ7 | Rate limits | 20 presses a minute per wall; one in flight per entity. |
+| OQ8 | Audit retention | 14 days, admin only. |
+| OQ9 | Listing persistent notifications needs the WebSocket API. | Build the dismiss row only when a WebSocket client exists; until then M6.11 ships rule-based tiles only. |
+| OQ10 | Should a signed-in admin be able to test a control from the editor? | Yes, through the same route and checks, with the session standing in for the wall switch only. |
+
+## 15. Non-goals
+
+- Locks, alarms, and garage, gate, door and window covers, at any time, under
+  any switch.
+- Free-form service calls or service data from a wall, as Magic Frame's Buttons
+  widget allows.
+- Automations triggered by name, or toggled on and off.
+- Control from an e-paper panel.
+- Making views public. A wall still needs its pairing.
+
+## Appendix A — the `CLAUDE.md` diff, if accepted
+
+Replace hard rule 12 with §3.1's text. Under "Current state", replace the
+paragraph "Home Assistant writes go through one door two services wide" with one
+that names the table, the three switches and `buildCall`, and keeps its last
+sentence's meaning: the blast radius of a compromised wall tablet is what the
+household marked, and never a lock, an alarm or the garage.

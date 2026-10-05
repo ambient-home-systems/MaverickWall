@@ -501,10 +501,11 @@ the decisions and the work they imply are
 against rules on this page, not changes to them**, and are worth knowing before
 reading either rule as settled or as obsolete:
 
-- **Hard Rule 12** — a narrow amendment (RFC 018, not yet written) to let a
-  wall toggle lights, switches and fans, set brightness, colour and position,
-  and press scene, script and webhook buttons. Locks, alarms and garage, gate
-  and door covers stay excluded. Until RFC 018 is accepted, the rule above
+- **Hard Rule 12** — a narrow amendment (`docs/rfc-018-wall-control.md`,
+  proposed) to let a wall toggle lights, switches and fans, set brightness,
+  colour and position, and press scene, script and webhook buttons, behind
+  three opt-ins that are all off by default. Locks, alarms and garage, gate,
+  door and window covers stay excluded. Until RFC 018 is accepted, the rule above
   stands as written and `ha-write-boundary.test.ts` keeps holding it.
 - **Q4** (no blur behind widgets) — a Glass ground is to be prototyped behind a
   flag, with its opacity measured per picture, and Q4 flips only if the

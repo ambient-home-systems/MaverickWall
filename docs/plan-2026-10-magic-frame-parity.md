@@ -67,7 +67,7 @@ feature in this plan.
 | ID | Question | Decision |
 | --- | --- | --- |
 | MD1 | Where the plan lives | This file is the source of truth; the Claude Doc is the shareable copy. |
-| MD2 | Wall control vs Hard Rule 12 | Propose a **narrow amendment** (RFC 018): toggles, dimming/colour/position, scene and script buttons, webhook buttons. Locks and alarms stay excluded. Not adopted until accepted. |
+| MD2 | Wall control vs Hard Rule 12 | Propose a **narrow amendment** ([RFC 018](rfc-018-wall-control.md)): toggles, dimming/colour/position, scene and script buttons, webhook buttons. Locks, alarms and garage, gate, door and window covers stay excluded. Not adopted until accepted. |
 | MD3 | Custom widgets vs Hard Rule 3 | **Data only.** A much richer data contract now; a server-side sandbox whose output is still data is designed now (RFC 017) and built later. No code runs on the wall. |
 | MD4 | Glass (Q4) | **Prototype, then decide.** Glass is built behind a flag with measured per-picture opacity; Q4 flips only if the prototype passes MQ1. |
 | MD5 | Bundled images | Allowlist: museum CC0 art, US government public domain, CC BY 4.0 with credit, the owner's own photos. **No Unsplash, Pexels, Pixabay or AI-generated images.** |
@@ -153,7 +153,7 @@ The read-only items can start now. Items marked † need RFC 018 accepted first.
 
 | ID | Item | Size | What it must respect |
 | --- | --- | --- | --- |
-| M6.0 | **Write RFC 018**: the narrow Rule 12 amendment. | M | Scope: toggles for lights, switches and fans; brightness, colour and position; scene and script buttons; webhook buttons; the read-only services weather forecasts and notification listing need. Excluded outright: locks, alarms, and covers whose device class is garage, gate or door. Per-wall opt-in, per-entity opt-in in the admin, handles never entity ids, `HA_SERVICES` stays frozen and held by `ha-write-boundary.test.ts`. |
+| M6.0 | **RFC 018**: the narrow Rule 12 amendment, drafted in [`rfc-018-wall-control.md`](rfc-018-wall-control.md). | M | Scope: toggles for lights, switches and fans; brightness, colour and position; scene and script buttons; webhook buttons; the read-only services weather forecasts and notification listing need. Excluded outright: locks, alarms, and covers whose device class is garage, gate, door, window, damper or unset. Three opt-ins (wall, entity, widget), handles never entity ids, `HA_SERVICES` a frozen table held by `ha-write-boundary.test.ts`. |
 | M6.1 | **Camera snapshot tile.** | M | RFC 007's opaque handle and frame hub. Must survive the 15 s rebuild without reconnecting. |
 | M6.2 | **Camera live stream** (MJPEG/WebRTC through HA or go2rtc). | L | RFC 007. |
 | M6.3 | **Doorbell pop-up**: a camera covers the wall when an entity triggers, then returns. | M | Built as an interrupt action, so it shares dismissal, night hours and source scope with alerts. |
@@ -359,7 +359,7 @@ Push and remote control ship first, because they are small and every later
 feature benefits from them (MD8). Two gates hold work back.
 
 1. **M0 — Plan and RFCs** (this PR): this plan, RFC 017, the `CLAUDE.md`
-   pointer. RFC 018 is drafted next (M6.0).
+   pointer, and RFC 018 (drafted, awaiting the owner's acceptance).
 2. **M1 and M2 — Push and API**: the wall on the push hub, remote commands,
    the companion token and its endpoints.
 3. **M3 and M4 — Photos and glass**: photo sources and presentation, the Glass
@@ -389,7 +389,7 @@ owner says otherwise, as the September plan's Q1–Q10 did.
 | --- | --- | --- |
 | MQ1 | What must the Glass prototype measure to flip Q4? | Tick main-thread time within 20% of Soft at 6× CPU throttling (S22 measured 645–750 ms throttled for Soft); no new long task over 50 ms; every shipped picture holds 4.5:1 under its `glassAlpha`. |
 | MQ2 | How are uploaded photos resized, with no image library in the image today? | Resize in the admin browser with a canvas before upload; the server stores what it receives, capped in size. No native image dependency. |
-| MQ3 | Adding to an HA shopping list from a phone needs `todo.add_item`, which Rule 12 excludes. | Put it in RFC 018 as a separate, argued item; until then the API adds to Todoist only. |
+| MQ3 | Adding to an HA shopping list from a phone needs `todo.add_item`, which Rule 12 excludes. | Argued separately in RFC 018 §5.2 (recommended: companion API only, never the wall); until accepted the API adds to Todoist only. |
 | MQ4 | A timer showing seconds cannot be right on a wall that redraws every 15 s. | Show minutes ("4 min left"); only the last minute counts seconds, through a phase-locked animation under D7. |
 | MQ5 | What may a View-only account do? | Look at everything, change nothing. Stricter than Magic Frame, whose View-only can still edit layouts. |
 | MQ6 | Which account does an HA sidebar visitor sign in as once there are several? | A setting naming one account for ingress; with none set, the normal sign-in page (fail closed, as `isTrustedIngress` already does). |
