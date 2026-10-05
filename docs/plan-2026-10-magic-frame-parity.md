@@ -76,6 +76,7 @@ feature in this plan.
 | MD8 | Order of work | Push and remote control first, then photos and glass, then widgets, HA depth, custom widgets, admin. |
 | MD9 | `CLAUDE.md` | Gets a short pointer paragraph naming this plan and its two open proposals. |
 | MD10 | RFC 018 §5.2, the five items argued separately | Every recommendation accepted: media transport, `todo.add_item` from the companion API only, and fan speed are **in**; `input_boolean` helpers and thermostat setpoints are **out**. The RFC as a whole still awaits acceptance. |
+| MD11 | RFC 018's remaining open questions, OQ6–OQ10 | Every proposed default accepted: press-and-hold of 600 ms for scenes, scripts and webhooks; 20 presses a minute per wall and one in flight per entity; 14 days of wall-action history, admin only; persistent-notification dismiss waits for a WebSocket client; a signed-in admin may test a control from the editor. RFC 018 has no open questions left and awaits acceptance as a whole. |
 
 ## Where Maverick Wall already leads
 

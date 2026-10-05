@@ -494,7 +494,7 @@ than its test does is the right way round for a few releases; the other way
 round is a rule nothing enforces.
 
 **On 2026-10-05 the owner reviewed Magic Frame against this product and took
-ten more decisions (MD1–MD10); none of them changes a rule yet.** The review,
+eleven more decisions (MD1–MD11); none of them changes a rule yet.** The review,
 the decisions and the work they imply are
 `docs/plan-2026-10-magic-frame-parity.md`, with the sandbox design in
 `docs/rfc-017-sandboxed-module-code.md`. Two of its items are **proposals
@@ -502,7 +502,8 @@ against rules on this page, not changes to them**, and are worth knowing before
 reading either rule as settled or as obsolete:
 
 - **Hard Rule 12** — a narrow amendment (`docs/rfc-018-wall-control.md`,
-  proposed) to let a wall toggle lights, switches and fans, set brightness,
+  proposed, every open question in it decided, the RFC itself awaiting
+  acceptance) to let a wall toggle lights, switches and fans, set brightness,
   colour, position and fan speed, control media playback, and press scene,
   script and webhook buttons, behind three opt-ins that are all off by default;
   and to let the companion API, never a wall, add to a household's to-do list.

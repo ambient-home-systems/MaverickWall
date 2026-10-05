@@ -1,8 +1,9 @@
 # RFC 018 — Wall control, and a narrow amendment to rule 12
 
 Status: **proposed, nothing built; amends hard rule 12 only if accepted.**
-The five items in §5.2 were decided by the owner on 2026-10-05 and are folded
-into §5 and §5.1; the RFC as a whole still awaits acceptance ·
+Every open question was decided by the owner on 2026-10-05: the five items in
+§5.2 are folded into §5 and §5.1, and OQ6–OQ10 are settled in §14. Nothing is
+left to decide but whether to accept the RFC itself ·
 Owner: — · First drafted 2026-10-05 · Relates to
 `apps/server/src/modules/homeassistant/client.ts` (`HA_SERVICES`,
 `callService`), `apps/server/src/modules/homeassistant/entities.ts`
@@ -104,7 +105,7 @@ by entity and wall by wall, and the admin says so in those words (§7.3).
   this module already reads. They can change when an integration updates, so
   they are re-read at call time (§8.2).
 - **Persistent notifications are no longer entities.** Listing them needs Home
-  Assistant's WebSocket API, which this client does not speak (§13).
+  Assistant's WebSocket API, which this client does not speak (§14, OQ9).
 
 ## 5. The allowlist
 
@@ -290,8 +291,8 @@ is in this RFC because pressing it from a wall is the same kind of act.
   rebuild. A slider sends its value once, on release; never a stream while
   dragging.
 - **Scenes, scripts and webhooks need a press-and-hold** of 600 ms, with the
-  hold drawn as a ring, because tapping again cannot undo them (open question
-  OQ6). On a keyboard, `Enter` held for the same time.
+  hold drawn as a ring, because tapping again cannot undo them (OQ6,
+  decided). On a keyboard, `Enter` held for the same time.
 - A failure shows its sentence in the widget, from model state, for 8 s or
   until the next good poll, as RFC 012's tick does.
 - **Nothing moves.** A button is the same rectangle as the tile it replaces; a
@@ -385,21 +386,21 @@ used by the companion API's list endpoint (plan item M2.2) when that is built.
 
 ## 14. Open questions
 
-OQ1–OQ5 were the §5.2 items and are decided (2026-10-05). The rest have
-proposed defaults the work builds unless the owner says otherwise.
+All ten were decided by the owner on 2026-10-05: OQ1–OQ5 are the §5.2 items,
+and OQ6–OQ10 took the defaults this RFC proposed. None is open.
 
-| ID | Question | Proposed default |
+| ID | Question | Decision |
 | --- | --- | --- |
 | OQ1 | §5.2: media transport | **Decided:** included, phase 6. |
 | OQ2 | §5.2: `todo.add_item` from the companion API | **Decided:** included, companion API only. |
 | OQ3 | §5.2: fan speed | **Decided:** included, phase 3. |
 | OQ4 | §5.2: `input_boolean` | **Decided:** excluded. |
 | OQ5 | §5.2: climate setpoints | **Decided:** excluded. |
-| OQ6 | Press-and-hold or a two-step confirm for scenes, scripts and webhooks? | Press-and-hold, 600 ms. |
-| OQ7 | Rate limits | 20 presses a minute per wall; one in flight per entity. |
-| OQ8 | Audit retention | 14 days, admin only. |
-| OQ9 | Listing persistent notifications needs the WebSocket API. | Build the dismiss row only when a WebSocket client exists; until then M6.11 ships rule-based tiles only. |
-| OQ10 | Should a signed-in admin be able to test a control from the editor? | Yes, through the same route and checks, with the session standing in for the wall switch only. |
+| OQ6 | Press-and-hold or a two-step confirm for scenes, scripts and webhooks? | **Decided:** press-and-hold, 600 ms. |
+| OQ7 | Rate limits | **Decided:** 20 presses a minute per wall; one in flight per entity. |
+| OQ8 | Audit retention | **Decided:** 14 days, admin only. |
+| OQ9 | Listing persistent notifications needs the WebSocket API. | **Decided:** build the dismiss row only when a WebSocket client exists; until then M6.11 ships rule-based tiles only. |
+| OQ10 | Should a signed-in admin be able to test a control from the editor? | **Decided:** yes, through the same route and checks, with the session standing in for the wall switch only. |
 
 ## 15. Non-goals
 
