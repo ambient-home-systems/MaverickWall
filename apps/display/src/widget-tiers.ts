@@ -876,6 +876,8 @@ export const WIDGET_TIERS: Readonly<Record<string, readonly WidgetTier[]>> = {
    */
   timers: TODO_TIERS,
   messages: TODO_TIERS,
+  // News headlines are a list of lines in the event role too (plan item M5.5).
+  news: TODO_TIERS,
 };
 
 /**

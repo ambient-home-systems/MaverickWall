@@ -118,6 +118,14 @@ export const PANEL_HONOURS: Readonly<Record<string, readonly string[]>> = {
    * where it sits and how it is aligned, all drawn on one bit. Uppercase is
    * words too. Nothing in it is colour, so nothing is said to be ignored.
    */
+  /*
+   * News (plan item M5.5): which feeds, a list or the newest headline with
+   * its code, how many, and the source and time under each. `rotateSeconds`
+   * is not here — a panel never turns (`PANEL_IGNORES`).
+   */
+  news: [
+    'title', 'showTitle', 'newsFeeds', 'mode', 'count', 'showSource', 'showTime', 'showQr', STYLE_INSET, WHEN_EMPTY,
+  ],
   heading: [
     'title', 'showTitle', 'align', 'text', 'subtitle', 'textSize', 'valign', 'glyph', 'divider', 'uppercase',
     STYLE_INSET,
@@ -194,6 +202,9 @@ export const INK_LANE: Readonly<Record<string, readonly string[]>> = {
   // Size, place and alignment are shape, which is what the lane is for; the
   // words, the glyph and the rule are the heading itself and stay the wall's.
   heading: ['textSize', 'valign', 'align'],
+  // How much a panel says — a list or the newest, how many, the source, the
+  // time and the code. Which feeds is the widget's identity.
+  news: ['mode', 'count', 'showSource', 'showTime', 'showQr'],
   // A panel could honestly lay a group out differently from the wall it
   // follows — a row on the wall, a column on a narrow panel — and that is
   // density and shape, which is what the lane is for. Empty until the editor
@@ -407,6 +418,17 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
     key: 'tapAction',
     label: 'Tap to operate',
     why: 'a panel has nothing to tap, so it shows what is there and operates nothing.',
+  },
+  /*
+   * The one-at-a-time News view's turning (plan item M5.5). A panel shows one
+   * picture for up to an hour, so it draws the newest headline and stays on
+   * it; turning would be a full refresh every minute on a battery panel.
+   */
+  {
+    key: 'rotateSeconds',
+    types: ['news'],
+    label: 'Each headline shows for',
+    why: 'a panel shows the newest headline and does not turn, which would refresh a battery panel every minute.',
   },
   {
     key: 'showChanged',

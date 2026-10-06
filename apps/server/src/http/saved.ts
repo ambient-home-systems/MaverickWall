@@ -155,6 +155,9 @@ export const SAVED_MESSAGES = {
   'button-pressable': 'Walls with operating allowed can now press it.',
   'button-not-pressable': 'Walls can no longer press it.',
   'button-removed': 'Button removed.',
+  // A feed is read before it is added, so the strip can say it read (M5.5).
+  'news-feed-added': 'Feed added. A News widget on a wall shows its headlines.',
+  'news-feed-removed': 'Feed removed.',
   // Timers and messages (plan items M5.1–M5.2). "On the walls" only where a
   // widget draws them — so the strip says it was started, not that it shows.
   'timer-started': 'Timer started. A Timers widget on a wall counts it down.',

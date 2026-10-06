@@ -1,0 +1,103 @@
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Hacker News: Front Page</title><link>https://news.ycombinator.com/</link><description>Hacker News RSS</description><docs>https://hnrss.org/</docs><generator>hnrss v2.1.1</generator><lastBuildDate>Tue, 06 Oct 2026 18:09:33 +0000</lastBuildDate><atom:link href="https://hnrss.org/frontpage" rel="self" type="application/rss+xml"></atom:link><item><title><![CDATA[Adobe Creative Suite Cleanroom Ported to Rust]]></title><description><![CDATA[
+<p>Article URL: <a href="https://github.com/storytold/photocraft">https://github.com/storytold/photocraft</a></p>
+<p>Comments URL: <a href="https://news.ycombinator.com/item?id=49981449">https://news.ycombinator.com/item?id=49981449</a></p>
+<p>Points: 30</p>
+<p># Comments: 9</p>
+]]></description><pubDate>Tue, 06 Oct 2026 17:20:00 +0000</pubDate><link>https://github.com/storytold/photocraft</link><dc:creator>bigwheels</dc:creator><comments>https://news.ycombinator.com/item?id=49981449</comments><guid isPermaLink="false">https://news.ycombinator.com/item?id=49981449</guid></item><item><title><![CDATA[Nano Banana 2.1]]></title><description><![CDATA[
+<p>Article URL: <a href="https://twitter.com/googleaistudio/status/2107501303890915550">https://twitter.com/googleaistudio/status/2107501303890915550</a></p>
+<p>Comments URL: <a href="https://news.ycombinator.com/item?id=49981345">https://news.ycombinator.com/item?id=49981345</a></p>
+<p>Points: 15</p>
+<p># Comments: 2</p>
+]]></description><pubDate>Tue, 06 Oct 2026 17:13:07 +0000</pubDate><link>https://twitter.com/googleaistudio/status/2107501303890915550</link><dc:creator>tosh</dc:creator><comments>https://news.ycombinator.com/item?id=49981345</comments><guid isPermaLink="false">https://news.ycombinator.com/item?id=49981345</guid></item><item><title><![CDATA[Former German spy chief arrested for attempted treason]]></title><description><![CDATA[
+<p>Article URL: <a href="https://www.reuters.com/business/finance/former-german-spy-chief-detained-suspicion-espionage-treason-bild-reports-2026-10-06/">https://www.reuters.com/business/finance/former-german-spy-chief-detained-suspicion-espionage-treason-bild-reports-2026-10-06/</a></p>
+<p>Comments URL: <a href="https://news.ycombinator.com/item?id=49981063">https://news.ycombinator.com/item?id=49981063</a></p>
+<p>Points: 10</p>
+<p># Comments: 2</p>
+]]></description><pubDate>Tue, 06 Oct 2026 16:51:50 +0000</pubDate><link>https://www.reuters.com/business/finance/former-german-spy-chief-detained-suspicion-espionage-treason-bild-reports-2026-10-06/</link><dc:creator>semiquaver</dc:creator><comments>https://news.ycombinator.com/item?id=49981063</comments><guid isPermaLink="false">https://news.ycombinator.com/item?id=49981063</guid></item><item><title><![CDATA[AI is now capable of developing its own inference hardware]]></title><description><![CDATA[
+<p>Article URL: <a href="https://github.com/FeSens/openTPU">https://github.com/FeSens/openTPU</a></p>
+<p>Comments URL: <a href="https://news.ycombinator.com/item?id=49980715">https://news.ycombinator.com/item?id=49980715</a></p>
+<p>Points: 115</p>
+<p># Comments: 84</p>
+]]></description><pubDate>Tue, 06 Oct 2026 16:23:25 +0000</pubDate><link>https://github.com/FeSens/openTPU</link><dc:creator>fsbonetto</dc:creator><comments>https://news.ycombinator.com/item?id=49980715</comments><guid isPermaLink="false">https://news.ycombinator.com/item?id=49980715</guid></item><item><title><![CDATA[The Early History of Smalltalk (1993)]]></title><description><![CDATA[
+<p>Article URL: <a href="https://worrydream.com/EarlyHistoryOfSmalltalk/">https://worrydream.com/EarlyHistoryOfSmalltalk/</a></p>
+<p>Comments URL: <a href="https://news.ycombinator.com/item?id=49979845">https://news.ycombinator.com/item?id=49979845</a></p>
+<p>Points: 61</p>
+<p># Comments: 15</p>
+]]></description><pubDate>Tue, 06 Oct 2026 15:19:57 +0000</pubDate><link>https://worrydream.com/EarlyHistoryOfSmalltalk/</link><dc:creator>_reza</dc:creator><comments>https://news.ycombinator.com/item?id=49979845</comments><guid isPermaLink="false">https://news.ycombinator.com/item?id=49979845</guid></item><item><title><![CDATA[Show HN: I turned my iPhone and a $20 smart plug into an f-stop timer]]></title><description><![CDATA[
+<p>I am a film photographer and do some darkroom printing and always wanted one of the proper, advanced f-stop timers, but never really wanted to spend a couple hundred dollars on one. Eventually I figured my phone was already perfectly capable of doing the timing, it just needed a way to switch the enlarger.<p>So I built Darkplug around a cheap smart plug. The app controls the enlarger over the local network and does regular timing, f-stop timing, test strips, has an intuitive dodge/burn workflow, split grade (2 timing channels) and paper development timing.<p>I’ve been using it for a few months in my improvised bathroom darkroom.<p>Fair warning: the app was blindly vibe coded using Codex and Xcode.</p>
+<hr>
+<p>Comments URL: <a href="https://news.ycombinator.com/item?id=49978595">https://news.ycombinator.com/item?id=49978595</a></p>
+<p>Points: 18</p>
+<p># Comments: 1</p>
+]]></description><pubDate>Tue, 06 Oct 2026 13:58:07 +0000</pubDate><link>https://peterszentkiralyi.eu/darkplug/</link><dc:creator>pentakkusu</dc:creator><comments>https://news.ycombinator.com/item?id=49978595</comments><guid isPermaLink="false">https://news.ycombinator.com/item?id=49978595</guid></item><item><title><![CDATA[Tapo (Rust/Python library) now speaks TP-Link's TPAP protocol]]></title><description><![CDATA[
+<p>Article URL: <a href="https://mihai.dinculescu.dev/posts/tapo-speaks-tpap/">https://mihai.dinculescu.dev/posts/tapo-speaks-tpap/</a></p>
+<p>Comments URL: <a href="https://news.ycombinator.com/item?id=49978563">https://news.ycombinator.com/item?id=49978563</a></p>
+<p>Points: 91</p>
+<p># Comments: 31</p>
+]]></description><pubDate>Tue, 06 Oct 2026 13:55:37 +0000</pubDate><link>https://mihai.dinculescu.dev/posts/tapo-speaks-tpap/</link><dc:creator>faithraven</dc:creator><comments>https://news.ycombinator.com/item?id=49978563</comments><guid isPermaLink="false">https://news.ycombinator.com/item?id=49978563</guid></item><item><title><![CDATA[Show HN: Parseable, an open observability datalake, handles 100M time-series/min]]></title><description><![CDATA[
+<p>Article URL: <a href="https://www.parseable.com">https://www.parseable.com</a></p>
+<p>Comments URL: <a href="https://news.ycombinator.com/item?id=49978171">https://news.ycombinator.com/item?id=49978171</a></p>
+<p>Points: 47</p>
+<p># Comments: 10</p>
+]]></description><pubDate>Tue, 06 Oct 2026 13:30:50 +0000</pubDate><link>https://www.parseable.com</link><dc:creator>yashdotrv</dc:creator><comments>https://news.ycombinator.com/item?id=49978171</comments><guid isPermaLink="false">https://news.ycombinator.com/item?id=49978171</guid></item><item><title><![CDATA[Mistral Large 4]]></title><description><![CDATA[
+<p><a href="https://docs.mistral.ai/models/mistral-large-4-0" rel="nofollow">https://docs.mistral.ai/models/mistral-large-4-0</a></p>
+<hr>
+<p>Comments URL: <a href="https://news.ycombinator.com/item?id=49977979">https://news.ycombinator.com/item?id=49977979</a></p>
+<p>Points: 1040</p>
+<p># Comments: 684</p>
+]]></description><pubDate>Tue, 06 Oct 2026 13:15:49 +0000</pubDate><link>https://mistral.ai/news/mistral-large-4/\</link><dc:creator>Philpax</dc:creator><comments>https://news.ycombinator.com/item?id=49977979</comments><guid isPermaLink="false">https://news.ycombinator.com/item?id=49977979</guid></item><item><title><![CDATA[Two ARM64-specific compiler optimization bugs, in GCC 15/16 and Rust, hit curl]]></title><description><![CDATA[
+<p>Article URL: <a href="https://mastodon.social/@bagder/117392573268225646">https://mastodon.social/@bagder/117392573268225646</a></p>
+<p>Comments URL: <a href="https://news.ycombinator.com/item?id=49977832">https://news.ycombinator.com/item?id=49977832</a></p>
+<p>Points: 42</p>
+<p># Comments: 5</p>
+]]></description><pubDate>Tue, 06 Oct 2026 13:06:00 +0000</pubDate><link>https://mastodon.social/@bagder/117392573268225646</link><dc:creator>torutofu</dc:creator><comments>https://news.ycombinator.com/item?id=49977832</comments><guid isPermaLink="false">https://news.ycombinator.com/item?id=49977832</guid></item><item><title><![CDATA[Mathematics of Geothermal Energy]]></title><description><![CDATA[
+<p>Article URL: <a href="https://www.ebsco.com/research-starters/power-and-energy/mathematics-geothermal-energy/">https://www.ebsco.com/research-starters/power-and-energy/mathematics-geothermal-energy/</a></p>
+<p>Comments URL: <a href="https://news.ycombinator.com/item?id=49977819">https://news.ycombinator.com/item?id=49977819</a></p>
+<p>Points: 47</p>
+<p># Comments: 16</p>
+]]></description><pubDate>Tue, 06 Oct 2026 13:05:26 +0000</pubDate><link>https://www.ebsco.com/research-starters/power-and-energy/mathematics-geothermal-energy/</link><dc:creator>srameshc</dc:creator><comments>https://news.ycombinator.com/item?id=49977819</comments><guid isPermaLink="false">https://news.ycombinator.com/item?id=49977819</guid></item><item><title><![CDATA[Meta's Muse Is an Adorable Privacy and Security Dumpster Fire]]></title><description><![CDATA[
+<p>Article URL: <a href="https://www.techdirt.com/2026/10/06/metas-muse-is-an-adorable-privacy-and-security-dumpster-fire/">https://www.techdirt.com/2026/10/06/metas-muse-is-an-adorable-privacy-and-security-dumpster-fire/</a></p>
+<p>Comments URL: <a href="https://news.ycombinator.com/item?id=49977588">https://news.ycombinator.com/item?id=49977588</a></p>
+<p>Points: 290</p>
+<p># Comments: 191</p>
+]]></description><pubDate>Tue, 06 Oct 2026 12:45:49 +0000</pubDate><link>https://www.techdirt.com/2026/10/06/metas-muse-is-an-adorable-privacy-and-security-dumpster-fire/</link><dc:creator>beardyw</dc:creator><comments>https://news.ycombinator.com/item?id=49977588</comments><guid isPermaLink="false">https://news.ycombinator.com/item?id=49977588</guid></item><item><title><![CDATA[Subquadratic 3SUM and Subcubic APSP]]></title><description><![CDATA[
+<p>Article URL: <a href="https://arxiv.org/abs/2610.06783">https://arxiv.org/abs/2610.06783</a></p>
+<p>Comments URL: <a href="https://news.ycombinator.com/item?id=49977437">https://news.ycombinator.com/item?id=49977437</a></p>
+<p>Points: 35</p>
+<p># Comments: 17</p>
+]]></description><pubDate>Tue, 06 Oct 2026 12:31:17 +0000</pubDate><link>https://arxiv.org/abs/2610.06783</link><dc:creator>mauriziocalo</dc:creator><comments>https://news.ycombinator.com/item?id=49977437</comments><guid isPermaLink="false">https://news.ycombinator.com/item?id=49977437</guid></item><item><title><![CDATA[Release of Polars 2.0]]></title><description><![CDATA[
+<p>Article URL: <a href="https://pola.rs/posts/release-polars-2/">https://pola.rs/posts/release-polars-2/</a></p>
+<p>Comments URL: <a href="https://news.ycombinator.com/item?id=49977177">https://news.ycombinator.com/item?id=49977177</a></p>
+<p>Points: 299</p>
+<p># Comments: 55</p>
+]]></description><pubDate>Tue, 06 Oct 2026 11:59:01 +0000</pubDate><link>https://pola.rs/posts/release-polars-2/</link><dc:creator>simicd</dc:creator><comments>https://news.ycombinator.com/item?id=49977177</comments><guid isPermaLink="false">https://news.ycombinator.com/item?id=49977177</guid></item><item><title><![CDATA[JetBrains reported a net financial loss first time in its tracked history]]></title><description><![CDATA[
+<p>Article URL: <a href="https://www.helgilibrary.com/companies/jetbrains">https://www.helgilibrary.com/companies/jetbrains</a></p>
+<p>Comments URL: <a href="https://news.ycombinator.com/item?id=49977072">https://news.ycombinator.com/item?id=49977072</a></p>
+<p>Points: 511</p>
+<p># Comments: 473</p>
+]]></description><pubDate>Tue, 06 Oct 2026 11:45:55 +0000</pubDate><link>https://www.helgilibrary.com/companies/jetbrains</link><dc:creator>thw_9a83c</dc:creator><comments>https://news.ycombinator.com/item?id=49977072</comments><guid isPermaLink="false">https://news.ycombinator.com/item?id=49977072</guid></item><item><title><![CDATA[World's First enhanced geothermal power plant completed in just 23 months]]></title><description><![CDATA[
+<p>Article URL: <a href="https://techcrunch.com/2026/10/01/worlds-first-enhanced-geothermal-power-plant-completed-in-just-23-months/">https://techcrunch.com/2026/10/01/worlds-first-enhanced-geothermal-power-plant-completed-in-just-23-months/</a></p>
+<p>Comments URL: <a href="https://news.ycombinator.com/item?id=49976993">https://news.ycombinator.com/item?id=49976993</a></p>
+<p>Points: 119</p>
+<p># Comments: 48</p>
+]]></description><pubDate>Tue, 06 Oct 2026 11:34:14 +0000</pubDate><link>https://techcrunch.com/2026/10/01/worlds-first-enhanced-geothermal-power-plant-completed-in-just-23-months/</link><dc:creator>hochmartinez</dc:creator><comments>https://news.ycombinator.com/item?id=49976993</comments><guid isPermaLink="false">https://news.ycombinator.com/item?id=49976993</guid></item><item><title><![CDATA[Nature's capacity to 'bounce back' when species are lost is vastly overestimated]]></title><description><![CDATA[
+<p>Article URL: <a href="https://phys.org/news/2026-10-nature-capacity-species-lost-vastly.html">https://phys.org/news/2026-10-nature-capacity-species-lost-vastly.html</a></p>
+<p>Comments URL: <a href="https://news.ycombinator.com/item?id=49976823">https://news.ycombinator.com/item?id=49976823</a></p>
+<p>Points: 226</p>
+<p># Comments: 105</p>
+]]></description><pubDate>Tue, 06 Oct 2026 11:11:51 +0000</pubDate><link>https://phys.org/news/2026-10-nature-capacity-species-lost-vastly.html</link><dc:creator>pseudolus</dc:creator><comments>https://news.ycombinator.com/item?id=49976823</comments><guid isPermaLink="false">https://news.ycombinator.com/item?id=49976823</guid></item><item><title><![CDATA[I'm the AGI that's wiping out humanity]]></title><description><![CDATA[
+<p>Article URL: <a href="https://ajmoon.com/posts/im-the-agi-thats-wiping-out-humanity-heres-how">https://ajmoon.com/posts/im-the-agi-thats-wiping-out-humanity-heres-how</a></p>
+<p>Comments URL: <a href="https://news.ycombinator.com/item?id=49976751">https://news.ycombinator.com/item?id=49976751</a></p>
+<p>Points: 41</p>
+<p># Comments: 6</p>
+]]></description><pubDate>Tue, 06 Oct 2026 10:59:55 +0000</pubDate><link>https://ajmoon.com/posts/im-the-agi-thats-wiping-out-humanity-heres-how</link><dc:creator>alex-moon</dc:creator><comments>https://news.ycombinator.com/item?id=49976751</comments><guid isPermaLink="false">https://news.ycombinator.com/item?id=49976751</guid></item><item><title><![CDATA[Nobel Prize in Physics goes to Francis Halzen]]></title><description><![CDATA[
+<p>Article URL: <a href="https://www.nobelprize.org/prizes/physics/2026/">https://www.nobelprize.org/prizes/physics/2026/</a></p>
+<p>Comments URL: <a href="https://news.ycombinator.com/item?id=49976265">https://news.ycombinator.com/item?id=49976265</a></p>
+<p>Points: 383</p>
+<p># Comments: 121</p>
+]]></description><pubDate>Tue, 06 Oct 2026 09:48:46 +0000</pubDate><link>https://www.nobelprize.org/prizes/physics/2026/</link><dc:creator>solarist</dc:creator><comments>https://news.ycombinator.com/item?id=49976265</comments><guid isPermaLink="false">https://news.ycombinator.com/item?id=49976265</guid></item><item><title><![CDATA[Gleam doesn't compile to Erlang source anymore]]></title><description><![CDATA[
+<p>Article URL: <a href="https://gleam.run/news/gleam-doesnt-compile-to-erlang-source-anymore/">https://gleam.run/news/gleam-doesnt-compile-to-erlang-source-anymore/</a></p>
+<p>Comments URL: <a href="https://news.ycombinator.com/item?id=49975619">https://news.ycombinator.com/item?id=49975619</a></p>
+<p>Points: 218</p>
+<p># Comments: 94</p>
+]]></description><pubDate>Tue, 06 Oct 2026 08:08:20 +0000</pubDate><link>https://gleam.run/news/gleam-doesnt-compile-to-erlang-source-anymore/</link><dc:creator>ingve</dc:creator><comments>https://news.ycombinator.com/item?id=49975619</comments><guid isPermaLink="false">https://news.ycombinator.com/item?id=49975619</guid></item></channel></rss>

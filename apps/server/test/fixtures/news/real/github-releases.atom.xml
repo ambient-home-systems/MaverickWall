@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/" xml:lang="en-US">
+  <id>tag:github.com,2008:https://github.com/ambient-home-systems/MaverickWall/releases</id>
+  <link type="text/html" rel="alternate" href="https://github.com/ambient-home-systems/MaverickWall/releases"/>
+  <link type="application/atom+xml" rel="self" href="https://github.com/ambient-home-systems/MaverickWall/releases.atom"/>
+  <title>Release notes from MaverickWall</title>
+  <updated>2026-10-06T17:57:53Z</updated>
+  <entry>
+    <id>tag:github.com,2008:Repository/1315485124/v0.84.0</id>
+    <updated>2026-10-06T18:16:04Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/ambient-home-systems/MaverickWall/releases/tag/v0.84.0"/>
+    <title>v0.84.0</title>
+    <content type="html">&lt;p&gt;Sideload APK for the Maverick Wall Android / Google TV wall app. Install with &lt;code&gt;adb install -r maverick-wall-0.84.0.apk&lt;/code&gt;. See &lt;a href=&quot;/ambient-home-systems/MaverickWall/blob/v0.84.0/apps/android/README.md&quot;&gt;apps/android/README.md&lt;/a&gt;.&lt;/p&gt;</content>
+    <author>
+      <name>github-actions[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/15368?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/1315485124/v0.83.0</id>
+    <updated>2026-10-06T17:29:16Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/ambient-home-systems/MaverickWall/releases/tag/v0.83.0"/>
+    <title>v0.83.0</title>
+    <content type="html">&lt;p&gt;Sideload APK for the Maverick Wall Android / Google TV wall app. Install with &lt;code&gt;adb install -r maverick-wall-0.83.0.apk&lt;/code&gt;. See &lt;a href=&quot;/ambient-home-systems/MaverickWall/blob/v0.83.0/apps/android/README.md&quot;&gt;apps/android/README.md&lt;/a&gt;.&lt;/p&gt;</content>
+    <author>
+      <name>github-actions[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/15368?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/1315485124/v0.82.0</id>
+    <updated>2026-10-06T15:07:44Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/ambient-home-systems/MaverickWall/releases/tag/v0.82.0"/>
+    <title>v0.82.0</title>
+    <content type="html">&lt;p&gt;Sideload APK for the Maverick Wall Android / Google TV wall app. Install with &lt;code&gt;adb install -r maverick-wall-0.82.0.apk&lt;/code&gt;. See &lt;a href=&quot;/ambient-home-systems/MaverickWall/blob/v0.82.0/apps/android/README.md&quot;&gt;apps/android/README.md&lt;/a&gt;.&lt;/p&gt;</content>
+    <author>
+      <name>github-actions[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/15368?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/1315485124/v0.81.0</id>
+    <updated>2026-10-06T13:16:47Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/ambient-home-systems/MaverickWall/releases/tag/v0.81.0"/>
+    <title>v0.81.0</title>
+    <content type="html">&lt;p&gt;Sideload APK for the Maverick Wall Android / Google TV wall app. Install with &lt;code&gt;adb install -r maverick-wall-0.81.0.apk&lt;/code&gt;. See &lt;a href=&quot;/ambient-home-systems/MaverickWall/blob/v0.81.0/apps/android/README.md&quot;&gt;apps/android/README.md&lt;/a&gt;.&lt;/p&gt;</content>
+    <author>
+      <name>github-actions[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/15368?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/1315485124/v0.80.0</id>
+    <updated>2026-10-06T12:46:07Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/ambient-home-systems/MaverickWall/releases/tag/v0.80.0"/>
+    <title>v0.80.0</title>
+    <content type="html">&lt;p&gt;Sideload APK for the Maverick Wall Android / Google TV wall app. Install with &lt;code&gt;adb install -r maverick-wall-0.80.0.apk&lt;/code&gt;. See &lt;a href=&quot;/ambient-home-systems/MaverickWall/blob/v0.80.0/apps/android/README.md&quot;&gt;apps/android/README.md&lt;/a&gt;.&lt;/p&gt;</content>
+    <author>
+      <name>github-actions[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/15368?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/1315485124/v0.79.0</id>
+    <updated>2026-10-06T02:20:48Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/ambient-home-systems/MaverickWall/releases/tag/v0.79.0"/>
+    <title>v0.79.0</title>
+    <content type="html">&lt;p&gt;Sideload APK for the Maverick Wall Android / Google TV wall app. Install with &lt;code&gt;adb install -r maverick-wall-0.79.0.apk&lt;/code&gt;. See &lt;a href=&quot;/ambient-home-systems/MaverickWall/blob/v0.79.0/apps/android/README.md&quot;&gt;apps/android/README.md&lt;/a&gt;.&lt;/p&gt;</content>
+    <author>
+      <name>github-actions[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/15368?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/1315485124/v0.78.0</id>
+    <updated>2026-10-06T01:49:49Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/ambient-home-systems/MaverickWall/releases/tag/v0.78.0"/>
+    <title>v0.78.0</title>
+    <content type="html">&lt;p&gt;Sideload APK for the Maverick Wall Android / Google TV wall app. Install with &lt;code&gt;adb install -r maverick-wall-0.78.0.apk&lt;/code&gt;. See &lt;a href=&quot;/ambient-home-systems/MaverickWall/blob/v0.78.0/apps/android/README.md&quot;&gt;apps/android/README.md&lt;/a&gt;.&lt;/p&gt;</content>
+    <author>
+      <name>github-actions[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/15368?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/1315485124/v0.77.0</id>
+    <updated>2026-10-06T01:04:04Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/ambient-home-systems/MaverickWall/releases/tag/v0.77.0"/>
+    <title>v0.77.0</title>
+    <content type="html">&lt;p&gt;Sideload APK for the Maverick Wall Android / Google TV wall app. Install with &lt;code&gt;adb install -r maverick-wall-0.77.0.apk&lt;/code&gt;. See &lt;a href=&quot;/ambient-home-systems/MaverickWall/blob/v0.77.0/apps/android/README.md&quot;&gt;apps/android/README.md&lt;/a&gt;.&lt;/p&gt;</content>
+    <author>
+      <name>github-actions[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/15368?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/1315485124/v0.76.0</id>
+    <updated>2026-10-05T20:34:47Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/ambient-home-systems/MaverickWall/releases/tag/v0.76.0"/>
+    <title>v0.76.0</title>
+    <content type="html">&lt;p&gt;Sideload APK for the Maverick Wall Android / Google TV wall app. Install with &lt;code&gt;adb install -r maverick-wall-0.76.0.apk&lt;/code&gt;. See &lt;a href=&quot;/ambient-home-systems/MaverickWall/blob/v0.76.0/apps/android/README.md&quot;&gt;apps/android/README.md&lt;/a&gt;.&lt;/p&gt;</content>
+    <author>
+      <name>github-actions[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/15368?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/1315485124/v0.75.0</id>
+    <updated>2026-09-28T22:54:23Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/ambient-home-systems/MaverickWall/releases/tag/v0.75.0"/>
+    <title>v0.75.0</title>
+    <content type="html">&lt;p&gt;Sideload APK for the Maverick Wall Android / Google TV wall app. Install with &lt;code&gt;adb install -r maverick-wall-0.75.0.apk&lt;/code&gt;. See &lt;a href=&quot;/ambient-home-systems/MaverickWall/blob/v0.75.0/apps/android/README.md&quot;&gt;apps/android/README.md&lt;/a&gt;.&lt;/p&gt;</content>
+    <author>
+      <name>github-actions[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/15368?s=60&amp;v=4"/>
+  </entry>
+</feed>

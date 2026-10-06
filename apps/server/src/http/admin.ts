@@ -661,10 +661,12 @@ import { registerModuleRoutes } from './admin-modules.js';
 import { registerShiftTypeRoutes } from './admin-shifts.js';
 import { registerChoreRoutes } from './admin-chores.js';
 import { registerButtonRoutes } from './admin-buttons.js';
+import { registerNewsRoutes } from './admin-news.js';
 import { registerCompanionAdminRoutes } from './admin-companion.js';
 import { registerTimerRoutes } from './admin-timers.js';
 import { wallRotates } from '../api/wall-commands.js';
 import { readWebhookTargets } from '../modules/webhooks/index.js';
+import { readNewsFeeds } from '../modules/news/index.js';
 import { registerThemeRoutes } from './admin-themes.js';
 import { registerEpaperRoutes } from './admin-epaper.js';
 import { displaysPage, registerWallsRoutes } from './admin-walls.js';
@@ -1167,6 +1169,8 @@ function whyNotDrawn(db: SqliteDatabase, type: string): string {
       return 'Shows while a timer is running — start one from a phone or on Timers and messages.';
     case 'messages':
       return 'Shows while there is a message — send one from a phone or on Timers and messages.';
+    case 'news':
+      return 'Add a feed on News and its headlines appear here.';
     default:
       return 'Nothing is set up for this yet, so it is left out.';
   }
@@ -1240,6 +1244,11 @@ export function todoListChoices(db: SqliteDatabase): { id: string; name: string;
  * The household's webhook buttons, for the editor's picker (RFC 018 phase 5):
  * the id the widget stores and the name the household gave. Never an address.
  */
+/** The household's news feeds, for the News widget's picker (plan item M5.5): ids and names, never an address. */
+export function newsFeedChoices(db: SqliteDatabase): { id: string; name: string }[] {
+  return readNewsFeeds(db).map((feed) => ({ id: feed.id, name: feed.name }));
+}
+
 export function buttonChoices(db: SqliteDatabase): { id: string; name: string }[] {
   return readWebhookTargets(db).map((target) => ({ id: target.id, name: target.name }));
 }
@@ -1279,6 +1288,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   registerShiftTypeRoutes(app, deps);
   registerChoreRoutes(app, deps);
   registerButtonRoutes(app, deps);
+  registerNewsRoutes(app, deps);
   registerCompanionAdminRoutes(app, deps);
   registerTimerRoutes(app, deps);
   registerThemeRoutes(app, deps);
@@ -6124,6 +6134,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // (RFC 012). Empty when there are none, and the picker says so.
       todoLists: todoListChoices(deps.db),
       buttons: buttonChoices(deps.db),
+      newsFeeds: newsFeedChoices(deps.db),
       // The bundled faces a widget's style lane may name (RFC 014 §4.1) — the
       // server's allowlist, so the inspector cannot offer a face the schema
       // would refuse.

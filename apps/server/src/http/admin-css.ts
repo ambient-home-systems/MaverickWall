@@ -75,6 +75,7 @@ const WIDGET_LABELS: Readonly<Record<string, string>> = {
   messages: 'Messages',
   qr: 'QR code',
   heading: 'Heading',
+  news: 'News',
   chores: 'Chores',
   image: 'Image',
   external: 'Module',

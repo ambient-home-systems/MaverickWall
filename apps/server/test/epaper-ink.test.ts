@@ -160,6 +160,27 @@ function manifest(): Manifest {
       // lines to align and a title to sit over.
       timers: { timers: [{ key: 'tm-aaaaaaaaaaaa', label: 'Pasta', startedAt: 0, endsAt: 4102444800000 }] },
       messages: { messages: [{ key: 'ms-aaaaaaaaaaaa', text: 'Back at 6', postedAt: 0, expiresAt: 4102444800000 }] },
+      // Two feeds' headlines, so `newsFeeds` can take one away (plan item M5.5).
+      news: {
+        headlines: [
+          {
+            key: 'nh-aaaaaaaaaaaa',
+            feed: 'nf-aaaaaaaaaaaa',
+            source: 'Local News',
+            title: 'Library opens late on Thursdays',
+            at: Date.UTC(2026, 7, 22, 9, 0),
+            link: 'https://example.com/library',
+          },
+          {
+            key: 'nh-bbbbbbbbbbbb',
+            feed: 'nf-bbbbbbbbbbbb',
+            source: 'Science Daily',
+            title: 'A comet passes close enough to see',
+            at: Date.UTC(2026, 7, 21, 18, 0),
+            link: 'https://example.org/comet',
+          },
+        ],
+      },
     },
   } as unknown as Manifest;
 }
@@ -245,6 +266,8 @@ const BASES: Readonly<Record<string, readonly Record<string, unknown>[]>> = {
   buttons: [{}],
   timers: [{}],
   messages: [{}],
+  // A list and the one-at-a-time view, since the code is drawn only in the second.
+  news: [{}, { mode: 'one' }],
   // A heading with a second line, so the rule and the line under it have
   // something to move (plan item M5.4).
   heading: [{ text: 'This week', subtitle: 'Bins on Tuesday' }],
@@ -300,7 +323,7 @@ const PROBES: Readonly<Record<string, readonly unknown[]>> = {
   showTitle: [false],
   align: ['center', 'right'],
   calendars: [['s1']],
-  mode: ['list', 'week', 'month', 'skyweek', 'link', 'text'],
+  mode: ['list', 'week', 'month', 'skyweek', 'link', 'text', 'one'],
   /*
    * `compact` is the value that would move ink if a panel read density at all.
    * It must not: a panel is already edge to edge with hairline rules and has no
@@ -372,6 +395,12 @@ const PROBES: Readonly<Record<string, readonly unknown[]>> = {
   // …and the second half's: which occasion, and where a bar counts from.
   occasion: ['birthday', 'new-year'],
   from: ['2026-06-01'],
+  // A News widget's own (plan item M5.5).
+  newsFeeds: [['nf-bbbbbbbbbbbb']],
+  showSource: [false],
+  showTime: [false],
+  showQr: [false],
+  rotateSeconds: [30, 300],
   // A heading's own (plan item M5.4): every non-default value of each.
   subtitle: ['A different line'],
   textSize: ['small', 'large'],

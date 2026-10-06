@@ -94,6 +94,9 @@ export const WIDGET_TYPES = [
   // A heading and a line under it, with a glyph and a rule if asked (plan
   // item M5.4): the household's own words, as a label for a part of the wall.
   'heading',
+  // Headlines from the household's RSS and Atom feeds (plan item M5.5), read
+  // by the server; a link is drawn only as a QR code, never as a link.
+  'news',
   // A panel from a registered third-party module (docs/rfc-001-module-framework.md).
   // Still first-party by the rule that matters: the wall draws sanitised strings
   // through renderGenericPanel, never anything the module ships.
@@ -143,6 +146,8 @@ export const WIDGET_MODULE: Readonly<Record<string, string>> = {
   // `whenEmpty` is what the box shows the rest of the time (M5.1–M5.2).
   timers: 'timers',
   messages: 'messages',
+  // Left out until some feed has headlines (plan item M5.5).
+  news: 'news',
 };
 
 /**

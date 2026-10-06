@@ -387,7 +387,8 @@ describe('the sidebar is grouped by subject', () => {
       // Timers and messages since plan items M5.1–M5.2: the household's own, beside the chores.
       { label: 'Household', items: ['Calendars', 'People', 'Work Schedule', 'Chores', 'Timers and messages'] },
       // Buttons since RFC 018 phase 5: webhook buttons, an integration with anything.
-      { label: 'Integrations', items: ['Weather', 'Home Assistant', 'Buttons', 'Outside temperature', 'Store'] },
+      // News since plan item M5.5: feeds read from the internet, like the weather.
+      { label: 'Integrations', items: ['Weather', 'Home Assistant', 'Buttons', 'News', 'Outside temperature', 'Store'] },
       { label: 'Walls', items: ['Walls', 'Themes'] },
       { label: null, items: ['System'] },
     ]);
