@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.77.0
+
 **Add to a to-do list from your phone.** Make a companion token under **System
 › Phone and automations**, then send an item to one of the to-do lists you chose
 — from an iOS Shortcut, a script, anything that can make a web request. The page
