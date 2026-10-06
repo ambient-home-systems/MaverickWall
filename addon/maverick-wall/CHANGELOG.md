@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.82.0
+
 **Rotating wallpapers.** A layout's background can now go through a set of the
 bundled wallpapers — one of the collections, or every one drawn for your
 theme — changing every 5 or 15 minutes, every hour, or each day at midnight.
