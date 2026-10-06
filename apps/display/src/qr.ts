@@ -1,25 +1,17 @@
 /**
- * A QR encoder, because the alternative is a third-party origin.
+ * The QR encoder, transcribed from the server's `http/qr.ts` (plan item M5.3).
  *
- * Rule three forbids fetching anything from outside the container, and a
- * pairing link is exactly the thing nobody wants to type on a television
- * remote. A dependency would also do, but this is a small, fully specified
- * problem with a fixed answer, and shipping it means the image is one file
- * fewer to audit at the next version bump.
+ * A QR code widget is drawn on the wall and in the editor's live preview, and
+ * the preview has to show the code a household is still typing — so the
+ * bundle encodes for itself rather than asking the server. The block between
+ * the markers is the server's, character for character, and
+ * `qr-parity.test.ts` holds the two to each other: two encoders disagreeing
+ * would be a code on the wall that is not the one the panel draws.
  *
- * Deliberately narrow: byte mode, error correction level M, and whichever of
- * versions 1–10 the payload fits. A pairing URL is around seventy characters,
- * which lands in version 4 or 5. Anything longer than version 10 holds is
- * refused rather than guessed at — a QR nobody can scan is worse than a URL
- * somebody has to type, because the first one looks like it works.
+ * Byte mode, level M, versions 1–10, and verified the only way a QR code can
+ * be: by decoding it, on the server and from the wall's own drawing.
  */
 
-/*
- * Everything from here to the end marker is transcribed, character for
- * character, into `apps/display/src/qr.ts`, so a QR code widget (plan item
- * M5.3) is drawn on a wall and in the editor's preview by this encoder and no
- * other. `qr-parity.test.ts` holds the two copies to each other.
- */
 /* qr-encoder:begin */
 /** Total codewords and EC codewords per block, for level M, versions 1–10. */
 const VERSION_SPEC: readonly {
@@ -470,29 +462,3 @@ export function encodeQr(text: string): QrMatrix | undefined {
 }
 
 /* qr-encoder:end */
-
-/**
- * The matrix as an SVG.
- *
- * One path of rectangles rather than one element per module: a version 5 code
- * is 1369 modules and that many DOM nodes on a settings page is wasteful for
- * something nobody interacts with.
- */
-export function qrSvg(matrix: QrMatrix, pixels = 220): string {
-  const quiet = 4;
-  const span = matrix.size + quiet * 2;
-  const parts: string[] = [];
-  for (let row = 0; row < matrix.size; row++) {
-    for (let column = 0; column < matrix.size; column++) {
-      if ((matrix.modules[row] as boolean[])[column]) {
-        parts.push(`M${column + quiet} ${row + quiet}h1v1h-1z`);
-      }
-    }
-  }
-  return (
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${pixels}" height="${pixels}" ` +
-    `viewBox="0 0 ${span} ${span}" role="img" aria-label="Pairing QR code">` +
-    `<rect width="${span}" height="${span}" fill="#ffffff"/>` +
-    `<path d="${parts.join('')}" fill="#000000"/></svg>`
-  );
-}

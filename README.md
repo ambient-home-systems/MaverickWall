@@ -76,8 +76,8 @@ configure first, no account to create anywhere else, no key to paste.
   warning it can light a screen that has gone dark.
 - **Arrange the wall yourself.** Drag the calendar, a clock, the forecast, a
   shift badge, Home Assistant readings, notes, a to-do list, a countdown, the
-  timers and messages you send from your phone, or a photograph anywhere in the
-  layout — or start from a design and move things
+  timers and messages you send from your phone, a QR code for your guest Wi-Fi,
+  or a photograph anywhere in the layout — or start from a design and move things
   around. Each browser wall owns its portrait and landscape layouts and its
   theme. [How Walls, designs and themes fit together](docs/walls.md).
 - **eInk panels.** A wifi or battery e-paper panel can show the same wall in

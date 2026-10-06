@@ -51,6 +51,13 @@ export const WIDGET_VIEWS: Readonly<Record<string, readonly WidgetView[]>> = {
   buttons: [{ value: '', label: 'Buttons' }],
   timers: [{ value: '', label: 'Timers' }],
   messages: [{ value: '', label: 'Messages' }],
+  // A QR code (plan item M5.3): guest Wi-Fi is the absence, as every type's
+  // first view is, and the other two are what the code carries instead.
+  qr: [
+    { value: '', label: 'Guest Wi-Fi' },
+    { value: 'link', label: 'A link' },
+    { value: 'text', label: 'Some text' },
+  ],
   /*
    * Chores. The default is stored as an *absence*, like every other type's, and
    * both renderers have to read it that way — the wall's `renderChoresWidget`

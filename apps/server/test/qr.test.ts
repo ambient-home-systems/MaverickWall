@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import jsQR from 'jsqr';
-import { encodeQr, generatorPoly, qrSvg, versionBits, type QrMatrix } from '../src/http/qr.js';
+import { encodeQr, generatorPoly, qrSvg, versionBits } from '../src/http/qr.js';
+import { qrPixels } from './qr-decode.js';
 
 /**
  * The QR encoder's structure.
@@ -93,25 +94,6 @@ describe('the SVG', () => {
   });
 });
 
-/** The matrix as RGBA pixels, four per module, with the quiet zone a scanner needs. */
-export function qrPixels(matrix: QrMatrix, scale = 4): { data: Uint8ClampedArray; side: number } {
-  const quiet = 4;
-  const side = (matrix.size + quiet * 2) * scale;
-  const data = new Uint8ClampedArray(side * side * 4).fill(255);
-  for (let row = 0; row < matrix.size; row++) {
-    for (let column = 0; column < matrix.size; column++) {
-      if (!(matrix.modules[row] as boolean[])[column]) continue;
-      for (let y = 0; y < scale; y++) {
-        for (let x = 0; x < scale; x++) {
-          const at = (((row + quiet) * scale + y) * side + (column + quiet) * scale + x) * 4;
-          data[at] = data[at + 1] = data[at + 2] = 0;
-        }
-      }
-    }
-  }
-  return { data, side };
-}
-
 describe('read back by an independent decoder', () => {
   /*
    * The only check that settles a QR code is somebody else's reader. `jsqr` is
@@ -134,7 +116,10 @@ describe('read back by an independent decoder', () => {
     expect(unread).toEqual([]);
     expect([...versions].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     expect(encodeQr('x'.repeat(214))).toBeUndefined();
-  });
+    // 213 encodes, each trying all eight masks, and 213 decodes: about two
+    // seconds alone and over five beside the browser suite, so it is given a
+    // budget rather than fewer lengths — every length is the claim.
+  }, 30_000);
 
   it('decodes text that is not ASCII, and a Wi-Fi code with its escapes', () => {
     for (const text of ['Café — Wi-Fi für Gäste', 'WIFI:T:WPA;S:Home\;Net;P:pa\:ss\\word;;']) {

@@ -71,6 +71,8 @@ import { withInk } from './honours.js';
 import { childCells, groupChildren, topLevelWidgets } from './group-cells.js';
 import { clockLabel, type EpaperModel } from './viewmodel.js';
 import { drawAnalogueFace } from './clock-face.js';
+import { encodeQr } from '../http/qr.js';
+import { qrCaption, qrPasswordLine, qrPayload } from '../api/qr-payload.js';
 import {
   TODAY_WORDS,
   countDigits,
@@ -1066,6 +1068,78 @@ function drawTodo(fb: Framebuffer, m: EpaperMetrics, box: Box, found: TodoRead |
       rung: m.body,
     });
     y += rowH;
+  }
+}
+
+/**
+ * The quiet zone a scanner needs round a code, in modules: four, which is the
+ * standard's own minimum and what `qrSvg` and the wall draw too.
+ */
+const QR_QUIET = 4;
+/**
+ * The fewest panel pixels a module may be. One pixel a module is a code a
+ * phone has to be held against the glass to read, and a code nobody can scan
+ * is worse than none, because it looks like it works — the encoder's own rule.
+ */
+const QR_MIN_MODULE = 2;
+
+/**
+ * A QR code (plan item M5.3), which is the one widget made of nothing but one
+ * bit: the same code the wall draws, from the same encoder and the same
+ * payload, at a whole number of pixels a module so every edge is crisp.
+ *
+ * The code is the largest square the box leaves once the words under it are
+ * paid for — the network's name or the link, then the password if asked —
+ * centred, with its quiet zone inside the box so nothing else can ink it. When
+ * the words would leave modules under two pixels they give way, last line
+ * first, because the code is what the widget is for and the words are in it.
+ */
+function drawQr(fb: Framebuffer, m: EpaperMetrics, box: Box, config: Config): void {
+  const payload = qrPayload(config);
+  const matrix = payload === undefined ? undefined : encodeQr(payload);
+  const middle = { x: box.x, y: box.y + Math.max(0, Math.floor((box.h - m.body.height) / 2)), w: box.w, h: box.h };
+  if (matrix === undefined) {
+    drawLines(fb, m, [payload === undefined ? 'No code yet' : 'Too long for a code'], middle, m.body, 'center');
+    return;
+  }
+  const caption = qrCaption(config);
+  const password = qrPasswordLine(config);
+  const words = [
+    ...(caption === undefined ? [] : [asciiTitle(caption)]),
+    ...(password === undefined ? [] : [`Password: ${asciiTitle(password)}`]),
+  ].filter((line) => line !== '');
+  const span = matrix.size + QR_QUIET * 2;
+  const lineH = m.body.height + m.widget.linePad;
+  let lines = words.length;
+  const scaleWith = (count: number): number => Math.floor(Math.min(box.w, box.h - count * lineH) / span);
+  while (lines > 0 && scaleWith(lines) < QR_MIN_MODULE) lines--;
+  const scale = scaleWith(lines);
+  if (scale < QR_MIN_MODULE) {
+    drawLines(fb, m, ['Too small for a code'], middle, m.body, 'center');
+    return;
+  }
+  const side = span * scale;
+  const blockH = side + lines * lineH;
+  const left = box.x + Math.floor((box.w - side) / 2);
+  const top = box.y + Math.floor((box.h - blockH) / 2);
+  const origin = QR_QUIET * scale;
+  for (let row = 0; row < matrix.size; row++) {
+    const line = matrix.modules[row] as readonly boolean[];
+    // One rectangle per run of dark modules along a row, not one per module.
+    let column = 0;
+    while (column < matrix.size) {
+      if (!line[column]) {
+        column++;
+        continue;
+      }
+      let end = column;
+      while (end < matrix.size && line[end]) end++;
+      fb.fillRect(left + origin + column * scale, top + origin + row * scale, (end - column) * scale, scale);
+      column = end;
+    }
+  }
+  if (lines > 0) {
+    drawLines(fb, m, words.slice(0, lines), { x: box.x, y: top + side, w: box.w, h: lines * lineH }, m.body, 'center');
   }
 }
 
@@ -2453,6 +2527,8 @@ function drawWidget(
     }
     case 'image':
       return drawImage(fb, m, box, config);
+    case 'qr':
+      return drawQr(fb, m, box, config);
     case 'timers':
     case 'messages': {
       // The lines `panelInput` worked out, one a line; nothing to clear, since

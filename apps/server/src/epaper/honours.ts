@@ -108,6 +108,16 @@ export const PANEL_HONOURS: Readonly<Record<string, readonly string[]>> = {
   timers: ['title', 'showTitle', 'align', STYLE_INSET, WHEN_EMPTY],
   messages: ['title', 'showTitle', 'align', STYLE_INSET, WHEN_EMPTY],
   /*
+   * A QR code (plan item M5.3): one bit is what a code is made of, so a panel
+   * draws exactly the code the wall does, its caption and, if asked, the
+   * password in words. Every key that changes what the code carries moves the
+   * modules; `align` is not here — a code is centred in its box on both media.
+   */
+  qr: [
+    'title', 'showTitle', 'mode', 'ssid', 'wifiPassword', 'wifiSecurity', 'wifiHidden', 'link', 'text',
+    'showPassword', STYLE_INSET,
+  ],
+  /*
    * A group (RFC 014 §5.1) draws its frame, its title and its children's
    * cells: `layout` moves every child and `columns` moves a grid's. Not
    * `whenEmpty`, deliberately — a group carries no fallback of its own, its
@@ -169,6 +179,9 @@ export const INK_LANE: Readonly<Record<string, readonly string[]>> = {
   buttons: [],
   timers: [],
   messages: [],
+  // What a code carries is the widget's identity: a panel showing a different
+  // network from the wall it follows would be a second widget wearing one name.
+  qr: [],
   // A panel could honestly lay a group out differently from the wall it
   // follows — a row on the wall, a column on a narrow panel — and that is
   // density and shape, which is what the lane is for. Empty until the editor

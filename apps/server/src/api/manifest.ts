@@ -87,6 +87,10 @@ export const WIDGET_TYPES = [
   // M5.1–M5.2): each an end instant the wall counts down to itself.
   'timers',
   'messages',
+  // A QR code for guest Wi-Fi, a link or some words (plan item M5.3), encoded
+  // by the wall and the panel from the config with the same first-party
+  // encoder (`http/qr.ts`) — a picture of text, never a fetched one.
+  'qr',
   // A panel from a registered third-party module (docs/rfc-001-module-framework.md).
   // Still first-party by the rule that matters: the wall draws sanitised strings
   // through renderGenericPanel, never anything the module ships.

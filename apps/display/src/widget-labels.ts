@@ -38,6 +38,8 @@ export const PALETTE: readonly { readonly type: string; readonly label: string }
   // Plan items M5.1–M5.2: sent from a phone, an automation or the admin.
   { type: 'timers', label: 'Timers' },
   { type: 'messages', label: 'Messages' },
+  // Plan item M5.3: guest Wi-Fi, a link or some words, as a code to scan.
+  { type: 'qr', label: 'QR code' },
   { type: 'image', label: 'Image' },
   { type: 'external', label: 'Module' },
 ];
@@ -61,6 +63,7 @@ export const SWATCH: Readonly<Record<string, string>> = {
   buttons: 'var(--accent)',
   timers: 'var(--accent)',
   messages: 'var(--muted)',
+  qr: 'var(--ink)',
   image: 'var(--ok)',
   external: 'var(--warn)',
 };

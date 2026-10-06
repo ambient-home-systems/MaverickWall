@@ -16,6 +16,18 @@
 
 ## Unreleased
 
+**A QR code widget.** Put a code on a wall that a visitor's phone can scan: your
+guest Wi-Fi (the network's name, its password and whether it is hidden), a
+link, or a few words. The network's name or the link is written under the code,
+and the password too if you ask. The code is always black on white, whatever
+the theme, so every phone can read it, and an e-paper wall draws it too. Find
+**QR code** under **Add widget**. Anyone who scans it gets what is in it, so
+put only your *guest* network on a wall.
+
+**Fixed: a long QR code could not be scanned.** A code carrying more than
+about 100 characters — a pairing link to a wall at a long address, for one —
+was drawn in a way no phone could read. It reads now.
+
 ## 0.82.0
 
 **Rotating wallpapers.** A layout's background can now go through a set of the
