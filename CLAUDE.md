@@ -4057,6 +4057,88 @@ working tree's, not the code's, and CLAUDE.md has recorded it once before.
 **Still unproven where it counts:** nobody has
 labelled a real kitchen wall with one.
 
+**News headlines come from the household's RSS and Atom feeds, read by the
+server and drawn by a News widget (plan item M5.5).** The **News** screen, under
+Integrations, takes up to eight feeds; the widget `news` shows their headlines
+merged newest first, as a list (`count`, the source and age under each) or one
+at a time (`mode: 'one'`) beside a QR code of the story's address. **Nothing on
+a wall is a link** — the plan's own line and rule three — so the address is
+drawn only as a code, and the browser test searches the widget for an anchor,
+a button and an `href` and finds none. No summaries and no pictures: a picture
+is a third-party fetch on the wall, and a summary is a stranger's paragraph.
+
+**The XML reader is the CalDAV one, shared, and not a dependency.** The plan
+said a parser was needed; `caldav/multistatus.ts` already had one whose header
+argues that narrow is safer than configured — no DTD machinery and no entity
+expansion beyond the five built-ins, so XXE is a feature it lacks rather than
+one it disables. Its tokenizer moved to `xml/read.ts`, and two things became
+the caller's options: the depth (20 for a multistatus, 64 for a feed's XHTML)
+and whether an undeclared prefix is refused (CalDAV) or read as a namespace
+named after itself (a feed borrowing `media:` without declaring it). **One real
+feed decided where a DOCTYPE is refused**: NASA's embeds every article whole,
+`<!DOCTYPE html>` and `&nbsp;` included, inside CDATA, which the multistatus
+reader's "refused anywhere in the bytes" would have refused outright. The
+shared reader refuses any declaration met as *markup*, where it is a DTD, and
+reads one inside CDATA as the text it is; the multistatus reader keeps its own
+stricter check in front, unchanged, and CalDAV's 73 tests passed over the move
+in a commit of its own.
+
+**A feed is read before it is added, sealed when it is, and named by its host
+only.** `addNewsFeed` reads the feed through the SSRF-guarded fetcher with its
+own opt-ins (the add form's "Allow a local network address", which includes
+this machine as a webhook's does, and "Allow plain http") and stores nothing
+when the read fails, coming back on the add page with what was typed and a
+sentence: a web page rather than a feed ("look for a link marked RSS"), an
+address that needs a switch (every switch at once, from core's
+`requiredNetworkOptions`, because the fetcher names only the first — returned as
+options and worded by the add page, since `network-access-labels.test.ts` lets
+only the form's own table spell a control's name, which caught a first draft
+that wrote them out), a 404, a sign-in. The address is sealed under its own key purpose, `news-feed-url`, a
+log line names the host and never the path, and the manifest carries
+headlines, sources, times and story links but never a feed's address.
+`news_feeds` (migration `0063`, one generated `CREATE TABLE`, read) holds the
+last good headlines, so a site that is down keeps its headlines on the wall
+while the News screen says why; a feed is read every half hour, with its ETag.
+
+**The parser reads RSS 2.0, RSS 1.0 (RDF) and Atom, and one bad item costs that
+item.** A headline is reduced to plain text — markup stripped, HTML references
+decoded once for a title written as HTML, then the weather warning's `clean` —
+and a link is kept only when it is an absolute http or https address with no
+credentials in it. The wall checks the link's shape again before it encodes it,
+because one hop is not trusted.
+
+**The one-at-a-time view turns by the clock.** Which headline is on show is
+`newsIndexAt`, in `api/news-view.ts` and transcribed into the display — the
+seam `transcription-parity.test.ts` now holds four pairs on — so two walls on
+the same feeds show the same headline, with no timer of its own. The code is a
+square beside the words, sized by `tierNewsOne` to the body and given up where
+it would be under three lines of the headline. A list takes the to-do list's
+tier table and gives up rows rather than spilling. **A panel never turns**: it
+draws the list, or the newest headline with its code, `rotateSeconds` is in
+`PANEL_IGNORES`, and its times are clock times rather than "5 min ago". Its
+frame hashes the headlines it draws and a link only where a code is drawn, so a
+list does not refresh when a story's address changes.
+
+**Measured.** `news-feed.test.ts` reads six real feeds captured on the day —
+BBC News, NPR, Hacker News, NASA, this repository's own releases, Slashdot —
+and the hostile documents a stranger could send. `news.test.ts` runs the add,
+the read, the failure, the ETag and the removal against a real HTTP server
+serving real feeds through the real fetcher. `epaper-news.test.ts` decodes the
+panel's code from its frame, and `browser-news.test.ts` decodes a screenshot of
+the wall's and moves the server's clock to watch the next headline come round.
+A screenshot was looked at. Twenty-one mutations were checked and all are red;
+two were spelled wrong at first and are recorded: one did not compile, and one
+changed a line that only ever sees one headline and so could not move the
+panel. **Not built, and named:** a feed in an encoding other than UTF-8 draws a
+replacement character for an accented letter, because the fetcher decodes
+every body as UTF-8, and widening the fetcher was not this item.
+**5249 tests, over 368 files**: calendar 153 (and 1 skipped) over 10 · core 314
+over 9 · display 956 over 56 · server 3826 over 293, measured with `pnpm test`
+and a real Chromium, green on the run after two fixes the suite asked for: the
+switch names above, and the sidebar test that pins the Integrations group.
+**Still unproven where it counts:** nobody has
+scanned a headline's code off a real wall.
+
 **Rule 12 changed, and the interesting part is how many places said otherwise
 (RFC 012 phase 1).** The rule is no longer "READ-ONLY, no service calls": it
 permits one *write*, `todo.update_item`, and the read it needs. Nothing writes

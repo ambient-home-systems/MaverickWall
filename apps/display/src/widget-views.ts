@@ -52,6 +52,11 @@ export const WIDGET_VIEWS: Readonly<Record<string, readonly WidgetView[]>> = {
   timers: [{ value: '', label: 'Timers' }],
   messages: [{ value: '', label: 'Messages' }],
   heading: [{ value: '', label: 'Heading' }],
+  // News (plan item M5.5): a list is the absence; one at a time turns by the clock.
+  news: [
+    { value: '', label: 'Headlines list' },
+    { value: 'one', label: 'One at a time' },
+  ],
   // A QR code (plan item M5.3): guest Wi-Fi is the absence, as every type's
   // first view is, and the other two are what the code carries instead.
   qr: [

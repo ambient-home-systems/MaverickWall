@@ -2292,3 +2292,31 @@ export const REQUIRED_PRAGMAS = sql`
   PRAGMA foreign_keys = ON;
   PRAGMA busy_timeout = 5000;
 `;
+
+/**
+ * News feeds (plan item M5.5): RSS and Atom feeds a household added, read on
+ * the server through the SSRF-guarded fetcher and drawn as headlines.
+ *
+ * The address is sealed (`news-feed-url`) as a calendar's is: a private feed's
+ * address is its credential, and the wall is never handed one. `items` is the
+ * last good read as JSON — headlines, links and times, cleaned on the way in —
+ * kept through a failed read, so a feed that is down for an hour leaves its
+ * last headlines up and says so on the admin rather than going blank. `etag`
+ * and `last_modified` make an unchanged feed one conditional request.
+ */
+export const newsFeeds = sqliteTable('news_feeds', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  urlEncrypted: text('url_encrypted').notNull(),
+  allowLan: integer('allow_lan', { mode: 'boolean' }).notNull().default(false),
+  allowHttp: integer('allow_http', { mode: 'boolean' }).notNull().default(false),
+  sortOrder: integer('sort_order').notNull().default(0),
+  items: text('items'),
+  etag: text('etag'),
+  lastModified: text('last_modified'),
+  lastFetchedAt: integer('last_fetched_at', { mode: 'number' }),
+  lastSuccessAt: integer('last_success_at', { mode: 'number' }),
+  lastError: text('last_error'),
+  createdAt: integer('created_at', { mode: 'number' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
+});

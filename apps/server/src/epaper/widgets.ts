@@ -73,6 +73,7 @@ import { clockLabel, type EpaperModel } from './viewmodel.js';
 import { drawAnalogueFace } from './clock-face.js';
 import { encodeQr } from '../http/qr.js';
 import { qrCaption, qrPasswordLine, qrPayload } from '../api/qr-payload.js';
+import { newsMode, newsShown, newsShows } from '../api/news-view.js';
 import { headingDivider, headingPlace, headingSecond, headingSizesFrom, headingText, type HeadingSize } from '../api/heading.js';
 import {
   TODAY_WORDS,
@@ -1199,6 +1200,107 @@ const QR_QUIET = 4;
 const QR_MIN_MODULE = 2;
 
 /**
+ * A code's modules, `scale` pixels each, with the quiet zone's four modules of
+ * paper at `left`/`top` before the first — shared by the QR code widget and a
+ * News headline's code (plan items M5.3, M5.5). One rectangle per run of dark
+ * modules along a row, not one per module.
+ */
+function drawQrModules(
+  fb: Framebuffer,
+  matrix: { readonly size: number; readonly modules: readonly (readonly boolean[])[] },
+  left: number,
+  top: number,
+  scale: number,
+): void {
+  const origin = QR_QUIET * scale;
+  for (let row = 0; row < matrix.size; row++) {
+    const line = matrix.modules[row] as readonly boolean[];
+    let column = 0;
+    while (column < matrix.size) {
+      if (!line[column]) {
+        column++;
+        continue;
+      }
+      let end = column;
+      while (end < matrix.size && line[end]) end++;
+      fb.fillRect(left + origin + column * scale, top + origin + row * scale, (end - column) * scale, scale);
+      column = end;
+    }
+  }
+}
+
+/**
+ * A News widget on a panel (plan item M5.5): a list of headlines, or the
+ * newest one with its QR code. A panel shows one picture for up to an hour, so
+ * it never turns through the headlines the way a wall does (`rotateSeconds`
+ * is in `PANEL_IGNORES`), and its times are clock times rather than "5 min
+ * ago", which would be wrong within the minute.
+ *
+ * A headline wraps to two lines at most and is cut at the second; every row is
+ * whole or not drawn. The rows are the panel input's, so a frame changes when
+ * the headlines it draws change and at no other time.
+ */
+function drawNews(fb: Framebuffer, m: EpaperMetrics, box: Box, rows: readonly NewsPanelRow[], config: Config): void {
+  if (rows.length === 0) {
+    drawLines(fb, m, ['No headlines yet'], { ...box, y: box.y + Math.max(0, Math.floor((box.h - m.body.height) / 2)) }, m.body, 'center');
+    return;
+  }
+  const pad = m.widget.linePad;
+  const metaOf = (row: NewsPanelRow): string | undefined => {
+    const parts = [
+      ...(newsShows(config, 'showSource') ? [row.source] : []),
+      ...(newsShows(config, 'showTime') && row.time !== undefined ? [row.time] : []),
+    ];
+    return parts.length === 0 ? undefined : asciiTitle(parts.join(' - '));
+  };
+  if (newsMode(config) === 'one') {
+    const row = rows[0] as NewsPanelRow;
+    const matrix = row.link === undefined ? undefined : encodeQr(row.link);
+    let wordsW = box.w;
+    if (matrix !== undefined) {
+      const span = matrix.size + QR_QUIET * 2;
+      const scale = Math.floor(Math.min(box.h, box.w * 0.4) / span);
+      if (scale >= QR_MIN_MODULE) {
+        const side = span * scale;
+        drawQrModules(fb, matrix, box.x + box.w - side, box.y + Math.floor((box.h - side) / 2), scale);
+        wordsW = box.w - side - m.widget.inset;
+      }
+    }
+    const rung = tallerRung(m.body, m.header);
+    const lines = wrap(row.title, wordsW, rung);
+    const meta = metaOf(row);
+    const metaH = meta === undefined ? 0 : m.small.height + pad * 2;
+    const room = Math.max(1, Math.floor((box.h - metaH + pad) / (rung.height + pad)));
+    const shown = lines.slice(0, room);
+    const total = shown.length * (rung.height + pad) - pad + metaH;
+    let y = box.y + Math.max(0, Math.floor((box.h - total) / 2));
+    for (const line of shown) {
+      drawText(fb, box.x, y, line, { rung });
+      y += rung.height + pad;
+    }
+    if (meta !== undefined) drawText(fb, box.x, y + pad, fit(meta, wordsW, { rung: m.small }), { rung: m.small });
+    return;
+  }
+  const limit = typeof config['count'] === 'number' && Number.isInteger(config['count']) ? (config['count'] as number) : 6;
+  let y = box.y;
+  for (const row of rows.slice(0, limit)) {
+    const lines = wrap(row.title, box.w, m.body).slice(0, 2);
+    const meta = metaOf(row);
+    const height = lines.length * (m.body.height + pad) - pad + (meta === undefined ? 0 : pad + m.small.height);
+    if (y + height > box.y + box.h) break;
+    for (const line of lines) {
+      drawText(fb, box.x, y, line, { rung: m.body });
+      y += m.body.height + pad;
+    }
+    if (meta !== undefined) {
+      drawText(fb, box.x, y, fit(meta, box.w, { rung: m.small }), { rung: m.small });
+      y += m.small.height + pad;
+    }
+    y += pad * 2;
+  }
+}
+
+/**
  * A QR code (plan item M5.3), which is the one widget made of nothing but one
  * bit: the same code the wall draws, from the same encoder and the same
  * payload, at a whole number of pixels a module so every edge is crisp.
@@ -1237,22 +1339,7 @@ function drawQr(fb: Framebuffer, m: EpaperMetrics, box: Box, config: Config): vo
   const blockH = side + lines * lineH;
   const left = box.x + Math.floor((box.w - side) / 2);
   const top = box.y + Math.floor((box.h - blockH) / 2);
-  const origin = QR_QUIET * scale;
-  for (let row = 0; row < matrix.size; row++) {
-    const line = matrix.modules[row] as readonly boolean[];
-    // One rectangle per run of dark modules along a row, not one per module.
-    let column = 0;
-    while (column < matrix.size) {
-      if (!line[column]) {
-        column++;
-        continue;
-      }
-      let end = column;
-      while (end < matrix.size && line[end]) end++;
-      fb.fillRect(left + origin + column * scale, top + origin + row * scale, (end - column) * scale, scale);
-      column = end;
-    }
-  }
+  drawQrModules(fb, matrix, left, top, scale);
   if (lines > 0) {
     drawLines(fb, m, words.slice(0, lines), { x: box.x, y: top + side, w: box.w, h: lines * lineH }, m.body, 'center');
   }
@@ -2491,6 +2578,53 @@ function timerLines(manifest: Manifest): readonly string[] {
   return lines;
 }
 
+/** One headline as a panel draws it: what the frame's ETag hashes for a News widget. */
+interface NewsPanelRow {
+  readonly title: string;
+  readonly source: string;
+  /** A clock time today, else a short weekday — never "5 min ago". */
+  readonly time?: string;
+  /** Only on the newest headline of the one-at-a-time view, and only with its code on. */
+  readonly link?: string;
+}
+
+/**
+ * The headlines a News widget's panel draws (plan item M5.5): the widget's
+ * feeds, newest first, at most twelve — and the link only where a code is
+ * drawn, so a list's frame does not move when a story's address does.
+ */
+function newsRows(manifest: Manifest, config: Config): readonly NewsPanelRow[] {
+  const raw = manifest.panels['news'];
+  const list = typeof raw === 'object' && raw !== null ? (raw as { headlines?: unknown }).headlines : undefined;
+  if (!Array.isArray(list)) return [];
+  const headlines = list.filter(
+    (entry): entry is { key: string; feed: string; source: string; title: string; at?: number; link?: string } =>
+      typeof entry === 'object' && entry !== null &&
+      typeof (entry as { key?: unknown }).key === 'string' &&
+      typeof (entry as { feed?: unknown }).feed === 'string' &&
+      typeof (entry as { source?: unknown }).source === 'string' &&
+      typeof (entry as { title?: unknown }).title === 'string',
+  );
+  const one = newsMode(config) === 'one';
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: manifest.timezone }).format(new Date(manifest.generatedAt));
+  const day = new Intl.DateTimeFormat('en-CA', { timeZone: manifest.timezone });
+  const clock = new Intl.DateTimeFormat('en-GB', { timeZone: manifest.timezone, hour: '2-digit', minute: '2-digit', hour12: false });
+  const weekday = new Intl.DateTimeFormat('en-GB', { timeZone: manifest.timezone, weekday: 'short' });
+  return newsShown(headlines, config)
+    .slice(0, one ? 1 : 12)
+    .map((headline) => {
+      const at = typeof headline.at === 'number' && Number.isFinite(headline.at) ? new Date(headline.at) : undefined;
+      const time = at === undefined ? undefined : day.format(at) === today ? clock.format(at) : weekday.format(at);
+      const link = one && newsShows(config, 'showQr') && typeof headline.link === 'string' ? headline.link : undefined;
+      return {
+        title: headline.title,
+        source: headline.source,
+        ...(time === undefined ? {} : { time }),
+        ...(link === undefined ? {} : { link }),
+      };
+    });
+}
+
 /** A Messages widget's lines on a panel (plan item M5.2): each message's text, newest first. */
 function messageLines(manifest: Manifest): readonly string[] {
   const raw = manifest.panels['messages'];
@@ -2545,6 +2679,8 @@ export function panelInput(type: string, manifest: Manifest, config: Config): Pa
       return { kind: 'panel', panel: timerLines(manifest) };
     case 'messages':
       return { kind: 'panel', panel: messageLines(manifest) };
+    case 'news':
+      return { kind: 'panel', panel: newsRows(manifest, config) };
     case 'homeassistant': {
       const panel = panels['home'] ?? panels['homeassistant'];
       /*
@@ -2646,6 +2782,8 @@ function drawWidget(
       return drawQr(fb, m, box, config);
     case 'heading':
       return drawHeading(fb, m, box, config);
+    case 'news':
+      return drawNews(fb, m, box, input.kind === 'panel' && Array.isArray(input.panel) ? (input.panel as NewsPanelRow[]) : [], config);
     case 'timers':
     case 'messages': {
       // The lines `panelInput` worked out, one a line; nothing to clear, since

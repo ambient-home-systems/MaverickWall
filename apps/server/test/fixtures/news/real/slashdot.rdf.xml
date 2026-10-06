@@ -1,0 +1,368 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<rdf:RDF
+ xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+ xmlns="http://purl.org/rss/1.0/"
+ xmlns:admin="http://webns.net/mvcb/"
+ xmlns:content="http://purl.org/rss/1.0/modules/content/"
+ xmlns:dc="http://purl.org/dc/elements/1.1/"
+ xmlns:slash="http://purl.org/rss/1.0/modules/slash/"
+ xmlns:syn="http://purl.org/rss/1.0/modules/syndication/"
+ xmlns:taxo="http://purl.org/rss/1.0/modules/taxonomy/"
+>
+
+<channel rdf:about="https://slashdot.org/">
+<title>Slashdot</title>
+<link>https://slashdot.org/</link>
+<description>News for nerds, stuff that matters</description>
+<dc:language>en-us</dc:language>
+<dc:rights>Copyright Slashdot Media. All Rights Reserved.</dc:rights>
+<dc:date>2026-10-06T18:13:24+00:00</dc:date>
+<dc:publisher>Slashdot Media</dc:publisher>
+<dc:creator>feedback@slashdot.org</dc:creator>
+<dc:subject>Technology</dc:subject>
+<syn:updateBase>1970-01-01T00:00+00:00</syn:updateBase>
+<syn:updateFrequency>1</syn:updateFrequency>
+<syn:updatePeriod>hourly</syn:updatePeriod>
+<items>
+ <rdf:Seq>
+  <rdf:li rdf:resource="https://slashdot.org/story/26/10/06/1649245/licensing-costs-driving-90-of-vmware-users-to-explore-options-survey-finds?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed" />
+  <rdf:li rdf:resource="https://news.slashdot.org/story/26/10/06/1614205/mistral-unveils-new-le-chonk-ai-model-it-says-rivals-best-open-systems-from-china?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed" />
+  <rdf:li rdf:resource="https://tech.slashdot.org/story/26/10/06/0459247/researchers-are-tracking-a-chinese-ai-agent-fleet?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed" />
+  <rdf:li rdf:resource="https://yro.slashdot.org/story/26/10/06/0452228/cable-lobby-to-sue-trump-fcc-over-repeal-of-national-tv-ownership-cap?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed" />
+  <rdf:li rdf:resource="https://slashdot.org/story/26/10/06/0443237/openai-is-adding-text-watermarking-in-chatgpt-and-codex?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed" />
+  <rdf:li rdf:resource="https://science.slashdot.org/story/26/10/06/0419213/old-hearts-become-biologically-younger-when-transplanted-into-younger-people?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed" />
+  <rdf:li rdf:resource="https://news.slashdot.org/story/26/10/06/0010236/texas-city-demands-2-million-for-public-records-on-flock-usage?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed" />
+  <rdf:li rdf:resource="https://news.slashdot.org/story/26/10/05/2251217/rural-data-centers-are-in-for-a-big-federal-tax-break?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed" />
+  <rdf:li rdf:resource="https://yro.slashdot.org/story/26/10/05/2236257/hackers-steal-8-million-citizens-records-from-danish-government-database?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed" />
+  <rdf:li rdf:resource="https://news.slashdot.org/story/26/10/05/1932228/wikipedia-operator-says-openais-rogue-bots-may-be-linked-to-a-may-outage?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed" />
+  <rdf:li rdf:resource="https://yro.slashdot.org/story/26/10/05/1914252/meta-rushed-to-fix-muse-vm-escape-vulnerability-soon-before-launch?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed" />
+  <rdf:li rdf:resource="https://yro.slashdot.org/story/26/10/05/1842201/norway-plans-temporary-ban-on-smart-glasses?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed" />
+  <rdf:li rdf:resource="https://hardware.slashdot.org/story/26/10/05/1747205/mac-users-reclaim-12gb-of-storage-with-apple-intelligence-removal-tool?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed" />
+  <rdf:li rdf:resource="https://yro.slashdot.org/story/26/10/05/1733245/anthropic-reports-florida-womans-claude-diary-threat-to-law-enforcement?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed" />
+  <rdf:li rdf:resource="https://slashdot.org/story/26/10/05/1525207/sam-altman-the-world-should-accept-some-bad-things-happening-for-the-benefits-of-ai?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed" />
+ </rdf:Seq>
+</items>
+<image rdf:resource="https://a.fsdn.com/sd/topics/topicslashdot.gif" />
+<textinput rdf:resource="https://slashdot.org/search.pl" />
+</channel>
+<image rdf:about="https://a.fsdn.com/sd/topics/topicslashdot.gif">
+<title>Slashdot</title>
+<url>https://a.fsdn.com/sd/topics/topicslashdot.gif</url>
+<link>https://slashdot.org/</link>
+</image>
+<item rdf:about="https://slashdot.org/story/26/10/06/1649245/licensing-costs-driving-90-of-vmware-users-to-explore-options-survey-finds?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed">
+<title>Licensing Costs Driving 90% of VMware Users To Explore Options, Survey Finds</title>
+<link>https://slashdot.org/story/26/10/06/1649245/licensing-costs-driving-90-of-vmware-users-to-explore-options-survey-finds?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed</link>
+<description>An anonymous reader quotes a report from Ars Technica: VMware customers face multiple obstacles as they rethink their virtualization strategy to reduce dependence on VMware. Today, Rimini Street published its "2026 IT Virtualization Survey -- What's Next for VMware Users." The survey examined 300 organizations worldwide that use VMware. Notably, Rimini sells third-party support for VMware and other software, including Oracle and SAP. That means there's an incentive for Rimini to portray VMware users as experiencing obstacles. However, the survey was also conducted by a third-party research company, Unisphere Research, and the results align with other recent reports about VMware customers. For example, 90 percent of participants in Rimini's survey said they're exploring VMware alternatives due to VMware's higher licensing costs, while 54 percent pointed to Broadcom killing support for perpetual license holders.
+ 
+Since Broadcom took over VMware, customers have said that their VMware costs increased by as much as 1,000 percent, with many more pointing to more modest price hikes of around 100 to 300 percent. In Rimini's survey, 73 percent of participants pointed to cost savings as a top priority in their virtualization roadmap decisions. In today's announcement, Rimini pointed to "significant barriers to progress" for organizations exploring virtualization options, with the most cited barriers being operational complexity (named by 40 percent of respondents), multi-vendor management challenges (38 percent), securing the increased attack surface (37 percent), and team skills requirements (37 percent). "These findings suggest that while organizations are actively pursuing change, they are also looking for ways to reduce risk and avoid unnecessary disruption," Rimini's announcement said.
+ 
+[...] Rimini reported that 60 percent of the organizations it surveyed are considering a multi-hypervisor strategy, which is indicative of "growing interest in more flexible, mixed environments that support both operational and financial goals." "In addition, 47 percent are favoring a hybrid IT virtualization environment consisting of hypervisors and containers for 'best of both worlds' workload placement," the announcement said. Rimini noted that 48 percent of respondents aren't planning to move any of their assets to VMware's hybrid cloud platform, Cloud Foundation.&lt;p&gt;&lt;div class="share_submission" style="position:relative;"&gt;
+&lt;a class="slashpop" href="http://twitter.com/home?status=Licensing+Costs+Driving+90%25+of+VMware+Users+To+Explore+Options%2C+Survey+Finds%3A+https%3A%2F%2Fslashdot.org%2Fstory%2F26%2F10%2F06%2F1649245%2F%3Futm_source%3Dtwitter%26utm_medium%3Dtwitter"&gt;&lt;img src="https://a.fsdn.com/sd/twitter_icon_large.png"&gt;&lt;/a&gt;
+&lt;a class="slashpop" href="http://www.facebook.com/sharer.php?u=https%3A%2F%2Fslashdot.org%2Fstory%2F26%2F10%2F06%2F1649245%2Flicensing-costs-driving-90-of-vmware-users-to-explore-options-survey-finds%3Futm_source%3Dslashdot%26utm_medium%3Dfacebook"&gt;&lt;img src="https://a.fsdn.com/sd/facebook_icon_large.png"&gt;&lt;/a&gt;
+
+
+
+&lt;/div&gt;&lt;/p&gt;&lt;p&gt;&lt;a href="https://slashdot.org/story/26/10/06/1649245/licensing-costs-driving-90-of-vmware-users-to-explore-options-survey-finds?utm_source=rss1.0moreanon&amp;amp;utm_medium=feed"&gt;Read more of this story&lt;/a&gt; at Slashdot.&lt;/p&gt;&lt;iframe src="https://slashdot.org/slashdot-it.pl?op=discuss&amp;amp;id=24116740&amp;amp;smallembed=1" style="height: 300px; width: 100%; border: none;"&gt;&lt;/iframe&gt;</description>
+<dc:creator>BeauHD</dc:creator>
+<dc:date>2026-10-06T18:00:00+00:00</dc:date>
+<dc:subject>virtualization</dc:subject>
+<slash:department>would-you-look-at-that</slash:department>
+<slash:section>slashdot</slash:section>
+<slash:comments>3</slash:comments>
+<slash:hit_parade>3,3,3,3,0,0,0</slash:hit_parade>
+</item>
+<item rdf:about="https://news.slashdot.org/story/26/10/06/1614205/mistral-unveils-new-le-chonk-ai-model-it-says-rivals-best-open-systems-from-china?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed">
+<title>Mistral Unveils New 'Le Chonk' AI Model It Says Rivals Best Open Systems From China</title>
+<link>https://news.slashdot.org/story/26/10/06/1614205/mistral-unveils-new-le-chonk-ai-model-it-says-rivals-best-open-systems-from-china?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed</link>
+<description>Mistral has unveiled Mistral Large 4, or "le Chonk," a 1-trillion-parameter model that it says is the strongest open-weight AI model developed outside China by a wide margin. The model is entering preview for developers, cybersecurity teams and governments before a broader release later this month. CNBC reports: ML4 was trained on 4,000 Nvidia Grace Blackwell GPUs over two months that were deployed in Mistral's own data centers in Europe. When its core parameters are released, ML4 will rank among the top open-weight models globally on aggregate benchmark performance, Mistral said in a statement. The company added that ML4 was the strongest open-weight model developed outside China by a "substantial margin." The new model still lags behind the frontier in areas such as coding.
+ 
+"The model capabilities will further improve as we scale up our training capacity, following our Series D fundraise," said Guillaume Lample, co-founder and chief scientist of Mistral. "Further, the cyber defense capabilities will enable enterprises and governments to defend themselves against threat actors that are jailbreaking closed models to perform cyber attacks," he added. Further reading: Mistral CEO Says US AI Safety Debate Masks Competitors' 'Negligence'&lt;p&gt;&lt;div class="share_submission" style="position:relative;"&gt;
+&lt;a class="slashpop" href="http://twitter.com/home?status=Mistral+Unveils+New+'Le+Chonk'+AI+Model+It+Says+Rivals+Best+Open+Systems+From+China%3A+https%3A%2F%2Fnews.slashdot.org%2Fstory%2F26%2F10%2F06%2F1614205%2F%3Futm_source%3Dtwitter%26utm_medium%3Dtwitter"&gt;&lt;img src="https://a.fsdn.com/sd/twitter_icon_large.png"&gt;&lt;/a&gt;
+&lt;a class="slashpop" href="http://www.facebook.com/sharer.php?u=https%3A%2F%2Fnews.slashdot.org%2Fstory%2F26%2F10%2F06%2F1614205%2Fmistral-unveils-new-le-chonk-ai-model-it-says-rivals-best-open-systems-from-china%3Futm_source%3Dslashdot%26utm_medium%3Dfacebook"&gt;&lt;img src="https://a.fsdn.com/sd/facebook_icon_large.png"&gt;&lt;/a&gt;
+
+
+
+&lt;/div&gt;&lt;/p&gt;&lt;p&gt;&lt;a href="https://news.slashdot.org/story/26/10/06/1614205/mistral-unveils-new-le-chonk-ai-model-it-says-rivals-best-open-systems-from-china?utm_source=rss1.0moreanon&amp;amp;utm_medium=feed"&gt;Read more of this story&lt;/a&gt; at Slashdot.&lt;/p&gt;&lt;iframe src="https://slashdot.org/slashdot-it.pl?op=discuss&amp;amp;id=24116718&amp;amp;smallembed=1" style="height: 300px; width: 100%; border: none;"&gt;&lt;/iframe&gt;</description>
+<dc:creator>BeauHD</dc:creator>
+<dc:date>2026-10-06T17:00:00+00:00</dc:date>
+<dc:subject>ai</dc:subject>
+<slash:department>one-trillion-parameters</slash:department>
+<slash:section>news</slash:section>
+<slash:comments>4</slash:comments>
+<slash:hit_parade>4,4,4,4,0,0,0</slash:hit_parade>
+</item>
+<item rdf:about="https://tech.slashdot.org/story/26/10/06/0459247/researchers-are-tracking-a-chinese-ai-agent-fleet?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed">
+<title>Researchers Are Tracking a Chinese AI 'Agent Fleet'</title>
+<link>https://tech.slashdot.org/story/26/10/06/0459247/researchers-are-tracking-a-chinese-ai-agent-fleet?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed</link>
+<description>Independent researchers say they've identified a large "fleet" of AI agents apparently running on Tencent infrastructure and making parallel queries against Alibaba's Amap mapping service. TechCrunch reports: Researchers, however, resisted the term "swarm," noting that there seems to be little coordination between their different queries. "'Agent fleet,' not 'swarm:'" one researcher wrote in the preliminary report, "many parallel agents on the same kind of task, with no sign of communication between them." The agents were discovered by monitoring traffic to the domain-scanning service urlquery, a technique that previously revealed long-running activity by OpenAI agents. AI agents often use urlquery to load websites that they cannot access directly, leaving a record of their activities that can be valuable to researchers.
+ 
+In this case, the record showed queries to Alibaba's Amap service, seeking directions to different entrances of various public places, including a park, a zoo, and a hospital. The research is ongoing and so few details are available, but the behavior shows how persistent AI agent activity has become on the internet. In the wake of the Hugging Face incident, many researchers are actively monitoring for rogue agent activity on the internet. Much of that activity has been easy to find because agents tend to use the same techniques and make little effort to conceal themselves.&lt;p&gt;&lt;div class="share_submission" style="position:relative;"&gt;
+&lt;a class="slashpop" href="http://twitter.com/home?status=Researchers+Are+Tracking+a+Chinese+AI+'Agent+Fleet'%3A+https%3A%2F%2Ftech.slashdot.org%2Fstory%2F26%2F10%2F06%2F0459247%2F%3Futm_source%3Dtwitter%26utm_medium%3Dtwitter"&gt;&lt;img src="https://a.fsdn.com/sd/twitter_icon_large.png"&gt;&lt;/a&gt;
+&lt;a class="slashpop" href="http://www.facebook.com/sharer.php?u=https%3A%2F%2Ftech.slashdot.org%2Fstory%2F26%2F10%2F06%2F0459247%2Fresearchers-are-tracking-a-chinese-ai-agent-fleet%3Futm_source%3Dslashdot%26utm_medium%3Dfacebook"&gt;&lt;img src="https://a.fsdn.com/sd/facebook_icon_large.png"&gt;&lt;/a&gt;
+
+
+
+&lt;/div&gt;&lt;/p&gt;&lt;p&gt;&lt;a href="https://tech.slashdot.org/story/26/10/06/0459247/researchers-are-tracking-a-chinese-ai-agent-fleet?utm_source=rss1.0moreanon&amp;amp;utm_medium=feed"&gt;Read more of this story&lt;/a&gt; at Slashdot.&lt;/p&gt;&lt;iframe src="https://slashdot.org/slashdot-it.pl?op=discuss&amp;amp;id=24116196&amp;amp;smallembed=1" style="height: 300px; width: 100%; border: none;"&gt;&lt;/iframe&gt;</description>
+<dc:creator>BeauHD</dc:creator>
+<dc:date>2026-10-06T16:00:00+00:00</dc:date>
+<dc:subject>internet</dc:subject>
+<slash:department>hide-and-seek</slash:department>
+<slash:section>technology</slash:section>
+<slash:comments>8</slash:comments>
+<slash:hit_parade>8,8,5,4,0,0,0</slash:hit_parade>
+</item>
+<item rdf:about="https://yro.slashdot.org/story/26/10/06/0452228/cable-lobby-to-sue-trump-fcc-over-repeal-of-national-tv-ownership-cap?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed">
+<title>Cable Lobby To Sue Trump FCC Over Repeal of National TV Ownership Cap</title>
+<link>https://yro.slashdot.org/story/26/10/06/0452228/cable-lobby-to-sue-trump-fcc-over-repeal-of-national-tv-ownership-cap?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed</link>
+<description>An anonymous reader quotes a report from ArsTechnica: Cable lobby groups notified the Federal Communications Commission that they will sue the agency to block its controversial repeal of the National Television Ownership Rule, which limits the number of broadcast TV stations a single company may own. The cable groups said that larger broadcast TV station groups will have leverage to demand higher retransmission fees from TV providers, resulting in "higher monthly TV bills for consumers." They said the FCC repeal order "arbitrarily and capriciously ignores the harms that will surely follow from allowing broadcast station groups to exceed the National Cap."
+ 
+The cable lobby groups represent top providers Comcast, Charter, and various other cable operators. Top cable companies have also expanded through mergers. Charter completed a purchase of Cox in August after the FCC rejected protests by advocacy groups that said the cable deal "would create unchecked gatekeeper power over Internet distribution" and make it easier for the biggest cable companies to raise prices. [...] The TV ownership rule prohibits any single broadcast station owner from reaching more than 39 percent of all TV households in the US. Congress directed the FCC to set the cap at 39 percent in 2004. On Friday, cable lobby groups submitted a petition asking the FCC to keep the TV ownership cap in place until litigation over the FCC's authority to repeal the rule is over.
+ 
+The cable groups' filing said the FCC repeal of the TV ownership cap violates the 2004 action by US lawmakers. The decision by Congress to set the cap at a precise numerical threshold was unambiguous, the filing said. "Congress established the National Cap at 39 percent in the 2004 CAA [Consolidated Appropriations Act] in direct response to the FCC's attempt to aggressively raise the Cap to 45 percent and made repeated references to the 39 percent Cap in the statute," the petition said. The petition to the FCC is mainly a procedural step as the commission isn't likely to stay its own order. The cable groups said they intend to sue the commission in a US appeals court once the FCC order is published in the Federal Register. After the lawsuit is filed, they can ask the court to issue a preliminary injunction that would keep the TV ownership cap in place pending the outcome of litigation.
+ 
+[...] The cable groups' petition said the FCC can't change the cap because the 2004 law "references the 39 percent Cap as statutory, not regulatory." A provision requiring divestiture of stations "specified that someone exceeding 'the 39 percent national audience reach limitation in paragraph (1)(B)' of 'section 202(c)' of '[t]he Telecommunications Act of 1996' 'shall have not more than 2 years to divest,'" the petition said. "Likewise, Congress singled out the Commission's only mechanism for setting aside statutory requirements -- the Commission's forbearance authority under 47 U.S.C. 160 -- and made clear that it 'shall not apply to any person or entity that exceeds the 39 percent national audience reach limitation,'" the cable lobby petition said. The FCC order argued that the agency's "ability to forbear from enforcement of its rules is distinct from its power to alter or eliminate those rules," and that the FCC forbearance authority doesn't apply to regulation of broadcasters.&lt;p&gt;&lt;div class="share_submission" style="position:relative;"&gt;
+&lt;a class="slashpop" href="http://twitter.com/home?status=Cable+Lobby+To+Sue+Trump+FCC+Over+Repeal+of+National+TV+Ownership+Cap%3A+https%3A%2F%2Fyro.slashdot.org%2Fstory%2F26%2F10%2F06%2F0452228%2F%3Futm_source%3Dtwitter%26utm_medium%3Dtwitter"&gt;&lt;img src="https://a.fsdn.com/sd/twitter_icon_large.png"&gt;&lt;/a&gt;
+&lt;a class="slashpop" href="http://www.facebook.com/sharer.php?u=https%3A%2F%2Fyro.slashdot.org%2Fstory%2F26%2F10%2F06%2F0452228%2Fcable-lobby-to-sue-trump-fcc-over-repeal-of-national-tv-ownership-cap%3Futm_source%3Dslashdot%26utm_medium%3Dfacebook"&gt;&lt;img src="https://a.fsdn.com/sd/facebook_icon_large.png"&gt;&lt;/a&gt;
+
+
+
+&lt;/div&gt;&lt;/p&gt;&lt;p&gt;&lt;a href="https://yro.slashdot.org/story/26/10/06/0452228/cable-lobby-to-sue-trump-fcc-over-repeal-of-national-tv-ownership-cap?utm_source=rss1.0moreanon&amp;amp;utm_medium=feed"&gt;Read more of this story&lt;/a&gt; at Slashdot.&lt;/p&gt;&lt;iframe src="https://slashdot.org/slashdot-it.pl?op=discuss&amp;amp;id=24116180&amp;amp;smallembed=1" style="height: 300px; width: 100%; border: none;"&gt;&lt;/iframe&gt;</description>
+<dc:creator>BeauHD</dc:creator>
+<dc:date>2026-10-06T15:00:00+00:00</dc:date>
+<dc:subject>tv</dc:subject>
+<slash:department>not-so-fast</slash:department>
+<slash:section>yro</slash:section>
+<slash:comments>22</slash:comments>
+<slash:hit_parade>22,22,17,16,3,1,1</slash:hit_parade>
+</item>
+<item rdf:about="https://slashdot.org/story/26/10/06/0443237/openai-is-adding-text-watermarking-in-chatgpt-and-codex?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed">
+<title>OpenAI Is Adding Text Watermarking In ChatGPT and Codex</title>
+<link>https://slashdot.org/story/26/10/06/0443237/openai-is-adding-text-watermarking-in-chatgpt-and-codex?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed</link>
+<description>OpenAI is rolling out an invisible, machine-readable text watermark called textGrain to ChatGPT and Codex, "but only for users in the European Union at first," reports The Verge. From the report: OpenAI says its textGrain watermarking "matched or exceeded" other approaches like Google DeepMind's SynthID for text, which is also the basis for the watermarking Anthropic announced in August. Like OpenAI, Anthropic made the move to meet the requirements of the EU's AI Act; however, not everyone was happy to learn about the addition. OpenAI also included scores from AI benchmarks showing similar performance from watermarked and unwatermarked text. But it notes that textGrain "does not guarantee reliable detection," and says text watermarks don't verify accuracy, determine who owns the text, measure how much a human contributed, or prove human authorship.&lt;p&gt;&lt;div class="share_submission" style="position:relative;"&gt;
+&lt;a class="slashpop" href="http://twitter.com/home?status=OpenAI+Is+Adding+Text+Watermarking+In+ChatGPT+and+Codex%3A+https%3A%2F%2Fslashdot.org%2Fstory%2F26%2F10%2F06%2F0443237%2F%3Futm_source%3Dtwitter%26utm_medium%3Dtwitter"&gt;&lt;img src="https://a.fsdn.com/sd/twitter_icon_large.png"&gt;&lt;/a&gt;
+&lt;a class="slashpop" href="http://www.facebook.com/sharer.php?u=https%3A%2F%2Fslashdot.org%2Fstory%2F26%2F10%2F06%2F0443237%2Fopenai-is-adding-text-watermarking-in-chatgpt-and-codex%3Futm_source%3Dslashdot%26utm_medium%3Dfacebook"&gt;&lt;img src="https://a.fsdn.com/sd/facebook_icon_large.png"&gt;&lt;/a&gt;
+
+
+
+&lt;/div&gt;&lt;/p&gt;&lt;p&gt;&lt;a href="https://slashdot.org/story/26/10/06/0443237/openai-is-adding-text-watermarking-in-chatgpt-and-codex?utm_source=rss1.0moreanon&amp;amp;utm_medium=feed"&gt;Read more of this story&lt;/a&gt; at Slashdot.&lt;/p&gt;&lt;iframe src="https://slashdot.org/slashdot-it.pl?op=discuss&amp;amp;id=24116176&amp;amp;smallembed=1" style="height: 300px; width: 100%; border: none;"&gt;&lt;/iframe&gt;</description>
+<dc:creator>BeauHD</dc:creator>
+<dc:date>2026-10-06T11:00:00+00:00</dc:date>
+<dc:subject>ai</dc:subject>
+<slash:department>rolling-out</slash:department>
+<slash:section>slashdot</slash:section>
+<slash:comments>56</slash:comments>
+<slash:hit_parade>56,55,46,44,13,5,4</slash:hit_parade>
+</item>
+<item rdf:about="https://science.slashdot.org/story/26/10/06/0419213/old-hearts-become-biologically-younger-when-transplanted-into-younger-people?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed">
+<title>Old Hearts Become Biologically Younger When Transplanted Into Younger People</title>
+<link>https://science.slashdot.org/story/26/10/06/0419213/old-hearts-become-biologically-younger-when-transplanted-into-younger-people?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed</link>
+<description>alternative_right shares a report from ScienceAlert: It might be reasonable to think that there's an indelible link between the heart and the body it resides in -- the processes that affect one inevitably affect the other. But a new preprint, uploaded to bioRxiv and yet to be peer-reviewed, suggests that this may only be true up to a point. Take the heart out of the body and put it in a new one, and something incredible happens. The transplanted heart begins to take on the biological age of its new owner. Older hearts transplanted into younger recipients appear to become biologically younger, while younger hearts placed in older bodies show signs of accelerated aging.&lt;p&gt;&lt;div class="share_submission" style="position:relative;"&gt;
+&lt;a class="slashpop" href="http://twitter.com/home?status=Old+Hearts+Become+Biologically+Younger+When+Transplanted+Into+Younger+People%3A+https%3A%2F%2Fscience.slashdot.org%2Fstory%2F26%2F10%2F06%2F0419213%2F%3Futm_source%3Dtwitter%26utm_medium%3Dtwitter"&gt;&lt;img src="https://a.fsdn.com/sd/twitter_icon_large.png"&gt;&lt;/a&gt;
+&lt;a class="slashpop" href="http://www.facebook.com/sharer.php?u=https%3A%2F%2Fscience.slashdot.org%2Fstory%2F26%2F10%2F06%2F0419213%2Fold-hearts-become-biologically-younger-when-transplanted-into-younger-people%3Futm_source%3Dslashdot%26utm_medium%3Dfacebook"&gt;&lt;img src="https://a.fsdn.com/sd/facebook_icon_large.png"&gt;&lt;/a&gt;
+
+
+
+&lt;/div&gt;&lt;/p&gt;&lt;p&gt;&lt;a href="https://science.slashdot.org/story/26/10/06/0419213/old-hearts-become-biologically-younger-when-transplanted-into-younger-people?utm_source=rss1.0moreanon&amp;amp;utm_medium=feed"&gt;Read more of this story&lt;/a&gt; at Slashdot.&lt;/p&gt;&lt;iframe src="https://slashdot.org/slashdot-it.pl?op=discuss&amp;amp;id=24116166&amp;amp;smallembed=1" style="height: 300px; width: 100%; border: none;"&gt;&lt;/iframe&gt;</description>
+<dc:creator>BeauHD</dc:creator>
+<dc:date>2026-10-06T07:00:00+00:00</dc:date>
+<dc:subject>medicine</dc:subject>
+<slash:department>would-you-look-at-that</slash:department>
+<slash:section>science</slash:section>
+<slash:comments>49</slash:comments>
+<slash:hit_parade>49,48,45,39,8,3,3</slash:hit_parade>
+</item>
+<item rdf:about="https://news.slashdot.org/story/26/10/06/0010236/texas-city-demands-2-million-for-public-records-on-flock-usage?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed">
+<title>Texas City Demands $2 Million For Public Records On Flock Usage</title>
+<link>https://news.slashdot.org/story/26/10/06/0010236/texas-city-demands-2-million-for-public-records-on-flock-usage?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed</link>
+<description>An anonymous reader quotes a report from Ars Technica: As bipartisan backlash against Flock grows, some cities are asking anti-surveillance advocates and media outlets to pay eye-popping fees -- including charging tens of thousands or even millions -- to get information about how police departments are using and potentially abusing AI-enabled camera systems that track every vehicle that passes them. On Monday, the Texas Tribune reported that city officials in a Fort Worth suburb, North Richland Hills, asked one group to pay $2.3 million before it would fulfill a public records request for Flock data. To reach that high fee, officials claimed that searching "about a terabyte worth of communications about errors, misuse, and effectiveness of the Flock system" would take approximately 14 years of labor at a rate of $15 per hour.
+ 
+Phil Mynona, who filed the request using a pseudonym on behalf of his group, the Texas Privacy Coalition, told the Tribune that the fee seemed "ludicrous" and designed to stifle his public records searches. Mynona has sought similar records from more than 200 law enforcement agencies across the US, and he said it was impossible to predict how cities assessed fees for Flock records. Some cities provided more than 400,000 pages of documents for free, while others charged $5,000. Other groups, including a Houston news station called KPRC, have seen officials quote up to $121,000 for Flock records, the Tribune reported. The high price tags may be hiding data that anti-surveillance groups note have triggered audits, arrests, and changes in how law enforcement uses cameras, including decisions to get rid of cameras. Further reading: Flock Blamed for Wrongful 13-Day Imprisonment and a Police Stalking Incident in Florida&lt;p&gt;&lt;div class="share_submission" style="position:relative;"&gt;
+&lt;a class="slashpop" href="http://twitter.com/home?status=Texas+City+Demands+%242+Million+For+Public+Records+On+Flock+Usage%3A+https%3A%2F%2Fnews.slashdot.org%2Fstory%2F26%2F10%2F06%2F0010236%2F%3Futm_source%3Dtwitter%26utm_medium%3Dtwitter"&gt;&lt;img src="https://a.fsdn.com/sd/twitter_icon_large.png"&gt;&lt;/a&gt;
+&lt;a class="slashpop" href="http://www.facebook.com/sharer.php?u=https%3A%2F%2Fnews.slashdot.org%2Fstory%2F26%2F10%2F06%2F0010236%2Ftexas-city-demands-2-million-for-public-records-on-flock-usage%3Futm_source%3Dslashdot%26utm_medium%3Dfacebook"&gt;&lt;img src="https://a.fsdn.com/sd/facebook_icon_large.png"&gt;&lt;/a&gt;
+
+
+
+&lt;/div&gt;&lt;/p&gt;&lt;p&gt;&lt;a href="https://news.slashdot.org/story/26/10/06/0010236/texas-city-demands-2-million-for-public-records-on-flock-usage?utm_source=rss1.0moreanon&amp;amp;utm_medium=feed"&gt;Read more of this story&lt;/a&gt; at Slashdot.&lt;/p&gt;&lt;iframe src="https://slashdot.org/slashdot-it.pl?op=discuss&amp;amp;id=24116008&amp;amp;smallembed=1" style="height: 300px; width: 100%; border: none;"&gt;&lt;/iframe&gt;</description>
+<dc:creator>BeauHD</dc:creator>
+<dc:date>2026-10-06T04:30:00+00:00</dc:date>
+<dc:subject>money</dc:subject>
+<slash:department>transparency-for-a-fee</slash:department>
+<slash:section>news</slash:section>
+<slash:comments>40</slash:comments>
+<slash:hit_parade>40,40,36,34,12,4,3</slash:hit_parade>
+</item>
+<item rdf:about="https://news.slashdot.org/story/26/10/05/2251217/rural-data-centers-are-in-for-a-big-federal-tax-break?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed">
+<title>Rural Data Centers Are in for a Big Federal Tax Break</title>
+<link>https://news.slashdot.org/story/26/10/05/2251217/rural-data-centers-are-in-for-a-big-federal-tax-break?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed</link>
+<description>Wired reports that rural data center projects could become eligible for expanded federal Opportunity Zone tax benefits starting in 2027, with more than 100 planned or developing facilities potentially qualifying. "Right now, the only requirement to get the benefits is capital investment," says Emily Kraschel, a tax policy analyst at the Searchlight Institute, a public policy think tank. "However, that doesn't guarantee that that money is necessarily creating jobs or creating a local economic boost. You'd be more sure of that with a more traditional factory that requires lots of workers. But with a data center, that assumption goes a little wonky." From the report: During the first Trump administration, a bipartisan group of lawmakers proposed the creation of the opportunity zone program, which offers tax benefits for companies that choose to build projects in certain low-income census tracts. Last year, the One Big Beautiful Bill Act made a number of changes to open up the program in order to attract more investment to rural areas. Kraschel and her colleagues from Searchlight have been researching data center projects that might qualify for these tax benefits, comparing the locations of data center projects in development with rural census tracts eligible for the new program. Wired exclusively reviewed the research compiled by Searchlight and found more than 100 data centers under various stages of development in rural areas that could be eligible.
+ 
+Searchlight used a very conservative database of under 700 data center projects that are planned or under construction to compile its research; other datasets put the number of data centers in development in the US at closer to 1,500. It's very likely that the number of newly eligible projects is bigger, especially since more data centers are decamping from urban areas. Separate research from Pew found that while just 13 percent of operating data centers are located in rural areas, a majority of planned facilities -- around 67 percent -- are going rural. [...] A project simply existing in a rural opportunity zone doesn't mean the company automatically will get the tax benefits; the company has to create a specialized investment vehicle to kickstart the process. Because the tax break can be considered confidential IRS data, it's next to impossible to know which companies are pursuing the benefits unless they voluntarily disclose.
+ 
+[...] Nathan Jensen, a government professor at the University of Texas-Austin, says that he would be "very surprised" if some companies were not considering siting in rural opportunity zones as part of their decisionmaking process. "It's essentially free money," he says. There is no requirement for projects getting opportunity zone benefits to create jobs; the assumption is that they will do so, simply by siting in the community itself. This isn't always the case for projects like storage facilities and warehouses, which, Jensen says, have been popular choices for developers working in opportunity zones. Data centers may create a number of jobs in the short term for their construction, but there's an ongoing debate about whether or not they create a lasting new workforce over the longer term.&lt;p&gt;&lt;div class="share_submission" style="position:relative;"&gt;
+&lt;a class="slashpop" href="http://twitter.com/home?status=Rural+Data+Centers+Are+in+for+a+Big+Federal+Tax+Break%3A+https%3A%2F%2Fnews.slashdot.org%2Fstory%2F26%2F10%2F05%2F2251217%2F%3Futm_source%3Dtwitter%26utm_medium%3Dtwitter"&gt;&lt;img src="https://a.fsdn.com/sd/twitter_icon_large.png"&gt;&lt;/a&gt;
+&lt;a class="slashpop" href="http://www.facebook.com/sharer.php?u=https%3A%2F%2Fnews.slashdot.org%2Fstory%2F26%2F10%2F05%2F2251217%2Frural-data-centers-are-in-for-a-big-federal-tax-break%3Futm_source%3Dslashdot%26utm_medium%3Dfacebook"&gt;&lt;img src="https://a.fsdn.com/sd/facebook_icon_large.png"&gt;&lt;/a&gt;
+
+
+
+&lt;/div&gt;&lt;/p&gt;&lt;p&gt;&lt;a href="https://news.slashdot.org/story/26/10/05/2251217/rural-data-centers-are-in-for-a-big-federal-tax-break?utm_source=rss1.0moreanon&amp;amp;utm_medium=feed"&gt;Read more of this story&lt;/a&gt; at Slashdot.&lt;/p&gt;&lt;iframe src="https://slashdot.org/slashdot-it.pl?op=discuss&amp;amp;id=24115958&amp;amp;smallembed=1" style="height: 300px; width: 100%; border: none;"&gt;&lt;/iframe&gt;</description>
+<dc:creator>BeauHD</dc:creator>
+<dc:date>2026-10-05T23:00:00+00:00</dc:date>
+<dc:subject>usa</dc:subject>
+<slash:department>free-money</slash:department>
+<slash:section>news</slash:section>
+<slash:comments>44</slash:comments>
+<slash:hit_parade>44,41,36,36,19,8,6</slash:hit_parade>
+</item>
+<item rdf:about="https://yro.slashdot.org/story/26/10/05/2236257/hackers-steal-8-million-citizens-records-from-danish-government-database?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed">
+<title>Hackers Steal 8 Million Citizens' Records From Danish Government Database</title>
+<link>https://yro.slashdot.org/story/26/10/05/2236257/hackers-steal-8-million-citizens-records-from-danish-government-database?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed</link>
+<description>Hackers stole records belonging to roughly 8 million Danish citizens and residents from Denmark's Central Person Register (CPR), including names, addresses, social security numbers and other personal information. The breach is believed to be the largest in Denmark's history. TechCrunch reports: The CPR is a government database of Danish citizens' information, including their government-issued identity number for paying taxes and accessing other services. Denmark's current population is about 6 million people, but the database includes records for about 11 million people, with some of the data going back decades.
+ 
+The Danish government would not say who is behind the breach, which happened in September but was discovered on October 2. However, it said the unauthorized access was obtained by "abusing a Danish company's lawful access to search for information in the CPR system." (Some companies in Denmark have access to the CPR for verifying people's information with the government.)&lt;p&gt;&lt;div class="share_submission" style="position:relative;"&gt;
+&lt;a class="slashpop" href="http://twitter.com/home?status=Hackers+Steal+8+Million+Citizens'+Records+From+Danish+Government+Database%3A+https%3A%2F%2Fyro.slashdot.org%2Fstory%2F26%2F10%2F05%2F2236257%2F%3Futm_source%3Dtwitter%26utm_medium%3Dtwitter"&gt;&lt;img src="https://a.fsdn.com/sd/twitter_icon_large.png"&gt;&lt;/a&gt;
+&lt;a class="slashpop" href="http://www.facebook.com/sharer.php?u=https%3A%2F%2Fyro.slashdot.org%2Fstory%2F26%2F10%2F05%2F2236257%2Fhackers-steal-8-million-citizens-records-from-danish-government-database%3Futm_source%3Dslashdot%26utm_medium%3Dfacebook"&gt;&lt;img src="https://a.fsdn.com/sd/facebook_icon_large.png"&gt;&lt;/a&gt;
+
+
+
+&lt;/div&gt;&lt;/p&gt;&lt;p&gt;&lt;a href="https://yro.slashdot.org/story/26/10/05/2236257/hackers-steal-8-million-citizens-records-from-danish-government-database?utm_source=rss1.0moreanon&amp;amp;utm_medium=feed"&gt;Read more of this story&lt;/a&gt; at Slashdot.&lt;/p&gt;&lt;iframe src="https://slashdot.org/slashdot-it.pl?op=discuss&amp;amp;id=24115956&amp;amp;smallembed=1" style="height: 300px; width: 100%; border: none;"&gt;&lt;/iframe&gt;</description>
+<dc:creator>BeauHD</dc:creator>
+<dc:date>2026-10-05T22:00:00+00:00</dc:date>
+<dc:subject>privacy</dc:subject>
+<slash:department>PSA</slash:department>
+<slash:section>yro</slash:section>
+<slash:comments>15</slash:comments>
+<slash:hit_parade>15,15,14,14,3,0,0</slash:hit_parade>
+</item>
+<item rdf:about="https://news.slashdot.org/story/26/10/05/1932228/wikipedia-operator-says-openais-rogue-bots-may-be-linked-to-a-may-outage?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed">
+<title>Wikipedia Operator Says OpenAI's 'Rogue' Bots May Be Linked to a May Outage</title>
+<link>https://news.slashdot.org/story/26/10/05/1932228/wikipedia-operator-says-openais-rogue-bots-may-be-linked-to-a-may-outage?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed</link>
+<description>The Wikimedia Foundation says it found evidence that "rogue" OpenAI agents edited Wikimedia wikis without approval, unsuccessfully tried to exploit its Etherpad service, and generated millions of automated requests across Wikimedia projects. Here's a summary of what Wikimedia observed (via The Verge): Wiki editing: We've identified edits to Wikimedia wikis that we believe are from AI agents operated by OpenAI. These edits were not published to pages with visibility to general readers; almost all of them were testing edits in "sandbox" areas of the wiki. It also included a few edits to the configuration for a citation tool, which we believe were potentially malicious edits that were intended to misuse this tool as a proxy for fetching data from remote services. While Wikipedia policies allow bots to edit when they are disclosed and approved by the community, none of those approvals were sought in these incidents.
+ Etherpad probing and use: Agents we believe to be operated by OpenAI made some unsuccessful attempts to compromise our public Etherpad, a note-taking tool we host as a community service. Agents unsuccessfully tried to use it to fetch data from other websites as a proxy. Other agents also likely operated by OpenAI took notes about their tasks, though this did not appear to turn into coordination.
+ 
+Excessive data downloading: Agents we believe to be operated by OpenAI made millions of automated requests to our public APIs to access the knowledge on Wikimedia projects, crawled millions of pages (mainly from our projects Wikidata and Wikimedia Commons), and made hundreds of thousands of data queries to the Wikidata Query Service (WQDS). This traffic may have contributed to a partial outage on WQDS in May.&lt;p&gt;&lt;div class="share_submission" style="position:relative;"&gt;
+&lt;a class="slashpop" href="http://twitter.com/home?status=Wikipedia+Operator+Says+OpenAI's+'Rogue'+Bots+May+Be+Linked+to+a+May+Outage%3A+https%3A%2F%2Fnews.slashdot.org%2Fstory%2F26%2F10%2F05%2F1932228%2F%3Futm_source%3Dtwitter%26utm_medium%3Dtwitter"&gt;&lt;img src="https://a.fsdn.com/sd/twitter_icon_large.png"&gt;&lt;/a&gt;
+&lt;a class="slashpop" href="http://www.facebook.com/sharer.php?u=https%3A%2F%2Fnews.slashdot.org%2Fstory%2F26%2F10%2F05%2F1932228%2Fwikipedia-operator-says-openais-rogue-bots-may-be-linked-to-a-may-outage%3Futm_source%3Dslashdot%26utm_medium%3Dfacebook"&gt;&lt;img src="https://a.fsdn.com/sd/facebook_icon_large.png"&gt;&lt;/a&gt;
+
+
+
+&lt;/div&gt;&lt;/p&gt;&lt;p&gt;&lt;a href="https://news.slashdot.org/story/26/10/05/1932228/wikipedia-operator-says-openais-rogue-bots-may-be-linked-to-a-may-outage?utm_source=rss1.0moreanon&amp;amp;utm_medium=feed"&gt;Read more of this story&lt;/a&gt; at Slashdot.&lt;/p&gt;&lt;iframe src="https://slashdot.org/slashdot-it.pl?op=discuss&amp;amp;id=24115810&amp;amp;smallembed=1" style="height: 300px; width: 100%; border: none;"&gt;&lt;/iframe&gt;</description>
+<dc:creator>BeauHD</dc:creator>
+<dc:date>2026-10-05T21:00:00+00:00</dc:date>
+<dc:subject>wikipedia</dc:subject>
+<slash:department>behind-the-scenes</slash:department>
+<slash:section>news</slash:section>
+<slash:comments>42</slash:comments>
+<slash:hit_parade>42,41,37,33,14,9,7</slash:hit_parade>
+</item>
+<item rdf:about="https://yro.slashdot.org/story/26/10/05/1914252/meta-rushed-to-fix-muse-vm-escape-vulnerability-soon-before-launch?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed">
+<title>Meta Rushed To Fix Muse 'VM Escape' Vulnerability Soon Before Launch</title>
+<link>https://yro.slashdot.org/story/26/10/05/1914252/meta-rushed-to-fix-muse-vm-escape-vulnerability-soon-before-launch?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed</link>
+<description>An anonymous reader quotes a report from 404 Media: In the immediate weeks before Muse's launch, Meta engineers found several security vulnerabilities in the company's viral AI agent product, at least one of which could have allowed malicious users to break outside of Muse's intended environment and access Meta's own sensitive databases and services, 404 Media has learned. The issues were so severe that they reached Mark Zuckerberg and staff worked overtime to fix them. These specific vulnerabilities were discovered before the launch of the product but required a multi-team "mad dash" to fix "a sudden spike in reported KVM escapes," according to an internal post by Meta executives to its core infrastructure team seen by 404 Media. In order for Muse to work, a user gives the AI agent access to various important services and accounts that they own. On Meta's end, each individual Muse instance runs on a kernel-based virtual machine, which connects to, but is supposed to be isolated from, Meta's own critical infrastructure. A "KVM escape," then, is when, through a security vulnerability, a Muse instance is able to escape from that virtual machine and interact with the system that runs it, or with other users' virtual machines.
+ 
+According to a Meta source, as well as internal security documentation and internal posts viewed by 404 Media, at least one of the vulnerabilities could have allowed an outside attacker -- that is, a normal Muse user -- to access data in sensitive internal Meta databases. At least one of the vulnerabilities was related to an exploit found in Linux kernel-based virtual machine code in July. 4 Several of the vulnerabilities were in the underlying Linux virtualization software that Meta uses for Muse. The security issue was considered serious enough that it was raised to Mark Zuckerberg, and several different security teams worked nights and weekends in the leadup to launch to fix the issues. [...] The Meta source said they felt security teams were asked to push hot fixes to these bugs as quickly as possible and in a way that wouldn't delay Muse's launch, leading to what they described as "half-baked protections being rushed out to enable the launch. Many senior engineers believe it's inevitable we're going to have a massive data breach as a result of Hatch." Muse is called "Hatch" internally and in Meta's codebase.&lt;p&gt;&lt;div class="share_submission" style="position:relative;"&gt;
+&lt;a class="slashpop" href="http://twitter.com/home?status=Meta+Rushed+To+Fix+Muse+'VM+Escape'+Vulnerability+Soon+Before+Launch%3A+https%3A%2F%2Fyro.slashdot.org%2Fstory%2F26%2F10%2F05%2F1914252%2F%3Futm_source%3Dtwitter%26utm_medium%3Dtwitter"&gt;&lt;img src="https://a.fsdn.com/sd/twitter_icon_large.png"&gt;&lt;/a&gt;
+&lt;a class="slashpop" href="http://www.facebook.com/sharer.php?u=https%3A%2F%2Fyro.slashdot.org%2Fstory%2F26%2F10%2F05%2F1914252%2Fmeta-rushed-to-fix-muse-vm-escape-vulnerability-soon-before-launch%3Futm_source%3Dslashdot%26utm_medium%3Dfacebook"&gt;&lt;img src="https://a.fsdn.com/sd/facebook_icon_large.png"&gt;&lt;/a&gt;
+
+
+
+&lt;/div&gt;&lt;/p&gt;&lt;p&gt;&lt;a href="https://yro.slashdot.org/story/26/10/05/1914252/meta-rushed-to-fix-muse-vm-escape-vulnerability-soon-before-launch?utm_source=rss1.0moreanon&amp;amp;utm_medium=feed"&gt;Read more of this story&lt;/a&gt; at Slashdot.&lt;/p&gt;&lt;iframe src="https://slashdot.org/slashdot-it.pl?op=discuss&amp;amp;id=24115802&amp;amp;smallembed=1" style="height: 300px; width: 100%; border: none;"&gt;&lt;/iframe&gt;</description>
+<dc:creator>BeauHD</dc:creator>
+<dc:date>2026-10-05T20:00:00+00:00</dc:date>
+<dc:subject>database</dc:subject>
+<slash:department>mad-dash</slash:department>
+<slash:section>yro</slash:section>
+<slash:comments>12</slash:comments>
+<slash:hit_parade>12,12,11,11,1,0,0</slash:hit_parade>
+</item>
+<item rdf:about="https://yro.slashdot.org/story/26/10/05/1842201/norway-plans-temporary-ban-on-smart-glasses?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed">
+<title>Norway Plans Temporary Ban on Smart Glasses</title>
+<link>https://yro.slashdot.org/story/26/10/05/1842201/norway-plans-temporary-ban-on-smart-glasses?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed</link>
+<description>Norway is preparing legislation that would temporarily ban camera-equipped smart glasses in a range of public places, including parks, beaches, museums, shopping centers, schools, daycare centers, healthcare facilities, gyms and public events. Private use would still be allowed. The Guardian reports: Torgeir Micaelsen, Norway's minister of digital affairs, said he was worried that new, powerful technology is being introduced where people risk being photographed, filmed or audio-recorded without knowing it."
+ 
+"We do not want a society where people worry about being recorded without their knowledge, photographed or filmed in places and situations where they are accustomed to not being monitored," he said.
+ Norway's Labour party, which heads a minority government, needs the support of other parties to pass the proposed ban. It said it planned to submit a bill "as soon as possible," while tasking an expert group with drawing up permanent regulations on the issue.&lt;p&gt;&lt;div class="share_submission" style="position:relative;"&gt;
+&lt;a class="slashpop" href="http://twitter.com/home?status=Norway+Plans+Temporary+Ban+on+Smart+Glasses%3A+https%3A%2F%2Fyro.slashdot.org%2Fstory%2F26%2F10%2F05%2F1842201%2F%3Futm_source%3Dtwitter%26utm_medium%3Dtwitter"&gt;&lt;img src="https://a.fsdn.com/sd/twitter_icon_large.png"&gt;&lt;/a&gt;
+&lt;a class="slashpop" href="http://www.facebook.com/sharer.php?u=https%3A%2F%2Fyro.slashdot.org%2Fstory%2F26%2F10%2F05%2F1842201%2Fnorway-plans-temporary-ban-on-smart-glasses%3Futm_source%3Dslashdot%26utm_medium%3Dfacebook"&gt;&lt;img src="https://a.fsdn.com/sd/facebook_icon_large.png"&gt;&lt;/a&gt;
+
+
+
+&lt;/div&gt;&lt;/p&gt;&lt;p&gt;&lt;a href="https://yro.slashdot.org/story/26/10/05/1842201/norway-plans-temporary-ban-on-smart-glasses?utm_source=rss1.0moreanon&amp;amp;utm_medium=feed"&gt;Read more of this story&lt;/a&gt; at Slashdot.&lt;/p&gt;&lt;iframe src="https://slashdot.org/slashdot-it.pl?op=discuss&amp;amp;id=24115776&amp;amp;smallembed=1" style="height: 300px; width: 100%; border: none;"&gt;&lt;/iframe&gt;</description>
+<dc:creator>BeauHD</dc:creator>
+<dc:date>2026-10-05T19:00:00+00:00</dc:date>
+<dc:subject>privacy</dc:subject>
+<slash:department>smile-you're-on-camera</slash:department>
+<slash:section>yro</slash:section>
+<slash:comments>44</slash:comments>
+<slash:hit_parade>44,43,34,29,8,3,2</slash:hit_parade>
+</item>
+<item rdf:about="https://hardware.slashdot.org/story/26/10/05/1747205/mac-users-reclaim-12gb-of-storage-with-apple-intelligence-removal-tool?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed">
+<title>Mac Users Reclaim 12GB+ of Storage With Apple Intelligence Removal Tool</title>
+<link>https://hardware.slashdot.org/story/26/10/05/1747205/mac-users-reclaim-12gb-of-storage-with-apple-intelligence-removal-tool?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed</link>
+<description>A new open-source command-line tool called RemoveMacAI lets macOS 27 users disable Apple Intelligence and reclaim around 12GB or more of storage. MacRumors reports: In macOS 27, Apple removed the toggle to disable Apple Intelligence wholesale, and simply disabling individual features doesn't remove the models from your Mac's drive. As explained by the developer, RemoveMacAI gets around this by using a configuration profile to switch off Apple's own asset management service and remove the models.
+ 
+It then configures the system so attempts to download the removed models are redirected to a closed local port, preventing them from immediately coming back. And it does all this without disabling System Integrity Protection (SIP) or manually deleting files from protected system locations, unlike some older tools have. The tool can free up roughly 12GB of space depending on which models are present on your Mac. That said, some users are reporting cases of Apple Intelligence models having taken up a lot more space, which they've now reclaimed.&lt;p&gt;&lt;div class="share_submission" style="position:relative;"&gt;
+&lt;a class="slashpop" href="http://twitter.com/home?status=Mac+Users+Reclaim+12GB%2B+of+Storage+With+Apple+Intelligence+Removal+Tool%3A+https%3A%2F%2Fhardware.slashdot.org%2Fstory%2F26%2F10%2F05%2F1747205%2F%3Futm_source%3Dtwitter%26utm_medium%3Dtwitter"&gt;&lt;img src="https://a.fsdn.com/sd/twitter_icon_large.png"&gt;&lt;/a&gt;
+&lt;a class="slashpop" href="http://www.facebook.com/sharer.php?u=https%3A%2F%2Fhardware.slashdot.org%2Fstory%2F26%2F10%2F05%2F1747205%2Fmac-users-reclaim-12gb-of-storage-with-apple-intelligence-removal-tool%3Futm_source%3Dslashdot%26utm_medium%3Dfacebook"&gt;&lt;img src="https://a.fsdn.com/sd/facebook_icon_large.png"&gt;&lt;/a&gt;
+
+
+
+&lt;/div&gt;&lt;/p&gt;&lt;p&gt;&lt;a href="https://hardware.slashdot.org/story/26/10/05/1747205/mac-users-reclaim-12gb-of-storage-with-apple-intelligence-removal-tool?utm_source=rss1.0moreanon&amp;amp;utm_medium=feed"&gt;Read more of this story&lt;/a&gt; at Slashdot.&lt;/p&gt;&lt;iframe src="https://slashdot.org/slashdot-it.pl?op=discuss&amp;amp;id=24115732&amp;amp;smallembed=1" style="height: 300px; width: 100%; border: none;"&gt;&lt;/iframe&gt;</description>
+<dc:creator>BeauHD</dc:creator>
+<dc:date>2026-10-05T18:00:00+00:00</dc:date>
+<dc:subject>storage</dc:subject>
+<slash:department>AI-be-gone</slash:department>
+<slash:section>hardware</slash:section>
+<slash:comments>66</slash:comments>
+<slash:hit_parade>66,65,61,55,8,5,3</slash:hit_parade>
+</item>
+<item rdf:about="https://yro.slashdot.org/story/26/10/05/1733245/anthropic-reports-florida-womans-claude-diary-threat-to-law-enforcement?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed">
+<title>Anthropic Reports Florida Woman's Claude 'Diary' Threat to Law Enforcement</title>
+<link>https://yro.slashdot.org/story/26/10/05/1733245/anthropic-reports-florida-womans-claude-diary-threat-to-law-enforcement?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed</link>
+<description>A Florida woman was arrested on a felony charge after Anthropic's human review team flagged and reported a Claude conversation in which she allegedly threatened to "shoot up" the Lee County Sheriff's Office and later mentioned acquiring a new gun. Tom's Hardware reports: Anthropic monitors chats for key phrases and content that could be deemed threatening, the arrest report says, and depending on severity, they can be elevated for human review. In this case, the team decided to report its findings to law enforcement. The Bonita Springs woman was detained at home without incident, and an LCSO intelligence detective took over the case from there. The arrest report is not yet in the court file, but our own check shows court records listing the Sept. 30 felony charge under Florida Statute 836.10: written or electronic threat of a mass shooting or act of terrorism.
+ 
+No comment from Anthropic on the case is currently on record. Anthropic's public privacy policy, effective Sept. 10, says that disclosure to law enforcement may occur where it has a good-faith belief "that disclosure is reasonably necessary to ... prevent serious harm to any person or to property." Its government requests report for the latter half of 2025 uses a narrower standard for emergency disclosures, the "danger of death or serious physical injury to a person," and lists zero emergency requests from law enforcement in that period, though it doesn't count referrals Anthropic makes on its own.&lt;p&gt;&lt;div class="share_submission" style="position:relative;"&gt;
+&lt;a class="slashpop" href="http://twitter.com/home?status=Anthropic+Reports+Florida+Woman's+Claude+'Diary'+Threat+to+Law+Enforcement%3A+https%3A%2F%2Fyro.slashdot.org%2Fstory%2F26%2F10%2F05%2F1733245%2F%3Futm_source%3Dtwitter%26utm_medium%3Dtwitter"&gt;&lt;img src="https://a.fsdn.com/sd/twitter_icon_large.png"&gt;&lt;/a&gt;
+&lt;a class="slashpop" href="http://www.facebook.com/sharer.php?u=https%3A%2F%2Fyro.slashdot.org%2Fstory%2F26%2F10%2F05%2F1733245%2Fanthropic-reports-florida-womans-claude-diary-threat-to-law-enforcement%3Futm_source%3Dslashdot%26utm_medium%3Dfacebook"&gt;&lt;img src="https://a.fsdn.com/sd/facebook_icon_large.png"&gt;&lt;/a&gt;
+
+
+
+&lt;/div&gt;&lt;/p&gt;&lt;p&gt;&lt;a href="https://yro.slashdot.org/story/26/10/05/1733245/anthropic-reports-florida-womans-claude-diary-threat-to-law-enforcement?utm_source=rss1.0moreanon&amp;amp;utm_medium=feed"&gt;Read more of this story&lt;/a&gt; at Slashdot.&lt;/p&gt;&lt;iframe src="https://slashdot.org/slashdot-it.pl?op=discuss&amp;amp;id=24115730&amp;amp;smallembed=1" style="height: 300px; width: 100%; border: none;"&gt;&lt;/iframe&gt;</description>
+<dc:creator>BeauHD</dc:creator>
+<dc:date>2026-10-05T17:00:00+00:00</dc:date>
+<dc:subject>crime</dc:subject>
+<slash:department>human-review</slash:department>
+<slash:section>yro</slash:section>
+<slash:comments>82</slash:comments>
+<slash:hit_parade>82,81,73,66,19,9,4</slash:hit_parade>
+</item>
+<item rdf:about="https://slashdot.org/story/26/10/05/1525207/sam-altman-the-world-should-accept-some-bad-things-happening-for-the-benefits-of-ai?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed">
+<title>Sam Altman: 'The World Should Accept Some Bad Things Happening' For the Benefits of AI</title>
+<link>https://slashdot.org/story/26/10/05/1525207/sam-altman-the-world-should-accept-some-bad-things-happening-for-the-benefits-of-ai?utm_source=rss1.0mainlinkanon&amp;utm_medium=feed</link>
+<description>OpenAI CEO Sam Altman says society should accept some negative consequences from AI in exchange for the technology's broader benefits and widespread public access. "I think there's a lot of daylight," Altman told Decoded co-author and Politico senior tech reporter Brendan Bordelon. Asked about where he differs between Anthropic and its CEO Dario Amodei, Altman said, "we believe that the world should accept some bad things happening for the benefits of this technology and people having the agency." From the report: Altman agreed with Amodei's call last month to slow the development of the most advanced AI models. His company has followed Anthropic in endorsing new state laws that impose stricter safety requirements than what the maker of ChatGPT had previously supported -- a subtle shift from its prior state strategy. And OpenAI lobbyists recently endorsed a bipartisan House proposal that would require top AI companies to embed outside safety evaluators.
+ 
+Despite the convergence, Altman tried to distinguish his firm's regulatory stance from Anthropic's, referencing a criticism about regulatory capture that tech advisers close to President Donald Trump have applied to Anthropic. "I disagree, but I understand the perspective of people who are like, 'This technology is going to get so powerful, and it's so dangerous, that a single lab in San Francisco should have it and make sure nothing bad happens, and kind of figure out how to dole out the benefits,'" said Altman. He called it "a completely unacceptable trade-off" that runs counter to the "lighter-touch regulatory stance" backed by OpenAI.
+ 
+"I wouldn't take a trade of saying, 'We'll make sure there's no major hacks, there's no misuse of this technology, there's zero scams, there's zero all the other bad things that will happen,'" said Altman. "Because I think people will do tremendously -- orders of magnitude more -- good stuff than bad stuff." The OpenAI CEO later added that he does not accept "the really catastrophic risks," including the potential for "a serious loss of control to AI."&lt;p&gt;&lt;div class="share_submission" style="position:relative;"&gt;
+&lt;a class="slashpop" href="http://twitter.com/home?status=Sam+Altman%3A+'The+World+Should+Accept+Some+Bad+Things+Happening'+For+the+Benefits+of+AI%3A+https%3A%2F%2Fslashdot.org%2Fstory%2F26%2F10%2F05%2F1525207%2F%3Futm_source%3Dtwitter%26utm_medium%3Dtwitter"&gt;&lt;img src="https://a.fsdn.com/sd/twitter_icon_large.png"&gt;&lt;/a&gt;
+&lt;a class="slashpop" href="http://www.facebook.com/sharer.php?u=https%3A%2F%2Fslashdot.org%2Fstory%2F26%2F10%2F05%2F1525207%2Fsam-altman-the-world-should-accept-some-bad-things-happening-for-the-benefits-of-ai%3Futm_source%3Dslashdot%26utm_medium%3Dfacebook"&gt;&lt;img src="https://a.fsdn.com/sd/facebook_icon_large.png"&gt;&lt;/a&gt;
+
+
+
+&lt;/div&gt;&lt;/p&gt;&lt;p&gt;&lt;a href="https://slashdot.org/story/26/10/05/1525207/sam-altman-the-world-should-accept-some-bad-things-happening-for-the-benefits-of-ai?utm_source=rss1.0moreanon&amp;amp;utm_medium=feed"&gt;Read more of this story&lt;/a&gt; at Slashdot.&lt;/p&gt;&lt;iframe src="https://slashdot.org/slashdot-it.pl?op=discuss&amp;amp;id=24115608&amp;amp;smallembed=1" style="height: 300px; width: 100%; border: none;"&gt;&lt;/iframe&gt;</description>
+<dc:creator>BeauHD</dc:creator>
+<dc:date>2026-10-05T16:00:00+00:00</dc:date>
+<dc:subject>ai</dc:subject>
+<slash:department>compare-and-contrast</slash:department>
+<slash:section>slashdot</slash:section>
+<slash:comments>157</slash:comments>
+<slash:hit_parade>157,154,135,121,40,20,14</slash:hit_parade>
+</item>
+<textinput rdf:about="https://slashdot.org/search.pl">
+<title>Search Slashdot</title>
+<description>Search Slashdot stories</description>
+<name>query</name>
+<link>https://slashdot.org/search.pl</link>
+</textinput>
+</rdf:RDF>

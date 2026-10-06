@@ -89,17 +89,18 @@ describe('every table is a ladder', () => {
     });
   }
 
-  it('offers a table for the nine widgets and for nothing else', () => {
+  it('offers a table for the ten widgets and for nothing else', () => {
     expect(Object.keys(WIDGET_TIERS).sort()).toEqual(
-      ['buttons', 'chores', 'homeassistant', 'messages', 'notes', 'shift', 'timers', 'todo', 'weather'],
+      ['buttons', 'chores', 'homeassistant', 'messages', 'news', 'notes', 'shift', 'timers', 'todo', 'weather'],
     );
   });
 
-  it('gives Buttons, Timers and Messages the to-do list’s own table, not a copy of it', () => {
+  it('gives Buttons, Timers, Messages and News the to-do list’s own table, not a copy of it', () => {
     // Each is a list of lines in the event role, the to-do row's shape; a copy could drift.
     expect(WIDGET_TIERS['buttons']).toBe(TODO_TIERS);
     expect(WIDGET_TIERS['timers']).toBe(TODO_TIERS);
     expect(WIDGET_TIERS['messages']).toBe(TODO_TIERS);
+    expect(WIDGET_TIERS['news']).toBe(TODO_TIERS);
   });
 });
 

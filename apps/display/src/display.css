@@ -4873,3 +4873,54 @@ body {
   overflow-wrap: break-word;
 }
 .hd-rule + .hd-second { margin-top: 0; }
+
+/*
+ * The News widget (plan item M5.5). A list is the household's feeds' headlines
+ * in the event role, each with its source and age under it in the scaffold
+ * role; a headline wraps rather than being cut, and how many fit is the list
+ * tier's question (`TODO_TIERS`), measured off the drawn rows. One at a time,
+ * the headline is in the lede role beside its QR code — a square `tierNewsOne`
+ * sizes to the body — and steps down to the event role where it would spill.
+ * Nothing here is a link, and nothing is styled as one.
+ */
+.nw { display: flex; flex-direction: column; gap: var(--s3); min-width: 0; }
+.nw-item { display: flex; flex-direction: column; min-width: 0; }
+.nw-title {
+  font-size: var(--t-wall-event, var(--t-base));
+  line-height: 1.2;
+  color: var(--ink-event, var(--ink));
+  overflow-wrap: break-word;
+}
+.nw-meta {
+  margin-top: var(--s1);
+  font-size: var(--t-wall-scaffold, 1.25rem);
+  line-height: 1.15;
+  color: var(--ink-quiet, var(--muted));
+}
+.fw > .nw-one {
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: row;
+  align-items: stretch;
+  gap: var(--s4);
+}
+.nw-words {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+}
+.nw-headline {
+  font-family: var(--disp);
+  font-weight: 700;
+  font-size: var(--t-wall-lede, var(--t-event));
+  line-height: 1.15;
+  color: var(--ink-event, var(--ink));
+  overflow-wrap: break-word;
+}
+.nw-headline.is-small { font-size: var(--t-wall-event, var(--t-base)); }
+.nw-qr { flex: 0 0 auto; position: relative; }
+.nw-qr > svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }

@@ -64,6 +64,12 @@ export type SecretPurpose =
    * again. Its own purpose for the reason every secret here has one.
    */
   | 'companion-token'
+  /**
+   * A news feed's address (plan item M5.5). A private feed's address is its
+   * credential, as a calendar's is, and its own purpose so it cannot be
+   * swapped into another column and decrypt there.
+   */
+  | 'news-feed-url'
   /** Session signing. */
   | 'session';
 

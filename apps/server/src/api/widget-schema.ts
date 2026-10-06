@@ -51,6 +51,9 @@ const widgetConfigFields = z
      * `link` and `text` are the QR code widget's (plan item M5.3): absent is
      * guest Wi-Fi, and these are a code for an address and for typed words.
      *
+     * `one` is the News widget's one-headline-at-a-time view (plan item
+     * M5.5); absent is its list.
+     *
      * `people` is the Chores widget's by-person board; `week` is shared with the
      * calendar's day columns and means the same thing on both — seven days
      * across. One key for every type's view, because the editor's View picker is
@@ -66,7 +69,7 @@ const widgetConfigFields = z
      * canvas hanging in somebody's kitchen holds one and must keep validating
      * — no migration rewrites a stored arrangement.
      */
-    mode: z.enum(['month', 'week', 'list', 'skyweek', 'skymonth', 'people', 'link', 'text']).optional(),
+    mode: z.enum(['month', 'week', 'list', 'skyweek', 'skymonth', 'people', 'link', 'text', 'one']).optional(),
     /*
      * How much room the calendar spends on itself: `comfortable` (cards, gaps,
      * breathing room) or `compact` (hairlines, edge to edge, more of the week
@@ -445,6 +448,21 @@ const widgetConfigFields = z
     glyph: z.enum(GLYPH_KEYS).optional(),
     divider: z.boolean().optional(),
     uppercase: z.boolean().optional(),
+    /*
+     * News (plan item M5.5). `newsFeeds` names which of the household's feeds,
+     * by the id the server minted (absent or empty is all of them) — an id is
+     * not a secret, the address is, and it never leaves the server.
+     * `showSource` and `showTime` put the feed's name and the headline's age
+     * under it, and `showQr` a code to read the story on a phone in the
+     * one-at-a-time view; each is on unless it is `false`, so a widget nobody
+     * touched draws all three. `rotateSeconds` is how long each headline
+     * stays in that view (absent is a minute).
+     */
+    newsFeeds: z.array(z.string().regex(/^nf-[0-9a-f]{12}$/)).max(8).optional(),
+    showSource: z.boolean().optional(),
+    showTime: z.boolean().optional(),
+    showQr: z.boolean().optional(),
+    rotateSeconds: z.union([z.literal(30), z.literal(60), z.literal(300)]).optional(),
     // External module widget — which registered module's panel to draw (its id).
     module: z.string().max(64).optional(),
     // Image widget — a stored image's own name (RFC 005 Phase 3b). Served from
@@ -535,6 +553,9 @@ export const inkOverrideBody = widgetConfigFields
     shiftName: true,
     showDate: true,
     showShifts: true,
+    showSource: true,
+    showTime: true,
+    showQr: true,
     textSize: true,
     unitWords: true,
     valign: true,

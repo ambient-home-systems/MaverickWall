@@ -20,7 +20,7 @@ import {
   wallClockReading,
 } from './clock-face.js';
 import { agendaTimeFitsBeside, weekColumnsFit } from './density.js';
-import type { PanelData, PanelReading } from './viewmodel.js';
+import type { NewsModel, PanelData, PanelReading } from './viewmodel.js';
 import type { ManifestWidget, CanvasBackground } from './manifest.js';
 import { glyphNode, glyphPartsNode, isGlyphKey } from './glyphs.js';
 import { emojiNode } from './emoji.js';
@@ -35,6 +35,7 @@ import { childCells, groupChildren, topLevelWidgets } from './group-cells.js';
 import { applyStyleTokens, styleTokensOf } from './widget-style.js';
 import { encodeQr } from './qr.js';
 import { qrCaption, qrKind, qrPasswordLine, qrPayload } from './qr-payload.js';
+import { newsIndexAt, newsMode, newsShown, newsShows } from './news-view.js';
 import { headingDivider, headingPlace, headingSecond, headingSizesFrom, headingText } from './heading.js';
 import { inkOn, readableHue, shiftTint } from './theme.js';
 import {
@@ -2488,6 +2489,8 @@ export function renderWidget(
       return renderQrWidget(config);
     case 'heading':
       return renderHeadingWidget(config);
+    case 'news':
+      return renderNewsWidget(model, config);
     /*
      * The motion demonstration (plan P4.3) — a test fixture no server sends:
      * `WIDGET_TYPES` refuses it at the layout save and drops it from a stored
@@ -2537,6 +2540,107 @@ function renderHeadingWidget(config: unknown): HTMLElement {
 }
 
 /**
+ * The News widget (plan item M5.5): headlines from the household's feeds, as
+ * a list or one at a time.
+ *
+ * Every word is the feed's and is drawn with `textContent`; nothing here is a
+ * link — rule three and the plan's own line. In the one-at-a-time view the
+ * story's address is drawn instead as a QR code, for a phone to open, and the
+ * headline on show is chosen by the wall's clock (`newsIndexAt`), so it turns
+ * on the fifteen-second redraw with no timer of its own and keeps turning
+ * through the headlines the wall has when the server is away.
+ */
+function renderNewsWidget(model: DisplayModel, config: unknown): HTMLElement {
+  const shown = newsShown(model.news, config);
+  if (shown.length === 0) return el('div', 'cd-empty', 'No headlines yet.');
+  const meta = (headline: NewsModel, extra?: string): HTMLElement | undefined => {
+    const parts: string[] = [];
+    if (newsShows(config, 'showSource')) parts.push(headline.source);
+    if (newsShows(config, 'showTime')) {
+      const ago = changedWords(headline.at, model.now);
+      if (ago !== undefined) parts.push(ago);
+    }
+    if (extra !== undefined) parts.push(extra);
+    return parts.length === 0 ? undefined : el('div', 'nw-meta', parts.join(' · '));
+  };
+  if (newsMode(config) === 'one') {
+    const index = newsIndexAt(shown.length, model.now, config);
+    const headline = shown[index] as NewsModel;
+    const block = el('section', 'nw nw-one');
+    block.setAttribute('data-headline', headline.key);
+    const words = el('div', 'nw-words');
+    words.appendChild(el('div', 'nw-headline', headline.title));
+    const line = meta(headline, shown.length > 1 ? `${index + 1} of ${shown.length}` : undefined);
+    if (line !== undefined) words.appendChild(line);
+    block.appendChild(words);
+    const matrix = newsShows(config, 'showQr') && headline.link !== undefined ? encodeQr(headline.link) : undefined;
+    if (matrix !== undefined) {
+      const code = el('div', 'nw-qr');
+      code.appendChild(qrSvgNode(matrix, `QR code to read “${headline.title}” on a phone`));
+      block.appendChild(code);
+    }
+    return block;
+  }
+  const raw = widgetConfig(config)['count'];
+  const count = typeof raw === 'number' && Number.isInteger(raw) && raw >= 1 ? raw : 6;
+  const list = el('section', 'nw');
+  for (const headline of shown.slice(0, count)) {
+    const row = el('div', 'nw-item');
+    row.setAttribute('data-headline', headline.key);
+    row.appendChild(el('div', 'nw-title', headline.title));
+    const line = meta(headline);
+    if (line !== undefined) row.appendChild(line);
+    list.appendChild(row);
+  }
+  return list;
+}
+
+/**
+ * A QR code as an SVG: one path of unit squares in a square `viewBox` that
+ * holds the four-module quiet zone, drawn at the shorter side of whatever box
+ * it is put in, with `crispEdges` so a module stays a hard square. Shared by
+ * the QR code widget and a News headline's code (plan items M5.3, M5.5). Its
+ * plate and modules are painted by `display.css`, black on white on every
+ * theme, because an inverted code is one some phones cannot see.
+ */
+function qrSvgNode(matrix: { readonly size: number; readonly modules: readonly (readonly boolean[])[] }, label: string): SVGSVGElement {
+  const ns = 'http://www.w3.org/2000/svg';
+  const quiet = 4;
+  const span = matrix.size + quiet * 2;
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${span} ${span}`);
+  svg.setAttribute('shape-rendering', 'crispEdges');
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', label);
+  svg.setAttribute('focusable', 'false');
+  const plate = document.createElementNS(ns, 'rect');
+  plate.setAttribute('width', String(span));
+  plate.setAttribute('height', String(span));
+  plate.setAttribute('class', 'qr-plate');
+  svg.appendChild(plate);
+  let d = '';
+  for (let row = 0; row < matrix.size; row++) {
+    const line = matrix.modules[row] as readonly boolean[];
+    let column = 0;
+    while (column < matrix.size) {
+      if (!line[column]) {
+        column++;
+        continue;
+      }
+      let end = column;
+      while (end < matrix.size && line[end]) end++;
+      d += `M${column + quiet} ${row + quiet}h${end - column}v1h${column - end}z`;
+      column = end;
+    }
+  }
+  const modules = document.createElementNS(ns, 'path');
+  modules.setAttribute('d', d);
+  modules.setAttribute('class', 'qr-modules');
+  svg.appendChild(modules);
+  return svg;
+}
+
+/**
  * The QR code widget (plan item M5.3): guest Wi-Fi, a link or some words, as a
  * code a phone can read, with the network's name or the link under it.
  *
@@ -2569,47 +2673,15 @@ function renderQrWidget(config: unknown): HTMLElement {
   if (matrix === undefined) return el('div', 'cd-empty', 'That is more than one QR code can hold.');
   const body = el('div', 'qr');
   const code = el('div', 'qr-code');
-  const ns = 'http://www.w3.org/2000/svg';
-  const quiet = 4;
-  const span = matrix.size + quiet * 2;
-  const svg = document.createElementNS(ns, 'svg');
-  svg.setAttribute('viewBox', `0 0 ${span} ${span}`);
-  svg.setAttribute('shape-rendering', 'crispEdges');
-  svg.setAttribute('role', 'img');
   const caption = qrCaption(config);
-  svg.setAttribute(
-    'aria-label',
+  const svg = qrSvgNode(
+    matrix,
     kind === 'wifi'
       ? `QR code to join the Wi-Fi network ${caption ?? ''}`.trim()
       : kind === 'link'
         ? `QR code for ${caption ?? 'a link'}`
         : 'QR code',
   );
-  svg.setAttribute('focusable', 'false');
-  const plate = document.createElementNS(ns, 'rect');
-  plate.setAttribute('width', String(span));
-  plate.setAttribute('height', String(span));
-  plate.setAttribute('class', 'qr-plate');
-  svg.appendChild(plate);
-  let d = '';
-  for (let row = 0; row < matrix.size; row++) {
-    const line = matrix.modules[row] as readonly boolean[];
-    let column = 0;
-    while (column < matrix.size) {
-      if (!line[column]) {
-        column++;
-        continue;
-      }
-      let end = column;
-      while (end < matrix.size && line[end]) end++;
-      d += `M${column + quiet} ${row + quiet}h${end - column}v1h${column - end}z`;
-      column = end;
-    }
-  }
-  const modules = document.createElementNS(ns, 'path');
-  modules.setAttribute('d', d);
-  modules.setAttribute('class', 'qr-modules');
-  svg.appendChild(modules);
   code.appendChild(svg);
   body.appendChild(code);
   if (caption !== undefined) {
@@ -3368,6 +3440,8 @@ const WIDGET_PRIMARY: Readonly<Record<string, { readonly cls: string; readonly h
   chores: { cls: 'ch-name', host: '.ch, .ch-people' },
   // A button is its name (RFC 018 phase 5).
   buttons: { cls: 'bt-button', host: '.bt' },
+  // A headline is the list's line (plan item M5.5).
+  news: { cls: 'nw-title', host: '.nw' },
 };
 
 /**
@@ -3424,6 +3498,10 @@ function applyWidgetTiers(
     }
     if (entry.widget.type === 'heading') {
       tierHeading(entry);
+      continue;
+    }
+    if (entry.widget.type === 'news' && newsMode(entry.widget.config) === 'one') {
+      tierNewsOne(entry);
       continue;
     }
     // Home Assistant's `tile` look is a grid of its own markup with its own
@@ -3595,6 +3673,40 @@ function tierCountdown(entry: TieredWidget): void {
   stampTier(entry.box, tier, 1);
   stampRungs(entry.box, kept);
   beltItems(entry.box, [...entry.body.querySelectorAll<HTMLElement>('[data-part]')]);
+}
+
+/**
+ * The one-at-a-time News view's form, from its box (plan item M5.5).
+ *
+ * The code is a square beside the words, as tall as the body and at most two
+ * fifths of its width; where that square would be under three lines of the
+ * headline it is given up, because a code too small to scan from arm's length
+ * is a code that looks like it works — the encoder's own rule. Then, if the
+ * words still spill, the headline steps down from the lede to the event role
+ * and its meta line goes, content before points. Measured off the drawn parts.
+ */
+function tierNewsOne(entry: TieredWidget): void {
+  const block = entry.body;
+  if (!block.classList.contains('nw-one')) return;
+  const code = block.querySelector<HTMLElement>('.nw-qr');
+  const words = block.querySelector<HTMLElement>('.nw-words');
+  const headline = block.querySelector<HTMLElement>('.nw-headline');
+  if (words === null || headline === null) return;
+  if (code !== null) {
+    const line = parseFloat(getComputedStyle(headline).lineHeight);
+    const side = Math.min(block.clientHeight, block.clientWidth * 0.4);
+    if (!(line > 0) || side < line * 3) code.remove();
+    else code.style.width = `${Math.floor(side)}px`;
+  }
+  const spills = (): boolean => words.scrollHeight > words.clientHeight + 0.5;
+  if (spills()) headline.classList.add('is-small');
+  const meta = words.querySelector('.nw-meta');
+  if (spills() && meta !== null) meta.remove();
+  stampRungs(entry.box, [
+    'headline',
+    ...(words.querySelector('.nw-meta') === null ? [] : ['meta']),
+    ...(block.querySelector('.nw-qr') === null ? [] : ['qr']),
+  ]);
 }
 
 /**
@@ -4206,7 +4318,7 @@ function listGroups(body: HTMLElement): readonly { readonly items: HTMLElement[]
       items: [...column.querySelectorAll('.ch-row')] as HTMLElement[],
     }));
   }
-  for (const selector of ['.ch-day', '.ch-row', '.td-row', '.nt-line, .nt-gap', '.bt-button']) {
+  for (const selector of ['.ch-day', '.ch-row', '.td-row', '.nt-line, .nt-gap', '.bt-button', '.nw-item']) {
     const found = [...body.querySelectorAll(selector)] as HTMLElement[];
     if (found.length > 0) return [{ items: found }];
   }

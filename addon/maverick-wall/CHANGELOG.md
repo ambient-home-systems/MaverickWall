@@ -16,6 +16,15 @@
 
 ## Unreleased
 
+**News headlines.** Add news sites' and blogs' RSS or Atom feeds on the new
+**News** screen, and a **News** widget shows their headlines on a wall: as a
+list, or one at a time with a code to scan to read the story on your phone.
+Each headline shows where it is from and how long ago. Nothing on a wall is a
+link. Feeds are read every half hour; if a site is down, the wall keeps the
+headlines it had and the News screen says why. A feed's address is kept sealed,
+and only its site's name is shown again. An e-paper wall draws the list, or the
+newest headline with its code.
+
 ## 0.84.0
 
 **A Heading widget.** Label a part of your wall in your own words: a heading,

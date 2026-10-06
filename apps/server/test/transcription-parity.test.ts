@@ -37,6 +37,12 @@ const PAIRS = [
     server: join(HERE, '..', 'src', 'api', 'heading.ts'),
     display: join(HERE, '..', '..', 'display', 'src', 'heading.ts'),
   },
+  // The News widget's reading of its config (plan item M5.5).
+  {
+    marker: 'news-view',
+    server: join(HERE, '..', 'src', 'api', 'news-view.ts'),
+    display: join(HERE, '..', '..', 'display', 'src', 'news-view.ts'),
+  },
   {
     marker: 'qr-payload',
     server: join(HERE, '..', 'src', 'api', 'qr-payload.ts'),

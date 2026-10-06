@@ -72,6 +72,7 @@ const SHELL = [
   '/assets/month-spans.js',
   '/assets/motion.js',
   '/assets/motion-fixture.js',
+  '/assets/news-view.js',
   '/assets/orientation.js',
   '/assets/picture-rotation.js',
   '/assets/push.js',

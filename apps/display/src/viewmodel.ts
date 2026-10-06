@@ -525,6 +525,8 @@ export interface DisplayModel {
   readonly timers: readonly TimerModel[];
   /** Messages (plan item M5.2), newest first, without any that have expired. */
   readonly messages: readonly MessageModel[];
+  /** News headlines (plan item M5.5), newest first, across every feed. */
+  readonly news: readonly NewsModel[];
   /** Something quiet to say about them, such as a connection that is failing. */
   readonly houseNote: string | undefined;
   /**
@@ -863,6 +865,52 @@ export interface TimerModel {
 }
 
 /** One message, as a Messages widget draws it (plan item M5.2). */
+/**
+ * A news headline (plan item M5.5). The link is an absolute http(s) address
+ * and is drawn only as a QR code, never as something to press.
+ */
+export interface NewsModel {
+  readonly key: string;
+  readonly feed: string;
+  readonly source: string;
+  readonly title: string;
+  readonly at?: number;
+  readonly link?: string;
+}
+
+/**
+ * The news panel, read as every panel is: whatever does not have the shape is
+ * left out rather than drawn. The server cleaned every string already; this
+ * caps them again and refuses a link that is not a web address, because a
+ * wall that draws a stranger's string as a code should not trust one hop.
+ */
+export function newsFrom(panel: unknown): NewsModel[] {
+  if (typeof panel !== 'object' || panel === null) return [];
+  const raw = (panel as { headlines?: unknown }).headlines;
+  if (!Array.isArray(raw)) return [];
+  const out: NewsModel[] = [];
+  for (const entry of raw.slice(0, 60)) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const item = entry as { key?: unknown; feed?: unknown; source?: unknown; title?: unknown; at?: unknown; link?: unknown };
+    const title = text(item.title, 200);
+    const source = text(item.source, 60);
+    if (typeof item.key !== 'string' || !/^nh-[0-9a-f]{12}$/.test(item.key)) continue;
+    if (typeof item.feed !== 'string' || title === undefined || source === undefined) continue;
+    const at = finiteInstant(item.at);
+    const link =
+      typeof item.link === 'string' && item.link.length <= 2000 && /^https?:\/\/\S+$/i.test(item.link) ? item.link : undefined;
+    out.push({
+      key: item.key,
+      feed: item.feed,
+      source,
+      title,
+      ...(at === undefined ? {} : { at }),
+      ...(link === undefined ? {} : { link }),
+    });
+  }
+  return out;
+}
+
 export interface MessageModel {
   readonly key: string;
   readonly text: string;
@@ -2069,6 +2117,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
     buttons: buttonsFrom(manifest.panels?.['buttons']),
     timers: timersFrom(manifest.panels?.['timers'], now),
     messages: messagesFrom(manifest.panels?.['messages'], now),
+    news: newsFrom(manifest.panels?.['news']),
     houseNote: house.note,
     now,
     interrupts: interruptsFrom(manifest.interrupts),

@@ -30,7 +30,7 @@ import {
   pairingSecret,
   omissionFacts,
   todoListChoices,
-  buttonChoices,
+  buttonChoices, newsFeedChoices,
   widgetsNotDrawn,
   type AdminDeps,
 } from './admin.js';
@@ -1277,6 +1277,7 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
       // is real here too.
       todoLists: todoListChoices(deps.db),
       buttons: buttonChoices(deps.db),
+      newsFeeds: newsFeedChoices(deps.db),
       // The panel omits the same widgets the wall does, so it says the same
       // thing about them — per box, with the facts to keep it current.
       notDrawn: widgetsNotDrawn(deps.db, [

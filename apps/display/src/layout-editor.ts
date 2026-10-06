@@ -121,6 +121,7 @@ import {
   countdownWords,
   daysUntil,
 } from './countdown.js';
+import { newsMode, newsRotateMs, newsShows } from './news-view.js';
 import { GLYPH_KEYS, glyphNode } from './glyphs.js';
 import { headingPlace, headingSize } from './heading.js';
 import { QR_MAX_BYTES, qrBytes, qrKind, qrPayload, wifiSecurity } from './qr-payload.js';
@@ -199,6 +200,8 @@ interface LayoutState {
   todoLists: readonly { readonly id: string; readonly name: string; readonly key: string }[];
   /** The household's webhook buttons, for the Buttons widget's picker (RFC 018 phase 5). */
   buttons: readonly { readonly id: string; readonly name: string }[];
+  /** The household's news feeds, for the News widget's picker (plan item M5.5). */
+  newsFeeds: readonly { readonly id: string; readonly name: string }[];
 }
 
 /** The editor is on the admin page, so its preview reads media behind the session. */
@@ -479,6 +482,7 @@ function boot(): void {
       readonly omission?: unknown;
       readonly todoLists?: unknown;
       readonly buttons?: unknown;
+      readonly newsFeeds?: unknown;
       readonly fonts?: unknown;
       readonly wallpapers?: unknown;
       readonly wallTone?: unknown;
@@ -657,13 +661,21 @@ function boot(): void {
               typeof (one as { name?: unknown }).name === 'string',
           )
         : [],
+      newsFeeds: Array.isArray(parsed.newsFeeds)
+        ? (parsed.newsFeeds as unknown[]).filter(
+            (one): one is LayoutState['newsFeeds'][number] =>
+              typeof one === 'object' && one !== null &&
+              typeof (one as { id?: unknown }).id === 'string' &&
+              typeof (one as { name?: unknown }).name === 'string',
+          )
+        : [],
     };
   } catch {
     state = {
       screen: null, mode: 'auto', orientation: 'portrait', slot: null, aspect: 0.5625, widgets: [],
       stash: { [canvasKey('landscape', null)]: { aspect: 1.7778, widgets: [] } },
       slots: [], maxSlots: 4,
-      calendars: [], readings: [], modules: [], people: [], todoLists: [], buttons: [],
+      calendars: [], readings: [], modules: [], people: [], todoLists: [], buttons: [], newsFeeds: [],
     };
   }
 
@@ -4239,6 +4251,7 @@ function boot(): void {
     else if (widget.type === 'image') buildImageConfig(widget, cfg);
     else if (widget.type === 'qr') buildQrConfig(widget, cfg);
     else if (widget.type === 'heading') buildHeadingConfig(widget, cfg);
+    else if (widget.type === 'news') buildNewsConfig(widget, cfg);
     else if (widget.type === 'shift') buildShiftConfig(widget, cfg);
     else if (widget.type === 'clock') buildClockConfig(widget, cfg);
     else if (widget.type === 'weather') buildWeatherConfig(widget, cfg);
@@ -5235,6 +5248,72 @@ function boot(): void {
     area.addEventListener('input', () => setConfig(widget, 'text', area.value));
     field.appendChild(area);
     configPanel.appendChild(field);
+  }
+
+  /**
+   * The News widget's own options (plan item M5.5): which feeds, then what the
+   * view the View picker chose draws — how many headlines in a list, how long
+   * each stays one at a time, and the source, the age and the QR code. Each of
+   * those three is on unless switched off, and is stored only as `false`.
+   */
+  function buildNewsConfig(widget: Widget, cfg: Record<string, unknown>): void {
+    const which = cfgField('Feeds to show', 'newsFeeds');
+    which.appendChild(
+      checkList(
+        state.newsFeeds.map((feed) => ({ value: feed.id, label: feed.name })),
+        Array.isArray(cfg['newsFeeds']) ? (cfg['newsFeeds'] as string[]) : [],
+        (values) => setConfig(widget, 'newsFeeds', values.length === 0 ? undefined : values),
+        'No feeds yet — add one on the News page.',
+      ),
+    );
+    configPanel.appendChild(which);
+    const note = document.createElement('p');
+    note.className = 'hint';
+    note.textContent = 'None ticked shows them all, newest first.';
+    note.dataset['cfgKey'] = 'newsFeeds';
+    configPanel.appendChild(note);
+    if (newsMode(cfg) === 'one') {
+      configPanel.appendChild(
+        segControl(
+          'Each headline shows for',
+          [
+            ['30', '30 seconds'],
+            ['60', 'A minute'],
+            ['300', '5 minutes'],
+          ],
+          String(newsRotateMs(cfg) / 1000),
+          (value) => setConfig(widget, 'rotateSeconds', value === '60' ? undefined : Number(value)),
+        ),
+      );
+      configPanel.appendChild(
+        switchRow(
+          'QR code to read it on a phone',
+          'Nothing on a wall is a link: the story’s address is drawn as a code instead.',
+          newsShows(cfg, 'showQr'),
+          (on) => setConfig(widget, 'showQr', on ? undefined : false),
+          'showQr',
+        ),
+      );
+    } else {
+      const countField = cfgField('Most headlines', 'count');
+      const count = document.createElement('input');
+      count.type = 'number';
+      count.min = '1';
+      count.max = '20';
+      count.value = typeof cfg['count'] === 'number' ? String(cfg['count']) : '6';
+      count.addEventListener('change', () => {
+        const value = Number(count.value);
+        setConfig(widget, 'count', Number.isInteger(value) && value >= 1 && value <= 20 && value !== 6 ? value : undefined);
+      });
+      countField.appendChild(count);
+      configPanel.appendChild(countField);
+    }
+    configPanel.appendChild(
+      switchRow('Show the source', '', newsShows(cfg, 'showSource'), (on) => setConfig(widget, 'showSource', on ? undefined : false), 'showSource'),
+    );
+    configPanel.appendChild(
+      switchRow('Show how long ago', '', newsShows(cfg, 'showTime'), (on) => setConfig(widget, 'showTime', on ? undefined : false), 'showTime'),
+    );
   }
 
   /**

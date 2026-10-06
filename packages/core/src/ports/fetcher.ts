@@ -339,4 +339,11 @@ export const FETCH_LIMITS = {
    * cap above it whose first defence is never being handed the bytes.
    */
   dav: 1024 * 1024,
+  /**
+   * News feeds (plan item M5.5): RSS and Atom. A busy site's whole feed is
+   * tens of kilobytes; one that embeds every article as HTML, as NASA's does,
+   * is a few hundred. 2 MB is generous for both and, like `dav`, it is the
+   * ceiling that stands between a hostile server and the XML reader.
+   */
+  feed: 2 * 1024 * 1024,
 } as const;

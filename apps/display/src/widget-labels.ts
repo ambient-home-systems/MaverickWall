@@ -42,6 +42,8 @@ export const PALETTE: readonly { readonly type: string; readonly label: string }
   { type: 'qr', label: 'QR code' },
   // Plan item M5.4: a heading and a line under it.
   { type: 'heading', label: 'Heading' },
+  // Plan item M5.5: headlines from the household's news feeds.
+  { type: 'news', label: 'News' },
   { type: 'image', label: 'Image' },
   { type: 'external', label: 'Module' },
 ];
@@ -67,6 +69,7 @@ export const SWATCH: Readonly<Record<string, string>> = {
   messages: 'var(--muted)',
   qr: 'var(--ink)',
   heading: 'var(--accent)',
+  news: 'var(--muted)',
   image: 'var(--ok)',
   external: 'var(--warn)',
 };
