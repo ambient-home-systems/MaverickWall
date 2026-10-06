@@ -2320,3 +2320,20 @@ export const newsFeeds = sqliteTable('news_feeds', {
   createdAt: integer('created_at', { mode: 'number' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
 });
+
+/**
+ * The household's Todoist connection (plan item M5.7): one row, keyed
+ * `singleton`, holding the API token sealed (`todoist-token`). A Todoist token
+ * reads and writes the whole account and cannot be scoped, so — as with Home
+ * Assistant's — the limit is on this side: the lists are the projects the
+ * household added (`ha_todo_lists` rows named `todoist:<project>`), the only
+ * writes are ticking an item on one of them and adding to one of them, and
+ * the wall is never handed a project id, a task id or the token.
+ */
+export const todoistConnection = sqliteTable('todoist_connection', {
+  id: text('id').primaryKey(),
+  tokenEncrypted: text('token_encrypted').notNull(),
+  connectedAt: integer('connected_at', { mode: 'number' }).notNull(),
+  lastError: text('last_error'),
+  updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
+});

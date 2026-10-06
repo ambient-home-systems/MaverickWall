@@ -5,6 +5,8 @@ import type { SqliteDatabase } from '../../db/open.js';
 import { parseJson, parseJsonOr, z } from '../../validation.js';
 import { buildCall, call, callService, resolveConnection } from '../homeassistant/client.js';
 import type { ModuleContext, PanelModule } from '../registry.js';
+import { TODOIST, addTask, listTasks, setTaskDone, type TodoistEndpoint } from '../todoist/client.js';
+import { isTodoistList, todoistProjectOf, todoistToken } from '../todoist/store.js';
 
 /**
  * Home Assistant to-do lists on the wall (RFC 012 phases 1 and 2).
@@ -112,6 +114,24 @@ export function readTodoLists(db: SqliteDatabase): TodoListRow[] {
     supportsUpdate: number;
   })[];
   return rows.map((row) => ({ ...row, supportsUpdate: row.supportsUpdate === 1 }));
+}
+
+/**
+ * The lists that are Home Assistant's, for the Home Assistant screens.
+ *
+ * Since plan item M5.7 the to-do store holds Todoist projects too, named
+ * `todoist:<project>` beside Home Assistant's `todo.*` entities, so the panel,
+ * the handles, the wall's tick and the companion add are one pipeline for both
+ * sources rather than two that could come to disagree. Every place that talks
+ * to a source routes on that prefix; a screen that is one source's asks this.
+ */
+export function readHaTodoLists(db: SqliteDatabase): TodoListRow[] {
+  return readTodoLists(db).filter((list) => !isTodoistList(list.entityId));
+}
+
+/** The lists that are Todoist projects, for the Todoist screen. */
+export function readTodoistLists(db: SqliteDatabase): TodoListRow[] {
+  return readTodoLists(db).filter((list) => isTodoistList(list.entityId));
 }
 
 /** The entity ids of every watched list, in the household's order. */
@@ -533,7 +553,21 @@ export async function tickTodoItem(
   context: Pick<ModuleContext, 'db' | 'fetcher' | 'keyring'>,
   item: TodoItemHandle,
   done: boolean,
+  todoist: TodoistEndpoint = TODOIST,
 ): Promise<{ readonly ok: true } | { readonly ok: false; readonly message: string }> {
+  /*
+   * A Todoist item (plan item M5.7): closed or reopened by the task id the
+   * cache holds — Todoist's own identity, never the text — through its one
+   * door. Rule 12 is about Home Assistant and does not reach here, but its
+   * shape does: only an item on a project the household added, only by a
+   * handle this server minted, and only these two calls.
+   */
+  if (isTodoistList(item.entityId)) {
+    const token = todoistToken(context.db, context.keyring);
+    if (!token.ok) return { ok: false, message: token.message };
+    const answer = await setTaskDone(context.fetcher, todoist, token.token, item.uid, done);
+    return answer.ok ? { ok: true } : { ok: false, message: answer.message };
+  }
   const resolved = resolveConnection(context.db, context.keyring);
   if (!resolved.ok) return { ok: false, message: resolved.message };
 
@@ -571,7 +605,8 @@ export function findTodoList(db: SqliteDatabase, wanted: string | undefined): To
     return {
       ok: false,
       reason: 'none-watched',
-      message: 'No to-do lists have been added yet. Add one under Home Assistant › To-do lists first.',
+      message:
+        'No to-do lists have been added yet. Add one under Home Assistant › To-do lists, or on the Todoist screen, first.',
     };
   }
   if (wanted === undefined) {
@@ -587,7 +622,7 @@ export function findTodoList(db: SqliteDatabase, wanted: string | undefined): To
     return {
       ok: false,
       reason: 'ambiguous',
-      message: 'More than one list has that name. Give one a different name under Home Assistant › To-do lists.',
+      message: 'More than one list has that name. Give one a different name, or say which by its id.',
     };
   }
   return { ok: false, reason: 'not-found', message: `No list is called that. The lists are ${names}.` };
@@ -610,10 +645,18 @@ export async function addTodoItem(
   context: Pick<ModuleContext, 'db' | 'fetcher' | 'keyring'>,
   entityId: string,
   text: string,
+  todoist: TodoistEndpoint = TODOIST,
 ): Promise<
   | { readonly ok: true }
   | { readonly ok: false; readonly reason: 'connection' | 'refused' | 'upstream'; readonly message: string }
 > {
+  // A Todoist project (plan items M2.2 and M5.7): one task added to it, by the project id the store holds.
+  if (isTodoistList(entityId)) {
+    const token = todoistToken(context.db, context.keyring);
+    if (!token.ok) return { ok: false, reason: 'connection', message: token.message };
+    const answer = await addTask(context.fetcher, todoist, token.token, todoistProjectOf(entityId), text);
+    return answer.ok ? { ok: true } : { ok: false, reason: 'upstream', message: answer.message };
+  }
   const resolved = resolveConnection(context.db, context.keyring);
   if (!resolved.ok) return { ok: false, reason: 'connection', message: resolved.message };
 
@@ -723,6 +766,41 @@ export async function pollTodoList(
 }
 
 /**
+ * Read one Todoist project's list (plan item M5.7): its open tasks, then the
+ * cache — the same `storeItems` a Home Assistant list goes through, so an item
+ * keeps its handle across polls and an item gone from Todoist leaves the wall.
+ * The project's own name is kept from when it was added; Todoist's open tasks
+ * are all a list holds, so a task ticked on a wall shows as done until the
+ * next read and then goes, as it does on a phone.
+ */
+export async function pollTodoistList(
+  context: Pick<ModuleContext, 'db' | 'fetcher' | 'keyring' | 'now'>,
+  entityId: string,
+  todoist: TodoistEndpoint = TODOIST,
+): Promise<{ readonly ok: true } | { readonly ok: false; readonly message: string }> {
+  const { db } = context;
+  const token = todoistToken(db, context.keyring);
+  if (!token.ok) {
+    recordListError(db, entityId, token.message, context.now);
+    return { ok: false, message: token.message };
+  }
+  const tasks = await listTasks(context.fetcher, todoist, token.token, todoistProjectOf(entityId));
+  if (!tasks.ok) {
+    recordListError(db, entityId, tasks.message, context.now);
+    return { ok: false, message: tasks.message };
+  }
+  const row = db.prepare('SELECT name FROM ha_todo_lists WHERE entity_id = ?').get(entityId) as { name: string } | undefined;
+  storeItems(
+    db,
+    entityId,
+    { entityId, name: row?.name ?? 'Todoist', supportsUpdate: true },
+    tasks.value.map((task) => ({ uid: task.id, summary: task.content, status: 'needs_action' as const, due: task.due })),
+    context.now,
+  );
+  return { ok: true };
+}
+
+/**
  * Replace a list's items without replacing their identities.
  *
  * The upsert is on `(entity_id, uid)` and the update leaves `id` alone, so an
@@ -817,8 +895,10 @@ export const todoModule: PanelModule = {
       if (lists.length === 0) return;
       // One at a time, in order. A list that fails records its own sentence and
       // the next one is still read — a broken list costs itself, never the rest.
+      // Each from its own source: a Todoist project, or a Home Assistant list.
       for (const entityId of lists) {
-        await pollTodoList(context, entityId);
+        if (isTodoistList(entityId)) await pollTodoistList(context, entityId);
+        else await pollTodoList(context, entityId);
       }
     },
   },

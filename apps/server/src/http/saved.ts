@@ -158,6 +158,11 @@ export const SAVED_MESSAGES = {
   // A feed is read before it is added, so the strip can say it read (M5.5).
   'news-feed-added': 'Feed added. A News widget on a wall shows its headlines.',
   'news-feed-removed': 'Feed removed.',
+  // Todoist (M5.7): connected only after the token read the projects; a list only after it read.
+  'todoist-connected': 'Todoist connected. Add a list to show one of its projects on your walls.',
+  'todoist-list-added': 'List added. A To-do widget on a wall can show it.',
+  'todoist-list-removed': 'List taken off your walls. Nothing in Todoist was changed.',
+  'todoist-disconnected': 'Todoist disconnected. Its lists are off your walls.',
   // Timers and messages (plan items M5.1–M5.2). "On the walls" only where a
   // widget draws them — so the strip says it was started, not that it shows.
   'timer-started': 'Timer started. A Timers widget on a wall counts it down.',

@@ -510,7 +510,10 @@ const widgetConfigFields = z
      */
     list: z
       .string()
-      .regex(/^todo\.[a-z0-9_]+$/, 'That is not a Home Assistant to-do list.')
+      // A Home Assistant `todo.*` entity, or a Todoist project as the to-do
+      // store names it (plan item M5.7). Either is resolved to a handle before
+      // the wall sees it, the same way.
+      .regex(/^(?:todo\.[a-z0-9_]+|todoist:[A-Za-z0-9_-]{1,64})$/, 'That is not a to-do list.')
       .max(255)
       .optional(),
     showDone: z.boolean().optional(),

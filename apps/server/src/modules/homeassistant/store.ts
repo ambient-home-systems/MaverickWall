@@ -113,8 +113,10 @@ export function disconnectHa(db: SqliteDatabase): void {
      * own: `todoModule.ready` is "at least one watched list", so a row left
      * behind would keep a widget drawing a list that never refreshes again.
      */
-    db.prepare('DELETE FROM ha_todo_items').run();
-    db.prepare('DELETE FROM ha_todo_lists').run();
+    // Home Assistant's lists only: a Todoist project in the same store is a
+    // different connection, and disconnecting this one is no reason to lose it.
+    db.prepare(`DELETE FROM ha_todo_items WHERE entity_id NOT LIKE 'todoist:%'`).run();
+    db.prepare(`DELETE FROM ha_todo_lists WHERE entity_id NOT LIKE 'todoist:%'`).run();
     /*
      * Both spellings, and only this source's rules.
      *

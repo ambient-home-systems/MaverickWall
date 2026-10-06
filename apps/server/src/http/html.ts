@@ -3194,6 +3194,8 @@ const GROUPS: readonly NavGroup[] = [
     items: [
       { key: 'alerts', label: 'Weather', href: 'admin/alerts', icon: 'alerts' },
       { key: 'homeassistant', label: 'Home Assistant', href: 'admin/home-assistant', icon: 'homeassistant' },
+      // Todoist (plan item M5.7): a second source of to-do lists, beside Home Assistant's.
+      { key: 'todoist', label: 'Todoist', href: 'admin/todoist', icon: 'todoist' },
       // Webhook buttons (RFC 018 phase 5): an integration with anything that
       // answers a POST, which is why it is not a corner of Home Assistant.
       { key: 'buttons', label: 'Buttons', href: 'admin/buttons', icon: 'buttons' },

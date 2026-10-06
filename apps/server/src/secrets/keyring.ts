@@ -70,6 +70,11 @@ export type SecretPurpose =
    * swapped into another column and decrypt there.
    */
   | 'news-feed-url'
+  /**
+   * A Todoist API token (plan item M5.7). It reads and writes the whole
+   * account, so it is sealed under a purpose of its own like every secret here.
+   */
+  | 'todoist-token'
   /** Session signing. */
   | 'session';
 

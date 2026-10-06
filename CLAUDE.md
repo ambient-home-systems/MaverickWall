@@ -4194,6 +4194,82 @@ and the widened list — and passes; the suite was not run again for it.
 **Still unproven where it counts:** nobody has
 read pollen off a real kitchen wall in spring.
 
+**Todoist is a second source of to-do lists, beside Home Assistant's (plan
+items M5.7 and M2.2's remainder).** A household pastes its API token on the
+**Todoist** screen, under Integrations, and chooses projects to show; a To-do
+widget draws one exactly as it draws a Home Assistant list, a wall allowed to
+tick (`screens.allow_todo`, the same switch) ticks an item off, and the
+companion API adds to one by name.
+
+**One to-do store, not two.** A project is a row of `ha_todo_lists` named
+`todoist:<project>` beside Home Assistant's `todo.*` entities, so the panel,
+the item handles, `/d/todo/tick`, the omission, the editor's picker and the
+companion add are one pipeline for both sources rather than two that could
+come to disagree — the repository's most repeated fault. Every place that talks
+to a source routes on the prefix (`isTodoistList`): the poll, the tick and the
+add. The tables keep the name of their first source, which is a migration this
+project chose not to write; each source's screens and disconnect read and
+delete only their own rows, and a test disconnects each in turn and finds the
+other's lists still there.
+
+**Todoist API v1, read rather than remembered.** `rest/v2` answers 410 now, and
+the documentation embeds an OpenAPI description, which is what
+`modules/todoist/client.ts` was written from and then probed against (401
+without a token on `/projects` and `/tasks`, 405 for a GET on `/tasks/{id}/close`).
+Five calls and no others — list projects, list a project's open tasks, close,
+reopen, create — and a test asserts every request the stand-in Todoist
+received was one of them. The address is a constant, so a request goes through
+the SSRF guard with the default policy, public https only; `AppDeps.todoist`
+points the same code at the test's stand-in and nothing in the product sets it.
+Every answer is parsed by Zod and paged by cursor, top-level tasks only (a
+subtask without its parent is a line that means nothing), in Todoist's own
+order, and a project past 500 items is refused whole and keeps its last good
+rows, as a Home Assistant list does.
+
+**The token is used before it is kept.** `connectTodoist` reads the projects
+with it and stores nothing for one Todoist refused; a kept one is sealed under
+`todoist-token`, never written back into a page, refused or not, and opened for
+one request at a time. A project is added only after its tasks read, and the
+POST checks the project is really the account's rather than trusting the form.
+The wall is handed handles and words: no project id, task id or token.
+
+**What Todoist's semantics mean on a wall, said rather than hidden.** `GET
+/tasks` answers open tasks only, so a Todoist list has no completed items to
+show beyond one ticked on a wall moments ago, which goes at the next read as it
+does on a phone. Closing a recurring task completes that occurrence and moves
+its date, so it stays on the list. And a Todoist token reads and writes the
+whole account and cannot be scoped; the screen says so where it is pasted, and
+the confinement is this side's, as it is for Home Assistant's.
+
+**Measured.** `todoist.test.ts` runs the real app and the real fetcher against
+`fake-todoist.ts`, a stand-in built from that API description, with a request
+log: connecting and refusing, the projects offered, a project read flat and in
+order, a tick and an untick and a refused tick, a failed read and a list too
+long, paging, an add from a phone, the five-call boundary, each disconnect
+leaving the other's lists, and the schema. Eighteen mutations were checked and
+all are red; one was green as first written, because the test made every call
+fail and so never reached the read it meant to fail, and the stand-in can now
+fail the task read alone.
+
+**`ha-write-boundary.test.ts` went red on it, correctly, and was widened rather
+than quieted.** It holds every `.fetch()` asking for a POST to one named file,
+the webhook button, because such a POST never reads `HA_SERVICES`; the Todoist
+client is now the second. It is admitted by file and held to its shape: one
+call, its address built on the endpoint's base (`TODOIST_API`, a constant), and
+a second test reading the client for its POST call sites and finding exactly
+close-or-reopen and a new task. A `deleteTask` added to the client turns that
+red, and so does an address that could be anything but the base. Two more
+tests pinned the world before Todoist — the sidebar's Integrations group and
+the companion API's "no lists yet" sentence — and say Todoist now.
+
+**5294 tests passing and 1 skipped, over 372 files**: calendar 153 over 10 ·
+core 314 over 9 · display 957 over 56 · server 3870 over 297, measured with
+`pnpm test` and a real Chromium. Against M5.6's 5282 over 371 that is +12 and
++1: `todoist.test.ts`'s 11 and the boundary's one new test. **Still unproven
+where it counts:** no real Todoist account has been connected — the stand-in
+is built from Todoist's own description, which is the best that could be done
+without a token, and is not the same thing.
+
 **Rule 12 changed, and the interesting part is how many places said otherwise
 (RFC 012 phase 1).** The rule is no longer "READ-ONLY, no service calls": it
 permits one *write*, `todo.update_item`, and the read it needs. Nothing writes

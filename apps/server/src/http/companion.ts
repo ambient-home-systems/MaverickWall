@@ -4,7 +4,9 @@ import type { Fetcher } from '@maverick-wall/core';
 import type { SqliteDatabase } from '../db/open.js';
 import type { Keyring } from '../secrets/keyring.js';
 import { authenticateCompanion, presentedCompanionToken, touchCompanionToken } from '../api/companion.js';
-import { addTodoItem, findTodoList, pollTodoList, todoListTitle } from '../modules/todo/index.js';
+import { addTodoItem, findTodoList, pollTodoList, pollTodoistList, todoListTitle } from '../modules/todo/index.js';
+import type { TodoistEndpoint } from '../modules/todoist/client.js';
+import { isTodoistList } from '../modules/todoist/store.js';
 import { parse, z } from '../validation.js';
 import {
   DEFAULT_SHOW_MINUTES,
@@ -87,6 +89,8 @@ export interface CompanionDeps {
   readonly fetcher: Fetcher;
   readonly now: () => number;
   readonly clientAddress: (c: Context) => string | undefined;
+  /** Where Todoist is — set only by a test (plan item M5.7). */
+  readonly todoist?: TodoistEndpoint;
 }
 
 interface Bucket {
@@ -298,6 +302,7 @@ export function registerCompanionRoutes(app: Hono, deps: CompanionDeps): void {
       { db: deps.db, fetcher: deps.fetcher, keyring: deps.keyring },
       match.list.entityId,
       shaped.value.item,
+      deps.todoist,
     );
     if (!added.ok) {
       const status = added.reason === 'connection' ? 503 : added.reason === 'refused' ? 409 : 502;
@@ -311,7 +316,9 @@ export function registerCompanionRoutes(app: Hono, deps: CompanionDeps): void {
      * is the list's own sentence on the To-do lists screen and changes nothing
      * here: Home Assistant has already said yes.
      */
-    await pollTodoList({ db: deps.db, fetcher: deps.fetcher, keyring: deps.keyring, now: deps.now() }, match.list.entityId);
+    const context = { db: deps.db, fetcher: deps.fetcher, keyring: deps.keyring, now: deps.now() };
+    if (isTodoistList(match.list.entityId)) await pollTodoistList(context, match.list.entityId, deps.todoist);
+    else await pollTodoList(context, match.list.entityId);
 
     return answer(c, 200, { ok: true, list: title, message: `Added to ${title}.` });
   });

@@ -388,7 +388,8 @@ describe('the sidebar is grouped by subject', () => {
       { label: 'Household', items: ['Calendars', 'People', 'Work Schedule', 'Chores', 'Timers and messages'] },
       // Buttons since RFC 018 phase 5: webhook buttons, an integration with anything.
       // News since plan item M5.5: feeds read from the internet, like the weather.
-      { label: 'Integrations', items: ['Weather', 'Home Assistant', 'Buttons', 'News', 'Outside temperature', 'Store'] },
+      // Todoist since plan item M5.7: to-do lists, beside Home Assistant's.
+      { label: 'Integrations', items: ['Weather', 'Home Assistant', 'Todoist', 'Buttons', 'News', 'Outside temperature', 'Store'] },
       { label: 'Walls', items: ['Walls', 'Themes'] },
       { label: null, items: ['System'] },
     ]);

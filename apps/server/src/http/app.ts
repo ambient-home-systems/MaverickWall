@@ -28,6 +28,7 @@ import {
 import { DEFAULT_AFTER_SIGN_IN, safeNextPath } from '../auth/next-path.js';
 import { createSetupTokenHolder, registerSetupRoutes, type SetupTokenHolder } from './setup.js';
 import { registerAdminRoutes } from './admin.js';
+import type { TodoistEndpoint } from '../modules/todoist/client.js';
 import { registerCompanionRoutes } from './companion.js';
 import { readLayoutOverride } from '../api/wall-commands.js';
 import { versionedShell } from './shell-version.js';
@@ -132,6 +133,8 @@ export interface WallAddress {
 }
 
 export interface AppDeps {
+  /** Where Todoist is — set only by a test, to a stand-in; the product always uses the real one (plan item M5.7). */
+  readonly todoist?: TodoistEndpoint;
   readonly db: SqliteDatabase;
   readonly appVersion: string;
   /** Notices from boot — a failed migration, a permissions warning. */
@@ -982,6 +985,7 @@ export function createApp(deps: AppDeps): Hono {
       { db: deps.db, fetcher: deps.fetcher, keyring: deps.keyring },
       item,
       done,
+      deps.todoist,
     );
     if (!wrote.ok) {
       // Home Assistant's own diagnosis, already written for a kitchen by
@@ -1124,7 +1128,14 @@ export function createApp(deps: AppDeps): Hono {
 
   // The companion API: a phone or an automation, with a token rather than a
   // session (plan items M2.1–M2.2). Outside `/api/*`, which is the session's.
-  registerCompanionRoutes(app, { db: deps.db, keyring: deps.keyring, fetcher: deps.fetcher, now, clientAddress });
+  registerCompanionRoutes(app, {
+    db: deps.db,
+    keyring: deps.keyring,
+    fetcher: deps.fetcher,
+    now,
+    clientAddress,
+    ...(deps.todoist === undefined ? {} : { todoist: deps.todoist }),
+  });
 
   /**
    * The manifest, built for a given screen.
@@ -1999,6 +2010,7 @@ export function createApp(deps: AppDeps): Hono {
   protectPrefix(app, '/admin', gateDeps);
 
   registerAdminRoutes(app, {
+    ...(deps.todoist === undefined ? {} : { todoist: deps.todoist }),
     db: deps.db,
     keyring: deps.keyring,
     fetcher: deps.fetcher,

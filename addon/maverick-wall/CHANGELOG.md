@@ -16,6 +16,15 @@
 
 ## Unreleased
 
+**Todoist lists on your walls.** Connect Todoist on the new **Todoist** screen
+with your API token, choose the projects to show, and a **To-do** widget draws
+one just as it draws a Home Assistant list. A wall you allow to tick things off
+(the same switch as for Home Assistant lists) ticks an item off in Todoist, and
+your phone can add to a Todoist list with the companion token. The token is
+checked before it is kept, then sealed and never shown again or sent to a wall.
+Todoist shows open items only, so an item ticked off leaves the list at the
+next read, as it does on your phone; a repeating task moves to its next date.
+
 ## 0.86.0
 
 **An Environment widget.** Tiles for the air outside: the air-quality index,
