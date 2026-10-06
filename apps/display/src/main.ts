@@ -789,8 +789,8 @@ function start(): void {
      * click on Enter is one the OK key must leave alone, and a second handler
      * with its own copy of this rule is how the two would come to disagree.
      */
-    if (document.activeElement?.closest?.('[data-chore], [data-todo], [data-ha-act], .hc-panel') !== null &&
-        document.activeElement?.closest?.('[data-chore], [data-todo], [data-ha-act], .hc-panel') !== undefined) {
+    if (document.activeElement?.closest?.('[data-chore], [data-todo], [data-ha-act], [data-timer-clear], [data-message-clear], .hc-panel') !== null &&
+        document.activeElement?.closest?.('[data-chore], [data-todo], [data-ha-act], [data-timer-clear], [data-message-clear], .hc-panel') !== undefined) {
       return;
     }
     const key = dismissTarget();
@@ -829,6 +829,27 @@ function start(): void {
       // A 403 means this screen may not tick; a 409 means the chore is not due
       // today. The server is the authority on both, so nothing happens here —
       // the same as a rule that said an interrupt may not be cleared.
+      if (!response.ok) return;
+    } catch {
+      return;
+    }
+    await poll();
+  };
+
+  /**
+   * Clearing a finished timer or a message (MD7): `tickChore`'s shape, and its
+   * silence on a refusal — a 403 is a wall not allowed to, a 409 a timer that
+   * is still running, and the server is the authority on both. The handle and
+   * nothing else crosses; the re-poll is what takes the row off the glass.
+   */
+  const clearNote = async (path: '/d/timers/clear' | '/d/messages/clear', field: string, id: string): Promise<void> => {
+    try {
+      const response = await fetch(path, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        credentials: 'same-origin',
+        body: new URLSearchParams({ [field]: id }).toString(),
+      });
       if (!response.ok) return;
     } catch {
       return;
@@ -1110,6 +1131,17 @@ function start(): void {
         return;
       }
       void actOnReading(widgetId, reading, action);
+      return;
+    }
+
+    const timerClear = target?.closest?.('[data-timer-clear]')?.getAttribute('data-timer-clear');
+    if (timerClear !== null && timerClear !== undefined && timerClear !== '') {
+      void clearNote('/d/timers/clear', 'timer', timerClear);
+      return;
+    }
+    const messageClear = target?.closest?.('[data-message-clear]')?.getAttribute('data-message-clear');
+    if (messageClear !== null && messageClear !== undefined && messageClear !== '') {
+      void clearNote('/d/messages/clear', 'message', messageClear);
       return;
     }
 

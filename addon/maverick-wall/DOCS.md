@@ -98,8 +98,11 @@ the admin says so before you allow it.
 
 Adding from a phone needs a companion token, which you make under **System ›
 Phone and automations** and can replace or turn off there. It can add to the
-lists you chose and do nothing else — it cannot read them, tick them off or sign
-in — and a wall can never add at all.
+lists you chose, start and end timers, and send and clear messages on your
+walls, and do nothing else — it cannot read your lists, tick them off or sign in
+— and a wall can never add at all. A wall can clear a finished timer or a
+message only if you turn on **Allow clearing timers and messages** for that
+wall, and it can never end a timer that is still running.
 
 Even the tick is off until you ask for it, wall by wall. Adding a list shows it
 everywhere you have put a To-do widget; turning on **Allow ticking to-do items

@@ -29,6 +29,8 @@ import { DEFAULT_AFTER_SIGN_IN, safeNextPath } from '../auth/next-path.js';
 import { createSetupTokenHolder, registerSetupRoutes, type SetupTokenHolder } from './setup.js';
 import { registerAdminRoutes } from './admin.js';
 import { registerCompanionRoutes } from './companion.js';
+import { TIMER_ID, clearDoneTimer } from '../modules/timers/index.js';
+import { MESSAGE_ID, clearMessages } from '../modules/messages/index.js';
 import {
   createStaticFiles,
   defaultDisplayDir,
@@ -1058,6 +1060,43 @@ export function createApp(deps: AppDeps): Hono {
     return c.json({ error: result.error, message: result.message }, result.status);
   });
 
+  /**
+   * A wall clearing a finished timer or a message (MD7): `/d/todo/tick`'s shape,
+   * a handle and nothing else, with the server as the authority on all three of
+   * whether this wall may, whether the thing exists, and — for a timer —
+   * whether it has finished. The switch is checked before the body is read.
+   */
+  app.post('/d/timers/clear', async (c: Context) => {
+    const screen = c.get('screen') as ScreenRow;
+    if (screen.allowClear !== 1) {
+      return c.json({ error: 'not-allowed', message: 'This wall cannot clear timers.' }, 403);
+    }
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const id = typeof body['timer'] === 'string' ? body['timer'] : '';
+    if (!TIMER_ID.test(id)) return c.json({ error: 'bad-request' }, 400);
+    const outcome = clearDoneTimer(deps.db, id, now());
+    if (outcome === 'running') {
+      return c.json(
+        { error: 'running', message: 'That timer is still running. End it from a phone or the admin.' },
+        409,
+      );
+    }
+    // Gone already is a clear that has happened: two walls pressed at once.
+    return c.json({ ok: true });
+  });
+
+  app.post('/d/messages/clear', async (c: Context) => {
+    const screen = c.get('screen') as ScreenRow;
+    if (screen.allowClear !== 1) {
+      return c.json({ error: 'not-allowed', message: 'This wall cannot clear messages.' }, 403);
+    }
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const id = typeof body['message'] === 'string' ? body['message'] : '';
+    if (!MESSAGE_ID.test(id)) return c.json({ error: 'bad-request' }, 400);
+    clearMessages(deps.db, { id });
+    return c.json({ ok: true });
+  });
+
   // The companion API: a phone or an automation, with a token rather than a
   // session (plan items M2.1–M2.2). Outside `/api/*`, which is the session's.
   registerCompanionRoutes(app, { db: deps.db, keyring: deps.keyring, fetcher: deps.fetcher, now, clientAddress });
@@ -1078,6 +1117,7 @@ export function createApp(deps: AppDeps): Hono {
     readonly allowChores: boolean;
     readonly allowTodo: boolean;
     readonly allowControl?: boolean;
+    readonly allowClear?: boolean;
     /** The wall's own theme; a document for no wall states `STAND_IN_THEME`. */
     readonly theme: string;
     readonly daytimeTheme: string | null;
@@ -1226,6 +1266,7 @@ export function createApp(deps: AppDeps): Hono {
         allowChores: screenLike.allowChores,
         allowTodo: screenLike.allowTodo,
         allowControl: screenLike.allowControl === true,
+        allowClear: screenLike.allowClear === true,
         // Handed over as they are stored; `buildManifest` is what decides
         // whether the three of them are an answer.
         panelWidthMm: screenLike.panelWidthMm ?? null,
@@ -1273,6 +1314,7 @@ export function createApp(deps: AppDeps): Hono {
       allowChores: screen.allowChores === 1,
       allowTodo: screen.allowTodo === 1,
       allowControl: screen.allowControl === 1,
+      allowClear: screen.allowClear === 1,
       // A browser wall's row always carries one — the CHECK on `screens`
       // refuses it otherwise. The only null here is an e-paper panel, which
       // draws one bit and reads no theme; the stand-in keeps its document

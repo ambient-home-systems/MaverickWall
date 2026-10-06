@@ -138,10 +138,11 @@ describe('widgetIsSetUp', () => {
     }
   });
 
-  it('drops the five whose prerequisite lives on another screen', () => {
+  it('drops the seven whose prerequisite lives on another screen', () => {
     const nothing = { modules: [], shift: false, todoLists: [] };
     // Buttons since RFC 018 phase 5: a Buttons widget with no button behind it.
-    for (const type of ['weather', 'homeassistant', 'chores', 'shift', 'buttons']) {
+    // Timers and messages since plan items M5.1–M5.2: nothing running, nothing to show.
+    for (const type of ['weather', 'homeassistant', 'chores', 'shift', 'buttons', 'timers', 'messages']) {
       expect(widgetIsSetUp({ type }, nothing), `${type} survived with nothing behind it`).toBe(false);
     }
   });
@@ -151,6 +152,8 @@ describe('widgetIsSetUp', () => {
     expect(widgetIsSetUp({ type: 'homeassistant' }, { modules: ['home'], shift: false, todoLists: [] })).toBe(true);
     expect(widgetIsSetUp({ type: 'chores' }, { modules: ['chores'], shift: false, todoLists: [] })).toBe(true);
     expect(widgetIsSetUp({ type: 'buttons' }, { modules: ['buttons'], shift: false, todoLists: [] })).toBe(true);
+    expect(widgetIsSetUp({ type: 'timers' }, { modules: ['timers'], shift: false, todoLists: [] })).toBe(true);
+    expect(widgetIsSetUp({ type: 'messages' }, { modules: ['messages'], shift: false, todoLists: [] })).toBe(true);
     expect(widgetIsSetUp({ type: 'shift' }, { modules: [], shift: true, todoLists: [] })).toBe(true);
   });
 

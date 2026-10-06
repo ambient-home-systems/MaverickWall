@@ -82,6 +82,10 @@ export const WIDGET_TYPES = [
   // The household's webhook buttons (RFC 018 phase 5): names on cards, and
   // pressed by a hold where all three of RFC 018's switches say so.
   'buttons',
+  // Timers and messages from a phone, an automation or the admin (plan items
+  // M5.1–M5.2): each an end instant the wall counts down to itself.
+  'timers',
+  'messages',
   // A panel from a registered third-party module (docs/rfc-001-module-framework.md).
   // Still first-party by the rule that matters: the wall draws sanitised strings
   // through renderGenericPanel, never anything the module ships.
@@ -126,6 +130,11 @@ export const WIDGET_MODULE: Readonly<Record<string, string>> = {
   // Left out with nothing behind it: a Buttons widget on a household with no
   // button set up is a box with nothing to say (RFC 018 phase 5).
   buttons: 'buttons',
+  // Left out while nothing is running or posted, which is most of the day: a
+  // Timers or Messages widget is for the moments there is something, and its
+  // `whenEmpty` is what the box shows the rest of the time (M5.1–M5.2).
+  timers: 'timers',
+  messages: 'messages',
 };
 
 /**
@@ -1185,6 +1194,11 @@ export interface Manifest {
      */
     readonly allowControl?: boolean;
     /**
+     * Whether this wall may clear a finished timer or a message (MD7). Absent
+     * when off, for `allowTodo`'s reason, and read as `=== true`.
+     */
+    readonly allowClear?: boolean;
+    /**
      * How large this screen is, and how far away it is read from.
      *
      * Millimetres — **facts, never a derived size in pixels**. The server does
@@ -1507,6 +1521,7 @@ export interface BuildManifestInput {
     readonly allowChores?: boolean;
     readonly allowTodo?: boolean;
     readonly allowControl?: boolean;
+    readonly allowClear?: boolean;
     /**
      * The wall's own theme, and nothing behind it (RFC 015 phase 2). Required
      * rather than nullable, so a caller that builds a document for a wall has
@@ -2000,6 +2015,7 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       // Spread, never emitted as `false` — see the field's own note.
       ...(input.screen?.allowTodo === true ? { allowTodo: true } : {}),
       ...(input.screen?.allowControl === true ? { allowControl: true } : {}),
+      ...(input.screen?.allowClear === true ? { allowClear: true } : {}),
       /*
        * Spread rather than emitted as nulls, and refused rather than clamped.
        *

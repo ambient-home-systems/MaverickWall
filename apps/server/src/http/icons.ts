@@ -54,6 +54,8 @@ const ICON_PATHS: Readonly<Record<string, string>> = {
      is NWS warnings and the rules that match them. */
   alerts:
     '<path d="M12 12v4"/><path d="M12 20h.01"/><path d="M8.128 16.949A7 7 0 1 1 15.71 8h1.79a1 1 0 0 1 0 9h-1.642"/>',
+  /* timer — Timers and messages (plan items M5.1–M5.2), lucide-static 0.469.0 */
+  timers: '<line x1="10" x2="14" y1="2" y2="2"/><line x1="12" x2="15" y1="14" y2="11"/><circle cx="12" cy="14" r="8"/>',
   /* mouse-pointer-click — Buttons (RFC 018 phase 5), lucide-static 0.469.0 */
   buttons:
     '<path d="M14 4.1 12 6"/><path d="m5.1 8-2.9-.8"/><path d="m6 12-1.9 2"/><path d="M7.2 2.2 8 5.1"/><path d="M9.037 9.69a.498.498 0 0 1 .653-.653l11 4.5a.5.5 0 0 1-.074.949l-4.349 1.041a1 1 0 0 0-.74.739l-1.04 4.35a.5.5 0 0 1-.95.074z"/>',

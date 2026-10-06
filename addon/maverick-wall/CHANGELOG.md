@@ -16,6 +16,19 @@
 
 ## Unreleased
 
+**Timers and messages on the wall, from your phone.** Start a timer — "Pasta,
+10 minutes" — or send a short message like "Back at 6" from an iOS Shortcut or
+an automation, with the companion token under **System › Phone and
+automations**, or from the new **Timers and messages** page. Put a **Timers** or
+**Messages** widget on a wall to show them. A timer counts down in minutes,
+counts its last minute in seconds, and says **Done** for half an hour unless
+someone clears it; a message goes on its own after an hour, or whenever you
+said. A wall can clear a finished timer or a message only once you turn on
+**Allow clearing timers and messages** in that wall's Touch controls, and it can
+never stop a timer that is still running. When nothing is running the widget
+steps aside, and its box can show another widget instead. An e-paper panel shows
+when each timer ends rather than counting it down.
+
 ## 0.77.0
 
 **Add to a to-do list from your phone.** Make a companion token under **System

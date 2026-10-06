@@ -448,6 +448,7 @@ const screenBody = z.object({
   allow_chores: checkbox(),
   allow_todo: checkbox(),
   allow_control: checkbox(),
+  allow_clear: checkbox(),
   // '' follows the household, '1' forces 24-hour, '0' forces 12-hour (RFC 005).
   clock_24: optionalText(1),
   // How much this wall shows. Empty follows the household default; a number is
@@ -661,6 +662,7 @@ import { registerShiftTypeRoutes } from './admin-shifts.js';
 import { registerChoreRoutes } from './admin-chores.js';
 import { registerButtonRoutes } from './admin-buttons.js';
 import { registerCompanionAdminRoutes } from './admin-companion.js';
+import { registerTimerRoutes } from './admin-timers.js';
 import { readWebhookTargets } from '../modules/webhooks/index.js';
 import { registerThemeRoutes } from './admin-themes.js';
 import { registerEpaperRoutes } from './admin-epaper.js';
@@ -1160,6 +1162,10 @@ function whyNotDrawn(db: SqliteDatabase, type: string): string {
       return 'Pick a to-do list that is still on Home Assistant, or clear it to type the items here.';
     case 'buttons':
       return 'Add a button on Buttons and this appears.';
+    case 'timers':
+      return 'Shows while a timer is running — start one from a phone or on Timers and messages.';
+    case 'messages':
+      return 'Shows while there is a message — send one from a phone or on Timers and messages.';
     default:
       return 'Nothing is set up for this yet, so it is left out.';
   }
@@ -1273,6 +1279,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   registerChoreRoutes(app, deps);
   registerButtonRoutes(app, deps);
   registerCompanionAdminRoutes(app, deps);
+  registerTimerRoutes(app, deps);
   registerThemeRoutes(app, deps);
 
   /**
@@ -2997,6 +3004,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       allow_chores: allowChores,
       allow_todo: allowTodo,
       allow_control: allowControl,
+      allow_clear: allowClear,
     } = shaped.value;
     // '' follows the household, '1' forces 24-hour, '0' forces 12-hour.
     const clockRaw = shaped.value.clock_24 ?? '';
@@ -3251,6 +3259,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         allowChores,
         allowTodo,
         allowControl,
+        allowClear,
         displayTodayEvents: today.value,
         displayNextDays: nextDays.value,
         displayHorizonWeeks: weeks.value,
@@ -4432,7 +4441,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             {
               title: 'Companion token',
               href: 'admin/companion',
-              detail: 'Lets a phone shortcut or an automation add to your to-do lists without signing in.',
+              detail: 'Lets a phone shortcut or an automation add to your to-do lists, start timers and send messages without signing in.',
             },
           ),
         ) +
@@ -5640,6 +5649,20 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           'from a widget set to Tap to operate. It never reaches a lock, an alarm ' +
           'or a garage door. Off unless you mean it.',
       }) +
+      /*
+       * And a fifth, for timers and messages sent from a phone (MD7). Only a
+       * finished timer can be cleared here — a running one is the phone's or
+       * the admin's to end — so a sleeve brushing past cannot cancel dinner.
+       */
+      switchRow({
+        label: 'Allow clearing timers and messages',
+        name: 'allow_clear',
+        checked: screen.allowClear === 1,
+        hint:
+          'Puts a Clear button beside a finished timer and each message on this wall. ' +
+          'It clears it from every wall. A running timer can only be ended from a ' +
+          'phone or the admin.',
+      }) +
       `</div>`;
 
     // --- Advanced ---------------------------------------------------------
@@ -5698,7 +5721,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       wsetRow('look', 'Look', 'Theme, backgrounds, widget style', false) +
       wsetRow('content', 'Calendar amounts', 'Events, days and weeks shown', false) +
       wsetRow('device', 'Device and time', 'Name, mounting, size, motion, clock', false) +
-      wsetRow('alerts', 'Touch controls', 'Dismiss alerts, tick off chores and to-dos', false) +
+      wsetRow('alerts', 'Touch controls', 'Dismiss alerts, tick things off, operate the house, clear timers', false) +
       wsetRow('advanced', 'Advanced', 'Pairing, custom CSS, reset, unpair', false) +
       `</nav>` +
       `<div class="wset-panels">` +
@@ -5710,7 +5733,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // Every switch, not just the alert one — this panel is where every
       // "can this screen write anything" decision lives, and it is worth saying
       // that a wall display can only ever press what is listed here.
-      wsetPanel('alerts', 'Touch controls', 'What a person standing at this wall is allowed to press. All three are off until you turn them on.', alerts, false) +
+      wsetPanel('alerts', 'Touch controls', 'What a person standing at this wall is allowed to press. Each one is off until you turn it on.', alerts, false) +
       `</form>` +
       wsetPanel('advanced', 'Advanced', 'Infrequent, and the last two throw work away. These act at once — they are not part of Save wall.', advanced, false) +
       `</div></div>`

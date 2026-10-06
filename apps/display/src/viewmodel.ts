@@ -516,6 +516,15 @@ export interface DisplayModel {
    * an address — the wall is never handed one.
    */
   readonly buttons: readonly ButtonModel[];
+  /**
+   * Timers (plan item M5.1), soonest to end first: an end instant each, which
+   * the renderer counts down against `now` — so a wall that lost the server
+   * still finishes the count. Already without any done for longer than
+   * `TIMER_DONE_SHOWN_MS`.
+   */
+  readonly timers: readonly TimerModel[];
+  /** Messages (plan item M5.2), newest first, without any that have expired. */
+  readonly messages: readonly MessageModel[];
   /** Something quiet to say about them, such as a connection that is failing. */
   readonly houseNote: string | undefined;
   /**
@@ -597,6 +606,8 @@ export interface DisplayModel {
    * `/d/ha/act` asks all three again.
    */
   readonly allowControl: boolean;
+  /** Whether this wall may clear a finished timer or a message (MD7). The server asks again. */
+  readonly allowClear: boolean;
   /**
    * A press on a reading that did not go through, by widget id (RFC 018 §8.3):
    * `todoNotices`' mechanism, for the reason it gives.
@@ -841,6 +852,101 @@ export function buttonsFrom(panel: unknown): ButtonModel[] {
     });
   }
   return buttons;
+}
+
+/** One timer, as a Timers widget draws it (plan item M5.1). */
+export interface TimerModel {
+  readonly key: string;
+  readonly label: string | undefined;
+  readonly startedAt: number;
+  readonly endsAt: number;
+}
+
+/** One message, as a Messages widget draws it (plan item M5.2). */
+export interface MessageModel {
+  readonly key: string;
+  readonly text: string;
+  readonly postedAt: number;
+  readonly expiresAt: number;
+}
+
+/**
+ * How long a finished timer stays drawn. The server's `DONE_SHOWN_MS`, which
+ * stops sending it at the same moment; this copy is for a wall drawing from
+ * IndexedDB with the server gone, which must not say "Done" for ever.
+ */
+export const TIMER_DONE_SHOWN_MS = 30 * 60_000;
+/** A finite number of milliseconds, or nothing. */
+const finiteInstant = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+/** The two id shapes the server mints, and nothing else. */
+const TIMER_ID = /^tm-[0-9a-f]{12}$/;
+const MESSAGE_ID = /^ms-[0-9a-f]{12}$/;
+
+/**
+ * The timers panel, read defensively, and filtered against the wall's own
+ * clock: a timer done for longer than the window is gone whatever the stored
+ * document says.
+ */
+export function timersFrom(panel: unknown, now: number): TimerModel[] {
+  if (typeof panel !== 'object' || panel === null) return [];
+  const raw = (panel as { timers?: unknown }).timers;
+  if (!Array.isArray(raw)) return [];
+  const timers: TimerModel[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const timer = entry as { key?: unknown; label?: unknown; startedAt?: unknown; endsAt?: unknown };
+    const startedAt = finiteInstant(timer.startedAt);
+    const endsAt = finiteInstant(timer.endsAt);
+    if (typeof timer.key !== 'string' || !TIMER_ID.test(timer.key)) continue;
+    if (startedAt === undefined || endsAt === undefined || endsAt + TIMER_DONE_SHOWN_MS <= now) continue;
+    timers.push({ key: timer.key, label: text(timer.label, 40), startedAt, endsAt });
+  }
+  return timers.sort((a, b) => a.endsAt - b.endsAt).slice(0, 4);
+}
+
+/** The messages panel, read defensively, without any expired by the wall's own clock. */
+export function messagesFrom(panel: unknown, now: number): MessageModel[] {
+  if (typeof panel !== 'object' || panel === null) return [];
+  const raw = (panel as { messages?: unknown }).messages;
+  if (!Array.isArray(raw)) return [];
+  const messages: MessageModel[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const message = entry as { key?: unknown; text?: unknown; postedAt?: unknown; expiresAt?: unknown };
+    const words = text(message.text, 200);
+    const postedAt = finiteInstant(message.postedAt);
+    const expiresAt = finiteInstant(message.expiresAt);
+    if (typeof message.key !== 'string' || !MESSAGE_ID.test(message.key) || words === undefined) continue;
+    if (postedAt === undefined || expiresAt === undefined || expiresAt <= now) continue;
+    messages.push({ key: message.key, text: words, postedAt, expiresAt });
+  }
+  return messages.sort((a, b) => b.postedAt - a.postedAt).slice(0, 8);
+}
+
+/** Where a timer is, and what it says (plan item M5.1, MQ4). */
+export type TimerState =
+  | { readonly phase: 'running'; readonly words: string }
+  | { readonly phase: 'last-minute'; readonly words: string }
+  | { readonly phase: 'done'; readonly words: string };
+
+/**
+ * A timer in words, from the wall's own clock (MQ4): minutes, because a wall
+ * that redraws every fifteen seconds cannot keep a seconds count honest —
+ * "4 min left" is true for the whole minute it is drawn in, rounded up so it
+ * never says one minute fewer than there is. The last minute is its own phase:
+ * the renderer counts it down in seconds with a phase-locked reel where motion
+ * is allowed, and says "Under a minute" where it is not.
+ */
+export function timerState(timer: Pick<TimerModel, 'endsAt'>, now: number): TimerState {
+  const left = timer.endsAt - now;
+  if (left <= 0) return { phase: 'done', words: 'Done' };
+  if (left <= 60_000) return { phase: 'last-minute', words: 'Under a minute' };
+  const minutes = Math.ceil(left / 60_000);
+  if (minutes < 60) return { phase: 'running', words: `${minutes} min left` };
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return { phase: 'running', words: rest === 0 ? `${hours} h left` : `${hours} h ${rest} min left` };
 }
 
 export function houseFrom(panel: unknown): {
@@ -1961,6 +2067,8 @@ export function buildModel(options: BuildOptions): DisplayModel {
     todo,
     house: house.readings,
     buttons: buttonsFrom(manifest.panels?.['buttons']),
+    timers: timersFrom(manifest.panels?.['timers'], now),
+    messages: messagesFrom(manifest.panels?.['messages'], now),
     houseNote: house.note,
     now,
     interrupts: interruptsFrom(manifest.interrupts),
@@ -1968,6 +2076,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
     allowChores: manifest.screen?.allowChores === true,
     allowTodo: manifest.screen?.allowTodo === true,
     allowControl: manifest.screen?.allowControl === true,
+    allowClear: manifest.screen?.allowClear === true,
     // Straight off the document: `gutterValue` is the one place a step becomes
     // a length, and it refuses anything this bundle does not know.
     layoutGutter: manifest.screen?.layoutGutter,

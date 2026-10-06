@@ -6,14 +6,24 @@ import type { Keyring } from '../secrets/keyring.js';
 import { authenticateCompanion, presentedCompanionToken, touchCompanionToken } from '../api/companion.js';
 import { addTodoItem, findTodoList, pollTodoList, todoListTitle } from '../modules/todo/index.js';
 import { parse, z } from '../validation.js';
+import { MAX_LABEL, MAX_TIMER_MS, MIN_TIMER_MS, TIMER_ID, endTimers, startTimer } from '../modules/timers/index.js';
+import {
+  DEFAULT_MESSAGE_MINUTES,
+  MAX_MESSAGE_MINUTES,
+  MAX_MESSAGE_TEXT,
+  MESSAGE_ID,
+  clearMessages,
+  postMessage,
+} from '../modules/messages/index.js';
 
 /**
  * The companion API (plan items M2.1 and M2.2): what a phone shortcut or a
  * Home Assistant automation calls, with a token instead of a session.
  *
- * One endpoint so far, `POST /companion/todo/add`, and it is the one write rule
- * 12 reserves for this API: `todo.add_item`, onto a list the household added,
- * never from a wall. It sits outside `/api/*` because that prefix is behind the
+ * Five endpoints. `POST /companion/todo/add` is the one write rule 12 reserves
+ * for this API: `todo.add_item`, onto a list the household added, never from a
+ * wall. The other four start and end timers and post and clear messages, which
+ * reach no house at all — only the walls of this one. It sits outside `/api/*` because that prefix is behind the
  * session gate, and a shortcut has no cookie; it is still behind the setup gate,
  * which answers it in JSON.
  *
@@ -92,6 +102,87 @@ function spent(buckets: Map<string, Bucket>, key: string, at: number, max: numbe
   return Math.max(1, Math.ceil((bucket.resetAt - at) / 1000));
 }
 
+/** A whole number, from JSON or from a form field, where it arrives as digits. Never anything else. */
+const wholeNumber = z.union([z.number().int(), z.string().regex(/^\d{1,7}$/).transform(Number)]);
+/** `all: true`, from JSON or a form. */
+const allOf = z.union([z.literal(true), z.literal('true')]);
+
+/** A short line of the household's own: trimmed, bounded, with no control characters. */
+const ownText = (max: number, empty: string, long: string) =>
+  z
+    .string({ error: empty })
+    .trim()
+    .min(1, empty)
+    .max(max, long)
+    .refine((text) => !CONTROL.test(text), 'That cannot carry control characters.');
+
+/**
+ * Starting a timer: how long, in minutes or seconds — exactly one — and an
+ * optional label. The bounds are `startTimer`'s and are checked there too.
+ */
+export const timerStartBody = z
+  .object({
+    minutes: wholeNumber
+      .refine((n) => n >= 1 && n <= MAX_TIMER_MS / 60_000, 'A timer runs for between 1 and 1440 minutes.')
+      .optional(),
+    seconds: wholeNumber
+      .refine(
+        (n) => n >= MIN_TIMER_MS / 1000 && n <= MAX_TIMER_MS / 1000,
+        'A timer runs for between 10 and 86400 seconds.',
+      )
+      .optional(),
+    label: ownText(MAX_LABEL, 'A label cannot be empty — leave it out instead.', `A label can be at most ${MAX_LABEL} characters.`).optional(),
+  })
+  .strict()
+  .refine((body) => (body.minutes === undefined) !== (body.seconds === undefined), {
+    error: 'Say how long, as “minutes” or as “seconds” — one of them.',
+  });
+
+/** Ending timers: one by id, every one with a label, or all of them — exactly one. */
+export const timerEndBody = z
+  .object({
+    id: z.string().regex(TIMER_ID, 'That is not a timer’s id.').optional(),
+    label: ownText(MAX_LABEL, 'A label cannot be empty.', 'That label is too long.').optional(),
+    all: allOf.optional(),
+  })
+  .strict()
+  .refine((body) => [body.id, body.label, body.all].filter((one) => one !== undefined).length === 1, {
+    error: 'Say which timer: its “id”, its “label”, or “all”: true.',
+  });
+
+/** Posting a message: the text, and for how many minutes (an hour when left out). */
+export const messagePostBody = z
+  .object({
+    text: ownText(MAX_MESSAGE_TEXT, 'Say what the message is, as “text”.', `A message can be at most ${MAX_MESSAGE_TEXT} characters.`),
+    minutes: wholeNumber
+      .refine((n) => n >= 1 && n <= MAX_MESSAGE_MINUTES, `A message shows for between 1 and ${MAX_MESSAGE_MINUTES} minutes.`)
+      .optional(),
+  })
+  .strict();
+
+/** Clearing messages: one by id, or all of them — exactly one. */
+export const messageClearBody = z
+  .object({
+    id: z.string().regex(MESSAGE_ID, 'That is not a message’s id.').optional(),
+    all: allOf.optional(),
+  })
+  .strict()
+  .refine((body) => (body.id === undefined) !== (body.all === undefined), {
+    error: 'Say which message: its “id”, or “all”: true.',
+  });
+
+/** "10 minutes", "90 seconds", "1 hour 30 minutes" — said back to whoever set it. */
+export function durationWords(ms: number): string {
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60 || seconds % 60 !== 0) return `${seconds} second${seconds === 1 ? '' : 's'}`;
+  const minutes = seconds / 60;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  const h = hours === 0 ? '' : `${hours} hour${hours === 1 ? '' : 's'}`;
+  const m = rest === 0 ? '' : `${rest} minute${rest === 1 ? '' : 's'}`;
+  return [h, m].filter((part) => part !== '').join(' ');
+}
+
 export function registerCompanionRoutes(app: Hono, deps: CompanionDeps): void {
   // Per app instance, not module-global, for the reason the pairing limit is:
   // tests keyed to one address stay independent.
@@ -105,7 +196,15 @@ export function registerCompanionRoutes(app: Hono, deps: CompanionDeps): void {
     return c.json(body, status);
   };
 
-  app.post('/companion/todo/add', async (c: Context) => {
+  /**
+   * Everything every companion route asks first, in this order: is this
+   * address spent on wrong tokens, is there a token, is it one, and is its
+   * account spent on calls. Then the body, from JSON or a form. A route gets
+   * the account and the body, or a response to send.
+   */
+  const admit = async (
+    c: Context,
+  ): Promise<{ readonly userId: string; readonly at: number; readonly raw: unknown } | Response> => {
     const at = deps.now();
     const address = deps.clientAddress(c) ?? 'shared';
 
@@ -137,13 +236,19 @@ export function registerCompanionRoutes(app: Hono, deps: CompanionDeps): void {
       return answer(c, 429, { ok: false, error: 'rate-limited', message: 'Too many at once. Wait a minute.' });
     }
 
-    let raw: unknown;
     const type = (c.req.header('content-type') ?? '').toLowerCase();
     try {
-      raw = type.startsWith('application/json') ? await c.req.json() : await c.req.parseBody();
+      const raw: unknown = type.startsWith('application/json') ? await c.req.json() : await c.req.parseBody();
+      return { userId, at, raw };
     } catch {
       return answer(c, 400, { ok: false, error: 'bad-body', message: 'That body could not be read. Send JSON.' });
     }
+  };
+
+  app.post('/companion/todo/add', async (c: Context) => {
+    const admitted = await admit(c);
+    if (admitted instanceof Response) return admitted;
+    const { userId, at, raw } = admitted;
     const shaped = parse(companionAddBody, raw);
     if (!shaped.ok) return answer(c, 400, { ok: false, error: 'bad-body', message: shaped.message });
 
@@ -177,5 +282,72 @@ export function registerCompanionRoutes(app: Hono, deps: CompanionDeps): void {
     await pollTodoList({ db: deps.db, fetcher: deps.fetcher, keyring: deps.keyring, now: deps.now() }, match.list.entityId);
 
     return answer(c, 200, { ok: true, list: title, message: `Added to ${title}.` });
+  });
+
+  /** Start a timer (plan item M2.2). Every wall with a Timers widget counts it down. */
+  app.post('/companion/timers', async (c: Context) => {
+    const admitted = await admit(c);
+    if (admitted instanceof Response) return admitted;
+    const shaped = parse(timerStartBody, admitted.raw);
+    if (!shaped.ok) return answer(c, 400, { ok: false, error: 'bad-body', message: shaped.message });
+    const durationMs =
+      shaped.value.minutes !== undefined ? shaped.value.minutes * 60_000 : (shaped.value.seconds ?? 0) * 1000;
+    const started = startTimer(deps.db, { durationMs, label: shaped.value.label ?? null }, admitted.at);
+    if (!started.ok) return answer(c, 409, { ok: false, error: 'refused', message: started.message });
+    touchCompanionToken(deps.db, admitted.userId, admitted.at);
+    const what = shaped.value.label === undefined ? 'Timer' : `${shaped.value.label} timer`;
+    return answer(c, 200, {
+      ok: true,
+      id: started.timer.id,
+      endsAt: started.timer.endsAt,
+      message: `${what} set for ${durationWords(durationMs)}.`,
+    });
+  });
+
+  /** End timers, running or done, by id, by label, or all (plan item M2.2). */
+  app.post('/companion/timers/end', async (c: Context) => {
+    const admitted = await admit(c);
+    if (admitted instanceof Response) return admitted;
+    const shaped = parse(timerEndBody, admitted.raw);
+    if (!shaped.ok) return answer(c, 400, { ok: false, error: 'bad-body', message: shaped.message });
+    const { id, label } = shaped.value;
+    const ended = endTimers(
+      deps.db,
+      id !== undefined ? { id } : label !== undefined ? { label } : { all: true },
+      admitted.at,
+    );
+    touchCompanionToken(deps.db, admitted.userId, admitted.at);
+    if (ended === 0) return answer(c, 404, { ok: false, error: 'not-found', message: 'No timer matched, so nothing was ended.' });
+    return answer(c, 200, { ok: true, ended, message: ended === 1 ? 'Timer ended.' : `${ended} timers ended.` });
+  });
+
+  /** Post a message (plan item M2.2). It goes on its own when it expires. */
+  app.post('/companion/messages', async (c: Context) => {
+    const admitted = await admit(c);
+    if (admitted instanceof Response) return admitted;
+    const shaped = parse(messagePostBody, admitted.raw);
+    if (!shaped.ok) return answer(c, 400, { ok: false, error: 'bad-body', message: shaped.message });
+    const minutes = shaped.value.minutes ?? DEFAULT_MESSAGE_MINUTES;
+    const posted = postMessage(deps.db, { body: shaped.value.text, minutes }, admitted.at);
+    if (!posted.ok) return answer(c, 409, { ok: false, error: 'refused', message: posted.reason });
+    touchCompanionToken(deps.db, admitted.userId, admitted.at);
+    return answer(c, 200, {
+      ok: true,
+      id: posted.message.id,
+      expiresAt: posted.message.expiresAt,
+      message: `Posted for ${durationWords(minutes * 60_000)}.`,
+    });
+  });
+
+  /** Clear messages, one by id or all (plan item M2.2). */
+  app.post('/companion/messages/clear', async (c: Context) => {
+    const admitted = await admit(c);
+    if (admitted instanceof Response) return admitted;
+    const shaped = parse(messageClearBody, admitted.raw);
+    if (!shaped.ok) return answer(c, 400, { ok: false, error: 'bad-body', message: shaped.message });
+    const cleared = clearMessages(deps.db, shaped.value.id !== undefined ? { id: shaped.value.id } : { all: true });
+    touchCompanionToken(deps.db, admitted.userId, admitted.at);
+    if (cleared === 0) return answer(c, 404, { ok: false, error: 'not-found', message: 'No message matched, so nothing was cleared.' });
+    return answer(c, 200, { ok: true, cleared, message: cleared === 1 ? 'Message cleared.' : `${cleared} messages cleared.` });
   });
 }

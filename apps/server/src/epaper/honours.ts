@@ -104,6 +104,9 @@ export const PANEL_HONOURS: Readonly<Record<string, readonly string[]>> = {
   // RFC 018 phase 5: the names of the chosen buttons, a line each. Nothing to
   // press — `tapAction` is in `PANEL_IGNORES`.
   buttons: ['title', 'showTitle', 'align', 'buttons', STYLE_INSET, WHEN_EMPTY],
+  // Plan items M5.1–M5.2: a line per timer or message, nothing to clear.
+  timers: ['title', 'showTitle', 'align', STYLE_INSET, WHEN_EMPTY],
+  messages: ['title', 'showTitle', 'align', STYLE_INSET, WHEN_EMPTY],
   /*
    * A group (RFC 014 §5.1) draws its frame, its title and its children's
    * cells: `layout` moves every child and `columns` moves a grid's. Not
@@ -164,6 +167,8 @@ export const INK_LANE: Readonly<Record<string, readonly string[]>> = {
   image: [],
   // Which buttons is the widget's identity, as a to-do widget's list is.
   buttons: [],
+  timers: [],
+  messages: [],
   // A panel could honestly lay a group out differently from the wall it
   // follows — a row on the wall, a column on a narrow panel — and that is
   // density and shape, which is what the lane is for. Empty until the editor

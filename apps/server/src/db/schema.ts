@@ -813,6 +813,14 @@ export const screens = sqliteTable(
     allowControl: integer('allow_control', { mode: 'boolean' }).notNull().default(false),
 
     /**
+     * Whether this screen may clear a finished timer or a message (plan item
+     * M5.1–M5.2, decision MD7). Off by default, and its own switch: clearing a
+     * note somebody sent from their phone is not the same act as ticking a
+     * chore. The server is the authority — the wall only asks.
+     */
+    allowClear: integer('allow_clear', { mode: 'boolean' }).notNull().default(false),
+
+    /**
      * Whether this screen's frame answers only a connection from the
      * household's own network.
      *
@@ -2016,6 +2024,39 @@ export const webhookTargets = sqliteTable('webhook_targets', {
   sortOrder: integer('sort_order').notNull().default(0),
   createdAt: integer('created_at', { mode: 'number' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
+});
+
+/**
+ * Timers a phone, an automation or the admin started (plan items M2.2, M5.1).
+ *
+ * A timer is an end instant and nothing more: the wall works out "4 min left"
+ * itself from `ends_at` and its corrected clock, so it keeps counting offline.
+ * Household-wide — every wall with a Timers widget shows every timer. A timer
+ * stays on the walls as "Done" for a while after it ends, until it is cleared
+ * (from a phone, the admin, or a wall allowed to) or that while has passed;
+ * then the row is deleted, because nothing here keeps a history of anybody's
+ * pasta. `label` is the household's own text, refused with control characters
+ * at the boundary and drawn with `textContent`.
+ */
+export const timers = sqliteTable('timers', {
+  id: text('id').primaryKey(),
+  label: text('label'),
+  startedAt: integer('started_at', { mode: 'number' }).notNull(),
+  endsAt: integer('ends_at', { mode: 'number' }).notNull(),
+  createdAt: integer('created_at', { mode: 'number' }).notNull(),
+});
+
+/**
+ * Short messages from a phone or an automation (plan items M2.2, M5.2), each
+ * with its own expiry. Household-wide, like timers, and deleted once expired
+ * or cleared. The text is the household's — refused with control characters,
+ * capped, and drawn with `textContent` — and it is never logged.
+ */
+export const messages = sqliteTable('messages', {
+  id: text('id').primaryKey(),
+  body: text('body').notNull(),
+  postedAt: integer('posted_at', { mode: 'number' }).notNull(),
+  expiresAt: integer('expires_at', { mode: 'number' }).notNull(),
 });
 
 /**
