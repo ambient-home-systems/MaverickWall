@@ -2,7 +2,8 @@ import { z } from '../validation.js';
 import { WIDGET_TYPES } from './manifest.js';
 import { widgetStyleBody } from './widget-style.js';
 import { EMOJI_KEYS } from '../emoji.js';
-import { isWallpaperId } from '../wallpapers.js';
+import { ROTATION_COLLECTIONS, isWallpaperId, rotationPictures, type RotationCollection } from '../wallpapers.js';
+import { ROTATION_EVERY } from './picture-rotation.js';
 
 /**
  * A stored image's own name — 64 hex plus a known extension, the shape
@@ -597,6 +598,23 @@ export const backgroundSchema = z.discriminatedUnion('type', [
       id: z.string().max(64).refine(isWallpaperId, 'That is not one of the wallpapers.'),
     })
     .strict(),
+  /*
+   * Bundled wallpapers, rotating (plan item M4.10): a collection of one tone,
+   * and how often it changes. Refused unless the collection has two pictures
+   * to rotate between — one is a wallpaper, and a rotation that never changes
+   * is a control that does nothing.
+   */
+  z
+    .object({
+      type: z.literal('rotation'),
+      collection: z.enum(ROTATION_COLLECTIONS as [RotationCollection, ...RotationCollection[]]),
+      tone: z.enum(['light', 'dark']),
+      every: z.union(ROTATION_EVERY.map((minutes) => z.literal(minutes)) as unknown as [z.ZodLiteral<5>, z.ZodLiteral<15>, z.ZodLiteral<60>, z.ZodLiteral<1440>]),
+    })
+    .strict()
+    .refine((bg) => rotationPictures(bg.collection, bg.tone).length >= 2, {
+      error: 'That collection has only one picture. Choose it as a wallpaper instead.',
+    }),
 ]);
 
 /** The coordinate and size bounds a widget shares wherever it is placed. */

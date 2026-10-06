@@ -165,6 +165,7 @@ export const SAVED_MESSAGES = {
   // wall acts on one at its next check, which is the truth until push reaches it.
   'walls-refreshed': 'Every browser wall reloads within a minute.',
   'wall-refreshed': 'This wall reloads within a minute.',
+  'picture-next': 'This wall moves on to its next picture in a moment.',
   'layout-shown': 'Every other wall shows that layout within a minute, until the time you chose.',
   'layout-show-ended': 'Every wall goes back to its own layout within a minute.',
   // The companion token (plan item M2.1).

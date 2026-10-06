@@ -663,6 +663,7 @@ import { registerChoreRoutes } from './admin-chores.js';
 import { registerButtonRoutes } from './admin-buttons.js';
 import { registerCompanionAdminRoutes } from './admin-companion.js';
 import { registerTimerRoutes } from './admin-timers.js';
+import { wallRotates } from '../api/wall-commands.js';
 import { readWebhookTargets } from '../modules/webhooks/index.js';
 import { registerThemeRoutes } from './admin-themes.js';
 import { registerEpaperRoutes } from './admin-epaper.js';
@@ -6203,7 +6204,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // layout on every other wall for a while.
       (owner === null
         ? ''
-        : `<form method="post" action="admin/screens/${ownerParam}/refresh">` +
+        : (wallRotates(deps.db, owner.id)
+            ? `<form method="post" action="admin/screens/${ownerParam}/next-picture">` +
+              `<button class="ovf-item" type="submit">Next picture</button></form>`
+            : '') +
+          `<form method="post" action="admin/screens/${ownerParam}/refresh">` +
           `<button class="ovf-item" type="submit">Refresh this wall</button></form>` +
           `<a class="ovf-item" href="admin/screens/${ownerParam}/show">Show this layout on every wall…</a>`) +
       (slotNames.length < MAX_LAYOUT_SLOTS

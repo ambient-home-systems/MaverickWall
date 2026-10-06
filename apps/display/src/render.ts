@@ -4094,7 +4094,9 @@ const MEDIA_BASE = '/d/media/';
  * ground that shows while the picture loads and if it never does.
  */
 function backgroundCss(background: CanvasBackground | undefined, mediaBase: string): string | undefined {
-  if (background === undefined || background.type === 'wallpaper') return undefined;
+  // A rotation is turned into the wallpaper due now before it reaches the
+  // renderer (`currentPicture`); one that arrives unturned draws the ground.
+  if (background === undefined || background.type === 'wallpaper' || background.type === 'rotation') return undefined;
   if (background.type === 'solid') return background.color;
   if (background.type === 'gradient') {
     return `linear-gradient(${background.angle}deg, ${background.from}, ${background.to})`;

@@ -829,6 +829,16 @@ export const screens = sqliteTable(
     refreshRequestedAt: integer('refresh_requested_at', { mode: 'number' }),
 
     /**
+     * When somebody last pressed Next picture on this wall, and the step it
+     * moved the rotation to (plan item M1.4). A rotating background counts its
+     * steps from here once pressed, which is what restarts that picture's
+     * countdown; null on a wall nobody has pressed it on, which counts from
+     * the epoch and sends the manifest it always did.
+     */
+    picturePressedAt: integer('picture_pressed_at', { mode: 'number' }),
+    pictureStep: integer('picture_step', { mode: 'number' }),
+
+    /**
      * Whether this screen's frame answers only a connection from the
      * household's own network.
      *

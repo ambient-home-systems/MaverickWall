@@ -5,7 +5,9 @@ import {
   wallpaperFile,
   wallpaperPosition,
   widgetGroundFor,
+  currentPicture,
 } from '../src/wallpaper.js';
+import { rotationIndex, rotationSteps } from '../src/picture-rotation.js';
 
 /**
  * Which of a wallpaper's two files a canvas draws, and what its widgets draw
@@ -86,5 +88,47 @@ describe('wallpaperPosition', () => {
     for (const bad of [null, 'centre', { x: 50 }, { x: '50', y: '58' }, { x: 120, y: 50 }, { x: -1, y: 50 }, { x: Number.NaN, y: 50 }]) {
       expect(wallpaperPosition({ focal: bad }), JSON.stringify(bad)).toBe('center');
     }
+  });
+});
+
+describe('currentPicture (plan items M4.10, M1.4)', () => {
+  const picture = (id: string) => ({ id, small: `${id}-1600.0123456789.jpg`, large: `${id}-2880.0123456789.jpg` });
+  const rotation = {
+    type: 'rotation' as const,
+    collection: 'gradient',
+    tone: 'dark' as const,
+    every: 15,
+    pictures: [picture('dusk'), picture('midnight'), picture('ember')],
+  };
+  const at = Date.UTC(2026, 9, 6, 10, 7, 0);
+
+  it('turns a rotation into the wallpaper its step lands on, by the wall’s own clock', () => {
+    const steps = rotationSteps(15, at, 'UTC', undefined, 0);
+    expect(currentPicture(rotation, at, 'UTC', undefined)).toEqual({
+      type: 'wallpaper',
+      ...rotation.pictures[rotationIndex(3, steps)]!,
+    });
+    // A quarter of an hour later, the next one.
+    expect(currentPicture(rotation, at + 15 * 60_000, 'UTC', undefined)).toEqual({
+      type: 'wallpaper',
+      ...rotation.pictures[rotationIndex(3, steps + 1)]!,
+    });
+  });
+
+  it('counts from where Next picture moved it, and only with both halves of that', () => {
+    expect(currentPicture(rotation, at, 'UTC', { picturePressedAt: at, pictureStep: 2 })).toMatchObject({ id: 'ember' });
+    expect(currentPicture(rotation, at + 14 * 60_000, 'UTC', { picturePressedAt: at, pictureStep: 2 })).toMatchObject({ id: 'ember' });
+    expect(currentPicture(rotation, at + 15 * 60_000, 'UTC', { picturePressedAt: at, pictureStep: 2 })).toMatchObject({ id: 'dusk' });
+    // A step with nothing to count from is not a position: the epoch count stands.
+    expect(currentPicture(rotation, at, 'UTC', { pictureStep: 2 })).toEqual(currentPicture(rotation, at, 'UTC', undefined));
+  });
+
+  it('draws only pictures with files it would draw, and passes every other background through', () => {
+    const broken = { ...rotation, pictures: [{ id: 'x', small: 'javascript:alert(1)', large: 'nope' }] };
+    expect(currentPicture(broken, at, 'UTC', undefined)).toBeUndefined();
+    expect(currentPicture({ ...rotation, pictures: undefined }, at, 'UTC', undefined)).toBeUndefined();
+    const solid = { type: 'solid' as const, color: '#112233' };
+    expect(currentPicture(solid, at, 'UTC', undefined)).toBe(solid);
+    expect(currentPicture(undefined, at, 'UTC', undefined)).toBeUndefined();
   });
 });

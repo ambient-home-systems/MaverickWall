@@ -12,6 +12,7 @@
  * a file is that its name is safe to put inside a `url()`.
  */
 import type { CanvasBackground } from './manifest.js';
+import { rotationIndex, rotationSteps } from './picture-rotation.js';
 
 /**
  * Where the wallpapers are served: absolute on the wall, which is always at
@@ -113,4 +114,43 @@ export function wallpaperPosition(background: { readonly focal?: unknown }): str
   const { x, y } = focal as { x?: unknown; y?: unknown };
   const ok = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100;
   return ok(x) && ok(y) ? `${x}% ${y}%` : 'center';
+}
+
+/**
+ * The wallpaper a rotating background shows at `now` (plan items M4.10, M1.4),
+ * or any other background as it is.
+ *
+ * Worked out on the wall from its own clock, the wall's time zone and where
+ * Next picture last moved it — the same arithmetic the server uses for Next
+ * (`picture-rotation.ts`) — so a wall keeps rotating with the server gone, and
+ * two walls on one collection show the same picture. The rotation becomes an
+ * ordinary wallpaper here, so everything after it (the file it picks by size,
+ * the focal point, the Soft widget ground) is the wallpaper's own path. A
+ * rotation with no usable pictures is no background: the theme's ground.
+ */
+export function currentPicture(
+  background: CanvasBackground | undefined,
+  now: number,
+  timezone: string,
+  pressed: { readonly picturePressedAt?: number; readonly pictureStep?: number } | undefined,
+): CanvasBackground | undefined {
+  if (background?.type !== 'rotation') return background;
+  const pictures = (background.pictures ?? []).filter(
+    (one) =>
+      typeof one?.id === 'string' && WALLPAPER_FILE.test(one.small) && WALLPAPER_FILE.test(one.large),
+  );
+  if (pictures.length === 0) return undefined;
+  const pressedAt =
+    typeof pressed?.picturePressedAt === 'number' && typeof pressed.pictureStep === 'number'
+      ? pressed.picturePressedAt
+      : undefined;
+  const steps = rotationSteps(background.every, now, timezone, pressedAt, pressedAt === undefined ? 0 : pressed!.pictureStep!);
+  const picture = pictures[rotationIndex(pictures.length, steps)]!;
+  return {
+    type: 'wallpaper',
+    id: picture.id,
+    small: picture.small,
+    large: picture.large,
+    ...(picture.focal === undefined ? {} : { focal: picture.focal }),
+  };
 }

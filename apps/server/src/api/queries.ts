@@ -2243,6 +2243,9 @@ export interface ScreenRow {
   readonly lanOnly: number;
   /** When somebody last asked this wall to reload (plan item M1.2); null if nobody has. */
   readonly refreshRequestedAt: number | null;
+  /** When Next picture was last pressed on this wall, and the step it moved to (plan item M1.4). */
+  readonly picturePressedAt: number | null;
+  readonly pictureStep: number | null;
   /** Per-screen display overrides; null follows the household. */
   readonly displayTodayEvents: number | null;
   readonly displayNextDays: number | null;
@@ -2316,7 +2319,8 @@ export function readScreens(db: SqliteDatabase): ScreenRow[] {
               layout_landscape_background AS layoutLandscapeBackground,
               layout_gutter AS layoutGutter, layout_style AS layoutStyle,
               custom_css_scoped AS customCss, motion, widget_ground AS widgetGround,
-              refresh_requested_at AS refreshRequestedAt
+              refresh_requested_at AS refreshRequestedAt,
+              picture_pressed_at AS picturePressedAt, picture_step AS pictureStep
          FROM screens WHERE revoked_at IS NULL`,
     )
     .all() as ScreenRow[];

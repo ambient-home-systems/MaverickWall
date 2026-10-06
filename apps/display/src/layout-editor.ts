@@ -17,7 +17,7 @@
  */
 
 import { renderFreeform } from './render.js';
-import { ADMIN_WALLPAPER_BASE, wallpaperPosition, widgetGroundFor, type WidgetGround } from './wallpaper.js';
+import { ADMIN_WALLPAPER_BASE, currentPicture, wallpaperPosition, widgetGroundFor, type WidgetGround } from './wallpaper.js';
 import { buildModel, type DisplayModel } from './viewmodel.js';
 import { applyTheme, themeTokens } from './theme.js';
 import {
@@ -276,6 +276,16 @@ function boot(): void {
     // The id alone: that is what the editor posts, and the preview resolves it
     // against the catalogue below (plan item P6.1).
     if (b['type'] === 'wallpaper' && typeof b['id'] === 'string') return { type: 'wallpaper', id: b['id'] };
+    // A rotation as the editor posts it — never the pictures the server
+    // resolves it into, which the schema would refuse (plan item M4.10).
+    if (
+      b['type'] === 'rotation' &&
+      typeof b['collection'] === 'string' &&
+      (b['tone'] === 'light' || b['tone'] === 'dark') &&
+      typeof b['every'] === 'number'
+    ) {
+      return { type: 'rotation', collection: b['collection'], tone: b['tone'], every: b['every'] };
+    }
     return undefined;
   };
   const canvasFrom = (raw: RawCanvas | undefined, fallbackAspect: number): Canvas => {
@@ -3335,6 +3345,17 @@ function boot(): void {
    * an id the server does not know (plan item P6.1).
    */
   function previewBackground(bg: Background): DrawnBackground | undefined {
+    if (bg.type === 'rotation') {
+      // The picture the wall would show now, from this editor's clock and the
+      // household's zone; the pictures from the catalogue the server handed over.
+      const pictures = rotationChoices(bg.collection ?? 'all', bg.tone ?? wallTone).map((one) => ({
+        id: one.id,
+        small: one.small,
+        large: one.large,
+        ...(one.focal ? { focal: one.focal } : {}),
+      }));
+      return currentPicture({ ...bg, pictures }, Date.now(), manifest?.timezone ?? 'UTC', undefined);
+    }
     if (bg.type !== 'wallpaper') return bg;
     const found = wallpapers.find((one) => one.id === bg.id);
     return found === undefined
@@ -3360,6 +3381,7 @@ function boot(): void {
     for (const [value, label] of [
       ['none', 'None'], ['solid', 'Solid colour'], ['gradient', 'Gradient'], ['image', 'Image'],
       ['wallpaper', 'Wallpaper'],
+      ['rotation', 'Rotating wallpapers'],
     ] as const) {
       const opt = document.createElement('option');
       opt.value = value;
@@ -3381,6 +3403,11 @@ function boot(): void {
       } else if (select.value === 'wallpaper') {
         // Empty until one is chosen, like an image: saved as "no background".
         state.background = { type: 'wallpaper', id: '' };
+      } else if (select.value === 'rotation') {
+        // Every picture drawn for this wall's tone, hourly: the rotation a
+        // household gets without choosing anything else (plan item M4.10).
+        state.background = { type: 'rotation', collection: 'all', tone: wallTone, every: 60 };
+        if (wallpaperForBoth) applyToOtherOrientation(state.background);
       } else state.background = undefined;
       drawBackgroundPanel();
       renderPreview();
@@ -3402,7 +3429,9 @@ function boot(): void {
     };
 
     const bg = state.background;
-    if (bg?.type === 'wallpaper') {
+    if (bg?.type === 'rotation') {
+      backgroundPanel.appendChild(rotationPicker(bg));
+    } else if (bg?.type === 'wallpaper') {
       backgroundPanel.appendChild(wallpaperPicker(bg.id));
     } else if (bg?.type === 'image') {
       backgroundPanel.appendChild(
@@ -4705,19 +4734,165 @@ function boot(): void {
        * to the orientation and not to the slot, and the save writes it from
        * whichever canvas is posted.
        */
-      if (wallpaperForBoth) {
-        const other = state.orientation === 'portrait' ? 'landscape' : 'portrait';
-        for (const slot of [null, ...state.slots]) {
-          const key = canvasKey(other, slot);
-          const canvas = state.stash[key];
-          if (canvas !== undefined) state.stash[key] = { ...canvas, background: { ...chosen } };
-        }
-      }
+      if (wallpaperForBoth) applyToOtherOrientation(chosen);
       drawBackgroundPanel();
       renderPreview();
       markDirty();
     });
     return button;
+  }
+
+  /**
+   * Put this background on every canvas of the other orientation too — the
+   * everyday one and each named layout — because a background belongs to the
+   * orientation and not to the slot, and the save writes it from whichever
+   * canvas is posted (P6.4).
+   */
+  function applyToOtherOrientation(chosen: Background): void {
+    const other = state.orientation === 'portrait' ? 'landscape' : 'portrait';
+    for (const slot of [null, ...state.slots]) {
+      const key = canvasKey(other, slot);
+      const canvas = state.stash[key];
+      if (canvas !== undefined) state.stash[key] = { ...canvas, background: { ...chosen } };
+    }
+  }
+
+  /** The pictures a rotation goes through, in the catalogue's order: the server's `rotationPictures`, read off the same list. */
+  function rotationChoices(collection: string, tone: 'light' | 'dark'): WallpaperChoice[] {
+    return wallpapers.filter((one) => one.tone === tone && (collection === 'all' || one.category === collection));
+  }
+
+  /**
+   * Rotating wallpapers (plan item M4.10): which pictures, and how often.
+   *
+   * Only collections with two pictures or more are offered, because one is a
+   * wallpaper and the schema refuses a rotation that never changes. The tone
+   * follows the wallpaper picker's rule — this wall's, with the other one
+   * behind the same switch and the same warning — and every option says how
+   * many pictures it holds, so a household is choosing a set rather than a
+   * word. The strip under it is the set, in the order the wall shows it.
+   */
+  function rotationPicker(bg: Extract<Background, { type: 'rotation' }>): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'le-media le-wallpapers le-rotation';
+    wrap.dataset['orientation'] = state.orientation;
+    if (!epaperHost) wrap.appendChild(groundField());
+
+    const write = (next: Extract<Background, { type: 'rotation' }>): void => {
+      record();
+      state.background = next;
+      if (wallpaperForBoth) applyToOtherOrientation(next);
+      drawBackgroundPanel();
+      renderPreview();
+      markDirty();
+    };
+
+    const tones: ('light' | 'dark')[] = showAllWallpapers
+      ? [wallTone, wallTone === 'dark' ? 'light' : 'dark']
+      : [wallTone];
+    const groups = new Map<string, string>();
+    for (const one of wallpapers) groups.set(one.category, one.categoryName);
+    const options: { value: string; label: string }[] = [];
+    for (const tone of tones) {
+      const every = rotationChoices('all', tone).length;
+      if (every >= 2) options.push({ value: `${tone}:all`, label: `Every ${tone} wallpaper (${every})` });
+      for (const [category, name] of groups) {
+        const count = rotationChoices(category, tone).length;
+        if (count >= 2) options.push({ value: `${tone}:${category}`, label: `${name}, ${tone} (${count})` });
+      }
+    }
+    const current = `${bg.tone ?? wallTone}:${bg.collection ?? 'all'}`;
+    if (!options.some((one) => one.value === current)) {
+      options.unshift({ value: current, label: `${bg.collection ?? 'all'}, ${bg.tone ?? wallTone}` });
+    }
+
+    const field = (labelText: string, control: HTMLSelectElement): HTMLElement => {
+      const label = document.createElement('label');
+      label.className = 'le-cfg-field';
+      const span = document.createElement('span');
+      span.textContent = labelText;
+      label.append(span, control);
+      return label;
+    };
+    const which = document.createElement('select');
+    which.setAttribute('data-rotation-collection', '');
+    for (const option of options) {
+      const element = document.createElement('option');
+      element.value = option.value;
+      element.textContent = option.label;
+      if (option.value === current) element.selected = true;
+      which.appendChild(element);
+    }
+    which.addEventListener('change', () => {
+      const [tone, collection] = which.value.split(':') as ['light' | 'dark', string];
+      write({ type: 'rotation', collection, tone, every: bg.every });
+    });
+    wrap.appendChild(field('Pictures', which));
+
+    const how = document.createElement('select');
+    how.setAttribute('data-rotation-every', '');
+    for (const [minutes, label] of [
+      [5, 'Every 5 minutes'],
+      [15, 'Every 15 minutes'],
+      [60, 'Every hour'],
+      [1440, 'Every day, at midnight'],
+    ] as const) {
+      const element = document.createElement('option');
+      element.value = String(minutes);
+      element.textContent = label;
+      if (minutes === bg.every) element.selected = true;
+      how.appendChild(element);
+    }
+    how.addEventListener('change', () => {
+      write({ type: 'rotation', collection: bg.collection ?? 'all', tone: bg.tone ?? wallTone, every: Number(how.value) });
+    });
+    wrap.appendChild(field('Change', how));
+
+    const strip = document.createElement('div');
+    strip.className = 'le-wp-grid';
+    strip.setAttribute('role', 'list');
+    strip.setAttribute('aria-label', 'The pictures it goes through, in order');
+    for (const one of rotationChoices(bg.collection ?? 'all', bg.tone ?? wallTone)) {
+      const item = document.createElement('span');
+      item.className = 'le-wp-tile';
+      item.setAttribute('role', 'listitem');
+      const picture = document.createElement('span');
+      picture.className = 'le-wp-pic';
+      picture.setAttribute('aria-hidden', 'true');
+      picture.style.backgroundColor = one.color;
+      picture.style.backgroundImage = `url("${ADMIN_WALLPAPER_BASE}${one.thumb}")`;
+      picture.style.backgroundPosition = wallpaperPosition(one);
+      const name = document.createElement('span');
+      name.className = 'le-wp-name';
+      name.textContent = one.name;
+      item.append(picture, name);
+      strip.appendChild(item);
+    }
+    wrap.appendChild(strip);
+
+    const hint = document.createElement('p');
+    hint.className = 'hint';
+    hint.textContent =
+      'Every wall showing this changes picture together, by its own clock. “Next picture” in the wall’s ' +
+      'menu, or from your phone, moves it on and gives that picture its full time.';
+    wrap.appendChild(hint);
+
+    const toggle = (text: string, checked: boolean, onChange: (on: boolean) => void): HTMLElement => {
+      const label = document.createElement('label');
+      label.className = 'le-media-upload';
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = checked;
+      box.addEventListener('change', () => onChange(box.checked));
+      label.append(box, document.createTextNode(text));
+      return label;
+    };
+    wrap.appendChild(
+      toggle('Use for both orientations, including timed layouts', wallpaperForBoth, (on) => {
+        wallpaperForBoth = on;
+      }),
+    );
+    return wrap;
   }
 
   /** A built-in theme's name as the picker says it; a key it does not know is said as it is. */
