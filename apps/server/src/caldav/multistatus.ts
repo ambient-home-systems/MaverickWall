@@ -51,6 +51,8 @@
  * and read back what came out.
  */
 
+import { readXml, type XmlName, type XmlNode } from '../xml/read.js';
+
 /** A property value, keyed by namespace and local name. */
 export interface DavProp {
   readonly namespace: string;
@@ -96,10 +98,8 @@ export interface DavProp {
   readonly raw?: string;
 }
 
-export interface QName {
-  readonly namespace: string;
-  readonly localName: string;
-}
+/** A namespace and a local name: the only identity a prefix-choosing server cannot change. */
+export type QName = XmlName;
 
 export interface DavElement extends QName {
   /**
@@ -196,340 +196,11 @@ export function clark(namespace: string, localName: string): string {
   return `{${namespace}}${localName}`;
 }
 
-type Failure = { readonly ok: false; readonly error: MultistatusError };
-
-function fail(code: MultistatusErrorCode, message: string): Failure {
+function fail(code: MultistatusErrorCode, message: string): { readonly ok: false; readonly error: MultistatusError } {
   return { ok: false, error: { code, message } };
 }
 
-/**
- * The five XML built-ins, and nothing else will ever be added to this table.
- *
- * Every one of them expands to a single character and none of them can name
- * anything — that is the whole distinction between these and the entity class
- * XXE lives in. An entity that is not here is a refusal, not a passthrough.
- */
-const BUILT_IN_ENTITIES: Readonly<Record<string, string>> = {
-  lt: '<',
-  gt: '>',
-  amp: '&',
-  quot: '"',
-  apos: "'",
-};
-
-/**
- * A character reference expands to one code point and cannot name a resource,
- * so it is resolved. The cap is what stops `&#x110000;` and a run of digits
- * long enough to be interesting: anything out of range is a refusal.
- */
-function decodeCharacterReference(spec: string): string | undefined {
-  const hex = spec.startsWith('x') || spec.startsWith('X');
-  const digits = hex ? spec.slice(1) : spec;
-  if (digits.length === 0 || digits.length > 8) return undefined;
-  if (!(hex ? /^[0-9a-fA-F]+$/ : /^[0-9]+$/).test(digits)) return undefined;
-  const code = Number.parseInt(digits, hex ? 16 : 10);
-  if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) return undefined;
-  // Surrogates are not characters; a document naming one is malformed rather
-  // than merely odd, and `String.fromCodePoint` would happily produce a lone
-  // one that then poisons every string it is concatenated into.
-  if (code >= 0xd800 && code <= 0xdfff) return undefined;
-  return String.fromCodePoint(code);
-}
-
-/**
- * Resolve entity references in text, refusing anything that is not built in.
- *
- * The refusal is the feature. A reader that passed `&xxe;` through as the
- * literal text `&xxe;` would be quietly reporting a document it did not
- * understand, and a household's calendar name is not where that gets noticed.
- */
-function decodeText(raw: string): { ok: true; text: string } | { ok: false; name: string } {
-  if (!raw.includes('&')) return { ok: true, text: raw };
-
-  let out = '';
-  let index = 0;
-  while (index < raw.length) {
-    const amp = raw.indexOf('&', index);
-    if (amp === -1) {
-      out += raw.slice(index);
-      break;
-    }
-    out += raw.slice(index, amp);
-    const semi = raw.indexOf(';', amp);
-    // A bare `&` with no terminator is not a reference at all. Refused rather
-    // than kept: well-formed XML does not contain one, and a document that does
-    // is a document written by something we should not be guessing at.
-    if (semi === -1 || semi === amp + 1) return { ok: false, name: '&' };
-    const name = raw.slice(amp + 1, semi);
-    if (name.startsWith('#')) {
-      const decoded = decodeCharacterReference(name.slice(1));
-      if (decoded === undefined) return { ok: false, name: `&${name};` };
-      out += decoded;
-    } else {
-      const builtIn = BUILT_IN_ENTITIES[name];
-      if (builtIn === undefined) return { ok: false, name: `&${name};` };
-      out += builtIn;
-    }
-    index = semi + 1;
-  }
-  return { ok: true, text: out };
-}
-
-interface OpenTag {
-  readonly name: string;
-  readonly attributes: readonly { readonly name: string; readonly value: string }[];
-  readonly selfClosing: boolean;
-  /** Index just past the `>`. */
-  readonly end: number;
-}
-
-const NAME_START = /[A-Za-z_:]/;
-const NAME_CHAR = /[-A-Za-z0-9._:]/;
-
-/**
- * Read one start tag, including its attributes.
- *
- * Hand-written rather than a regular expression for one reason that is worth a
- * line: an attribute value may contain `>`, and every regex anybody writes for
- * a tag stops at the first one.
- *
- * **Names are ASCII**, which is narrower than XML allows and is stated rather
- * than discovered. Every element and attribute name in DAV:, CalDAV and
- * calendarserver.org is ASCII, and a server inventing a non-ASCII one gets a
- * `malformed` rather than a silent misreading. That is the honest failure and
- * it is the *correctness* risk §6.8 names — this reader is narrow, and where it
- * is too narrow it should say so rather than guess. Widening it is a change to
- * two character classes; nothing else here assumes ASCII.
- *
- * There is deliberately no cap on attributes per element: the byte ceiling
- * above already bounds them, and a second limit is a second number to get
- * wrong.
- */
-function readStartTag(xml: string, from: number): OpenTag | undefined {
-  let index = from + 1;
-  let name = '';
-  if (index >= xml.length || !NAME_START.test(xml[index] ?? '')) return undefined;
-  while (index < xml.length && NAME_CHAR.test(xml[index] ?? '')) {
-    name += xml[index];
-    index++;
-  }
-
-  const attributes: { name: string; value: string }[] = [];
-  for (;;) {
-    while (index < xml.length && /\s/.test(xml[index] ?? '')) index++;
-    if (index >= xml.length) return undefined;
-    const ch = xml[index];
-    if (ch === '>') return { name, attributes, selfClosing: false, end: index + 1 };
-    if (ch === '/') {
-      if (xml[index + 1] !== '>') return undefined;
-      return { name, attributes, selfClosing: true, end: index + 2 };
-    }
-    if (!NAME_START.test(ch ?? '')) return undefined;
-
-    let attrName = '';
-    while (index < xml.length && NAME_CHAR.test(xml[index] ?? '')) {
-      attrName += xml[index];
-      index++;
-    }
-    while (index < xml.length && /\s/.test(xml[index] ?? '')) index++;
-    if (xml[index] !== '=') return undefined;
-    index++;
-    while (index < xml.length && /\s/.test(xml[index] ?? '')) index++;
-    const quote = xml[index];
-    if (quote !== '"' && quote !== "'") return undefined;
-    index++;
-    const close = xml.indexOf(quote, index);
-    if (close === -1) return undefined;
-    attributes.push({ name: attrName, value: xml.slice(index, close) });
-    index = close + 1;
-  }
-}
-
-interface Frame {
-  readonly qname: QName;
-  /** Prefix → namespace, as declared at or above this element. */
-  readonly namespaces: Readonly<Record<string, string>>;
-  /** Where this element's content starts, for `raw`. */
-  readonly contentStart: number;
-  text: string;
-  /** The element's own accumulated data, for the props builder. */
-  readonly node: ElementNode;
-}
-
-interface ElementNode {
-  readonly qname: QName;
-  readonly attributes: Readonly<Record<string, string>>;
-  text: string;
-  /** The untrimmed character data, kept only while the element stays a leaf. */
-  raw: string;
-  readonly children: ElementNode[];
-}
-
-function resolve(
-  raw: string,
-  namespaces: Readonly<Record<string, string>>,
-): QName | { readonly undeclared: string } {
-  const colon = raw.indexOf(':');
-  if (colon === -1) {
-    // No prefix: the default namespace, which may legitimately be none.
-    return { namespace: namespaces[''] ?? '', localName: raw };
-  }
-  const prefix = raw.slice(0, colon);
-  const namespace = namespaces[prefix];
-  if (namespace === undefined) return { undeclared: prefix };
-  return { namespace, localName: raw.slice(colon + 1) };
-}
-
-/**
- * Parse a document into a tree of elements, or refuse it.
- *
- * One pass, no backtracking, and every refusal is a value. Comments and
- * processing instructions are skipped; CDATA is taken literally, which is what
- * it means; a `DOCTYPE` never reaches here because the caller refuses one
- * first.
- */
-function parseDocument(xml: string): { readonly ok: true; readonly root: ElementNode } | Failure {
-  const stack: Frame[] = [];
-  let root: ElementNode | undefined;
-  let index = 0;
-
-  while (index < xml.length) {
-    const lt = xml.indexOf('<', index);
-    if (lt === -1) break;
-
-    if (stack.length > 0) {
-      const decoded = decodeText(xml.slice(index, lt));
-      if (!decoded.ok) {
-        return fail(
-          'entity-refused',
-          `The document uses the entity ${decoded.name}, and this reader resolves only the five ` +
-            `XML built-ins. Nothing is expanded and nothing is fetched.`,
-        );
-      }
-      stack[stack.length - 1]!.text += decoded.text;
-    }
-
-    if (xml.startsWith('<!--', lt)) {
-      const close = xml.indexOf('-->', lt + 4);
-      if (close === -1) return fail('malformed', 'A comment is never closed.');
-      index = close + 3;
-      continue;
-    }
-    if (xml.startsWith('<![CDATA[', lt)) {
-      const close = xml.indexOf(']]>', lt + 9);
-      if (close === -1) return fail('malformed', 'A CDATA section is never closed.');
-      if (stack.length > 0) stack[stack.length - 1]!.text += xml.slice(lt + 9, close);
-      index = close + 3;
-      continue;
-    }
-    if (xml.startsWith('<?', lt)) {
-      const close = xml.indexOf('?>', lt + 2);
-      if (close === -1) return fail('malformed', 'A processing instruction is never closed.');
-      index = close + 2;
-      continue;
-    }
-    if (xml.startsWith('</', lt)) {
-      const close = xml.indexOf('>', lt);
-      if (close === -1) return fail('malformed', 'A closing tag is never closed.');
-      const name = xml.slice(lt + 2, close).trim();
-      const frame = stack.pop();
-      if (frame === undefined) return fail('malformed', `Closing tag <\/${name}> closes nothing.`);
-      const expected = resolve(name, frame.namespaces);
-      if ('undeclared' in expected) {
-        return fail('undeclared-prefix', `The prefix "${expected.undeclared}:" is never declared.`);
-      }
-      if (
-        expected.namespace !== frame.qname.namespace ||
-        expected.localName !== frame.qname.localName
-      ) {
-        return fail(
-          'malformed',
-          `Closing tag <\/${name}> does not match the open element {${frame.qname.namespace}}` +
-            `${frame.qname.localName}.`,
-        );
-      }
-      frame.node.text = frame.text;
-      frame.node.raw = xml.slice(frame.contentStart, lt);
-      index = close + 1;
-      continue;
-    }
-
-    const tag = readStartTag(xml, lt);
-    if (tag === undefined) {
-      /*
-       * Two different faults reach here and they want different remedies, so
-       * they are told apart by whether the tag is ever closed. A document that
-       * simply stops inside `<d:sta` is a truncated download; one with a `>` a
-       * few characters along is a tag this reader could not read, which is a
-       * dialect question. `diagnose-source` prints whichever sentence it gets.
-       */
-      return xml.indexOf('>', lt) === -1
-        ? fail('malformed', 'The document ends inside a tag — it is truncated.')
-        : fail('malformed', 'A start tag could not be read.');
-    }
-
-    const inherited = stack.length > 0 ? stack[stack.length - 1]!.namespaces : {};
-    let namespaces = inherited;
-    for (const attribute of tag.attributes) {
-      if (attribute.name === 'xmlns') {
-        namespaces = { ...namespaces, '': attribute.value };
-      } else if (attribute.name.startsWith('xmlns:')) {
-        namespaces = { ...namespaces, [attribute.name.slice(6)]: attribute.value };
-      }
-    }
-
-    const qname = resolve(tag.name, namespaces);
-    if ('undeclared' in qname) {
-      return fail('undeclared-prefix', `The prefix "${qname.undeclared}:" is never declared.`);
-    }
-
-    const attributes: Record<string, string> = {};
-    for (const attribute of tag.attributes) {
-      if (attribute.name === 'xmlns' || attribute.name.startsWith('xmlns:')) continue;
-      const decoded = decodeText(attribute.value);
-      if (!decoded.ok) {
-        return fail(
-          'entity-refused',
-          `An attribute uses the entity ${decoded.name}, and this reader resolves only the five ` +
-            `XML built-ins.`,
-        );
-      }
-      attributes[attribute.name] = decoded.text;
-    }
-
-    const node: ElementNode = { qname, attributes, text: '', raw: '', children: [] };
-    if (stack.length === 0) {
-      if (root !== undefined) {
-        return fail('malformed', 'The document has more than one root element.');
-      }
-      root = node;
-    } else {
-      stack[stack.length - 1]!.node.children.push(node);
-    }
-
-    if (!tag.selfClosing) {
-      if (stack.length + 1 > MAX_DEPTH) {
-        return fail('too-deep', `The document nests more than ${MAX_DEPTH} elements deep.`);
-      }
-      stack.push({ qname, namespaces, contentStart: tag.end, text: '', node });
-    }
-    index = tag.end;
-  }
-
-  if (stack.length > 0) {
-    // What a truncated download looks like. Named rather than reported as a
-    // generic parse failure, because "the response stopped mid-document" and
-    // "this server speaks a dialect we do not read" want different remedies.
-    return fail(
-      'malformed',
-      `The document ends inside <${stack[stack.length - 1]!.qname.localName}> — it is truncated.`,
-    );
-  }
-  if (root === undefined) return fail('malformed', 'The document has no elements in it.');
-  return { ok: true, root };
-}
-
-function isDav(node: ElementNode, localName: string): boolean {
+function isDav(node: XmlNode, localName: string): boolean {
   return node.qname.namespace === DAV_NS && node.qname.localName === localName;
 }
 
@@ -577,7 +248,7 @@ export function readMultistatus(xml: string): MultistatusResult {
     );
   }
 
-  const parsed = parseDocument(xml);
+  const parsed = readXml(xml, { maxDepth: MAX_DEPTH });
   if (!parsed.ok) return parsed;
   const root = parsed.root;
 
