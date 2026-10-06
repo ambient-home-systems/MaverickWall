@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.79.0
+
 **Refresh a wall, or show one wall's layout on all of them, from anywhere.**
 Under **Walls** there is now a **Refresh every wall** button, and each wall's
 menu has **Refresh this wall** and **Show this layout on every wall** — for ten
