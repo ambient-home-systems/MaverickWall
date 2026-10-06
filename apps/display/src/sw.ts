@@ -74,6 +74,8 @@ const SHELL = [
   '/assets/orientation.js',
   '/assets/picture-rotation.js',
   '/assets/push.js',
+  '/assets/qr.js',
+  '/assets/qr-payload.js',
   '/assets/render.js',
   '/assets/shift-style.js',
   '/assets/calendar-filter.js',

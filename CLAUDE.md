@@ -305,6 +305,7 @@ useful thing in this document:
 | **The overnight low struck through as given up while the wall drew it beside the high** | A household's screenshot, then reading which rows a forecast column actually holds |
 | A ladder row dragged upwards landing at the bottom | Dragging one, and finding the drag measuring a list its own first write had detached |
 | A Corners control that rounded nothing on a widget with no background | The same screenshot: Rounded pressed on a forecast, and nothing on the wall moving |
+| **Every QR code from version 7 up drawn with no version information, and unreadable** | Decoding a Wi-Fi code with an independent reader, rather than checking the finders |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -3923,6 +3924,77 @@ unpaired page, timed out at 20 seconds. That path draws no manifest and so never
 reaches the rotation, and the file passed three times in three alone. It is
 written here rather than deducted. **Still unproven where it counts:** no real
 wall has been watched changing picture at midnight.
+
+**A QR code widget draws guest Wi-Fi, a link or some words, on a wall and on a
+panel (plan item M5.3).** The type is `qr`, and which of the three it carries is
+its `mode`, the key every type's view is: absent is Wi-Fi, then `link` and
+`text`. Wi-Fi is `ssid`, `wifiPassword`, `wifiSecurity` (absent is WPA, then WEP
+and `nopass`) and `wifiHidden`; a link is `link`, http or https and refused
+otherwise; the words are the `text` a note uses. `showPassword` writes the
+password out under the code too, and is off unless asked. The widget is never
+left out: with nothing to encode it says what is missing, as a picture does.
+
+**What a code carries is one function**, `qrPayload` in `api/qr-payload.ts`,
+which writes the `WIFI:` format with its five reserved characters escaped. The
+schema refuses, with a sentence on the field that caused it, a config whose
+code is more than the encoder's 213 bytes or whose WPA password is under eight
+characters, since no network has one. It reads every config, because a config
+does not know its type, and cannot misfire on another: only a QR code has an
+`ssid` or a `link` or `text` mode.
+
+**The wall encodes for itself**, so the editor's preview shows the code being
+typed. The encoder and the payload builder are transcribed into the display
+between markers (`qr-encoder`, `qr-payload`) and `qr-parity.test.ts` holds them
+character for character, with the server's copy the spec. The code is one path
+in a square `viewBox` that holds its four-module quiet zone, so it is drawn at
+the shorter side of its room, centred, with `crispEdges`. **It is black on
+white on every theme**, the one colour a widget names itself: an inverted code
+is one some phones cannot see. The words under it give way, the last line
+first, before they cost the code more than half its size (`qrWordsKept`, asked
+of the box's own proportion).
+
+**The password reaches the wall, and that is said rather than hidden.** A guest
+network's code is how a visitor joins it, so whoever can scan the glass already
+has the password. The manifest carries the config as stored; the diagnostics
+export carries no widget config at all. The changelog tells a household to put
+only a guest network on a wall.
+
+**A panel draws the same modules** with `drawQr`, a whole number of pixels a
+module and two at least, the quiet zone inside the box so nothing inks it, and
+the words given up before a module would go under two pixels. Every key that
+changes the code is in `PANEL_HONOURS.qr`, and `epaper-ink.test.ts` proves each
+by rendering; `align` is not, because a code is centred on both media. The lane
+offers nothing: what a code carries is the widget's identity. No existing frame
+moves, so `EPAPER_RENDERER_VERSION` is unchanged.
+
+**Building it found that the encoder had never drawn a readable code from
+version 7 up.** The version information, two 6x3 blocks every version 7 code
+needs, was never written. That is anything over 106 bytes, so the ~90-byte
+pairing link had never reached it; a Wi-Fi code with a long password does, and
+so does a pairing link to a long enough address. Every structural test in
+`qr.test.ts` passed over it. Decoding with `jsqr` (a dev dependency, never in
+the image) read 0 of 107 such lengths; it reads all 213 now, and the test that
+says so goes red with the blocks removed.
+
+**Verified by decoding, never by looking.** `qr-payload.test.ts` reads every
+payload back through `jsqr` and parses the Wi-Fi fields out again, escapes and
+all. `epaper-qr.test.ts` decodes the panel's own frame at three panel sizes and
+holds every module to the encoder's matrix, the quiet zone to no ink, and a
+sweep of box heights to a code that reads or none at all. `browser-qr.test.ts`
+decodes a **screenshot** of the wall's code, so the stylesheet's plate is what
+is read, and drives the editor from typing a network to Save. Nineteen
+mutations were checked and all nineteen are red. One was green as first
+written and the test grew: the panel's words never giving way left the sweep
+green, because a code too small to draw is drawn as no code at all, so the
+shortest box that reads must now carry no words under it.
+**5168 tests, over 360 files**: calendar 153 (and 1 skipped) over 10 · core 314
+over 9 · display 949 over 55 · server 3752 over 286, measured with `pnpm test`
+and a real Chromium. The full run read one red, and it was this change's own:
+the decode of every length took 5.3 seconds beside the browser suite against
+vitest's default of five, and about two alone. It has a 30-second budget now
+rather than fewer lengths, and passes; the suite was not run again for that.
+**Still unproven where it counts:** no real phone has scanned
+a code off a wall or a panel.
 
 **Rule 12 changed, and the interesting part is how many places said otherwise
 (RFC 012 phase 1).** The rule is no longer "READ-ONLY, no service calls": it

@@ -1030,3 +1030,22 @@ export function shiftBadgesToLines(tier: WidgetTier, full: number, people: numbe
   if (people > 1) return tier.rungs <= 1;
   return laddersToOneLine(tier, full);
 }
+
+/**
+ * How many of a QR code's lines of words keep their place under it (plan item
+ * M5.3): the network's name or the link, then the password if asked.
+ *
+ * A code is what the widget is for and the words are already in it, so they
+ * give way — the last line first — rather than shrink the code below half of
+ * what the box could give it. Asked of the box, in the box's own proportion,
+ * so one rule is right at every size: a tall box loses nothing to its words,
+ * and a wide, short one keeps a line only while the square beside the room it
+ * takes stays at least half the box's height. Pure, like the tables above.
+ */
+export function qrWordsKept(width: number, height: number, lineHeights: readonly number[]): number {
+  const whole = Math.min(width, height);
+  let kept = lineHeights.length;
+  const words = (count: number): number => lineHeights.slice(0, count).reduce((sum, h) => sum + h, 0);
+  while (kept > 0 && Math.min(width, height - words(kept)) < whole / 2) kept--;
+  return kept;
+}

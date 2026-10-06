@@ -121,6 +121,7 @@ import {
   countdownWords,
   daysUntil,
 } from './countdown.js';
+import { QR_MAX_BYTES, qrBytes, qrKind, qrPayload, wifiSecurity } from './qr-payload.js';
 import { EMOJI_KEYS, emojiNode } from './emoji.js';
 import { TIER_NAMES, type TierName } from './tiers.js';
 import { shiftStyle, shiftsShown } from './shift-style.js';
@@ -4234,6 +4235,7 @@ function boot(): void {
     else if (widget.type === 'chores') buildChoresConfig(widget, cfg);
     else if (widget.type === 'buttons') buildButtonsConfig(widget, cfg);
     else if (widget.type === 'image') buildImageConfig(widget, cfg);
+    else if (widget.type === 'qr') buildQrConfig(widget, cfg);
     else if (widget.type === 'shift') buildShiftConfig(widget, cfg);
     else if (widget.type === 'clock') buildClockConfig(widget, cfg);
     else if (widget.type === 'weather') buildWeatherConfig(widget, cfg);
@@ -5230,6 +5232,104 @@ function boot(): void {
     area.addEventListener('input', () => setConfig(widget, 'text', area.value));
     field.appendChild(area);
     configPanel.appendChild(field);
+  }
+
+  /**
+   * The QR code widget's own options (plan item M5.3), for the kind the View
+   * picker chose: a network's name, password and security; a link; or words.
+   *
+   * Each field writes as it is typed, so the preview shows the code being
+   * made, and the two refusals the server holds a QR code to — more than one
+   * code can carry, and a WPA password no network could have — are said under
+   * the fields as soon as they are true rather than at Save. The password is a
+   * plain text field rather than a password one: it is a guest network's, it
+   * is about to be printed on a wall, and a household should see what they
+   * typed.
+   */
+  function buildQrConfig(widget: Widget, cfg: Record<string, unknown>): void {
+    const kind = qrKind(cfg);
+    const warning = document.createElement('p');
+    warning.className = 'hint le-qr-warn';
+    const check = (): void => {
+      const current = widget.config ?? {};
+      const payload = qrPayload(current);
+      const password = current['wifiPassword'];
+      warning.textContent =
+        payload !== undefined && qrBytes(payload) > QR_MAX_BYTES
+          ? 'That is more than one QR code can hold. Shorten it.'
+          : qrKind(current) === 'wifi' &&
+              wifiSecurity(current) === 'WPA' &&
+              typeof password === 'string' &&
+              password !== '' &&
+              password.length < 8
+            ? 'A WPA password is at least 8 characters.'
+            : '';
+      warning.hidden = warning.textContent === '';
+    };
+    const textInput = (label: string, key: string, maxLength: number, placeholder: string, type = 'text'): void => {
+      const field = cfgField(label);
+      const input = document.createElement('input');
+      input.type = type;
+      input.maxLength = maxLength;
+      input.placeholder = placeholder;
+      input.autocomplete = 'off';
+      input.spellcheck = false;
+      input.value = typeof cfg[key] === 'string' ? (cfg[key] as string) : '';
+      input.addEventListener('input', () => {
+        setConfig(widget, key, input.value === '' ? undefined : input.value);
+        check();
+      });
+      field.appendChild(input);
+      configPanel.appendChild(field);
+    };
+    if (kind === 'link') {
+      textInput('Link', 'link', 200, 'https://', 'url');
+    } else if (kind === 'text') {
+      const field = cfgField('Words in the code');
+      const area = document.createElement('textarea');
+      area.rows = 3;
+      area.maxLength = QR_MAX_BYTES;
+      area.placeholder = 'Anything a phone should read';
+      area.value = typeof cfg['text'] === 'string' ? (cfg['text'] as string) : '';
+      area.addEventListener('input', () => {
+        setConfig(widget, 'text', area.value === '' ? undefined : area.value);
+        check();
+      });
+      field.appendChild(area);
+      configPanel.appendChild(field);
+    } else {
+      textInput('Network name', 'ssid', 32, 'e.g. Guests');
+      configPanel.appendChild(
+        segControl(
+          'Security',
+          [
+            ['WPA', 'WPA'],
+            ['WEP', 'WEP'],
+            ['nopass', 'None'],
+          ],
+          wifiSecurity(cfg),
+          (value) => setConfig(widget, 'wifiSecurity', value === 'WPA' ? undefined : value),
+        ),
+      );
+      if (wifiSecurity(cfg) !== 'nopass') textInput('Password', 'wifiPassword', 63, '');
+      configPanel.appendChild(
+        switchRow('Hidden network', 'Tick if the network does not show in a phone’s list.', cfg['wifiHidden'] === true, (on) =>
+          setConfig(widget, 'wifiHidden', on ? true : undefined),
+        ),
+      );
+      if (wifiSecurity(cfg) !== 'nopass') {
+        configPanel.appendChild(
+          switchRow(
+            'Write the password under the code',
+            'For a phone that will not read a code. The code carries the password either way.',
+            cfg['showPassword'] === true,
+            (on) => setConfig(widget, 'showPassword', on ? true : undefined),
+          ),
+        );
+      }
+    }
+    configPanel.appendChild(warning);
+    check();
   }
 
   /**

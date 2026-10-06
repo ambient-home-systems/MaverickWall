@@ -245,6 +245,13 @@ const BASES: Readonly<Record<string, readonly Record<string, unknown>[]>> = {
   buttons: [{}],
   timers: [{}],
   messages: [{}],
+  // Each of the three kinds of code (plan item M5.3), since a key about one of
+  // them only moves the modules of that one.
+  qr: [
+    { ssid: 'Guests', wifiPassword: 'welcome-in' },
+    { mode: 'link', link: 'https://example.com/a' },
+    { mode: 'text', text: 'Hello there' },
+  ],
   // Both a row and a grid, because `columns` can only move ink on a grid —
   // probed from a row alone it would have "proved" the key is not honoured.
   group: [{ layout: 'row' }, { layout: 'grid' }],
@@ -290,7 +297,7 @@ const PROBES: Readonly<Record<string, readonly unknown[]>> = {
   showTitle: [false],
   align: ['center', 'right'],
   calendars: [['s1']],
-  mode: ['list', 'week', 'month', 'skyweek'],
+  mode: ['list', 'week', 'month', 'skyweek', 'link', 'text'],
   /*
    * `compact` is the value that would move ink if a panel read density at all.
    * It must not: a panel is already edge to edge with hairline rules and has no
@@ -362,6 +369,14 @@ const PROBES: Readonly<Record<string, readonly unknown[]>> = {
   // …and the second half's: which occasion, and where a bar counts from.
   occasion: ['birthday', 'new-year'],
   from: ['2026-06-01'],
+  // A QR code's own keys (plan item M5.3): each changes what the code carries,
+  // and so its modules, on the kind it belongs to.
+  ssid: ['Visitors'],
+  wifiPassword: ['another-one'],
+  wifiSecurity: ['WEP', 'nopass'],
+  wifiHidden: [true],
+  link: ['https://example.org/b'],
+  showPassword: [true],
   module: ['weather'],
   image: [`${'b'.repeat(64)}.png`],
   text: ['Different words entirely'],

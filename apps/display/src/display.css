@@ -4762,3 +4762,53 @@ body {
     animation-iteration-count: infinite;
   }
 }
+
+/*
+ * The QR code widget (plan item M5.3). The body fills the box below any
+ * title; the code takes whatever height the words under it leave, and its
+ * square `viewBox` is drawn at the shorter side of that room, centred — the
+ * analogue clock's arrangement. The words are one line each in the event
+ * role, the password a step quieter, and `tierQr` takes them off, last line
+ * first, before they cost the code more than half its size.
+ *
+ * The plate and the modules are the one place a widget names its colours
+ * rather than the theme's: a code is read by a camera, an inverted code is
+ * one some phones cannot see, and so it is black on white on every theme —
+ * the same white plate the pairing code stands on in the admin.
+ */
+.fw > .qr {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+.qr-code {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+}
+.qr-code > svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+.qr-plate { fill: #ffffff; }
+.qr-modules { fill: #000000; }
+.qr-words {
+  flex: 0 0 auto;
+  margin-top: var(--s2);
+  font-size: var(--t-wall-event, var(--t-base));
+  line-height: 1.15;
+  color: var(--ink-event, var(--ink));
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.qr-password {
+  font-size: var(--t-wall-time, 1.3rem);
+  color: var(--ink-quiet, var(--muted));
+}

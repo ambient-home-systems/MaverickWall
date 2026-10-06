@@ -4,6 +4,7 @@ import { widgetStyleBody } from './widget-style.js';
 import { EMOJI_KEYS } from '../emoji.js';
 import { ROTATION_COLLECTIONS, isWallpaperId, rotationPictures, type RotationCollection } from '../wallpapers.js';
 import { ROTATION_EVERY } from './picture-rotation.js';
+import { QR_MAX_BYTES, qrBytes, qrKind, qrPayload, wifiSecurity } from './qr-payload.js';
 
 /**
  * A stored image's own name — 64 hex plus a known extension, the shape
@@ -46,6 +47,9 @@ const widgetConfigFields = z
      * Which renderer draws the widget: month (grid), week (day columns) or list
      * (agenda) for a calendar. RFC 005 added week.
      *
+     * `link` and `text` are the QR code widget's (plan item M5.3): absent is
+     * guest Wi-Fi, and these are a code for an address and for typed words.
+     *
      * `people` is the Chores widget's by-person board; `week` is shared with the
      * calendar's day columns and means the same thing on both — seven days
      * across. One key for every type's view, because the editor's View picker is
@@ -61,7 +65,7 @@ const widgetConfigFields = z
      * canvas hanging in somebody's kitchen holds one and must keep validating
      * — no migration rewrites a stored arrangement.
      */
-    mode: z.enum(['month', 'week', 'list', 'skyweek', 'skymonth', 'people']).optional(),
+    mode: z.enum(['month', 'week', 'list', 'skyweek', 'skymonth', 'people', 'link', 'text']).optional(),
     /*
      * How much room the calendar spends on itself: `comfortable` (cards, gaps,
      * breathing room) or `compact` (hairlines, edge to edge, more of the week
@@ -401,6 +405,28 @@ const widgetConfigFields = z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/, 'A countdown start date has to be YYYY-MM-DD.')
       .optional(),
+    /*
+     * QR code (plan item M5.3). Guest Wi-Fi by default: the network's name, its
+     * password and security (absent is WPA), and whether it is hidden. A link
+     * is http or https and nothing else — refused, never coerced, so a typo is
+     * a sentence at Save rather than a code that opens nothing. Text is the
+     * `text` key a note uses, and the whole code is held to what one QR code
+     * can carry by `qrFits` below.
+     *
+     * `showPassword` writes the password out under the code as well, for a
+     * phone whose camera will not read one. Absent is off — though the code
+     * carries the password either way, which `api/qr-payload.ts` says plainly.
+     */
+    ssid: z.string().max(32).optional(),
+    wifiPassword: z.string().max(63).optional(),
+    wifiSecurity: z.enum(['WPA', 'WEP', 'nopass']).optional(),
+    wifiHidden: z.boolean().optional(),
+    link: z
+      .string()
+      .max(200)
+      .regex(/^https?:\/\/\S+$/i, 'A link has to start with http:// or https:// and have no spaces.')
+      .optional(),
+    showPassword: z.boolean().optional(),
     // External module widget — which registered module's panel to draw (its id).
     module: z.string().max(64).optional(),
     // Image widget — a stored image's own name (RFC 005 Phase 3b). Served from
@@ -551,7 +577,46 @@ function startBeforeTarget(config: { from?: string | undefined; target?: string 
   ctx.addIssue({ code: 'custom', path: ['from'], message: START_AFTER_TARGET });
 }
 
-export const whenEmptyConfigBody = laneConfigFields.omit({ ink: true }).strict().superRefine(startBeforeTarget);
+/** The sentence a code too long for one QR code is refused with (plan item M5.3). */
+export const QR_TOO_LONG = 'That is more than one QR code can hold. Shorten it.';
+/** And a WPA password too short for any network to have. */
+export const WPA_TOO_SHORT = 'A WPA password is at least 8 characters.';
+
+/**
+ * A QR code widget's code fits one code, or the config is refused with a
+ * sentence (plan item M5.3). The encoder draws versions 1 to 10 and refuses
+ * anything longer rather than guessing, so a config past that would be a box
+ * that says nothing — told at Save instead, beside the field that made it too
+ * long. A WPA password under eight characters is refused too: no network has
+ * one, so a code carrying it joins nothing.
+ *
+ * Read on every config rather than on a QR widget's alone, because a config
+ * does not know its type. It cannot misfire on another type: only a QR code
+ * has a `link` or `text` mode or an `ssid`, and `qrPayload` is undefined
+ * without them.
+ */
+function qrFits(config: Record<string, unknown>, ctx: z.RefinementCtx): void {
+  if (
+    qrKind(config) === 'wifi' &&
+    wifiSecurity(config) === 'WPA' &&
+    typeof config['wifiPassword'] === 'string' &&
+    config['wifiPassword'] !== '' &&
+    config['wifiPassword'].length < 8
+  ) {
+    ctx.addIssue({ code: 'custom', path: ['wifiPassword'], message: WPA_TOO_SHORT });
+  }
+  const payload = qrPayload(config);
+  if (payload === undefined || qrBytes(payload) <= QR_MAX_BYTES) return;
+  const kind = qrKind(config);
+  ctx.addIssue({ code: 'custom', path: [kind === 'wifi' ? 'wifiPassword' : kind], message: QR_TOO_LONG });
+}
+
+function wholeConfig(config: Record<string, unknown> & { from?: string | undefined; target?: string | undefined }, ctx: z.RefinementCtx): void {
+  startBeforeTarget(config, ctx);
+  qrFits(config, ctx);
+}
+
+export const whenEmptyConfigBody = laneConfigFields.omit({ ink: true }).strict().superRefine(wholeConfig);
 
 export const whenEmptyBody = z
   .object({ type: z.enum(WIDGET_TYPES), config: whenEmptyConfigBody.optional() })
@@ -560,7 +625,7 @@ export const whenEmptyBody = z
 export const widgetConfigBody = laneConfigFields
   .extend({ whenEmpty: whenEmptyBody.optional() })
   .strict()
-  .superRefine(startBeforeTarget);
+  .superRefine(wholeConfig);
 
 /**
  * A canvas background, of four kinds: a solid colour, a two-stop gradient, a

@@ -33,6 +33,8 @@ import { boxRect, gutterStepFor } from './gutter.js';
 import { WALLPAPER_BASE, wallpaperFile, wallpaperPosition, widgetGroundFor, type WidgetGround } from './wallpaper.js';
 import { childCells, groupChildren, topLevelWidgets } from './group-cells.js';
 import { applyStyleTokens, styleTokensOf } from './widget-style.js';
+import { encodeQr } from './qr.js';
+import { qrCaption, qrKind, qrPasswordLine, qrPayload } from './qr-payload.js';
 import { inkOn, readableHue, shiftTint } from './theme.js';
 import {
   HOUSE_ROLES,
@@ -90,6 +92,7 @@ import {
   rungsAt,
   rungsByPriority,
   shiftBadgesToLines,
+  qrWordsKept,
   stackedItemHeight,
   widgetTierFor,
   type RangeColumn,
@@ -2480,6 +2483,8 @@ export function renderWidget(
       return renderChoresWidget(model, config);
     case 'image':
       return renderImageWidget(config, mediaBase);
+    case 'qr':
+      return renderQrWidget(config);
     /*
      * The motion demonstration (plan P4.3) — a test fixture no server sends:
      * `WIDGET_TYPES` refuses it at the layout save and drops it from a stored
@@ -2491,6 +2496,96 @@ export function renderWidget(
     default:
       return undefined;
   }
+}
+
+/**
+ * The QR code widget (plan item M5.3): guest Wi-Fi, a link or some words, as a
+ * code a phone can read, with the network's name or the link under it.
+ *
+ * Encoded here, by the bundle's transcription of the server's own encoder, so
+ * the editor's preview shows the code being typed and a panel following this
+ * wall draws the same modules. One path of unit squares in a square `viewBox`
+ * that also holds the quiet zone, so the code is the size of the shorter side
+ * of the room its box has — the analogue clock's rule — and `crispEdges` keeps
+ * every module a hard square at whatever size that is.
+ *
+ * Dark on white on every theme, which is the one colour decision on the wall
+ * the theme does not make: a camera reads a code, and an inverted one is a
+ * code some phones do not see at all. `display.css` paints the two.
+ */
+function renderQrWidget(config: unknown): HTMLElement {
+  const payload = qrPayload(config);
+  const kind = qrKind(config);
+  if (payload === undefined) {
+    return el(
+      'div',
+      'cd-empty',
+      kind === 'link'
+        ? 'Add a link in this widget’s options.'
+        : kind === 'text'
+          ? 'Type the words for the code in this widget’s options.'
+          : 'Add the network’s name and password in this widget’s options.',
+    );
+  }
+  const matrix = encodeQr(payload);
+  if (matrix === undefined) return el('div', 'cd-empty', 'That is more than one QR code can hold.');
+  const body = el('div', 'qr');
+  const code = el('div', 'qr-code');
+  const ns = 'http://www.w3.org/2000/svg';
+  const quiet = 4;
+  const span = matrix.size + quiet * 2;
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${span} ${span}`);
+  svg.setAttribute('shape-rendering', 'crispEdges');
+  svg.setAttribute('role', 'img');
+  const caption = qrCaption(config);
+  svg.setAttribute(
+    'aria-label',
+    kind === 'wifi'
+      ? `QR code to join the Wi-Fi network ${caption ?? ''}`.trim()
+      : kind === 'link'
+        ? `QR code for ${caption ?? 'a link'}`
+        : 'QR code',
+  );
+  svg.setAttribute('focusable', 'false');
+  const plate = document.createElementNS(ns, 'rect');
+  plate.setAttribute('width', String(span));
+  plate.setAttribute('height', String(span));
+  plate.setAttribute('class', 'qr-plate');
+  svg.appendChild(plate);
+  let d = '';
+  for (let row = 0; row < matrix.size; row++) {
+    const line = matrix.modules[row] as readonly boolean[];
+    let column = 0;
+    while (column < matrix.size) {
+      if (!line[column]) {
+        column++;
+        continue;
+      }
+      let end = column;
+      while (end < matrix.size && line[end]) end++;
+      d += `M${column + quiet} ${row + quiet}h${end - column}v1h${column - end}z`;
+      column = end;
+    }
+  }
+  const modules = document.createElementNS(ns, 'path');
+  modules.setAttribute('d', d);
+  modules.setAttribute('class', 'qr-modules');
+  svg.appendChild(modules);
+  code.appendChild(svg);
+  body.appendChild(code);
+  if (caption !== undefined) {
+    const words = el('div', 'qr-words', caption);
+    words.dataset['part'] = 'caption';
+    body.appendChild(words);
+  }
+  const password = qrPasswordLine(config);
+  if (password !== undefined) {
+    const words = el('div', 'qr-words qr-password', `Password: ${password}`);
+    words.dataset['part'] = 'password';
+    body.appendChild(words);
+  }
+  return body;
 }
 
 /**
@@ -3285,6 +3380,10 @@ function applyWidgetTiers(
       tierCountdown(entry);
       continue;
     }
+    if (entry.widget.type === 'qr') {
+      tierQr(entry);
+      continue;
+    }
     // Home Assistant's `tile` look is a grid of its own markup with its own
     // table (P5.3); the list keeps `HOUSE_TIERS` below, untouched.
     if (entry.widget.type === 'homeassistant' && variantOf('homeassistant', entry.widget.config) === 'tile') {
@@ -3454,6 +3553,22 @@ function tierCountdown(entry: TieredWidget): void {
   stampTier(entry.box, tier, 1);
   stampRungs(entry.box, kept);
   beltItems(entry.box, [...entry.body.querySelectorAll<HTMLElement>('[data-part]')]);
+}
+
+/**
+ * A QR code's words, given up last line first where they would cost the code
+ * more than half its size (`qrWordsKept`). Measured off the drawn lines, since
+ * a name long enough to wrap is two lines' worth of room, and off the
+ * body rather than the box, which a title takes its own line of.
+ */
+function tierQr(entry: TieredWidget): void {
+  const words = [...entry.body.querySelectorAll<HTMLElement>('.qr-words')];
+  if (words.length > 0) {
+    // The body's own room, below a title if the household gave the box one.
+    const kept = qrWordsKept(entry.body.clientWidth, entry.body.clientHeight, words.map((line) => line.getBoundingClientRect().height + parseFloat(getComputedStyle(line).marginTop)));
+    for (const line of words.slice(kept)) line.remove();
+    stampRungs(entry.box, words.slice(0, kept).map((line) => line.dataset['part'] ?? ''));
+  }
 }
 
 /** The `range` look's primary run: its temperatures, as the strip's is. */
