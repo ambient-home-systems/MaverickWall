@@ -25,8 +25,8 @@ const SCREEN = 'Phone and automations';
 
 const WHAT_IT_CAN_DO =
   'Anyone holding it can add items to the to-do lists you chose under To-do lists, start ' +
-  'and end timers, send and clear messages, reload your walls, and show one wall’s layout ' +
-  'on the others for up to two hours — and nothing else: it cannot read your lists, tick ' +
+  'and end timers, send and clear messages, reload your walls, move a rotating background on ' +
+  'to its next picture, and show one wall’s layout on the others for up to two hours — and nothing else: it cannot read your lists, tick ' +
   'them off, change a setting or sign in.';
 
 const QUERY_CAUTION =
@@ -193,8 +193,10 @@ export function registerCompanionAdminRoutes(app: Hono, deps: AdminDeps): void {
         'Walls',
         'Reload one wall by its name, or every browser wall when you name none. Show one wall’s ' +
           'layout on every other for some “minutes” — ten when left out, two hours at most — and ' +
-          'stop it early with an empty POST. A wall acts on these within a minute.',
+          'stop it early with an empty POST. Move a rotating background on to its next picture, one ' +
+          'wall by name or every one that rotates. A wall acts on these in a moment.',
         code(curl('/companion/walls/refresh', { wall: 'Kitchen' })) +
+          code(curl('/companion/walls/next-picture', { wall: 'Kitchen' })) +
           code(curl('/companion/walls/show', { wall: 'Kitchen', minutes: 30 })) +
           code(curl('/companion/walls/show/end', {})),
       );

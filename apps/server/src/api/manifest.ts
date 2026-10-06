@@ -20,7 +20,8 @@ import {
 import { canvasGutterStep } from '../gutter.js';
 import { isEinkWall, physicalWall } from '../wall-sizes.js';
 import { wallMotion } from '../wall-motion.js';
-import { isWidgetGround, wallpaperById, type WidgetGround } from '../wallpapers.js';
+import { ROTATION_COLLECTIONS, isWidgetGround, rotationPictures, wallpaperById, type RotationCollection, type WidgetGround } from '../wallpapers.js';
+import { ROTATION_EVERY } from './picture-rotation.js';
 import { builtinThemeTokens } from './builtin-themes.js';
 import { lookLane, resolveStyleTokens, storedStyleLayer, styleLayerOf, type WidgetStyle } from './widget-style.js';
 
@@ -754,6 +755,25 @@ export type CanvasBackground =
       readonly large: string;
       /** Where the picture's interest is, in percent; absent is the centre (P6.2). */
       readonly focal?: { readonly x: number; readonly y: number };
+    }
+  | {
+      /**
+       * Bundled wallpapers, rotating (plan item M4.10), resolved into the files
+       * of every picture in the collection, in order. The wall works out which
+       * one is up from its own clock (`picture-rotation.ts`) and the wall's
+       * Next-picture state, so it keeps rotating offline.
+       */
+      readonly type: 'rotation';
+      readonly collection: string;
+      readonly tone: 'light' | 'dark';
+      /** Minutes between pictures; 1440 changes at the wall's midnight. */
+      readonly every: number;
+      readonly pictures: readonly {
+        readonly id: string;
+        readonly small: string;
+        readonly large: string;
+        readonly focal?: { readonly x: number; readonly y: number };
+      }[];
     };
 
 const HEX6 = /^#[0-9a-fA-F]{6}$/;
@@ -799,6 +819,35 @@ export function parseBackground(raw: string | null | undefined): CanvasBackgroun
    * since dropped — is no background, and the canvas draws its theme's ground
    * (rules five and nine): refused rather than guessed at, and never a blank.
    */
+  /*
+   * A rotation, resolved against the catalogue as it stands (plan item M4.10).
+   * One that a later release has left with one picture is that wallpaper, and
+   * one with none is no background — the theme's ground, never a blank.
+   */
+  if (
+    bg['type'] === 'rotation' &&
+    ROTATION_COLLECTIONS.includes(bg['collection'] as RotationCollection) &&
+    (bg['tone'] === 'light' || bg['tone'] === 'dark') &&
+    (ROTATION_EVERY as readonly unknown[]).includes(bg['every'])
+  ) {
+    const pictures = rotationPictures(bg['collection'] as RotationCollection, bg['tone']).map((one) => ({
+      id: one.id,
+      small: one.small,
+      large: one.large,
+      ...(one.focal === undefined ? {} : { focal: { x: one.focal.x, y: one.focal.y } }),
+    }));
+    if (pictures.length >= 2) {
+      return {
+        type: 'rotation',
+        collection: bg['collection'] as string,
+        tone: bg['tone'],
+        every: bg['every'] as number,
+        pictures,
+      };
+    }
+    if (pictures.length === 1) return { type: 'wallpaper', ...pictures[0]! };
+    return undefined;
+  }
   if (bg['type'] === 'wallpaper' && typeof bg['id'] === 'string') {
     const wallpaper = wallpaperById(bg['id']);
     if (wallpaper !== undefined) {
@@ -1218,6 +1267,13 @@ export interface Manifest {
      */
     readonly refreshRequestedAt?: number;
     /**
+     * Where this wall's rotating background has been moved to by Next picture
+     * (plan item M1.4): when it was pressed and the step it moved to. Absent
+     * until somebody presses it, and the wall then counts from the epoch.
+     */
+    readonly picturePressedAt?: number;
+    readonly pictureStep?: number;
+    /**
      * How large this screen is, and how far away it is read from.
      *
      * Millimetres — **facts, never a derived size in pixels**. The server does
@@ -1556,6 +1612,8 @@ export interface BuildManifestInput {
     readonly allowControl?: boolean;
     readonly allowClear?: boolean;
     readonly refreshRequestedAt?: number | null;
+    readonly picturePressedAt?: number | null;
+    readonly pictureStep?: number | null;
     /**
      * The wall's own theme, and nothing behind it (RFC 015 phase 2). Required
      * rather than nullable, so a caller that builds a document for a wall has
@@ -2052,6 +2110,13 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       ...(input.screen?.allowClear === true ? { allowClear: true } : {}),
       ...(typeof input.screen?.refreshRequestedAt === 'number' && Number.isFinite(input.screen.refreshRequestedAt)
         ? { refreshRequestedAt: input.screen.refreshRequestedAt }
+        : {}),
+      // Both or neither: a step with no moment to count from is not a position.
+      ...(typeof input.screen?.picturePressedAt === 'number' &&
+      Number.isFinite(input.screen.picturePressedAt) &&
+      typeof input.screen.pictureStep === 'number' &&
+      Number.isFinite(input.screen.pictureStep)
+        ? { picturePressedAt: input.screen.picturePressedAt, pictureStep: input.screen.pictureStep }
         : {}),
       /*
        * Spread rather than emitted as nulls, and refused rather than clamped.

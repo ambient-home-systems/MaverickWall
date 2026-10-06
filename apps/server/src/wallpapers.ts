@@ -148,6 +148,20 @@ export function isWallpaperId(id: string): boolean {
   return BY_ID.has(id);
 }
 
+/** What a rotating background rotates through (plan item M4.10): a category, or every picture of a tone. */
+export type RotationCollection = WallpaperCategory | 'all';
+export const ROTATION_COLLECTIONS: readonly RotationCollection[] = [...WALLPAPER_CATEGORIES, 'all'];
+
+/**
+ * The pictures a rotation shows, in the catalogue's own order: one category
+ * of one tone, or every picture of that tone. The tone is part of the choice
+ * because a wallpaper is drawn for its theme's ink (P6.3) — a rotation must
+ * not wander onto a picture the wall's text was never measured against.
+ */
+export function rotationPictures(collection: RotationCollection, tone: WallpaperTone): Wallpaper[] {
+  return WALLPAPERS.filter((one) => one.tone === tone && (collection === 'all' || one.category === collection));
+}
+
 /**
  * What each widget draws behind itself (plan item P6.3): nothing, the theme's
  * `--panel` at a high opacity, or `--panel` opaque. A wall setting, stored in

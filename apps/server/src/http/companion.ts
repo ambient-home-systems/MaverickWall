@@ -11,6 +11,7 @@ import {
   MAX_SHOW_MINUTES,
   endLayoutOverride,
   findBrowserWall,
+  nextPicture,
   requestRefresh,
   startLayoutOverride,
 } from '../api/wall-commands.js';
@@ -386,6 +387,32 @@ export function registerCompanionRoutes(app: Hono, deps: CompanionDeps): void {
     if (!match.ok) return answer(c, match.reason === 'ambiguous' ? 409 : 404, { ok: false, error: match.reason, message: match.message });
     requestRefresh(deps.db, { id: match.wall.id }, admitted.at);
     return answer(c, 200, { ok: true, refreshed: 1, message: `${match.wall.name} reloads within a minute.` });
+  });
+
+  /** Move a wall's rotating background on to its next picture, or every such wall's (plan items M1.4, M2.3). */
+  app.post('/companion/walls/next-picture', async (c: Context) => {
+    const admitted = await admit(c);
+    if (admitted instanceof Response) return admitted;
+    const shaped = parse(wallRefreshBody, admitted.raw);
+    if (!shaped.ok) return answer(c, 400, { ok: false, error: 'bad-body', message: shaped.message });
+    touchCompanionToken(deps.db, admitted.userId, admitted.at);
+    if (shaped.value.wall === undefined) {
+      const moved = nextPicture(deps.db, 'all', admitted.at);
+      if (moved.length === 0) {
+        return answer(c, 404, { ok: false, error: 'not-found', message: 'No wall has a rotating background.' });
+      }
+      return answer(c, 200, { ok: true, moved: moved.length, message: 'Every rotating background moves on in a moment.' });
+    }
+    const match = findBrowserWall(deps.db, shaped.value.wall);
+    if (!match.ok) return answer(c, match.reason === 'ambiguous' ? 409 : 404, { ok: false, error: match.reason, message: match.message });
+    if (nextPicture(deps.db, { id: match.wall.id }, admitted.at).length === 0) {
+      return answer(c, 409, {
+        ok: false,
+        error: 'not-rotating',
+        message: `${match.wall.name}’s background does not rotate. Choose Rotating wallpapers for it in its layout.`,
+      });
+    }
+    return answer(c, 200, { ok: true, moved: 1, message: `${match.wall.name} moves on to its next picture in a moment.` });
   });
 
   /** Show one wall's layout on every other browser wall for a while (plan items M1.3, M2.3). */

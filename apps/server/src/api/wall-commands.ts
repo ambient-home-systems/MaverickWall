@@ -1,4 +1,7 @@
 import type { SqliteDatabase } from '../db/open.js';
+import { parseBackground } from './manifest.js';
+import { readHousehold } from './queries.js';
+import { rotationSteps } from './picture-rotation.js';
 
 /**
  * Telling walls what to do from elsewhere (plan items M1.2, M1.3 and M2.3):
@@ -133,4 +136,87 @@ export function endLayoutOverride(db: SqliteDatabase, now: number): boolean {
   const active = readLayoutOverride(db, now) !== undefined;
   db.prepare(`DELETE FROM layout_override WHERE id = 'singleton'`).run();
   return active;
+}
+
+/**
+ * The browser walls whose background rotates (plan item M4.10), and how often,
+ * as the wall would resolve them: the portrait canvas's background first, then
+ * the landscape one's, each falling back to the household's as `effectiveDisplay`
+ * does. A wall with neither rotating has no next picture.
+ */
+function rotatingWalls(db: SqliteDatabase): {
+  readonly id: string;
+  readonly name: string;
+  readonly every: number;
+  readonly timezone: string;
+  readonly pressedAt: number | null;
+  readonly step: number | null;
+}[] {
+  const household = readHousehold(db);
+  const rows = db
+    .prepare(
+      `SELECT id, name, timezone, layout_background AS portrait, layout_landscape_background AS landscape,
+              picture_pressed_at AS pressedAt, picture_step AS step
+         FROM screens WHERE revoked_at IS NULL AND kind <> 'epaper' ORDER BY name COLLATE NOCASE, id`,
+    )
+    .all() as {
+    id: string;
+    name: string;
+    timezone: string | null;
+    portrait: string | null;
+    landscape: string | null;
+    pressedAt: number | null;
+    step: number | null;
+  }[];
+  const walls = [];
+  for (const row of rows) {
+    const backgrounds = [
+      parseBackground(row.portrait ?? household.layoutBackground),
+      parseBackground(row.landscape ?? household.layoutLandscapeBackground),
+    ];
+    const rotation = backgrounds.find((bg) => bg?.type === 'rotation');
+    if (rotation?.type !== 'rotation') continue;
+    walls.push({
+      id: row.id,
+      name: row.name,
+      every: rotation.every,
+      timezone: row.timezone !== null && row.timezone !== '' ? row.timezone : household.timezone,
+      pressedAt: row.pressedAt,
+      step: row.step,
+    });
+  }
+  return walls;
+}
+
+/**
+ * Move a wall's rotating background on to its next picture now, and restart
+ * that picture's time (plan items M1.4, M2.3) — one wall, or every wall whose
+ * background rotates. Answers which walls moved, so a caller can say "that
+ * wall's background does not rotate" rather than claim a change nothing made.
+ *
+ * Counted in steps, with the wall's own arithmetic (`picture-rotation.ts`):
+ * the step it is on now, plus one, from this moment. It needs nothing about
+ * the pictures, so a portrait and a landscape canvas rotating through
+ * different collections both move on.
+ */
+export function nextPicture(db: SqliteDatabase, which: { readonly id: string } | 'all', now: number): WallRef[] {
+  const moved: WallRef[] = [];
+  for (const wall of rotatingWalls(db)) {
+    if (which !== 'all' && wall.id !== which.id) continue;
+    const steps = rotationSteps(
+      wall.every,
+      now,
+      wall.timezone,
+      wall.pressedAt === null ? undefined : wall.pressedAt,
+      wall.step ?? 0,
+    );
+    db.prepare('UPDATE screens SET picture_pressed_at = ?, picture_step = ? WHERE id = ?').run(now, steps + 1, wall.id);
+    moved.push({ id: wall.id, name: wall.name });
+  }
+  return moved;
+}
+
+/** Whether this wall's background rotates, so its menu offers Next picture. */
+export function wallRotates(db: SqliteDatabase, id: string): boolean {
+  return rotatingWalls(db).some((wall) => wall.id === id);
 }

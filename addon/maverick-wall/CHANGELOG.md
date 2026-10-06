@@ -16,6 +16,17 @@
 
 ## Unreleased
 
+**Rotating wallpapers.** A layout's background can now go through a set of the
+bundled wallpapers — one of the collections, or every one drawn for your
+theme — changing every 5 or 15 minutes, every hour, or each day at midnight.
+Choose **Rotating wallpapers** under **Background** in a wall's layout. Every
+wall showing the same set changes together, and keeps rotating even when it
+cannot reach the server.
+
+**Next picture.** A wall whose background rotates has **Next picture** in its
+menu, and your phone can do the same with the companion token. It moves the
+wall on to the next picture straight away and gives that picture its full time.
+
 ## 0.81.0
 
 **Walls pick up an update by themselves.** After Maverick Wall updates, each

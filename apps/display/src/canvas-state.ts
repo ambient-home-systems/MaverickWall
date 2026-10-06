@@ -35,7 +35,13 @@ export type CanvasBackground =
   | { type: 'solid'; color: string }
   | { type: 'gradient'; from: string; to: string; angle: number }
   | { type: 'image'; image: string }
-  | { type: 'wallpaper'; id: string };
+  | { type: 'wallpaper'; id: string }
+  /**
+   * Bundled wallpapers, rotating (plan item M4.10): the collection, its tone
+   * and the minutes between pictures — never the pictures, which the server
+   * resolves and its schema would refuse in a posted body.
+   */
+  | { type: 'rotation'; collection: string; tone: 'light' | 'dark'; every: number };
 
 export interface EditorWidget {
   id: string;

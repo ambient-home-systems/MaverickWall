@@ -37,6 +37,23 @@ export type CanvasBackground =
        * defensively in `wallpaper.ts`: a stored copy may carry any shape.
        */
       readonly focal?: { readonly x: number; readonly y: number };
+    }
+  | {
+      /**
+       * Bundled wallpapers, rotating (plan item M4.10): every picture's files,
+       * in order, and how often it changes. `currentPicture` in `wallpaper.ts`
+       * turns it into the one wallpaper due now, by this wall's own clock.
+       */
+      readonly type: 'rotation';
+      readonly collection?: string;
+      readonly tone?: 'light' | 'dark';
+      readonly every: number;
+      readonly pictures?: readonly {
+        readonly id: string;
+        readonly small: string;
+        readonly large: string;
+        readonly focal?: { readonly x: number; readonly y: number };
+      }[];
     };
 
 export interface ManifestEvent {
@@ -271,6 +288,9 @@ export interface Manifest {
     readonly allowClear?: boolean;
     /** When somebody last asked this wall to reload (plan item M1.2). */
     readonly refreshRequestedAt?: number;
+    /** Where Next picture moved this wall's rotating background to, and when (plan item M1.4). */
+    readonly picturePressedAt?: number;
+    readonly pictureStep?: number;
     /**
      * How large this screen is and how far away it is read from, in
      * millimetres — facts, never a size the server derived. All three or none

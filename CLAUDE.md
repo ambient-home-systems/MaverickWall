@@ -3873,6 +3873,57 @@ files**: calendar 153 over 10 · core 314 over 9 · display 938 over 54 · serve
 full run. **Still unproven where it counts:** no real wall has been watched
 picking up a real release, and the shell-cache path only runs on https.
 
+**A layout's background can rotate through the bundled wallpapers, and a wall
+can be moved on to its next picture (plan items M4.10 for the wallpapers, and
+M1.4).** The household chooses a collection of one tone (a category, or every
+picture of that tone) and how often: every 5 or 15 minutes, hourly, or daily at
+the wall's midnight. The schema only accepts a collection with two pictures or
+more, because one is a wallpaper. `parseBackground` resolves the rotation into
+every picture's files in catalogue order. A stored rotation that a later
+catalogue left with one picture becomes that wallpaper, and one left with none
+becomes the theme's ground.
+
+**The wall works out which picture is up from its own clock**, so it keeps
+rotating offline and two walls on one collection agree. It does this with
+`picture-rotation.ts`, which is written once on the server and transcribed into
+the display between markers, and `wallpaper-rotation.test.ts` reads both files
+and compares them. A rotation is counted in steps:
+
+- with nobody having pressed Next, the number of whole periods since the
+  epoch, or for a daily rotation the number of the wall's own local day, so it
+  changes at the wall's midnight and the 25-hour day in October is still one
+  day;
+- after a press, counted from the moment and the step Next moved it to, which
+  is what gives that picture its full time.
+
+`currentPicture` turns the rotation into an ordinary wallpaper just before
+drawing, so the file chosen by size, the focal point and the Soft widget ground
+all follow the wallpaper's own path. Nothing moves between pictures: it is a
+plain swap, and the crossfade is M3.6's.
+
+**Next picture needs nothing about the pictures.** It is the step the wall is on
+now, plus one, from this moment, stored as `screens.picture_pressed_at` and
+`picture_step` (migration `0062`). So the server moves a wall on without knowing
+which pictures it draws, and a portrait and a landscape canvas on different
+collections both move. It is on a rotating wall's menu (and only there), and at
+`/companion/walls/next-picture`, which takes one wall or every rotating one.
+
+**Measured.** `browser-wallpaper-rotation.test.ts` drives the picker, saves a
+rotation for both orientations, and reads a real wall's drawn picture off its
+canvas before and after Next picture. Fifteen mutations were checked and all
+fifteen are red. One was green as first written: a picker offering one-picture
+collections changes nothing on a dark wall, where every collection holds none
+or at least two, so the test now also opens the picker on a light wall. One
+first failed to compile and was rewritten. The DST case in the rotation test
+was rewritten too: its first draft crossed no 25-hour day at all. **5108 tests,
+over 355 files**: calendar 153 (and 1 skipped) over 10 · core 314 over 9 ·
+display 942 over 54 · server 3699 over 282, measured with `pnpm test` and a real
+Chromium. The full run read one red: `browser-custom-css`'s pairing form on an
+unpaired page, timed out at 20 seconds. That path draws no manifest and so never
+reaches the rotation, and the file passed three times in three alone. It is
+written here rather than deducted. **Still unproven where it counts:** no real
+wall has been watched changing picture at midnight.
+
 **Rule 12 changed, and the interesting part is how many places said otherwise
 (RFC 012 phase 1).** The rule is no longer "READ-ONLY, no service calls": it
 permits one *write*, `todo.update_item`, and the read it needs. Nothing writes

@@ -1145,6 +1145,8 @@ export function createApp(deps: AppDeps): Hono {
     readonly allowClear?: boolean;
     readonly kind?: string;
     readonly refreshRequestedAt?: number | null;
+    readonly picturePressedAt?: number | null;
+    readonly pictureStep?: number | null;
     /** The wall's own theme; a document for no wall states `STAND_IN_THEME`. */
     readonly theme: string;
     readonly daytimeTheme: string | null;
@@ -1327,6 +1329,8 @@ export function createApp(deps: AppDeps): Hono {
         allowControl: screenLike.allowControl === true,
         allowClear: screenLike.allowClear === true,
         refreshRequestedAt: screenLike.refreshRequestedAt ?? null,
+        picturePressedAt: screenLike.picturePressedAt ?? null,
+        pictureStep: screenLike.pictureStep ?? null,
         // Handed over as they are stored; `buildManifest` is what decides
         // whether the three of them are an answer.
         panelWidthMm: screenLike.panelWidthMm ?? null,
@@ -1377,6 +1381,8 @@ export function createApp(deps: AppDeps): Hono {
       allowClear: screen.allowClear === 1,
       kind: screen.kind,
       refreshRequestedAt: screen.refreshRequestedAt,
+      picturePressedAt: screen.picturePressedAt,
+      pictureStep: screen.pictureStep,
       // A browser wall's row always carries one — the CHECK on `screens`
       // refuses it otherwise. The only null here is an e-paper panel, which
       // draws one bit and reads no theme; the stand-in keeps its document

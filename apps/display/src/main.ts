@@ -1,3 +1,4 @@
+import { currentPicture } from './wallpaper.js';
 import { UPDATE_RELOAD_KEY, pageVersion, reloadAllowed, reloadFresh, staggerMs, updateDue } from './update.js';
 import { pushUrl, startPush } from './push.js';
 import { activeLayout, refreshDue } from './wall-commands.js';
@@ -428,7 +429,13 @@ function start(): void {
      * The stylesheet does the rest: `data-motion="on"` is half of the scope
      * every animation rule sits in, and `prefers-reduced-motion` is the other.
      */
-    renderFreeform(root, model, canvas, undefined, {
+    // A rotating background becomes the one picture due now, by this wall's
+    // own clock and where Next picture last moved it (plan items M4.10, M1.4).
+    const background = currentPicture(canvas.background, now, manifest.timezone, manifest.screen);
+    const drawn = background === undefined
+      ? { aspect: canvas.aspect, widgets: canvas.widgets }
+      : { ...canvas, background };
+    renderFreeform(root, model, drawn, undefined, {
       daytime: day,
       motion: manifest.screen?.motion !== false,
     });

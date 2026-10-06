@@ -20,6 +20,7 @@ import {
   MAX_SHOW_MINUTES,
   browserWalls,
   endLayoutOverride,
+  nextPicture,
   readLayoutOverride,
   requestRefresh,
   startLayoutOverride,
@@ -518,6 +519,13 @@ export function registerWallsRoutes(app: Hono, deps: AdminDeps): void {
   app.post('/admin/screens/show-end', (c: Context) => {
     if (!endLayoutOverride(deps.db, now())) return c.redirect('/admin/walls', 302);
     return savedRedirect(c, '/admin/walls', 'layout-show-ended');
+  });
+
+  app.post('/admin/screens/:id/next-picture', (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    // A token is a claim: a wall whose background does not rotate moved nothing.
+    if (nextPicture(deps.db, { id }, now()).length === 0) return c.redirect(`/admin/walls/${encodeURIComponent(id)}`, 302);
+    return savedRedirect(c, `/admin/walls/${encodeURIComponent(id)}`, 'picture-next');
   });
 
   app.post('/admin/screens/:id/refresh', (c: Context) => {
