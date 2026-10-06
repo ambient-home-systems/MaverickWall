@@ -18,7 +18,7 @@
  * Everything from here to the end marker is transcribed, character for
  * character, into `apps/display/src/qr.ts`, so a QR code widget (plan item
  * M5.3) is drawn on a wall and in the editor's preview by this encoder and no
- * other. `qr-parity.test.ts` holds the two copies to each other.
+ * other. `transcription-parity.test.ts` holds the two copies to each other.
  */
 /* qr-encoder:begin */
 /** Total codewords and EC codewords per block, for level M, versions 1–10. */

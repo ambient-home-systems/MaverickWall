@@ -4812,3 +4812,64 @@ body {
   font-size: var(--t-wall-time, 1.3rem);
   color: var(--ink-quiet, var(--muted));
 }
+
+/*
+ * The Heading widget (plan item M5.4). The block sits where the household
+ * asked in its box — top, middle or bottom — and follows the box's alignment
+ * like any text. Its size is one of three of the wall's own roles, the most it
+ * may be, and `tierHeading` steps it down a role where the words do not fit:
+ * small is the event role, medium the lede, and large the clock's own capped
+ * size, so a heading is never larger than the clock already may be.
+ *
+ * The heading is in the theme's display face, wraps between words and breaks
+ * a word only where one word is wider than the box. The glyph is the drawn
+ * set's, a little under the words' own height, so a panel draws the same
+ * picture. The rule is a hairline in the theme's own rule colour.
+ */
+.fw > .hd {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+}
+.hd.hd-top { justify-content: flex-start; }
+.hd.hd-bottom { justify-content: flex-end; }
+.hd-head {
+  flex: 0 0 auto;
+  font-family: var(--disp);
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--ink-event, var(--ink));
+  overflow-wrap: break-word;
+}
+.hd[data-size="small"] > .hd-head { font-size: var(--t-wall-event, var(--t-base)); }
+.hd[data-size="medium"] > .hd-head { font-size: var(--t-wall-lede, var(--t-event)); }
+.hd[data-size="large"] > .hd-head { font-size: var(--t-wall-clock, calc(var(--t-event) * 1.8)); }
+.hd-glyph {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  margin-right: 0.3em;
+  vertical-align: -0.1em;
+}
+.hd-head.is-cut {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.hd-rule {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--rule);
+  margin: var(--s2) 0;
+}
+.hd-second {
+  flex: 0 0 auto;
+  margin-top: var(--s1);
+  font-size: var(--t-wall-time, 1.3rem);
+  line-height: 1.15;
+  color: var(--ink-quiet, var(--muted));
+  overflow-wrap: break-word;
+}
+.hd-rule + .hd-second { margin-top: 0; }

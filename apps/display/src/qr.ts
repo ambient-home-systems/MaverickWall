@@ -5,7 +5,7 @@
  * the preview has to show the code a household is still typing — so the
  * bundle encodes for itself rather than asking the server. The block between
  * the markers is the server's, character for character, and
- * `qr-parity.test.ts` holds the two to each other: two encoders disagreeing
+ * `transcription-parity.test.ts` holds the two to each other: two encoders disagreeing
  * would be a code on the wall that is not the one the panel draws.
  *
  * Byte mode, level M, versions 1–10, and verified the only way a QR code can

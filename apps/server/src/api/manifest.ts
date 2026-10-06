@@ -91,6 +91,9 @@ export const WIDGET_TYPES = [
   // by the wall and the panel from the config with the same first-party
   // encoder (`http/qr.ts`) — a picture of text, never a fetched one.
   'qr',
+  // A heading and a line under it, with a glyph and a rule if asked (plan
+  // item M5.4): the household's own words, as a label for a part of the wall.
+  'heading',
   // A panel from a registered third-party module (docs/rfc-001-module-framework.md).
   // Still first-party by the rule that matters: the wall draws sanitised strings
   // through renderGenericPanel, never anything the module ships.

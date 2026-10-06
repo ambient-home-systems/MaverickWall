@@ -65,6 +65,7 @@ const SHELL = [
   '/assets/glyphs.js',
   '/assets/group-cells.js',
   '/assets/gutter.js',
+  '/assets/heading.js',
   '/assets/house-tiles.js',
   '/assets/ladder.js',
   '/assets/manifest.js',

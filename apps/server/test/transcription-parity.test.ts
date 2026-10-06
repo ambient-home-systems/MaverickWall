@@ -5,8 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 /**
- * The wall and the panel encode one QR code, and this proves it by reading the
- * files (plan item M5.3).
+ * The wall and the panel encode one QR code and read one heading, and this
+ * proves it by reading the files (plan items M5.3 and M5.4).
  *
  * A QR code widget is drawn as an SVG on a wall and in the editor's preview,
  * and as one bit on a panel that may be following that wall. The display
@@ -26,6 +26,16 @@ const PAIRS = [
     marker: 'qr-encoder',
     server: join(HERE, '..', 'src', 'http', 'qr.ts'),
     display: join(HERE, '..', '..', 'display', 'src', 'qr.ts'),
+  },
+  /*
+   * The Heading widget's reading of its config (plan item M5.4) sits on the
+   * same seam for the same reason, so it is held here rather than by a file
+   * of its own that would be this one with a different list.
+   */
+  {
+    marker: 'heading',
+    server: join(HERE, '..', 'src', 'api', 'heading.ts'),
+    display: join(HERE, '..', '..', 'display', 'src', 'heading.ts'),
   },
   {
     marker: 'qr-payload',
@@ -47,7 +57,7 @@ function block(path: string, marker: string): string {
   return source.slice(start, stop + end.length);
 }
 
-describe('one QR encoder, written twice', () => {
+describe('modules written once on the server and transcribed into the display', () => {
   for (const pair of PAIRS) {
     it(`holds the ${pair.marker} block character for character in both bundles`, () => {
       const server = block(pair.server, pair.marker);

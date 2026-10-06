@@ -113,6 +113,15 @@ export const PANEL_HONOURS: Readonly<Record<string, readonly string[]>> = {
    * password in words. Every key that changes what the code carries moves the
    * modules; `align` is not here — a code is centred in its box on both media.
    */
+  /*
+   * A heading (plan item M5.4): its two lines, its glyph, its rule, its size,
+   * where it sits and how it is aligned, all drawn on one bit. Uppercase is
+   * words too. Nothing in it is colour, so nothing is said to be ignored.
+   */
+  heading: [
+    'title', 'showTitle', 'align', 'text', 'subtitle', 'textSize', 'valign', 'glyph', 'divider', 'uppercase',
+    STYLE_INSET,
+  ],
   qr: [
     'title', 'showTitle', 'mode', 'ssid', 'wifiPassword', 'wifiSecurity', 'wifiHidden', 'link', 'text',
     'showPassword', STYLE_INSET,
@@ -182,6 +191,9 @@ export const INK_LANE: Readonly<Record<string, readonly string[]>> = {
   // What a code carries is the widget's identity: a panel showing a different
   // network from the wall it follows would be a second widget wearing one name.
   qr: [],
+  // Size, place and alignment are shape, which is what the lane is for; the
+  // words, the glyph and the rule are the heading itself and stay the wall's.
+  heading: ['textSize', 'valign', 'align'],
   // A panel could honestly lay a group out differently from the wall it
   // follows — a row on the wall, a column on a narrow panel — and that is
   // density and shape, which is what the lane is for. Empty until the editor

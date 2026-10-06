@@ -2,6 +2,7 @@ import { z } from '../validation.js';
 import { WIDGET_TYPES } from './manifest.js';
 import { widgetStyleBody } from './widget-style.js';
 import { EMOJI_KEYS } from '../emoji.js';
+import { GLYPH_KEYS } from '../glyphs.js';
 import { ROTATION_COLLECTIONS, isWallpaperId, rotationPictures, type RotationCollection } from '../wallpapers.js';
 import { ROTATION_EVERY } from './picture-rotation.js';
 import { QR_MAX_BYTES, qrBytes, qrKind, qrPayload, wifiSecurity } from './qr-payload.js';
@@ -427,6 +428,23 @@ const widgetConfigFields = z
       .regex(/^https?:\/\/\S+$/i, 'A link has to start with http:// or https:// and have no spaces.')
       .optional(),
     showPassword: z.boolean().optional(),
+    /*
+     * Heading (plan item M5.4). The heading itself is the `text` a note uses;
+     * `subtitle` is the line under it. `textSize` is the most the heading may
+     * be — small, medium (absent) or large, three of the wall's own roles —
+     * and `valign` is where the block sits in its box (absent is the middle).
+     * `glyph` is a key from the drawn set (`glyphs.ts`), the one picture both
+     * a wall and a panel can draw; a key outside it is refused. `divider` puts
+     * a rule between the two lines and `uppercase` capitalises both. Every
+     * absence is what the widget draws by default, so a stored config sends
+     * only what the household chose.
+     */
+    subtitle: z.string().max(200).optional(),
+    textSize: z.enum(['small', 'medium', 'large']).optional(),
+    valign: z.enum(['top', 'middle', 'bottom']).optional(),
+    glyph: z.enum(GLYPH_KEYS).optional(),
+    divider: z.boolean().optional(),
+    uppercase: z.boolean().optional(),
     // External module widget — which registered module's panel to draw (its id).
     module: z.string().max(64).optional(),
     // Image widget — a stored image's own name (RFC 005 Phase 3b). Served from
@@ -517,7 +535,9 @@ export const inkOverrideBody = widgetConfigFields
     shiftName: true,
     showDate: true,
     showShifts: true,
+    textSize: true,
     unitWords: true,
+    valign: true,
     variant: true,
   })
   .strict();
