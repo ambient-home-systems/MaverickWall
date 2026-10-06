@@ -15,12 +15,13 @@ import { install, type Installation } from './browser-harness.js';
 /**
  * The card grid, and nothing after it: the revoked disclosure under the grid
  * carries `destructive()`'s GET forms, which are exactly the `<form>` and
- * `<button>` the grid must not.
+ * `<button>` the grid must not — and so does the "Every wall" section between
+ * them (plan items M1.2–M1.3), whose Refresh is a real button by design.
  */
 function gridOf(html: string): string {
   const start = html.indexOf('<div class="grid g2">');
   expect(start, 'no card grid on the page').toBeGreaterThan(-1);
-  const ends = ['<details class="disclose wall-revoked">', '</main>']
+  const ends = ['<section class="mw-sect">', '<details class="disclose wall-revoked">', '</main>']
     .map((marker) => html.indexOf(marker, start))
     .filter((at) => at > -1);
   return html.slice(start, Math.min(...ends));

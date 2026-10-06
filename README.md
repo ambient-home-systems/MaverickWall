@@ -175,9 +175,10 @@ be limited to reading, so the limit lives on this side instead:
   thing, and whether it worked.
 - A phone shortcut or an automation can add an item to a to-do list you chose
   (`todo.add_item`), with a companion token you make under System › Phone and
-  automations — never from a wall. The same token can start and end timers and
-  send and clear messages on your walls, and it can do nothing else; you can
-  replace it or turn it off there.
+  automations — never from a wall. The same token can start and end timers,
+  send and clear messages, reload your walls and show one wall's layout on the
+  others for a while, and it can do nothing else; you can replace it or turn it
+  off there.
 - It can **never** unlock a door, disarm an alarm, change a thermostat, or open
   a garage, gate, door or window. Those are not in the frozen table of actions
   this application may take, and a test asserts nothing leaves that table.

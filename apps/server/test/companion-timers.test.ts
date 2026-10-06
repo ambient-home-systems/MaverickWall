@@ -421,7 +421,7 @@ describe('timers and messages in the admin', () => {
   it('says what the token can now do, and how', async () => {
     const h = await harness();
     const page = await (await h.admin('/admin/companion')).text();
-    expect(page).toContain('start and end timers, and send and clear messages');
+    expect(page).toContain('start and end timers, send and clear messages');
     expect(page).toContain('/companion/timers');
     expect(page).toContain('/companion/messages/clear');
   });

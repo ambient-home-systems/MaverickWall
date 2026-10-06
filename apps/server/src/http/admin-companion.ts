@@ -25,8 +25,9 @@ const SCREEN = 'Phone and automations';
 
 const WHAT_IT_CAN_DO =
   'Anyone holding it can add items to the to-do lists you chose under To-do lists, start ' +
-  'and end timers, and send and clear messages on your walls — and nothing else: it cannot ' +
-  'read your lists, tick them off, change a setting or sign in.';
+  'and end timers, send and clear messages, reload your walls, and show one wall’s layout ' +
+  'on the others for up to two hours — and nothing else: it cannot read your lists, tick ' +
+  'them off, change a setting or sign in.';
 
 const QUERY_CAUTION =
   'If your app cannot send a header, put the token on the end of the address as ' +
@@ -187,6 +188,15 @@ export function registerCompanionAdminRoutes(app: Hono, deps: AdminDeps): void {
           'Clear one by its “id”, or send “all”: true. A Messages widget on a wall shows it.',
         code(curl('/companion/messages', { text: 'Back at 6', minutes: 90 })) +
           code(curl('/companion/messages/clear', { all: true })),
+      ) +
+      section(
+        'Walls',
+        'Reload one wall by its name, or every browser wall when you name none. Show one wall’s ' +
+          'layout on every other for some “minutes” — ten when left out, two hours at most — and ' +
+          'stop it early with an empty POST. A wall acts on these within a minute.',
+        code(curl('/companion/walls/refresh', { wall: 'Kitchen' })) +
+          code(curl('/companion/walls/show', { wall: 'Kitchen', minutes: 30 })) +
+          code(curl('/companion/walls/show/end', {})),
       );
   }
 

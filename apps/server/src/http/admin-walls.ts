@@ -14,6 +14,17 @@ import { readSaved, savedRedirect } from './saved.js';
 import { selfHref } from './self.js';
 import { FALLBACK_THEME, readThemes } from '../api/themes.js';
 import { LEGACY_THEME_ALIASES, themeName } from './theme-cards.js';
+import { readHousehold } from '../api/queries.js';
+import {
+  DEFAULT_SHOW_MINUTES,
+  MAX_SHOW_MINUTES,
+  browserWalls,
+  endLayoutOverride,
+  readLayoutOverride,
+  requestRefresh,
+  startLayoutOverride,
+} from '../api/wall-commands.js';
+import { parse, z } from '../validation.js';
 
 /**
  * The Walls list (RFC 016 phase 1).
@@ -404,9 +415,69 @@ export function displaysPage(c: Context, deps: AdminDeps, error?: string): strin
       (walls.length === 0
         ? emptyState('No walls yet.', ADD_A_WALL)
         : wallSummary(walls, at) + `<div class="grid g2">` + walls.map(cardFor).join('') + `</div>`) +
+      everyWall(deps, at, active.some((screen) => screen.kind !== 'epaper')) +
       revokedDisclosure(revoked, at),
   });
 }
+
+/** "14:32", in the household's own zone. */
+function clockAt(deps: AdminDeps, at: number): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: readHousehold(deps.db).timezone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date(at));
+}
+
+/**
+ * Commands for every browser wall at once (plan items M1.2, M1.3): reload them
+ * all, and — while one wall's layout is on every other — say whose and until
+ * when, with the way back. Under the grid rather than in the app bar, whose one
+ * action is adding a wall (P2.1). Absent with no browser wall to command.
+ */
+function everyWall(deps: AdminDeps, at: number, anyBrowserWall: boolean): string {
+  if (!anyBrowserWall) return '';
+  const shown = readLayoutOverride(deps.db, at);
+  return section(
+    'Every wall',
+    'A wall acts on these the next time it checks in, within a minute.',
+    (shown === undefined
+      ? ''
+      : listRow(
+          '',
+          {
+            title: `Showing ${shown.name}’s layout on every wall`,
+            detail: `Until ${clockAt(deps, shown.until)}, when every other wall goes back to its own.`,
+          },
+          `<form method="post" action="admin/screens/show-end"><button class="secondary" type="submit">Stop now</button></form>`,
+        )) +
+      listRow(
+        '',
+        {
+          title: 'Refresh every wall',
+          detail: 'Each browser wall reloads once. Useful when a change has not shown up on one.',
+        },
+        `<form method="post" action="admin/screens/refresh-all"><button class="secondary" type="submit">Refresh</button></form>`,
+      ),
+  );
+}
+
+const showBody = z.object({
+  minutes: z
+    .string()
+    .regex(/^\d{1,3}$/, 'Choose how long.')
+    .transform(Number)
+    .refine((n) => n >= 1 && n <= MAX_SHOW_MINUTES, `Between 1 and ${MAX_SHOW_MINUTES} minutes.`),
+});
+
+/** How long a layout may be shown for, as the page offers it. */
+const SHOW_CHOICES: readonly { readonly minutes: number; readonly label: string }[] = [
+  { minutes: 10, label: '10 minutes' },
+  { minutes: 30, label: '30 minutes' },
+  { minutes: 60, label: 'An hour' },
+  { minutes: 120, label: 'Two hours' },
+];
 
 export function registerWallsRoutes(app: Hono, deps: AdminDeps): void {
   // The unified section. Screens and Layout were two pages for one thing, and
@@ -434,6 +505,68 @@ export function registerWallsRoutes(app: Hono, deps: AdminDeps): void {
    * `registerAdminRoutes` where `/admin/walls` was declared, which is before
    * any of those.
    */
+  /*
+   * Commands for walls (plan items M1.2, M1.3) — static segments first, for
+   * the reason the forget routes below give, and a wall's own two segments
+   * deep. Every one answers with a strip only when it did something.
+   */
+  app.post('/admin/screens/refresh-all', (c: Context) => {
+    if (requestRefresh(deps.db, 'all', now()) === 0) return c.redirect('/admin/walls', 302);
+    return savedRedirect(c, '/admin/walls', 'walls-refreshed');
+  });
+
+  app.post('/admin/screens/show-end', (c: Context) => {
+    if (!endLayoutOverride(deps.db, now())) return c.redirect('/admin/walls', 302);
+    return savedRedirect(c, '/admin/walls', 'layout-show-ended');
+  });
+
+  app.post('/admin/screens/:id/refresh', (c: Context) => {
+    const id = c.req.param('id') ?? '';
+    if (requestRefresh(deps.db, { id }, now()) === 0) return c.redirect('/admin/walls', 302);
+    return savedRedirect(c, `/admin/walls/${encodeURIComponent(id)}`, 'wall-refreshed');
+  });
+
+  const showPage = (c: Context, wall: { id: string; name: string }, error?: string): string =>
+    page({
+      self: selfHref(c),
+      modules: navModules(deps.db),
+      title: 'Show this layout on every wall — Maverick Wall',
+      nav: 'walls',
+      heading: `Show ${wall.name}’s layout on every wall`,
+      back: { label: wall.name, href: `admin/walls/${encodeURIComponent(wall.id)}` },
+      intro:
+        'Every other browser wall shows this one’s layout, each in its own theme, and goes back to ' +
+        'its own when the time is up — or sooner, from Walls. E-paper panels are not changed.',
+      body:
+        (error === undefined ? '' : errorBlock(error)) +
+        `<form method="post" action="admin/screens/${encodeURIComponent(wall.id)}/show">` +
+        `<label class="field field-select"><span class="field-label">For how long</span>` +
+        `<select class="field-input" name="minutes">` +
+        SHOW_CHOICES.map(
+          (choice) =>
+            `<option value="${choice.minutes}"${choice.minutes === DEFAULT_SHOW_MINUTES ? ' selected' : ''}>` +
+            `${escapeHtml(choice.label)}</option>`,
+        ).join('') +
+        `</select></label>` +
+        `<button type="submit">Show it</button></form>`,
+    });
+
+  app.get('/admin/screens/:id/show', (c: Context) => {
+    const wall = browserWalls(deps.db).find((one) => one.id === (c.req.param('id') ?? ''));
+    if (wall === undefined) return c.redirect('/admin/walls', 302);
+    return c.html(showPage(c, wall));
+  });
+
+  app.post('/admin/screens/:id/show', async (c: Context) => {
+    const wall = browserWalls(deps.db).find((one) => one.id === (c.req.param('id') ?? ''));
+    if (wall === undefined) return c.redirect('/admin/walls', 302);
+    const shaped = parse(showBody, (await c.req.parseBody()) as Record<string, unknown>);
+    if (!shaped.ok) return c.html(showPage(c, wall, shaped.message), 400);
+    const started = startLayoutOverride(deps.db, wall.id, shaped.value.minutes, now());
+    if (!started.ok) return c.html(showPage(c, wall, started.message), 400);
+    return savedRedirect(c, '/admin/walls', 'layout-shown');
+  });
+
   app.get('/admin/screens/forget-revoked', (c: Context) => {
     const revoked = revokedScreens();
     // Nothing to forget is not a confirmation with nothing in it; it is the

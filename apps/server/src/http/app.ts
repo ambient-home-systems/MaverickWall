@@ -29,6 +29,7 @@ import { DEFAULT_AFTER_SIGN_IN, safeNextPath } from '../auth/next-path.js';
 import { createSetupTokenHolder, registerSetupRoutes, type SetupTokenHolder } from './setup.js';
 import { registerAdminRoutes } from './admin.js';
 import { registerCompanionRoutes } from './companion.js';
+import { readLayoutOverride } from '../api/wall-commands.js';
 import { TIMER_ID, clearDoneTimer } from '../modules/timers/index.js';
 import { MESSAGE_ID, clearMessages } from '../modules/messages/index.js';
 import {
@@ -1118,6 +1119,8 @@ export function createApp(deps: AppDeps): Hono {
     readonly allowTodo: boolean;
     readonly allowControl?: boolean;
     readonly allowClear?: boolean;
+    readonly kind?: string;
+    readonly refreshRequestedAt?: number | null;
     /** The wall's own theme; a document for no wall states `STAND_IN_THEME`. */
     readonly theme: string;
     readonly daytimeTheme: string | null;
@@ -1198,6 +1201,37 @@ export function createApp(deps: AppDeps): Hono {
     const modules = allModules(deps.db);
     const setUp = householdSetUp(deps.db, modules);
 
+    /*
+     * Another wall's layout, if one is being shown on every wall (plan item
+     * M1.3). Only for a browser wall that is not the one lending it — a panel
+     * draws its own canvas and has nothing to borrow it into — and read as that
+     * wall's own canvases at that wall's own settings, through the same
+     * resolver this wall's are.
+     */
+    const borrowed =
+      screenLike.id !== undefined && screenLike.kind !== 'epaper' ? readLayoutOverride(deps.db, at) : undefined;
+    const lender =
+      borrowed === undefined || borrowed.screenId === screenLike.id
+        ? undefined
+        : readScreens(deps.db).find((row) => row.id === borrowed.screenId);
+    const lending = (() => {
+      if (borrowed === undefined || lender === undefined) return undefined;
+      const { household: lenderDisplay, layoutOwner: lenderOwner } = effectiveDisplay(household, lender);
+      return {
+        from: borrowed.name,
+        until: borrowed.until,
+        household: lenderDisplay,
+        portrait: readLayoutWidgets(deps.db, lenderOwner, 'portrait'),
+        landscape: readLayoutWidgets(deps.db, lenderOwner, 'landscape'),
+        slots: readLayoutSlots(deps.db, lenderOwner).map((slot) => ({
+          slot,
+          portrait: readLayoutWidgets(deps.db, lenderOwner, 'portrait', slot),
+          landscape: readLayoutWidgets(deps.db, lenderOwner, 'landscape', slot),
+        })),
+        schedule: readLayoutSchedule(deps.db, lenderOwner),
+      };
+    })();
+
     return buildManifest({
       household: effective,
       // Resolve a theme reference to its tokens (custom) or just its shape
@@ -1218,6 +1252,7 @@ export function createApp(deps: AppDeps): Hono {
         landscape: readLayoutWidgets(deps.db, layoutOwner, 'landscape', slot),
       })),
       layoutSchedule: readLayoutSchedule(deps.db, layoutOwner),
+      ...(lending === undefined ? {} : { layoutOverride: lending }),
       events: readEvents(deps.db, runFrom, runTo),
       sources: readSources(deps.db),
       people: readPeople(deps.db),
@@ -1267,6 +1302,7 @@ export function createApp(deps: AppDeps): Hono {
         allowTodo: screenLike.allowTodo,
         allowControl: screenLike.allowControl === true,
         allowClear: screenLike.allowClear === true,
+        refreshRequestedAt: screenLike.refreshRequestedAt ?? null,
         // Handed over as they are stored; `buildManifest` is what decides
         // whether the three of them are an answer.
         panelWidthMm: screenLike.panelWidthMm ?? null,
@@ -1315,6 +1351,8 @@ export function createApp(deps: AppDeps): Hono {
       allowTodo: screen.allowTodo === 1,
       allowControl: screen.allowControl === 1,
       allowClear: screen.allowClear === 1,
+      kind: screen.kind,
+      refreshRequestedAt: screen.refreshRequestedAt,
       // A browser wall's row always carries one — the CHECK on `screens`
       // refuses it otherwise. The only null here is an e-paper panel, which
       // draws one bit and reads no theme; the stand-in keeps its document

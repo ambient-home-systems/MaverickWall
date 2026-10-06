@@ -16,6 +16,16 @@
 
 ## Unreleased
 
+**Refresh a wall, or show one wall's layout on all of them, from anywhere.**
+Under **Walls** there is now a **Refresh every wall** button, and each wall's
+menu has **Refresh this wall** and **Show this layout on every wall** — for ten
+minutes, half an hour, an hour or two hours. Every other wall shows it in its
+own theme and goes back to its own layout when the time is up, even if it has
+lost touch with the server; you can stop it early from **Walls**. The same three
+things work from your phone with the companion token. A wall acts on any of
+them the next time it checks in, within a minute. E-paper panels are not
+changed.
+
 ## 0.78.0
 
 **Timers and messages on the wall, from your phone.** Start a timer — "Pasta,

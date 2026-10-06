@@ -3743,6 +3743,53 @@ core 314 over 9 · display 915 over 51 · server 3665 over 274, measured with
 **Still unproven where it counts:** nobody has started a timer from a real
 phone or watched one finish on a kitchen wall.
 
+**A wall can be told to reload, or to show another wall's layout for a while,
+from Walls or from a phone (plan items M1.2, M1.3 and M2.3 except next picture,
+which waits on photo slideshows, M3.6).** Neither command pushes anything,
+because the browser wall still polls (M1.1 is unbuilt). Each is instead a fact
+the manifest carries, and that is what makes them safe. A wall that was off when
+the command was given still acts on it when it comes back, and a wall started
+after it has nothing to act on.
+
+- **Refreshing.** `screens.refresh_requested_at` (migration `0061`) is set on
+  one wall or on every browser wall. The wall compares it with the server's time
+  on the page's first fresh poll, the clock the request was stamped with, and
+  reloads if the request is later. The reloaded page's first poll is later
+  still, so a refresh never loops, and nothing ever has to be cleared. A reload
+  is safe at any moment, because the wall draws its stored copy first.
+- **Showing a layout.** A one-row `layout_override` table names the lending wall
+  and when the loan ends. It is created whole, so its cascade to `screens` is
+  real, and forgetting the lending wall deletes it, which a test asserts.
+  `buildManifest` carries the lending wall's layout beside each other browser
+  wall's own, built by the same `buildLayout` from that wall's canvases at that
+  wall's settings. The lending wall itself and every panel get nothing. The
+  wall's `activeLayout` goes back to its own at `until` by its own clock, and
+  `browser-wall-commands.test.ts` proves it with every manifest request refused.
+  Ten minutes by default and two hours at most. Each wall keeps its own theme.
+  A loan from a wall that has been unpaired is no loan: the manifest, the Walls
+  list and the companion API's "stop" all read it through one query.
+- **Where it is offered.** A wall's menu gains Refresh this wall and Show this
+  layout on every wall (a page of its own to choose how long). The Walls list
+  gains an "Every wall" section under the grid, with Refresh and, while a loan
+  runs, whose layout it is, until when, and Stop now. The token adds
+  `/companion/walls/refresh`, `/companion/walls/show` and
+  `/companion/walls/show/end`. An empty JSON body is now an empty object, since
+  "stop" has nothing to say.
+
+**Four faults came out of testing it.** The offline shell's list did not have
+the new module (`sw-shell.test.ts`, which walks the compiled graph). The Walls
+list test's grid slice ran on into the new section and found its button. A
+mutation that let an unpaired wall go on lending stayed green, because the
+manifest's own lookup already skipped it; it is red now that the list and the
+stop are asserted too. And a mutation that let a panel lend stayed green,
+because both routes refuse a panel before the store does; the store is now
+asked directly. 20 mutations were checked and all 20 are red. **5064 tests
+passing, and 1 skipped, over 347 files**: calendar 153 over 10 · core 314 over
+9 · display 920 over 52 · server 3677 over 276, measured with `pnpm test` and a
+real Chromium. The full run read one red, the grid slice above, and that file
+is green on its own after the fix. **Still unproven where it counts:** nobody
+has refreshed a real kitchen tablet from a phone.
+
 **Rule 12 changed, and the interesting part is how many places said otherwise
 (RFC 012 phase 1).** The rule is no longer "READ-ONLY, no service calls": it
 permits one *write*, `todo.update_item`, and the read it needs. Nothing writes

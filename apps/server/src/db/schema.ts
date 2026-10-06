@@ -821,6 +821,14 @@ export const screens = sqliteTable(
     allowClear: integer('allow_clear', { mode: 'boolean' }).notNull().default(false),
 
     /**
+     * When somebody last asked this wall to reload (plan items M1.2, M2.3).
+     * The wall reloads once if it started before this instant; a wall started
+     * after it has nothing to reload for, so no flag is ever cleared. Null on
+     * a wall nobody has asked, which sends the manifest it always did.
+     */
+    refreshRequestedAt: integer('refresh_requested_at', { mode: 'number' }),
+
+    /**
      * Whether this screen's frame answers only a connection from the
      * household's own network.
      *
@@ -2024,6 +2032,26 @@ export const webhookTargets = sqliteTable('webhook_targets', {
   sortOrder: integer('sort_order').notNull().default(0),
   createdAt: integer('created_at', { mode: 'number' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
+});
+
+/**
+ * One wall's layout shown on every wall, for a while (plan items M1.3, M2.3).
+ *
+ * At most one row, keyed `singleton`. It names the wall whose layout is shown
+ * and when it stops; until then every other browser wall's manifest carries
+ * that layout beside its own, with the instant, and the wall goes back to its
+ * own at that instant by its own clock — so no wall can be left on somebody
+ * else's layout, even one the server can no longer reach (rule nine). Deleting
+ * the wall deletes the row with it, which is why the key to `screens` is a real
+ * foreign key on a table created whole rather than a column added later.
+ */
+export const layoutOverride = sqliteTable('layout_override', {
+  id: text('id').primaryKey(),
+  screenId: text('screen_id')
+    .notNull()
+    .references(() => screens.id, { onDelete: 'cascade' }),
+  until: integer('until', { mode: 'number' }).notNull(),
+  createdAt: integer('created_at', { mode: 'number' }).notNull(),
 });
 
 /**

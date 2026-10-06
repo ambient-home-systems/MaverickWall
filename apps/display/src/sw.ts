@@ -81,6 +81,7 @@ const SHELL = [
   '/assets/tiers.js',
   '/assets/variants.js',
   '/assets/viewmodel.js',
+  '/assets/wall-commands.js',
   '/assets/wallpaper.js',
   '/assets/watchdog.js',
   '/assets/weather-advice.js',

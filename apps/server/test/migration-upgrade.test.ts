@@ -280,11 +280,14 @@ describe('upgrading a database that is already in use', () => {
     expect(
       db
         .prepare(
-          `SELECT allow_control AS allowControl, allow_todo AS allowTodo, allow_clear AS allowClear
+          `SELECT allow_control AS allowControl, allow_todo AS allowTodo, allow_clear AS allowClear,
+                  refresh_requested_at AS refreshRequestedAt
              FROM screens WHERE id = 'scr-hall'`,
         )
         .get(),
-    ).toEqual({ allowControl: 0, allowTodo: 1, allowClear: 0 });
+      // 0061's refresh instant arrives null: nobody has asked an existing wall
+      // to reload, and a wall that read anything else would reload at upgrade.
+    ).toEqual({ allowControl: 0, allowTodo: 1, allowClear: 0, refreshRequestedAt: null });
     expect(
       db
         .prepare(`SELECT entity_id, watched, label, sort_order, controllable FROM ha_entity_cache`)
