@@ -63,7 +63,7 @@ export function bootingBody(pathname: string): { contentType: string; body: stri
   if (pathname === '/healthz') {
     return { contentType: 'text/plain; charset=utf-8', body: 'booting\n' };
   }
-  if (pathname.startsWith('/d/') || pathname.startsWith('/api/')) {
+  if (pathname.startsWith('/d/') || pathname.startsWith('/api/') || pathname.startsWith('/companion/')) {
     return {
       contentType: 'application/json; charset=utf-8',
       body: JSON.stringify({ error: 'booting', message: BOOTING_MESSAGE }),

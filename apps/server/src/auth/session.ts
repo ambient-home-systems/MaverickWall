@@ -181,7 +181,9 @@ export function requireSetupComplete(deps: GateDeps) {
       return;
     }
 
-    return c.req.path.startsWith('/api/')
+    // The companion API is a phone shortcut or an automation, and a redirect
+    // to a wizard is a page neither can read.
+    return c.req.path.startsWith('/api/') || c.req.path.startsWith('/companion/')
       ? c.json(
           {
             error: 'setup-incomplete',

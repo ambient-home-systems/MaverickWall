@@ -2,8 +2,9 @@
 
 Status: **accepted 2026-10-05 (MD13); every wall phase built (1–6) — lights,
 switches, fans, blinds and speakers operate from a wall, scenes and scripts run
-by press-and-hold, and webhook buttons call addresses set in the admin.** What
-remains is `todo.add_item`, which waits for the companion API (M2.2). Hard rule 12 in `CLAUDE.md` now reads as §3.1 below, with its
+by press-and-hold, and webhook buttons call addresses set in the admin; and
+`todo.add_item` runs from the companion API, never a wall (M2.1–M2.2).** Nothing
+in this RFC remains to build. Hard rule 12 in `CLAUDE.md` now reads as §3.1 below, with its
 last clause qualified for scripts (§3.3). Phase 1 (§12) landed the table,
 `buildCall`, the door's issued check and the claims; phase 2 the route, all
 three switches, the button, the history and the browser test; phase 3
@@ -499,8 +500,22 @@ controls, and "never" only of what no row in the table can reach.
    proved nothing as first written (an allowlist key that was not the title)
    and was replaced by one that caches a player's raw attributes.
 
-`todo.add_item` is not a wall phase. Its row lands with phase 1's table and is
-used by the companion API's list endpoint (plan item M2.2) when that is built.
+`todo.add_item` is not a wall phase. Its row landed with phase 1's table, and
+the companion API's list endpoint (plan items M2.1–M2.2) is its one caller:
+`POST /companion/todo/add`, behind a per-account companion token, never a
+display token. `addTodoItem` in `modules/todo/index.ts` is the one function
+that builds the call, and it re-reads the list's state first, so a list whose
+`supported_features` lacks `CREATE_TODO_ITEM` is refused with a sentence
+before Home Assistant is asked. It reaches only a list on the To-do lists
+screen, by its name or entity id; an entity the household never added is a
+404. `ha-write-boundary.test.ts` holds both halves in the source: `addTodoItem`
+is the only builder of a `todo.add` call, and `http/companion.ts`, which has
+no `/d/` route in it, is its only caller. The token is sealed at rest beside
+its hash, redacted from every log line by its `mwc_` prefix, and rate limited
+twice — twenty wrong tokens per address in five minutes, thirty calls per
+account a minute. 27 mutations checked, all red; one proved nothing as first
+written (it named `addTodoItem` without calling it) and was replaced by a
+real call from a wall route.
 
 ## 13. How this gets proven
 

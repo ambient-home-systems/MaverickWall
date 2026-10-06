@@ -51,6 +51,16 @@ const CREDENTIAL_HEADERS =
 const AUTH_SCHEME = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi;
 
 /**
+ * A companion token wherever it appears, labelled or not (plan item M2.1).
+ *
+ * The token carries a fixed `mwc_` prefix precisely so this rule can exist: an
+ * unlabelled token is otherwise left to the entropy rule below, which misses one
+ * real token in 1,818. Keeps the prefix, so a redacted line still says which
+ * kind of credential was there.
+ */
+const COMPANION_TOKEN = /\bmwc_[A-Za-z0-9_-]+/g;
+
+/**
  * Labels whose value is a secret wherever one appears.
  *
  * Longest alternative first, so `access_token` is not read as a bare `token`.
@@ -250,6 +260,7 @@ export function redactLogText(text: string): string {
   return text
     .replace(CREDENTIAL_HEADERS, `$1$2${REDACTED}`)
     .replace(AUTH_SCHEME, `$1 ${REDACTED}`)
+    .replace(COMPANION_TOKEN, `mwc_${REDACTED}`)
     .replace(LABELLED_EQUALS, `$1$2${REDACTED}`)
     .replace(LABELLED_COLON, `$1$2${REDACTED}`)
     .replace(HIGH_ENTROPY_RUN, (run) => (looksLikeSecret(run) ? REDACTED : run));

@@ -660,6 +660,7 @@ import { registerModuleRoutes } from './admin-modules.js';
 import { registerShiftTypeRoutes } from './admin-shifts.js';
 import { registerChoreRoutes } from './admin-chores.js';
 import { registerButtonRoutes } from './admin-buttons.js';
+import { registerCompanionAdminRoutes } from './admin-companion.js';
 import { readWebhookTargets } from '../modules/webhooks/index.js';
 import { registerThemeRoutes } from './admin-themes.js';
 import { registerEpaperRoutes } from './admin-epaper.js';
@@ -1271,6 +1272,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   registerShiftTypeRoutes(app, deps);
   registerChoreRoutes(app, deps);
   registerButtonRoutes(app, deps);
+  registerCompanionAdminRoutes(app, deps);
   registerThemeRoutes(app, deps);
 
   /**
@@ -4420,6 +4422,19 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
               hint: 'Optional. The file System → Backup downloads as maverick-wall.key.',
             }) +
             `<button type="submit">Stage restore</button></form>`,
+        ) +
+
+        section(
+          'Phone and automations',
+          undefined,
+          listRow(
+            '',
+            {
+              title: 'Companion token',
+              href: 'admin/companion',
+              detail: 'Lets a phone shortcut or an automation add to your to-do lists without signing in.',
+            },
+          ),
         ) +
 
         section(

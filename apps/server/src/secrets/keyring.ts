@@ -59,6 +59,11 @@ export type SecretPurpose =
   | 'webhook-url'
   /** The optional secret header a webhook button sends with its POST. */
   | 'webhook-secret'
+  /**
+   * A companion token (plan item M2.1), kept sealed so the admin can show it
+   * again. Its own purpose for the reason every secret here has one.
+   */
+  | 'companion-token'
   /** Session signing. */
   | 'session';
 

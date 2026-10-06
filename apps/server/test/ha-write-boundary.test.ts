@@ -370,6 +370,34 @@ describe('the allowlist', () => {
     const adders = Object.entries(HA_SERVICES).filter(([, row]) => row.service === 'todo/add_item');
     expect(adders.map(([key, row]) => [key, row.reach])).toEqual([['todo.add', 'companion']]);
   });
+
+  it('builds the add in one function, which only the companion route calls', () => {
+    /*
+     * The row's `reach` is a label; this is the fact under it. One place in the
+     * source builds a `todo.add` call, `addTodoItem`, and the one file that
+     * calls `addTodoItem` is the companion route — behind a companion token,
+     * outside `/d/*`, where no display token is ever read. A wall route that
+     * started calling it would be a wall that adds, and this goes red first.
+     */
+    const builders: string[] = [];
+    const callers: string[] = [];
+    for (const file of filesUnder(SERVER_SRC)) {
+      const lines = readFileSync(file, 'utf8').split('\n');
+      lines.forEach((text, index) => {
+        if (/key:\s*'todo\.add'/.test(text) && !text.includes('readonly key')) {
+          builders.push(`${relative(ROOT, file)}:${enclosingFunction(lines, index + 1)}`);
+        }
+        if (/\baddTodoItem\(/.test(text) && !/function addTodoItem\(/.test(text)) {
+          callers.push(relative(ROOT, file));
+        }
+      });
+    }
+    expect(builders).toEqual([`${SERVER_SRC}/modules/todo/index.ts:addTodoItem`]);
+    expect(callers).toEqual([`${SERVER_SRC}/http/companion.ts`]);
+    const route = readFileSync(join(ROOT, `${SERVER_SRC}/http/companion.ts`), 'utf8');
+    expect(route).toContain(`app.post('/companion/todo/add'`);
+    expect(route).not.toMatch(/['`]\/d\//);
+  });
 });
 
 describe('buildCall: the only constructor', () => {

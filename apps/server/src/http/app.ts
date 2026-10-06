@@ -28,6 +28,7 @@ import {
 import { DEFAULT_AFTER_SIGN_IN, safeNextPath } from '../auth/next-path.js';
 import { createSetupTokenHolder, registerSetupRoutes, type SetupTokenHolder } from './setup.js';
 import { registerAdminRoutes } from './admin.js';
+import { registerCompanionRoutes } from './companion.js';
 import {
   createStaticFiles,
   defaultDisplayDir,
@@ -1056,6 +1057,10 @@ export function createApp(deps: AppDeps): Hono {
     if (result.ok) return c.json({ ok: true });
     return c.json({ error: result.error, message: result.message }, result.status);
   });
+
+  // The companion API: a phone or an automation, with a token rather than a
+  // session (plan items M2.1–M2.2). Outside `/api/*`, which is the session's.
+  registerCompanionRoutes(app, { db: deps.db, keyring: deps.keyring, fetcher: deps.fetcher, now, clientAddress });
 
   /**
    * The manifest, built for a given screen.

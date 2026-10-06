@@ -534,7 +534,8 @@ knowing before reading either rule as settled or as obsolete:
   reaches past the table" below); and webhook buttons, set on a Buttons
   screen and drawn by a Buttons widget ("A wall presses a webhook button"
   below); and a media player's transport and volume from the panel. Every
-  wall phase is built; `todo.add_item` waits for the companion API.
+  wall phase is built, and `todo.add_item` runs from the companion API ("A
+  phone adds to a to-do list" below).
 - **Q4 (no blur behind widgets) — still a proposal.** A Glass ground is to be
   prototyped behind a flag, with its opacity measured per picture, and Q4 flips
   only if the prototype passes the plan's MQ1 measurement. Until then
@@ -3621,13 +3622,67 @@ volume slider starting at the player's volume, which travels as `volume` only
 beside its slider. The wall's 0–100 reaches Home Assistant as 0.0–1.0. With no
 later wall phase, the Readings screen's "Walls cannot operate this yet" and its
 list are deleted rather than left empty, and the only "not built yet" left in
-the claims is a phone adding to a to-do list, which waits for the companion API.
+the claims was a phone adding to a to-do list, which the companion API now does.
 10 mutations checked, all red; one proved nothing as first written — an
 allowlist key that was not the title — and was replaced. **4937 tests passing,
 and 1 skipped, over 339 files**: calendar 153 over 10 · core 314 over 9 ·
 display 901 over 50 · server 3569 over 270, measured with `pnpm test` and a real
 Chromium. **Still unproven where it counts:** no real speaker has been paused
 from a wall.
+
+**A phone adds to a to-do list, with a token and never through a wall (plan
+items M2.1 and the Home Assistant half of M2.2).** This is the third write rule
+12 permits and the last thing RFC 018 left to build. `POST /companion/todo/add`
+takes `{list, item}` as JSON or a form. It sits outside `/api/*` because that
+prefix belongs to the session gate and a shortcut has no cookie. It answers in
+JSON before setup and while booting, because a redirect to a wizard is a page
+no shortcut can read. The list is matched only among the watched lists, by
+entity id or, ignoring case, by the name To-do lists shows, and it may be left
+out when only one is watched. `addTodoItem` re-reads the list's state for
+`supported_features`, so a list without `CREATE_TODO_ITEM` gets a sentence
+instead of a 400 from Home Assistant. It is the one function that builds a
+`todo.add` call, and `http/companion.ts` is its one caller.
+`ha-write-boundary.test.ts` holds both of those in the source. The add is
+followed by an immediate read of the list, so a wall shows the item on its next
+poll and not the minute after.
+
+**The token is one per account and is stored twice.** Its hash is what a
+request is checked against, so a leaked database hands out no credential. A
+sealed copy (`companion-token` on the keyring) is kept so System › Phone and
+automations can show the token again: a token shown once and lost is a token
+rotated for every new phone. Rotating replaces both, and the old token is
+refused at once. Every row is compared in constant time, as walls are. The
+`mwc_` prefix exists for the redactor: the entropy rule misses one real token in
+1,818, and a fixed prefix is a rule that never does. `Authorization: Bearer` is
+preferred and wins when both are sent. `?key=` is accepted for iOS Shortcuts,
+and the page says beside it that a whole address ends up in other people's
+logs. There are two rate limits:
+
+- twenty wrong tokens per address in five minutes, which then blocks that
+  address even with the right token;
+- thirty calls per account a minute, for an automation stuck in a loop, since
+  every one of those reaches the household's Home Assistant.
+
+Nothing about a call is logged, on success or refusal. The admin shows only
+"last used".
+
+**Two things were found by testing it.** The vocabulary crawl reached the new
+page through System's link and caught "the To-do lists screen" in the copy.
+One mutation stayed green: a wall route that *named* `addTodoItem` without
+calling it, which proved nothing. It was replaced by a real call from a wall
+route, which turns the guard red. The Copy button is revealed by its own script
+the way the geolocation button is. It is driven in a real Chromium three ways:
+through `navigator.clipboard`; without a secure context, where it selects the
+field and asks `execCommand`; and with script off, where it stays hidden over a
+field that can still be selected by hand. 27 mutations checked, all red.
+**4966 tests passing, and 1 skipped, over 341 files**: calendar 153 over
+10 · core 314 over 9 · display 901 over 50 · server 3598 over 272, measured with
+`pnpm test` and a real Chromium. That is 28 more than phase 6's figure plus the
+changelog guard after it, which is this change's own count. The first full run
+read two red in `browser-components`, which lists System's rows exactly; the
+new row is meant to be there, and the list now names it.
+**Still unproven where it counts:** nobody has added an item from a real
+iPhone, and no real Home Assistant has been asked.
 
 **Rule 12 changed, and the interesting part is how many places said otherwise
 (RFC 012 phase 1).** The rule is no longer "READ-ONLY, no service calls": it
