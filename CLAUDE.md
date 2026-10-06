@@ -3833,6 +3833,46 @@ real Chromium, green on the first full run. **Still unproven where
 it counts:** nobody has watched a real kitchen tablet change a second after a
 phone's save, and no push socket has crossed a real supervisor's proxy.
 
+**A wall reloads itself after an update (plan item M1.5).** It compares two
+versions. One is the release that served its page: the server stamps
+`<meta name="mw-version">` into the HTML as it serves it
+(`http/shell-version.ts`), and the page's ETag is the stamped bytes' own, so a
+new release is a new page to every cache. The other is the release answering
+now: every `/d/manifest` answer carries `x-app-version`, refusals and 304s
+included, beside `x-server-time`, and the client reads it only off our answers
+and only in the shape a version has.
+
+**Why the version is stamped into the page.** A baseline taken from the first
+poll is the obvious alternative and gets one case wrong. On https the service
+worker serves the shell cache-first, so a page can be old code that polls a new
+server, and a first-poll baseline would record the new release as the page's
+own and never reload.
+
+**The reload itself is `update.ts`.**
+
+- **A stagger** of up to 30 seconds, so a house of walls does not hit a
+  server that has just started all at once.
+- **At most once in ten minutes**, remembered in `localStorage` across the
+  reload, so a page and server that go on disagreeing (a proxy caching the old
+  page) cannot loop. A remembered time in the future is distrusted, so a clock
+  put back cannot hold a wall for ever.
+- **The shell cache emptied first**, since an https reload would otherwise get
+  the old shell back from the worker and need a second reload nobody asks for.
+  M1.2's refresh now reloads the same way, for the same reason.
+- **Tied to the worker by a test.** The cache's prefix is held to `sw.ts`'s
+  `CACHE` by a test that reads that file.
+
+**Measured.** `browser-update-reload.test.ts` rewrites the version on the real
+server's real answers. The wall reloads once and, with the versions still
+apart, not again. 13 mutations were checked and all 13 are red. One was green as
+first written: the reloaded page drew a real random stagger, so a second reload
+would have landed outside the test's window, and the test now pins the stagger
+on every page load. **5093 tests passing, and 1 skipped, over 353
+files**: calendar 153 over 10 · core 314 over 9 · display 938 over 54 · server
+3688 over 280, measured with `pnpm test` and a real Chromium, green on the first
+full run. **Still unproven where it counts:** no real wall has been watched
+picking up a real release, and the shell-cache path only runs on https.
+
 **Rule 12 changed, and the interesting part is how many places said otherwise
 (RFC 012 phase 1).** The rule is no longer "READ-ONLY, no service calls": it
 permits one *write*, `todo.update_item`, and the read it needs. Nothing writes

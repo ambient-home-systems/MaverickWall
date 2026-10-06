@@ -30,6 +30,7 @@ import { createSetupTokenHolder, registerSetupRoutes, type SetupTokenHolder } fr
 import { registerAdminRoutes } from './admin.js';
 import { registerCompanionRoutes } from './companion.js';
 import { readLayoutOverride } from '../api/wall-commands.js';
+import { versionedShell } from './shell-version.js';
 import { TIMER_ID, clearDoneTimer } from '../modules/timers/index.js';
 import { MESSAGE_ID, clearMessages } from '../modules/messages/index.js';
 import {
@@ -1547,6 +1548,10 @@ export function createApp(deps: AppDeps): Hono {
       // Deliberately swallowed; see above.
     }
     c.header('x-server-time', String(stamp));
+    // Which release answered (plan item M1.5): a wall whose page is from
+    // another one reloads itself. On every answer, refusals included, for the
+    // reason above — and from the deps rather than the clock, so it cannot throw.
+    c.header('x-app-version', deps.appVersion);
   };
 
   const unauthorized = (c: Context): Response => {
@@ -1716,6 +1721,8 @@ export function createApp(deps: AppDeps): Hono {
     // Server time goes in a header as well as the body, so a 304 still
     // carries it. Clock sync must not depend on the body being sent.
     c.header('x-server-time', String(manifest.generatedAt));
+    // On a 304 too, where there is no body to read `appVersion` from (M1.5).
+    c.header('x-app-version', deps.appVersion);
     c.header('cache-control', 'no-cache');
 
     if (c.req.header('if-none-match') === etag) {
@@ -2355,7 +2362,11 @@ export function createApp(deps: AppDeps): Hono {
 
     const shell = staticFiles.read('index.html');
     if (shell !== undefined) {
-      return serveWithEtag(c, { ...shell, contentType: 'text/html; charset=utf-8' }, 'no-cache');
+      return serveWithEtag(
+        c,
+        { ...versionedShell(shell, deps.appVersion), contentType: 'text/html; charset=utf-8' },
+        'no-cache',
+      );
     }
 
     /*
