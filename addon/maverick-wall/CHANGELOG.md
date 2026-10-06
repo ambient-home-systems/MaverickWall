@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.81.0
+
 **Walls pick up an update by themselves.** After Maverick Wall updates, each
 wall reloads once within about half a minute, so it runs the new version rather
 than carrying on with the old one until somebody restarts it. Walls are spread
