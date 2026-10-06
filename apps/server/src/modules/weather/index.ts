@@ -14,6 +14,7 @@ import {
 } from './open-meteo.js';
 import {
   AIR_MAX_AGE_MS,
+  POLLEN_PLANTS,
   presentCurrent,
   presentHourly,
   type AirQuality,
@@ -254,12 +255,21 @@ const cachedHours = z.object({
     }),
   ),
 });
+const reading = z.number().nonnegative().optional();
 const cachedAir = z.object({
   air: z.looseObject({
     aqi: z.number(),
     scale: z.enum(['us', 'eu']),
     label: z.string(),
     observedAt: z.number(),
+    // The Environment widget's readings (plan item M5.6): named, so a row
+    // carrying a malformed one is refused rather than passed to the wall.
+    pm25: reading,
+    pm10: reading,
+    ozone: reading,
+    no2: reading,
+    uv: reading,
+    pollen: z.partialRecord(z.enum(POLLEN_PLANTS), z.number().positive()).optional(),
   }),
 });
 

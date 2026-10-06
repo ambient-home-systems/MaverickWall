@@ -104,11 +104,33 @@ function manifest(): Manifest {
         ],
         provider: 'nws',
         fetchedAt: 1,
+        /*
+         * The air and the wind an Environment widget draws (plan item M5.6),
+         * so each of its readings has a tile to add or take away.
+         */
+        air: {
+          aqi: 42,
+          scale: 'eu',
+          label: 'Fair',
+          observedAt: 1,
+          pm25: 8.2,
+          pm10: 12.1,
+          ozone: 60,
+          no2: 14.5,
+          uv: 4.1,
+          pollen: { birch: 120.5 },
+        },
+        current: {
+          observedAt: 1, source: 'modelled', temp: 20, condition: 'Clear', glyph: 'clear', isDay: true,
+          windSpeed: 12, windDir: 'NW', solar: 410,
+        },
+        units: { temp: 'C', wind: 'km/h', precip: 'mm' },
       },
       home: {
         readings: [
           { label: 'Front door', value: 'Locked', glyph: 'lock', mode: 'label_value' },
-          { label: 'Kitchen', value: '19.4 C', glyph: 'temperature', mode: 'label_value' },
+          // A handle on this one, so a widget naming it by label resolves to it (P1.3, M5.6).
+          { key: 'rd-kitchen', label: 'Kitchen', value: '19.4 C', glyph: 'temperature', mode: 'label_value' },
           { label: 'Garage', value: 'Open', icon: 'garage', mode: 'label_value' },
           /*
            * A lamp that is on, at a level, and changed a while ago (P5.3): the
@@ -266,6 +288,7 @@ const BASES: Readonly<Record<string, readonly Record<string, unknown>[]>> = {
   buttons: [{}],
   timers: [{}],
   messages: [{}],
+  environment: [{}],
   // A list and the one-at-a-time view, since the code is drawn only in the second.
   news: [{}, { mode: 'one' }],
   // A heading with a second line, so the rule and the line under it have
@@ -395,6 +418,8 @@ const PROBES: Readonly<Record<string, readonly unknown[]>> = {
   // …and the second half's: which occasion, and where a bar counts from.
   occasion: ['birthday', 'new-year'],
   from: ['2026-06-01'],
+  // An Environment widget's own (plan item M5.6): fewer readings, and others.
+  envFields: [['aqi'], ['solar', 'ozone']],
   // A News widget's own (plan item M5.5).
   newsFeeds: [['nf-bbbbbbbbbbbb']],
   showSource: [false],

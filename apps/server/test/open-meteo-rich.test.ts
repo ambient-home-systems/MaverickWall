@@ -75,10 +75,20 @@ describe('the request', () => {
     expect(london.daily_units['precipitation_sum']).toBe('mm');
   });
 
-  it('asks the second host for the two indices and nothing else', () => {
+  /*
+   * The second host is told a place and a list of readings, and nothing else.
+   * The list widened for the Environment widget (plan item M5.6) — the
+   * pollutants, the UV and the pollen behind the two indexes — and stays
+   * inside the one request the Weather screen's switch consents to (Q5).
+   */
+  it('asks the second host for the air readings at a place, and nothing else', () => {
     const url = new URL(airQualityUrl({ latitude: 38.8894, longitude: -77.0352 }));
     expect(url.origin).toBe('https://air-quality-api.open-meteo.com');
-    expect(url.searchParams.get('current')).toBe('us_aqi,european_aqi');
+    expect([...url.searchParams.keys()].sort()).toEqual(['current', 'latitude', 'longitude', 'timezone']);
+    expect(url.searchParams.get('current')).toBe(
+      'us_aqi,european_aqi,pm2_5,pm10,ozone,nitrogen_dioxide,uv_index,' +
+        'alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen',
+    );
     expect(url.searchParams.get('latitude')).toBe('38.8894');
   });
 });

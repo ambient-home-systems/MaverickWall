@@ -4924,3 +4924,44 @@ body {
 .nw-headline.is-small { font-size: var(--t-wall-event, var(--t-base)); }
 .nw-qr { flex: 0 0 auto; position: relative; }
 .nw-qr > svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+
+/*
+ * The Environment widget (plan item M5.6): tiles of the outdoors, and any
+ * sensors the household picked. The grid fills its box and lays tiles at a
+ * least width of 6.5 of the event role's ems — the longest label, "Air quality
+ * (EU)", in the scaffold role — so a wide box has more columns
+ * and a narrow one fewer; `tierEnvironment` keeps the whole tiles the box
+ * holds. A tile is separated from the next by space and a hairline, never a
+ * card. The reading is the lede role in the display face, its unit and its
+ * label the scaffold role, its category the time role.
+ */
+.fw > .env {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 6.5em), 1fr));
+  grid-auto-rows: max-content;
+  align-content: start;
+  gap: var(--s3) var(--s4);
+  font-size: var(--t-wall-event, var(--t-base));
+}
+.env-tile { min-width: 0; border-top: 1px solid var(--rule); padding-top: var(--s2); }
+.env-label {
+  font-size: var(--t-wall-scaffold, 1.25rem);
+  line-height: 1.15;
+  color: var(--ink-scaffold, var(--muted));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.env-value { display: flex; align-items: baseline; gap: 0.25em; min-width: 0; }
+.env-num {
+  font-family: var(--disp);
+  font-weight: 700;
+  font-size: var(--t-wall-lede, var(--t-event));
+  line-height: 1.15;
+  color: var(--ink-event, var(--ink));
+  white-space: nowrap;
+}
+.env-unit { font-size: var(--t-wall-scaffold, 1.25rem); color: var(--ink-quiet, var(--muted)); white-space: nowrap; }
+.env-detail { font-size: var(--t-wall-time, 1.3rem); line-height: 1.15; color: var(--ink-quiet, var(--muted)); }

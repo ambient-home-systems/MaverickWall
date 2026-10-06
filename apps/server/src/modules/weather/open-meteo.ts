@@ -4,9 +4,12 @@ import { parseJsonOr, z } from '../../validation.js';
 import type { Coordinates, Forecast, ForecastDay } from './nws.js';
 import type { GlyphKey } from '../../glyphs.js';
 import {
+  POLLEN_PLANTS,
   airLabel,
   compassPoint,
+  tenth,
   type AirQuality,
+  type PollenPlant,
   type ConditionsReading,
   type HourRecord,
   type WeatherUnits,
@@ -106,6 +109,7 @@ const forecastDocument = z.object({
       wind_direction_10m: z.number().nullish().catch(undefined),
       wind_gusts_10m: z.number().nullish().catch(undefined),
       uv_index: z.number().nullish().catch(undefined),
+      shortwave_radiation: z.number().nullish().catch(undefined),
     })
     .optional()
     .catch(undefined),
@@ -198,7 +202,7 @@ export function forecastUrl(at: Coordinates, units: Units, forecastDays: number)
      */
     current:
       'temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,is_day,' +
-      'wind_speed_10m,wind_direction_10m,wind_gusts_10m,uv_index',
+      'wind_speed_10m,wind_direction_10m,wind_gusts_10m,uv_index,shortwave_radiation',
     hourly: 'temperature_2m,precipitation_probability,weather_code,is_day',
     daily:
       'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,' +
@@ -228,7 +232,15 @@ export function airQualityUrl(at: Coordinates): string {
   const params = new URLSearchParams({
     latitude: at.latitude.toFixed(4),
     longitude: at.longitude.toFixed(4),
-    current: 'us_aqi,european_aqi',
+    /*
+     * The two indexes, the pollutants behind them, the UV and the pollen of
+     * six plants — every field the Environment widget draws (plan item M5.6),
+     * in the one request the air-quality switch already consents to. Pollen
+     * is modelled for Europe only and answers null elsewhere.
+     */
+    current:
+      'us_aqi,european_aqi,pm2_5,pm10,ozone,nitrogen_dioxide,uv_index,' +
+      POLLEN_PLANTS.map((plant) => `${plant}_pollen`).join(','),
     timezone: 'auto',
   });
   return `https://${AIR_QUALITY_HOST}/v1/air-quality?${params.toString()}`;
@@ -365,6 +377,9 @@ export function parseOpenMeteo(body: string, options: OpenMeteoParseOptions): Op
           ? { windDir: compassPoint(now.wind_direction_10m) as string }
           : {}),
         ...(present(now.uv_index) ? { uv: now.uv_index } : {}),
+        ...(present(now.shortwave_radiation) && now.shortwave_radiation >= 0
+          ? { solar: Math.round(now.shortwave_radiation) }
+          : {}),
       };
     }
   }
@@ -470,7 +485,33 @@ export function parseAirQuality(body: string, scale: 'us' | 'eu'): AirQuality | 
   const observedAt = instantOf(now.time, document.utc_offset_seconds);
   const words = airLabel(aqi, scale);
   if (observedAt === undefined || words === undefined) return undefined;
-  return { aqi: Math.round(aqi), scale, label: words, observedAt };
+  const amount = (value: number | null | undefined): number | undefined =>
+    present(value) && value >= 0 ? tenth(value) : undefined;
+  const pm25 = amount(now.pm2_5);
+  const pm10 = amount(now.pm10);
+  const ozone = amount(now.ozone);
+  const no2 = amount(now.nitrogen_dioxide);
+  const uv = amount(now.uv_index);
+  // Present only where any plant was reported at all: Europe. See `AirQuality.pollen`.
+  const grainsOf = (plant: PollenPlant): number | null | undefined => now[`${plant}_pollen`] as number | null | undefined;
+  const reported = POLLEN_PLANTS.filter((plant) => present(grainsOf(plant)));
+  const pollen: Partial<Record<PollenPlant, number>> = {};
+  for (const plant of reported) {
+    const grains = amount(grainsOf(plant));
+    if (grains !== undefined && grains > 0) pollen[plant] = grains;
+  }
+  return {
+    aqi: Math.round(aqi),
+    scale,
+    label: words,
+    observedAt,
+    ...(pm25 === undefined ? {} : { pm25 }),
+    ...(pm10 === undefined ? {} : { pm10 }),
+    ...(ozone === undefined ? {} : { ozone }),
+    ...(no2 === undefined ? {} : { no2 }),
+    ...(uv === undefined ? {} : { uv }),
+    ...(reported.length === 0 ? {} : { pollen }),
+  };
 }
 
 const airDocument = z.object({
@@ -480,6 +521,17 @@ const airDocument = z.object({
       time: z.string(),
       us_aqi: z.number().nullish().catch(undefined),
       european_aqi: z.number().nullish().catch(undefined),
+      pm2_5: z.number().nullish().catch(undefined),
+      pm10: z.number().nullish().catch(undefined),
+      ozone: z.number().nullish().catch(undefined),
+      nitrogen_dioxide: z.number().nullish().catch(undefined),
+      uv_index: z.number().nullish().catch(undefined),
+      alder_pollen: z.number().nullish().catch(undefined),
+      birch_pollen: z.number().nullish().catch(undefined),
+      grass_pollen: z.number().nullish().catch(undefined),
+      mugwort_pollen: z.number().nullish().catch(undefined),
+      olive_pollen: z.number().nullish().catch(undefined),
+      ragweed_pollen: z.number().nullish().catch(undefined),
     })
     .optional()
     .catch(undefined),

@@ -36,6 +36,7 @@ import { applyStyleTokens, styleTokensOf } from './widget-style.js';
 import { encodeQr } from './qr.js';
 import { qrCaption, qrKind, qrPasswordLine, qrPayload } from './qr-payload.js';
 import { newsIndexAt, newsMode, newsShown, newsShows } from './news-view.js';
+import { envTiles, type EnvInput } from './env-tiles.js';
 import { headingDivider, headingPlace, headingSecond, headingSizesFrom, headingText } from './heading.js';
 import { inkOn, readableHue, shiftTint } from './theme.js';
 import {
@@ -2491,6 +2492,8 @@ export function renderWidget(
       return renderHeadingWidget(config);
     case 'news':
       return renderNewsWidget(model, config);
+    case 'environment':
+      return renderEnvironmentWidget(model, config);
     /*
      * The motion demonstration (plan P4.3) — a test fixture no server sends:
      * `WIDGET_TYPES` refuses it at the layout save and drops it from a stored
@@ -2537,6 +2540,57 @@ function renderHeadingWidget(config: unknown): HTMLElement {
     block.appendChild(line);
   }
   return block;
+}
+
+/**
+ * The Environment widget (plan item M5.6): the air, the pollen, the UV, the
+ * sunlight and the wind as tiles, and any Home Assistant sensors the household
+ * picked beside them.
+ *
+ * Which tiles and their words are `envTiles`, shared with the panel; a reading
+ * that is missing is no tile at all. Sensors are the ones the widget names and
+ * no others — unlike a Home Assistant widget, an Environment widget naming
+ * none shows none, because its subject is the outdoors and a house's every
+ * reading would bury it. `tierEnvironment` keeps as many whole tiles as the
+ * box's columns and rows hold, in the household's order.
+ */
+function renderEnvironmentWidget(model: DisplayModel, config: unknown): HTMLElement {
+  const current = model.weatherCurrent;
+  const input: EnvInput = {
+    ...(model.weatherAir === undefined ? {} : { air: model.weatherAir }),
+    ...(current?.windSpeed === undefined ? {} : { windSpeed: current.windSpeed }),
+    ...(current?.windDir === undefined ? {} : { windDir: current.windDir }),
+    ...(model.weatherUnits === undefined ? {} : { windUnit: model.weatherUnits.wind }),
+    ...(current?.solar === undefined ? {} : { solar: current.solar }),
+    ...(current?.uv === undefined ? {} : { uv: current.uv }),
+  };
+  const tiles = envTiles(input, config);
+  const picked = widgetConfig(config)['readings'];
+  const sensors = Array.isArray(picked) && picked.length > 0 ? houseReadingsFor(model.house, config) : [];
+  if (tiles.length === 0 && sensors.length === 0) {
+    return el(
+      'div',
+      'cd-empty',
+      model.weatherAir === undefined
+        ? 'Turn on air quality on the Weather screen, or pick Home Assistant readings, to fill this.'
+        : 'Pick what to show in this widget’s options.',
+    );
+  }
+  const grid = el('section', 'env');
+  const tile = (key: string, label: string, value: string, unit?: string, detail?: string): void => {
+    const box = el('div', 'env-tile');
+    box.setAttribute('data-tile', key);
+    box.appendChild(el('div', 'env-label', label));
+    const line = el('div', 'env-value');
+    line.appendChild(el('span', 'env-num', value));
+    if (unit !== undefined) line.appendChild(el('span', 'env-unit', unit));
+    box.appendChild(line);
+    if (detail !== undefined) box.appendChild(el('div', 'env-detail', detail));
+    grid.appendChild(box);
+  };
+  for (const one of tiles) tile(one.key, one.label, one.value, one.unit, one.detail);
+  for (const sensor of sensors) tile('sensor', sensor.label, sensor.value);
+  return grid;
 }
 
 /**
@@ -3500,6 +3554,10 @@ function applyWidgetTiers(
       tierHeading(entry);
       continue;
     }
+    if (entry.widget.type === 'environment') {
+      tierEnvironment(entry);
+      continue;
+    }
     if (entry.widget.type === 'news' && newsMode(entry.widget.config) === 'one') {
       tierNewsOne(entry);
       continue;
@@ -3673,6 +3731,33 @@ function tierCountdown(entry: TieredWidget): void {
   stampTier(entry.box, tier, 1);
   stampRungs(entry.box, kept);
   beltItems(entry.box, [...entry.body.querySelectorAll<HTMLElement>('[data-part]')]);
+}
+
+/**
+ * An Environment widget's form, from its box (plan item M5.6): as many whole
+ * tiles as its columns and rows hold, the first in the household's order.
+ * The columns are the grid's own (`auto-fill` at a tile's least width in the
+ * event role), read off the first row; the rows are the room divided by one
+ * drawn tile and its gap. A tile past that is not drawn rather than cut.
+ */
+function tierEnvironment(entry: TieredWidget): void {
+  const grid = entry.body;
+  if (!grid.classList.contains('env')) return;
+  const tiles = [...grid.querySelectorAll<HTMLElement>('.env-tile')];
+  const first = tiles[0];
+  if (first === undefined) return;
+  const top = first.offsetTop;
+  const columns = Math.max(1, tiles.filter((tile) => tile.offsetTop === top).length);
+  const gap = parseFloat(getComputedStyle(grid).rowGap) || 0;
+  const tall = Math.max(...tiles.map((tile) => tile.offsetHeight));
+  // The grid fills the room the box leaves it (below a title, if there is one).
+  const room = grid.clientHeight;
+  const rows = tall > 0 ? Math.max(0, Math.floor((room + gap) / (tall + gap))) : 0;
+  const kept = columns * rows;
+  tiles.forEach((tile, index) => {
+    if (index >= kept) tile.remove();
+  });
+  entry.box.setAttribute('data-tier-items', String(Math.min(kept, tiles.length)));
 }
 
 /**

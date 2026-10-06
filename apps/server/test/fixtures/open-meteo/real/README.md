@@ -38,3 +38,15 @@ free tier is rate-limited per address and a shared cloud address can be over
 its daily allowance; a refused request comes back as
 `{"error":true,"reason":"Daily API request limit exceeded…"}` with a 429,
 which is not a fixture.
+
+**Added 6 October 2026 for the Environment widget (plan item M5.6)**, with the
+URLs the code builds:
+
+| File | Request |
+| --- | --- |
+| `air-pollutants-london.json` | `air-quality-api.open-meteo.com/v1/air-quality?latitude=51.5074&longitude=-0.1278&current=pm2_5,pm10,ozone,nitrogen_dioxide,us_aqi,european_aqi,uv_index,alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen&timezone=auto` — Europe in October: every pollen 0.0 |
+| `air-pollutants-berlin.json` | The same at `52.52,13.405` |
+| `air-pollutants-washington.json` | The same at `38.9072,-77.0369`: pollen is `null` for every plant, because it is modelled for Europe only |
+| `air-pollen-berlin-april-hourly.json` | `hourly=` the same fields at Berlin for 20 April 2026, read with `start_date`/`end_date`: the one real record here with pollen in the air (birch 304.7 grains/m³ at 14:00). The test builds a `current` answer from that hour rather than editing a file. |
+| `forecast-dc-solar.json` | The forecast URL above at `38.8894,-77.0352`, imperial, with `shortwave_radiation` in `current` |
+

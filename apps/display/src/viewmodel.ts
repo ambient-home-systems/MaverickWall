@@ -378,6 +378,8 @@ export interface CurrentWeatherModel {
   readonly windGust: number | undefined;
   readonly windDir: string | undefined;
   readonly uv: number | undefined;
+  /** Sunlight reaching the ground, W/m² (plan item M5.6). Optional, so a model built before it still is one. */
+  readonly solar?: number | undefined;
 }
 
 /** One of the next twenty-four hours. */
@@ -394,6 +396,18 @@ export interface AirQualityModel {
   readonly scale: 'us' | 'eu';
   readonly label: string;
   readonly observedAt: number;
+  /*
+   * The pollutants, the UV and the pollen behind the index, for the
+   * Environment widget (plan item M5.6) — each absent when the service did not
+   * report it. `pollen` is present only where pollen is modelled (Europe), and
+   * there it is the plants with any in the air: empty means none today.
+   */
+  readonly pm25?: number;
+  readonly pm10?: number;
+  readonly ozone?: number;
+  readonly no2?: number;
+  readonly uv?: number;
+  readonly pollen?: Readonly<Record<string, number>>;
 }
 
 export interface WeatherUnitsModel {
@@ -1539,6 +1553,7 @@ function currentFrom(value: unknown, now: number | undefined): CurrentWeatherMod
     windGust: measure(c['windGust']),
     windDir: typeof dir === 'string' && COMPASS_POINTS.indexOf(dir) >= 0 ? dir : undefined,
     uv: measure(c['uv']),
+    solar: measure(c['solar']),
   };
 }
 
@@ -1575,7 +1590,22 @@ function airFrom(value: unknown): AirQualityModel | undefined {
   const scale = a['scale'];
   if (aqi === undefined || observedAt === undefined || label === undefined) return undefined;
   if (scale !== 'us' && scale !== 'eu') return undefined;
-  return { aqi: Math.round(aqi), scale, label, observedAt };
+  const extra: Record<string, number> = {};
+  for (const key of ['pm25', 'pm10', 'ozone', 'no2', 'uv']) {
+    const value = measure(a[key]);
+    if (value !== undefined) extra[key] = value;
+  }
+  // Pollen: the six plants the service models, each a count; anything else is left out.
+  const rawPollen = a['pollen'];
+  let pollen: Record<string, number> | undefined;
+  if (typeof rawPollen === 'object' && rawPollen !== null && !Array.isArray(rawPollen)) {
+    pollen = {};
+    for (const plant of ['alder', 'birch', 'grass', 'mugwort', 'olive', 'ragweed']) {
+      const grains = measure((rawPollen as Record<string, unknown>)[plant]);
+      if (grains !== undefined && grains > 0) pollen[plant] = grains;
+    }
+  }
+  return { aqi: Math.round(aqi), scale, label, observedAt, ...extra, ...(pollen === undefined ? {} : { pollen }) };
 }
 
 function unitsFrom(value: unknown): WeatherUnitsModel | undefined {
