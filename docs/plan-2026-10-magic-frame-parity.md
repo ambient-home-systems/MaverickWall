@@ -1,6 +1,6 @@
 # Plan: parity with Magic Frame
 
-**Status: in progress.** RFC 018 (M6.0) is built, and so are the companion token, its Home Assistant to-do add, timers and messages, and refreshing walls and showing one wall's layout on the others (M1.1, M1.2, M1.3, M2.1, M2.2 but Todoist, M2.3 but next picture, M5.1, M5.2); everything else is planned. On 2026-10-05 the owner asked for a
+**Status: in progress.** RFC 018 (M6.0) is built, and so are the companion token, its Home Assistant to-do add, timers and messages, and refreshing walls and showing one wall's layout on the others (M1.1, M1.2, M1.3, M1.5, M2.1, M2.2 but Todoist, M2.3 but next picture, M5.1, M5.2); everything else is planned. On 2026-10-05 the owner asked for a
 competitive review of [Magic Frame](https://github.com/jeremiaa/magic-frame)
 against Maverick Wall, then a deeper look at its custom widgets and its
 backgrounds. This document is that review, the decisions taken on it, and the
@@ -124,7 +124,7 @@ Magic Frame's features exist in a form we cannot ship as it is.
 | M1.2 | Remote refresh of every wall, or one wall. **Built**: from Walls, a wall's menu and the token; a wall acts on it at its next poll. | S | Admin action and token API (M2.3). A reload is safe because the wall draws its IndexedDB copy first. |
 | M1.3 | Show one wall's layout on every wall, temporarily, with a way back. **Built**: 10 minutes unless told otherwise, two hours at most, ended early from Walls or the token, and by each wall's own clock at its time. | S | An override with an expiry (default 10 min), so no wall can be stuck on someone else's layout (rule 9). |
 | M1.4 | Next-picture command for the background. | S | Restarts that picture's countdown. Depends on M3.6. |
-| M1.5 | Walls reload themselves once after a server update. | S | A version header on every `/d/manifest` answer; reload at most once per 10 min, staggered 0–30 s. |
+| M1.5 | Walls reload themselves once after a server update. **Built**: the page carries the release that served it, every answer the one answering; a mismatch reloads past the shell cache, staggered, at most every 10 min. | S | A version header on every `/d/manifest` answer; reload at most once per 10 min, staggered 0–30 s. |
 
 ### M2 — Inbound API for phones and automations
 

@@ -504,9 +504,15 @@ async function sentenceFrom(response: { json(): Promise<unknown> }): Promise<str
 
 export type FetchOutcome =
   /** New document. */
-  | { readonly status: 'fresh'; readonly manifest: Manifest; readonly serverTime: number }
+  | {
+      readonly status: 'fresh';
+      readonly manifest: Manifest;
+      readonly serverTime: number;
+      /** The release that answered (`x-app-version`, plan item M1.5); absent from a server older than it. */
+      readonly serverVersion?: string;
+    }
   /** Server says nothing changed. Whatever is on screen is still correct. */
-  | { readonly status: 'unchanged'; readonly serverTime: number }
+  | { readonly status: 'unchanged'; readonly serverTime: number; readonly serverVersion?: string }
   /** This screen is not paired, or its token was revoked. */
   | { readonly status: 'unpaired' }
   /** Anything else: offline, a 500, a body that is not a manifest. */
@@ -600,8 +606,14 @@ export function createManifestClient(
       // Presence, not value: the header is what identifies a reply as this
       // wall's own server rather than whatever else answered on the way.
       const answered = stamp !== null;
+      // Which release answered (M1.5) — read only off an answer of ours, and
+      // only in a shape a version has, so a header nothing of ours sent cannot
+      // make a wall reload.
+      const said = response.headers.get('x-app-version');
+      const version = said !== null && /^[0-9A-Za-z.+-]{1,64}$/.test(said) ? said : undefined;
+      const versioned = version === undefined ? {} : { serverVersion: version };
 
-      if (response.status === 304) return { status: 'unchanged', serverTime };
+      if (response.status === 304) return { status: 'unchanged', serverTime, ...versioned };
       /*
        * And only *our* 401 unpairs a screen. It is the most destructive answer
        * the display acts on — the manifest is dropped, the code-entry form
@@ -644,7 +656,7 @@ export function createManifestClient(
       const fresh = response.headers.get('etag');
       etag = fresh === null ? undefined : fresh;
 
-      return { status: 'fresh', manifest: body, serverTime: serverTime || body.generatedAt };
+      return { status: 'fresh', manifest: body, serverTime: serverTime || body.generatedAt, ...versioned };
     },
   };
 }

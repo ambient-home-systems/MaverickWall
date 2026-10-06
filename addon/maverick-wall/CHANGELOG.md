@@ -16,6 +16,12 @@
 
 ## Unreleased
 
+**Walls pick up an update by themselves.** After Maverick Wall updates, each
+wall reloads once within about half a minute, so it runs the new version rather
+than carrying on with the old one until somebody restarts it. Walls are spread
+out over that half-minute so they do not all ask at once, and a wall reloads
+for an update at most once every ten minutes.
+
 ## 0.80.0
 
 **Changes reach your walls in about a second.** Save a layout, start a timer

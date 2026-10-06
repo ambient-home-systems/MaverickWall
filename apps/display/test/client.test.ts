@@ -51,6 +51,8 @@ interface Behaviour {
   /** Withheld, for the reply that did not come from this wall's server. */
   noServerTime?: boolean;
   serverTime?: number;
+  /** `x-app-version`, the release answering (plan item M1.5). */
+  version?: string;
 }
 
 async function serverWith(behaviour: () => Behaviour): Promise<string> {
@@ -61,6 +63,7 @@ async function serverWith(behaviour: () => Behaviour): Promise<string> {
     if (next.noServerTime !== true) {
       headers['x-server-time'] = String(next.serverTime ?? Date.now());
     }
+    if (next.version !== undefined) headers['x-app-version'] = next.version;
     if (next.status !== undefined && next.status !== 200) {
       response.writeHead(next.status, headers);
       if (next.status === 304) {
@@ -84,6 +87,24 @@ async function serverWith(behaviour: () => Behaviour): Promise<string> {
   const port = typeof address === 'object' && address !== null ? address.port : 0;
   return `http://127.0.0.1:${port}/d/manifest`;
 }
+
+describe('the release answering (plan item M1.5)', () => {
+  it('is read off a fresh answer and a 304 alike, and absent from a server that does not say', async () => {
+    let behaviour: Behaviour = { version: '0.81.0' };
+    const url = await serverWith(() => behaviour);
+    const client = createManifestClient((input, init) => fetch(input, init), url);
+    expect(await client.poll()).toMatchObject({ status: 'fresh', serverVersion: '0.81.0' });
+    expect(await client.poll()).toMatchObject({ status: 'unchanged', serverVersion: '0.81.0' });
+    behaviour = {};
+    expect(await client.poll()).not.toHaveProperty('serverVersion');
+  });
+
+  it('is refused in any shape a version does not have, so a header nothing of ours sent cannot reload a wall', async () => {
+    const url = await serverWith(() => ({ version: '<script>' }));
+    const client = createManifestClient((input, init) => fetch(input, init), url);
+    expect(await client.poll()).not.toHaveProperty('serverVersion');
+  });
+});
 
 describe('polling', () => {
   it('fetches once, then gets a 304 for an unchanged wall', async () => {

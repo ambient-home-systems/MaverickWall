@@ -1,3 +1,4 @@
+import { UPDATE_RELOAD_KEY, pageVersion, reloadAllowed, reloadFresh, staggerMs, updateDue } from './update.js';
 import { pushUrl, startPush } from './push.js';
 import { activeLayout, refreshDue } from './wall-commands.js';
 import { scheduledSlot, slotWidgets } from './canvas-schedule.js';
@@ -510,6 +511,34 @@ function start(): void {
     push = undefined;
   };
 
+  /*
+   * Reloading after the server is updated (plan item M1.5): once, staggered,
+   * and at most every ten minutes — `update.ts` says why each.
+   */
+  const ownVersion = pageVersion(document);
+  let updateScheduled = false;
+  const considerUpdate = (serverVersion: string | undefined): void => {
+    if (updateScheduled || !updateDue(ownVersion, serverVersion)) return;
+    let last: number | undefined;
+    try {
+      const raw = localStorage.getItem(UPDATE_RELOAD_KEY);
+      last = raw === null ? undefined : Number(raw);
+    } catch {
+      // No storage (a private window, a locked-down kiosk): no memory, so the
+      // stagger and the once-per-page guard are what is left, and they hold.
+    }
+    if (!reloadAllowed(last, Date.now())) return;
+    updateScheduled = true;
+    setTimeout(() => {
+      try {
+        localStorage.setItem(UPDATE_RELOAD_KEY, String(Date.now()));
+      } catch {
+        // As above.
+      }
+      void reloadFresh(location);
+    }, staggerMs());
+  };
+
   /** The server's time on this page's first fresh poll — see `refreshDue`. */
   let pageStartedAt: number | undefined;
 
@@ -526,9 +555,12 @@ function start(): void {
          */
         if (pageStartedAt === undefined) pageStartedAt = outcome.serverTime;
         else if (refreshDue(outcome.manifest, pageStartedAt)) {
-          location.reload();
+          // Past the service worker's copy, so the reload is of what the
+          // server has now — which is usually why somebody asked for one.
+          void reloadFresh(location);
           return;
         }
+        considerUpdate(outcome.serverVersion);
         if (manifest !== undefined && shouldKeepHeld(heldIsReal, outcome.manifest)) {
           /*
            * The server is answering, and answering with its stand-in. Keep the
@@ -577,6 +609,7 @@ function start(): void {
         break;
       case 'unchanged':
         clock.sync(outcome.serverTime);
+        considerUpdate(outcome.serverVersion);
         lastConfirmedAt = clock.now();
         lastContactAt = Date.now();
         offline = false;
