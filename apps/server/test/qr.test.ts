@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { encodeQr, generatorPoly, qrSvg } from '../src/http/qr.js';
+import jsQR from 'jsqr';
+import { encodeQr, generatorPoly, qrSvg, versionBits, type QrMatrix } from '../src/http/qr.js';
 
 /**
  * The QR encoder's structure.
@@ -89,5 +90,62 @@ describe('the SVG', () => {
     expect(svg).not.toContain('<image');
     // 21 modules plus four on each side.
     expect(svg).toContain('viewBox="0 0 29 29"');
+  });
+});
+
+/** The matrix as RGBA pixels, four per module, with the quiet zone a scanner needs. */
+export function qrPixels(matrix: QrMatrix, scale = 4): { data: Uint8ClampedArray; side: number } {
+  const quiet = 4;
+  const side = (matrix.size + quiet * 2) * scale;
+  const data = new Uint8ClampedArray(side * side * 4).fill(255);
+  for (let row = 0; row < matrix.size; row++) {
+    for (let column = 0; column < matrix.size; column++) {
+      if (!(matrix.modules[row] as boolean[])[column]) continue;
+      for (let y = 0; y < scale; y++) {
+        for (let x = 0; x < scale; x++) {
+          const at = (((row + quiet) * scale + y) * side + (column + quiet) * scale + x) * 4;
+          data[at] = data[at + 1] = data[at + 2] = 0;
+        }
+      }
+    }
+  }
+  return { data, side };
+}
+
+describe('read back by an independent decoder', () => {
+  /*
+   * The only check that settles a QR code is somebody else's reader. `jsqr` is
+   * a test-only dependency, never in the image. Every byte length this encoder
+   * accepts, 1 to 213, across all ten versions: versions 7 to 10 drew codes
+   * that decoded as nothing until their version information was written, and
+   * every structural assertion above passed over them.
+   */
+  it('decodes every length the encoder accepts, in every version', () => {
+    const versions = new Set<number>();
+    const unread: number[] = [];
+    for (let length = 1; length <= 213; length++) {
+      const text = 'x'.repeat(length);
+      const matrix = encodeQr(text);
+      expect(matrix, `refused ${length} bytes`).toBeDefined();
+      versions.add(matrix!.version);
+      const { data, side } = qrPixels(matrix!);
+      if (jsQR(data, side, side)?.data !== text) unread.push(length);
+    }
+    expect(unread).toEqual([]);
+    expect([...versions].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(encodeQr('x'.repeat(214))).toBeUndefined();
+  });
+
+  it('decodes text that is not ASCII, and a Wi-Fi code with its escapes', () => {
+    for (const text of ['Café — Wi-Fi für Gäste', 'WIFI:T:WPA;S:Home\;Net;P:pa\:ss\\word;;']) {
+      const { data, side } = qrPixels(encodeQr(text)!);
+      expect(jsQR(data, side, side)?.data).toBe(text);
+    }
+  });
+
+  it('writes the version information the standard publishes', () => {
+    // ISO/IEC 18004 Annex D: version 7 is 0x07C94, version 10 is 0x0A4D3.
+    expect(versionBits(7)).toBe(0x07c94);
+    expect(versionBits(10)).toBe(0x0a4d3);
   });
 });

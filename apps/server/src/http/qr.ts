@@ -248,7 +248,39 @@ function buildGrid(version: number): Grid {
   reserveFormat(grid, size);
   // After the reservation, which sweeps the column this sits in.
   (grid[size - 8] as (0 | 1 | null)[])[8] = 1;
+
+  /*
+   * Version information, from version 7 up: the version and its BCH(18,6)
+   * code, in two 6x3 blocks beside the top-right and bottom-left finders,
+   * least-significant bit first. Written here, before the data, so placing the
+   * data and masking it both step round it.
+   *
+   * **Every version 7 to 10 code this encoder drew before this was unreadable**
+   * — 107 bytes and up, 0 of 107 decoded by an independent reader — because
+   * these blocks were never written. A pairing link is about 90 bytes, version
+   * 5, so nothing that existed then reached it; a Wi-Fi code with a long
+   * password does. Found by decoding with `jsqr` rather than by looking: the
+   * finders, the timing and the alignment patterns were all correct, which is
+   * every check a person can make.
+   */
+  if (version >= 7) {
+    const bits = versionBits(version);
+    for (let index = 0; index < 18; index++) {
+      const bit = ((bits >> index) & 1) as 0 | 1;
+      const across = size - 11 + (index % 3);
+      const down = Math.floor(index / 3);
+      (grid[down] as (0 | 1 | null)[])[across] = bit;
+      (grid[across] as (0 | 1 | null)[])[down] = bit;
+    }
+  }
   return grid;
+}
+
+/** A version's 18-bit version information: six bits of version and a BCH(18,6) code (generator 0x1F25). */
+export function versionBits(version: number): number {
+  let remainder = version;
+  for (let index = 0; index < 12; index++) remainder = (remainder << 1) ^ ((remainder >>> 11) * 0x1f25);
+  return (version << 12) | remainder;
 }
 
 const MASKS: readonly ((row: number, column: number) => boolean)[] = [
