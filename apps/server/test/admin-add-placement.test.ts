@@ -158,6 +158,8 @@ const SCREENS: readonly ListScreen[] = [
   { path: '/admin/shifts', creates: ['admin/shifts/new'] },
   { path: '/admin/shifts/types', creates: ['admin/shifts/types', 'admin/shifts/types/preset'] },
   { path: '/admin/chores', creates: ['admin/chores'] },
+  // Plan items M5.1–M5.2: both kinds are added on one page, from one Add.
+  { path: '/admin/timers', creates: ['admin/timers', 'admin/messages'] },
   { path: '/admin/themes', creates: ['admin/themes', 'admin/themes/generate'] },
   { path: '/admin/walls', creates: ['admin/screens', 'admin/epaper'] },
   { path: '/admin/home-assistant/readings', creates: ['admin/home-assistant/entities'], house: true },

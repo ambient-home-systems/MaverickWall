@@ -3182,6 +3182,9 @@ const GROUPS: readonly NavGroup[] = [
       // Defining a chore is admin work; ticking one off is the wall's, and
       // deliberately not here (RFC 008).
       { key: 'chores', label: 'Chores', href: 'admin/chores', icon: 'chores' },
+      // Timers and messages (plan items M5.1–M5.2): the household's own, sent
+      // from a phone as often as from here, so they sit beside the chores.
+      { key: 'timers', label: 'Timers and messages', href: 'admin/timers', icon: 'timers' },
     ],
   },
   {

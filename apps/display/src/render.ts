@@ -11,7 +11,7 @@ import type {
   TodayShiftModel,
   TodoItemModel,
 } from './viewmodel.js';
-import { DISPLAY_LOCALE, localTime, needsHold, opensPanel } from './viewmodel.js';
+import { DISPLAY_LOCALE, localTime, needsHold, opensPanel, timerState } from './viewmodel.js';
 import {
   FACE_DIAL_PATH,
   FACE_HUB_PATH,
@@ -24,7 +24,7 @@ import type { PanelData, PanelReading } from './viewmodel.js';
 import type { ManifestWidget, CanvasBackground } from './manifest.js';
 import { glyphNode, glyphPartsNode, isGlyphKey } from './glyphs.js';
 import { emojiNode } from './emoji.js';
-import { lockLoop } from './motion.js';
+import { lockLoop, lockOnce, oneShotPhase } from './motion.js';
 import { MOTION_FIXTURE_TYPE, renderMotionFixture } from './motion-fixture.js';
 import { renderCountdown } from './countdown-looks.js';
 import { variantOf } from './variants.js';
@@ -1468,6 +1468,95 @@ function renderButtonsWidget(model: DisplayModel, config: unknown, widgetId = ''
   return grid;
 }
 
+/** How long a timer's last minute is, which the seconds reel counts down. */
+export const TIMER_LAST_MINUTE_MS = 60_000;
+
+/**
+ * The last minute of a timer, counted in seconds (MQ4): a reel of "60 s" to
+ * "0 s" stacked in a window one line tall, stepped up a line a second by the
+ * scoped block in `display.css` and locked to the timer's own end instant by
+ * `motion.ts` — so a wall rebuilt mid-minute carries on from the right second,
+ * and two walls side by side say the same thing. "Under a minute" sits behind
+ * it and is what a wall shows where motion is not allowed (reduced motion, or
+ * the wall's own Motion switch off, or an admin preview): the reel is invisible
+ * until the scoped block shows it, so a still wall never draws a frozen number.
+ */
+function lastMinuteNode(endsAt: number, now: number): HTMLElement {
+  const left = el('span', 'tm-left tm-left-reel');
+  const still = el('span', 'tm-still', 'Under a minute');
+  const reel = el('span', 'tm-reel');
+  reel.setAttribute('aria-hidden', 'true');
+  const strip = el('span', 'tm-strip');
+  for (let second = 60; second >= 0; second -= 1) strip.appendChild(el('span', 'tm-sec', `${second} s`));
+  reel.appendChild(strip);
+  left.appendChild(still);
+  left.appendChild(reel);
+  const phase = oneShotPhase(endsAt - TIMER_LAST_MINUTE_MS, TIMER_LAST_MINUTE_MS, now);
+  lockOnce(strip, TIMER_LAST_MINUTE_MS, phase);
+  lockOnce(still, TIMER_LAST_MINUTE_MS, phase);
+  return left;
+}
+
+/**
+ * A Timers widget (plan item M5.1): each running timer and how long it has
+ * left, in minutes (MQ4), its last minute in seconds, and "Done" once it ends.
+ * Everything comes from the timer's end instant and the wall's own clock, so a
+ * wall that loses the server finishes the count. A finished timer carries a
+ * Clear button only where this wall may clear one (MD7); a running one never
+ * does, here — ending it is the phone's or the admin's.
+ */
+function renderTimersWidget(model: DisplayModel): HTMLElement {
+  if (model.timers.length === 0) return el('div', 'cd-empty', 'No timers running.');
+  const list = el('section', 'tm');
+  for (const timer of model.timers) {
+    const state = timerState(timer, model.now);
+    const row = el('div', `tm-row tm-${state.phase}`);
+    row.setAttribute('data-timer', timer.key);
+    row.appendChild(el('span', 'tm-label', timer.label ?? 'Timer'));
+    row.appendChild(
+      state.phase === 'last-minute' ? lastMinuteNode(timer.endsAt, model.now) : el('span', 'tm-left', state.words),
+    );
+    if (state.phase === 'done' && model.allowClear) {
+      const clear = el('button', 'tm-clear', 'Clear');
+      clear.setAttribute('type', 'button');
+      clear.setAttribute('data-timer-clear', timer.key);
+      clear.setAttribute('aria-label', `Clear the ${timer.label ?? ''} timer`.replace('  ', ' '));
+      row.appendChild(clear);
+    }
+    list.appendChild(row);
+  }
+  return list;
+}
+
+/**
+ * A Messages widget (plan item M5.2): each message, newest first, with how
+ * long ago it was sent. The text is the household's own, through the model's
+ * sanitiser and `textContent`. An expired one is gone by the wall's own clock.
+ * A Clear button only where this wall may clear one (MD7).
+ */
+function renderMessagesWidget(model: DisplayModel): HTMLElement {
+  if (model.messages.length === 0) return el('div', 'cd-empty', 'No messages.');
+  const list = el('section', 'ms');
+  for (const message of model.messages) {
+    const row = el('div', 'ms-row');
+    row.setAttribute('data-message', message.key);
+    const words = el('span', 'ms-words');
+    words.appendChild(el('span', 'ms-text', message.text));
+    const ago = changedWords(message.postedAt, model.now);
+    if (ago !== undefined) words.appendChild(el('span', 'ms-ago', ago));
+    row.appendChild(words);
+    if (model.allowClear) {
+      const clear = el('button', 'ms-clear', 'Clear');
+      clear.setAttribute('type', 'button');
+      clear.setAttribute('data-message-clear', message.key);
+      clear.setAttribute('aria-label', 'Clear this message');
+      row.appendChild(clear);
+    }
+    list.appendChild(row);
+  }
+  return list;
+}
+
 /* --------------------------------------------------------------- NEXT ---- */
 
 function renderDayRow(day: DayModel, showWeather = false, showShifts = true, showLocations = false): HTMLElement {
@@ -2383,6 +2472,10 @@ export function renderWidget(
       return renderTodoWidget(model, config, widgetId);
     case 'buttons':
       return renderButtonsWidget(model, config, widgetId);
+    case 'timers':
+      return renderTimersWidget(model);
+    case 'messages':
+      return renderMessagesWidget(model);
     case 'chores':
       return renderChoresWidget(model, config);
     case 'image':

@@ -257,6 +257,7 @@ export interface Manifest {
      * server older than the switch, and when it is off — the read-only wall.
      */
     readonly allowControl?: boolean;
+    readonly allowClear?: boolean;
     /**
      * How large this screen is and how far away it is read from, in
      * millimetres — facts, never a size the server derived. All three or none

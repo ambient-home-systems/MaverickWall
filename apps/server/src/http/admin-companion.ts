@@ -24,8 +24,9 @@ import { selfHref } from './self.js';
 const SCREEN = 'Phone and automations';
 
 const WHAT_IT_CAN_DO =
-  'Anyone holding it can add items to the to-do lists you chose under To-do lists, ' +
-  'and nothing else: it cannot read them, tick them off, change a setting or sign in.';
+  'Anyone holding it can add items to the to-do lists you chose under To-do lists, start ' +
+  'and end timers, and send and clear messages on your walls — and nothing else: it cannot ' +
+  'read your lists, tick them off, change a setting or sign in.';
 
 const QUERY_CAUTION =
   'If your app cannot send a header, put the token on the end of the address as ' +
@@ -155,24 +156,38 @@ export function registerCompanionAdminRoutes(app: Hono, deps: AdminDeps): void {
     // The address a phone reaches, by `pairPage`'s rule: under ingress the
     // request's own origin is the supervisor's internal one.
     const origin = (ingressPath(c) !== '' ? deps.baseUrl : new URL(c.req.url).origin).replace(/\/+$/, '');
-    const endpoint = `${origin}/companion/todo/add`;
     const lists = readTodoLists(deps.db);
     const example = lists[0] === undefined ? 'Shopping' : todoListTitle(lists[0]);
-    const curl =
-      `curl -X POST ${endpoint} \\\n` +
+    const curl = (path: string, body: unknown): string =>
+      `curl -X POST ${origin}${path} \\\n` +
       `  -H "Authorization: Bearer YOUR_TOKEN" \\\n` +
       `  -H "Content-Type: application/json" \\\n` +
-      `  -d '${JSON.stringify({ list: example, item: 'Milk' })}'`;
+      `  -d '${JSON.stringify(body)}'`;
+    const code = (text: string): string => `<pre class="code">${escapeHtml(text)}</pre>`;
     return section(
       'Add to a to-do list',
       'Send a POST with the list’s name and the item. Leave “list” out when you have only one.',
-      `<pre class="code">${escapeHtml(curl)}</pre>` +
+      code(curl('/companion/todo/add', { list: example, item: 'Milk' })) +
         `<p class="hint">${escapeHtml(QUERY_CAUTION)}</p>` +
         (lists.length === 0
           ? `<p>No to-do lists have been added yet. <a class="link" href="admin/home-assistant/lists">Add one on To-do lists</a>.</p>`
           : `<p>The lists it can add to: ${lists.map((list) => `“${escapeHtml(todoListTitle(list))}”`).join(', ')}. ` +
             `<a class="link" href="admin/home-assistant/lists">Change them on To-do lists</a>.</p>`),
-    );
+    ) +
+      section(
+        'Timers',
+        'Start one with “minutes” or “seconds” and an optional “label”. End one by its “label”, ' +
+          'by the “id” the start answered with, or send “all”: true. A Timers widget on a wall counts it down.',
+        code(curl('/companion/timers', { minutes: 10, label: 'Pasta' })) +
+          code(curl('/companion/timers/end', { label: 'Pasta' })),
+      ) +
+      section(
+        'Messages',
+        'Send the “text”, and for how many “minutes” to show it — an hour when left out, a day at most. ' +
+          'Clear one by its “id”, or send “all”: true. A Messages widget on a wall shows it.',
+        code(curl('/companion/messages', { text: 'Back at 6', minutes: 90 })) +
+          code(curl('/companion/messages/clear', { all: true })),
+      );
   }
 
   function companionPage(c: Context): string {
@@ -185,7 +200,8 @@ export function registerCompanionAdminRoutes(app: Hono, deps: AdminDeps): void {
       back: { label: 'System', href: 'admin/system' },
       saved: readSaved(c),
       intro:
-        'A token lets a phone shortcut or an automation add to your to-do lists without signing in. ' +
+        'A token lets a phone shortcut or an automation add to your to-do lists, start timers and ' +
+        'send messages without signing in. ' +
         'It belongs to your account, and there is one at a time.',
       body: tokenCard(c) + usage(c),
     });

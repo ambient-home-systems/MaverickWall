@@ -383,7 +383,8 @@ describe('the sidebar is grouped by subject', () => {
     const groups = navGroups(await h.text('/admin/calendars'));
     expect(groups).toEqual([
       { label: null, items: ['Overview'] },
-      { label: 'Household', items: ['Calendars', 'People', 'Work Schedule', 'Chores'] },
+      // Timers and messages since plan items M5.1–M5.2: the household's own, beside the chores.
+      { label: 'Household', items: ['Calendars', 'People', 'Work Schedule', 'Chores', 'Timers and messages'] },
       // Buttons since RFC 018 phase 5: webhook buttons, an integration with anything.
       { label: 'Integrations', items: ['Weather', 'Home Assistant', 'Buttons', 'Outside temperature', 'Store'] },
       { label: 'Walls', items: ['Walls', 'Themes'] },

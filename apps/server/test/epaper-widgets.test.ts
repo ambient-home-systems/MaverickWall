@@ -73,7 +73,7 @@ describe('every widget type renders', () => {
       { date: '2026-08-13', shifts: [], events: [{ id: 'e', uid: 'e', title: 'Dentist', startsAt: Date.UTC(2026, 7, 13, 9), endsAt: 0, allDay: false, sourceId: 's', color: '#000', status: 'confirmed', continues: false }] },
     ]),
   );
-  const types = ['clock', 'calendar', 'shift', 'countdown', 'notes', 'todo', 'weather', 'homeassistant', 'external', 'image', 'buttons', 'nonsense'];
+  const types = ['clock', 'calendar', 'shift', 'countdown', 'notes', 'todo', 'weather', 'homeassistant', 'external', 'image', 'buttons', 'timers', 'messages', 'nonsense'];
 
   for (const type of types) {
     it(`draws ${type} without throwing and puts ink in its box`, () => {

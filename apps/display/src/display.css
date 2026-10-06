@@ -1449,6 +1449,44 @@ body {
 /* After the focus ring, so a held button shows the hold and not the focus. */
 .bt-act[data-holding] { outline: 0.35rem solid var(--accent); outline-offset: 0.25rem; }
 .bt-note { grid-column: 1 / -1; }
+/*
+ * Timers and messages (plan items M5.1–M5.2): a list of lines in the event
+ * role, like the to-do list. A finished timer takes the accent, the one thing
+ * on the row that changed. A Clear button is a real control, with the focus
+ * rings every operable thing on the wall has and a 44px target.
+ */
+.tm,
+.ms { display: flex; flex-direction: column; gap: var(--s2); min-width: 0;
+  font-size: var(--t-wall-event, var(--t-event)); line-height: 1.15; }
+.tm-row,
+.ms-row { display: flex; align-items: baseline; gap: var(--s3); min-width: 0; }
+.tm-label { flex: 1 1 auto; min-width: 0; font-weight: 600; color: var(--ink-event, var(--ink));
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tm-left { flex: 0 0 auto; color: var(--muted); white-space: nowrap; }
+.tm-done .tm-left { color: var(--accent); font-weight: 700; }
+.ms-words { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.ms-text { color: var(--ink-event, var(--ink)); overflow-wrap: break-word; }
+.ms-ago { color: var(--ink-quiet, var(--muted)); font-size: 0.75em; }
+.tm-clear,
+.ms-clear { flex: 0 0 auto; align-self: center; min-height: 44px; min-width: 44px; padding: 0 var(--s3);
+  font: inherit; font-size: 0.8em; font-weight: 600; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--rule); border-radius: var(--radius, 0.4rem); cursor: pointer;
+  -webkit-appearance: none; appearance: none; }
+.tm-clear:focus,
+.tm-clear:focus-visible,
+.ms-clear:focus,
+.ms-clear:focus-visible { outline: 0.2rem solid var(--accent); outline-offset: 0.25rem; }
+/*
+ * The last minute's reel (MQ4): a window one line tall over "Under a minute",
+ * holding a column of seconds. Invisible at rest, so a still wall — reduced
+ * motion, the Motion switch off, an admin preview — shows the words and never
+ * a frozen number; the scoped block below shows it and hides the words.
+ */
+.tm-left-reel { position: relative; display: inline-block; }
+.tm-reel { position: absolute; left: 0; right: 0; top: 0; height: 1.15em; overflow: hidden; }
+.tm-strip { display: flex; flex-direction: column; opacity: 0; }
+.tm-sec { display: block; height: 1.15em; line-height: 1.15; color: var(--accent); font-weight: 700; }
+
 /* A press that did not go through, in the box it was pressed in. A grid of
    tiles gives it the whole row. */
 .ht-act-note { grid-column: 1 / -1; }
@@ -4534,6 +4572,30 @@ body {
   .canvas[data-motion="on"] .cdp-leaf.fx-playing {
     animation-name: cd-page-tear;
     animation-timing-function: ease-in;
+    animation-fill-mode: both;
+  }
+  /*
+   * A timer's last minute (MQ4): the reel steps up one line a second for sixty
+   * seconds, from "60 s" to "0 s", locked to the timer's end instant by
+   * `motion.ts`; the words under it fade out for the same minute. Both hold
+   * their last frame until the next draw says Done.
+   */
+  @keyframes tm-count {
+    from { opacity: 1; transform: translateY(0); }
+    to { opacity: 1; transform: translateY(calc(-60 * 1.15em)); }
+  }
+  @keyframes tm-still-hide {
+    from { opacity: 0; }
+    to { opacity: 0; }
+  }
+  .canvas[data-motion="on"] .tm-strip.fx-playing {
+    animation-name: tm-count;
+    animation-timing-function: steps(60, end);
+    animation-fill-mode: both;
+  }
+  .canvas[data-motion="on"] .tm-still.fx-playing {
+    animation-name: tm-still-hide;
+    animation-timing-function: linear;
     animation-fill-mode: both;
   }
   /* A board's flap, only where its digit changed: the old half folds down. */

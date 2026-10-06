@@ -156,6 +156,10 @@ function manifest(): Manifest {
           { key: 'wh-bbbbbbbbbbbb', label: 'Garden lights' },
         ],
       },
+      // A timer and a message (plan items M5.1–M5.2), so their widgets have
+      // lines to align and a title to sit over.
+      timers: { timers: [{ key: 'tm-aaaaaaaaaaaa', label: 'Pasta', startedAt: 0, endsAt: 4102444800000 }] },
+      messages: { messages: [{ key: 'ms-aaaaaaaaaaaa', text: 'Back at 6', postedAt: 0, expiresAt: 4102444800000 }] },
     },
   } as unknown as Manifest;
 }
@@ -239,6 +243,8 @@ const BASES: Readonly<Record<string, readonly Record<string, unknown>[]>> = {
   external: [{ module: 'mymod' }],
   image: [{ image: `${'a'.repeat(64)}.png` }],
   buttons: [{}],
+  timers: [{}],
+  messages: [{}],
   // Both a row and a grid, because `columns` can only move ink on a grid —
   // probed from a row alone it would have "proved" the key is not honoured.
   group: [{ layout: 'row' }, { layout: 'grid' }],

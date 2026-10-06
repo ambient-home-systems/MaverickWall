@@ -275,11 +275,16 @@ describe('upgrading a database that is already in use', () => {
 
     for (const entry of entries.filter((entry) => entry.tag >= '0056')) apply(db, entry.tag);
 
+    // And 0060's switch for clearing timers and messages (MD7), off on every
+    // wall that existed, for the same reason: nobody asked for it there.
     expect(
       db
-        .prepare(`SELECT allow_control AS allowControl, allow_todo AS allowTodo FROM screens WHERE id = 'scr-hall'`)
+        .prepare(
+          `SELECT allow_control AS allowControl, allow_todo AS allowTodo, allow_clear AS allowClear
+             FROM screens WHERE id = 'scr-hall'`,
+        )
         .get(),
-    ).toEqual({ allowControl: 0, allowTodo: 1 });
+    ).toEqual({ allowControl: 0, allowTodo: 1, allowClear: 0 });
     expect(
       db
         .prepare(`SELECT entity_id, watched, label, sort_order, controllable FROM ha_entity_cache`)

@@ -1288,7 +1288,7 @@ export function readAdminScreens(db: SqliteDatabase): AdminScreenRow[] {
     .prepare(
       `SELECT id, name, token_hash AS tokenHash, theme, revoked_at AS revokedAt,
               orientation, rotation, allow_dismiss AS allowDismiss, allow_chores AS allowChores,
-              allow_todo AS allowTodo, allow_control AS allowControl,
+              allow_todo AS allowTodo, allow_control AS allowControl, allow_clear AS allowClear,
               lan_only AS lanOnly, timezone,
               kind, panel_width AS panelWidth, panel_height AS panelHeight,
               panel_colour AS panelColour,
@@ -1348,6 +1348,8 @@ export interface ScreenSettings {
    * a light is not the same risk as ticking a list.
    */
   readonly allowControl: boolean;
+  /** Whether this screen may clear a finished timer or a message (MD7). */
+  readonly allowClear: boolean;
   /** How much this wall shows; null on any follows the household default. */
   readonly displayTodayEvents: number | null;
   readonly displayNextDays: number | null;
@@ -1415,7 +1417,7 @@ export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSet
         `UPDATE screens
             SET name = ?, orientation = ?, rotation = ?, theme = ?, timezone = ?,
                 daytime_theme = ?, daytime_starts_at = ?, daytime_ends_at = ?,
-                allow_dismiss = ?, allow_chores = ?, allow_todo = ?, allow_control = ?,
+                allow_dismiss = ?, allow_chores = ?, allow_todo = ?, allow_control = ?, allow_clear = ?,
                 display_today_events = ?, display_next_days = ?, display_horizon_weeks = ?,
                 clock_24 = ?,
                 panel_width_mm = ?, panel_height_mm = ?, read_distance_mm = ?,
@@ -1426,7 +1428,7 @@ export function writeScreenSettings(db: SqliteDatabase, id: string, s: ScreenSet
       .run(
         s.name, s.orientation, s.rotation, s.theme, s.timezone,
         s.daytimeTheme, s.daytimeStartsAt, s.daytimeEndsAt,
-        s.allowDismiss ? 1 : 0, s.allowChores ? 1 : 0, s.allowTodo ? 1 : 0, s.allowControl ? 1 : 0,
+        s.allowDismiss ? 1 : 0, s.allowChores ? 1 : 0, s.allowTodo ? 1 : 0, s.allowControl ? 1 : 0, s.allowClear ? 1 : 0,
         s.displayTodayEvents, s.displayNextDays, s.displayHorizonWeeks,
         s.clock24, s.panelWidthMm, s.panelHeightMm, s.readDistanceMm,
         s.layoutGutter, s.layoutStyle, s.motion, s.widgetGround,
@@ -2235,6 +2237,8 @@ export interface ScreenRow {
    * refuse every press on a wall that was allowed.
    */
   readonly allowControl: number;
+  /** Whether this screen may clear a finished timer or a message (MD7); named in the `SELECT` for `allowTodo`'s reason. */
+  readonly allowClear: number;
   /** Whether `/d/epaper/:file` refuses a connection from off the LAN (Option C). */
   readonly lanOnly: number;
   /** Per-screen display overrides; null follows the household. */
@@ -2290,7 +2294,7 @@ export function readScreens(db: SqliteDatabase): ScreenRow[] {
     .prepare(
       `SELECT id, name, token_hash AS tokenHash, theme, revoked_at AS revokedAt,
               orientation, rotation, allow_dismiss AS allowDismiss, allow_chores AS allowChores,
-              allow_todo AS allowTodo, allow_control AS allowControl,
+              allow_todo AS allowTodo, allow_control AS allowControl, allow_clear AS allowClear,
               lan_only AS lanOnly, timezone,
               kind, panel_width AS panelWidth, panel_height AS panelHeight,
               panel_colour AS panelColour,

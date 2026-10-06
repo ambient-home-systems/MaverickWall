@@ -75,8 +75,9 @@ configure first, no account to create anywhere else, no key to paste.
   for an advisory, the whole screen for a severe warning, and for an Extreme
   warning it can light a screen that has gone dark.
 - **Arrange the wall yourself.** Drag the calendar, a clock, the forecast, a
-  shift badge, Home Assistant readings, notes, a to-do list, a countdown or a
-  photograph anywhere in the layout — or start from a design and move things
+  shift badge, Home Assistant readings, notes, a to-do list, a countdown, the
+  timers and messages you send from your phone, or a photograph anywhere in the
+  layout — or start from a design and move things
   around. Each browser wall owns its portrait and landscape layouts and its
   theme. [How Walls, designs and themes fit together](docs/walls.md).
 - **eInk panels.** A wifi or battery e-paper panel can show the same wall in
@@ -174,8 +175,9 @@ be limited to reading, so the limit lives on this side instead:
   thing, and whether it worked.
 - A phone shortcut or an automation can add an item to a to-do list you chose
   (`todo.add_item`), with a companion token you make under System › Phone and
-  automations — never from a wall. The token can do that and nothing else, and
-  you can replace it or turn it off there.
+  automations — never from a wall. The same token can start and end timers and
+  send and clear messages on your walls, and it can do nothing else; you can
+  replace it or turn it off there.
 - It can **never** unlock a door, disarm an alarm, change a thermostat, or open
   a garage, gate, door or window. Those are not in the frozen table of actions
   this application may take, and a test asserts nothing leaves that table.

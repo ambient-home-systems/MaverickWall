@@ -155,6 +155,12 @@ export const SAVED_MESSAGES = {
   'button-pressable': 'Walls with operating allowed can now press it.',
   'button-not-pressable': 'Walls can no longer press it.',
   'button-removed': 'Button removed.',
+  // Timers and messages (plan items M5.1–M5.2). "On the walls" only where a
+  // widget draws them — so the strip says it was started, not that it shows.
+  'timer-started': 'Timer started. A Timers widget on a wall counts it down.',
+  'timer-ended': 'Timer ended.',
+  'message-posted': 'Message sent. A Messages widget on a wall shows it until it expires.',
+  'message-cleared': 'Message cleared.',
   // The companion token (plan item M2.1).
   'companion-created': 'Token made. Show it below to copy it into your shortcut.',
   'companion-replaced': 'Token replaced. The old one no longer works.',

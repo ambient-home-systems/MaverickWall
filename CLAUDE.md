@@ -3684,6 +3684,65 @@ new row is meant to be there, and the list now names it.
 **Still unproven where it counts:** nobody has added an item from a real
 iPhone, and no real Home Assistant has been asked.
 
+**Timers and messages, from a phone, on the wall (plan items M2.2 except
+Todoist, M5.1 and M5.2, decisions MD7 and MQ4).** A timer is an end instant and
+nothing more. The manifest carries `startedAt` and `endsAt` in a `timers` panel,
+and the wall works out everything else from its corrected clock, so it finishes
+the count with the server gone. Nothing runs when a timer ends: there is no job
+that fires and nothing to miss. A message carries its own `expiresAt`, and both
+the server and the wall drop it at that instant, so a wall drawing from
+IndexedDB does not go on saying "Back at 6" at nine.
+
+Both are household-wide rows in tables of their own (migration `0060`: two
+`CREATE TABLE`s and `screens.allow_clear`, generated and then read), started
+from the companion API or the new **Timers and messages** page. Each is a panel
+module whose `ready` is "any row". `ready` is asked without a clock, so a
+minute-long tidy job deletes what has finished, and in that minute the panel is
+simply empty. With nothing running the widget is left out like any other, and
+its `whenEmpty` fallback is what the box shows most of the day.
+
+Five rules carry the design:
+
+- **Minutes, then a reel (MQ4).** A wall that redraws every fifteen seconds
+  cannot keep a seconds count honest, so a timer says "4 min left", rounded up
+  so it never claims a minute fewer than there is. Its last minute is a column
+  of "60 s" to "0 s" in a one-line window, stepped by a `steps(60, end)`
+  keyframe that moves only `transform`. It is locked by `motion.ts`'s
+  `oneShotPhase` to the timer's own end instant rather than to the draw, so a
+  rebuilt wall carries on from the right second. The reel is invisible at rest,
+  so a still wall shows "Under a minute" and never a frozen number.
+  `render.ts` names none of the forbidden words.
+- **Done, then gone.** A finished timer says Done for thirty minutes
+  (`DONE_SHOWN_MS`, which the display transcribes for its offline filter) and
+  then leaves every wall at once.
+- **A wall clears only what has finished (MD7).** `screens.allow_clear` is off
+  by default and checked before the body is read. A wall may clear a finished
+  timer or a message, and is refused a running timer with a sentence, because
+  a sleeve brushing past must not cancel dinner. Ending a running timer is the
+  phone's or the admin's.
+- **Limits are sentences.** There are at most four timers (Magic Frame's
+  number) and eight messages. A timer runs from ten seconds to a day, and a
+  message shows from a minute to a day. A duration out of range is a 400 from
+  the schema, not a 409 from the store, which is what the first run of the
+  tests caught. The label and the text are the household's own: refused with
+  control characters, drawn with `textContent`, and never logged.
+- **An e-paper panel says when, not how long.** A panel shows one picture for
+  up to an hour, so its line is "Pasta: ends 10:10" and then "Pasta: done",
+  decided by the frame's own `generatedAt`. The frame's ETag therefore moves
+  when a timer is added, cleared or finishes, and at no other minute.
+
+The companion API grew four routes behind one `admit` step (rate limits, token,
+body), and its admin page now says that the token can start and end timers and
+send and clear messages.
+
+**Measured.** 26 mutations were checked and all 26 are red. One first failed to
+compile rather than to pass, so it was rewritten to keep its parameter read.
+**5047 tests passing, and 1 skipped, over 344 files**: calendar 153 over 10 ·
+core 314 over 9 · display 915 over 51 · server 3665 over 274, measured with
+`pnpm test` and a real Chromium, every file green on the first full run.
+**Still unproven where it counts:** nobody has started a timer from a real
+phone or watched one finish on a kitchen wall.
+
 **Rule 12 changed, and the interesting part is how many places said otherwise
 (RFC 012 phase 1).** The rule is no longer "READ-ONLY, no service calls": it
 permits one *write*, `todo.update_item`, and the read it needs. Nothing writes

@@ -870,6 +870,12 @@ export const WIDGET_TIERS: Readonly<Record<string, readonly WidgetTier[]>> = {
    * to-do list's table rather than a copy of it that could drift.
    */
   buttons: TODO_TIERS,
+  /*
+   * Timers and messages (plan items M5.1–M5.2) are lists of lines in the event
+   * role too, so they read the same table rather than a copy of it.
+   */
+  timers: TODO_TIERS,
+  messages: TODO_TIERS,
 };
 
 /**

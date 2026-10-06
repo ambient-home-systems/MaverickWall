@@ -1,6 +1,6 @@
 # Plan: parity with Magic Frame
 
-**Status: in progress.** RFC 018 (M6.0) is built, and so are the companion token and its Home Assistant to-do add (M2.1, part of M2.2); everything else is planned. On 2026-10-05 the owner asked for a
+**Status: in progress.** RFC 018 (M6.0) is built, and so are the companion token, its Home Assistant to-do add, and timers and messages (M2.1, M2.2 but Todoist, M5.1, M5.2); everything else is planned. On 2026-10-05 the owner asked for a
 competitive review of [Magic Frame](https://github.com/jeremiaa/magic-frame)
 against Maverick Wall, then a deeper look at its custom widgets and its
 backgrounds. This document is that review, the decisions taken on it, and the
@@ -131,7 +131,7 @@ Magic Frame's features exist in a form we cannot ship as it is.
 | ID | Item | Size | What it must respect |
 | --- | --- | --- | --- |
 | M2.1 | A per-account companion token: show, copy, rotate. **Built**: System › Phone and automations; `mwc_` tokens, sealed beside their hash. | S | Sealed at rest; redacted in logs and the diagnostics export (rule 6). `Authorization: Bearer` preferred; `?key=` accepted for iOS Shortcuts, with a warning that addresses end up in logs. Rate-limited. |
-| M2.2 | Endpoints: start and end timers, post and clear messages, add to a Todoist list or a Home Assistant to-do list. **The Home Assistant to-do add is built** (`POST /companion/todo/add`); timers, messages and Todoist are not. | M | Zod at every boundary. Adding to an HA list is `todo.add_item`, which RFC 018 permits from this API only (MD10), so that half waits on RFC 018's phase 1, which adds its allowlist row; Todoist works without it. |
+| M2.2 | Endpoints: start and end timers, post and clear messages, add to a Todoist list or a Home Assistant to-do list. **Built except Todoist**: the Home Assistant to-do add (`POST /companion/todo/add`), and timers and messages (`/companion/timers`, `/companion/timers/end`, `/companion/messages`, `/companion/messages/clear`). | M | Zod at every boundary. Adding to an HA list is `todo.add_item`, which RFC 018 permits from this API only (MD10), so that half waits on RFC 018's phase 1, which adds its allowlist row; Todoist works without it. |
 | M2.3 | Display-control endpoints with the token: refresh, show a layout, next picture. | S | The same handlers as M1.2–M1.4. |
 | M2.4 | Documented recipes: iOS Shortcuts and Home Assistant `rest_command`. | S | In the docs site (M9.1). |
 
@@ -139,8 +139,8 @@ Magic Frame's features exist in a form we cannot ship as it is.
 
 | ID | Item | Size | What it must respect |
 | --- | --- | --- | --- |
-| M5.1 | **Timers**: started from a phone, an automation or the admin; countdown, "done" state. | M | The end instant travels in the manifest and the wall computes the rest, so it works offline. Dismiss on the wall behind a per-wall switch (MD7). Seconds versus the 15 s rebuild: MQ4. |
-| M5.2 | **Messages**: short notes from a phone that expire on their own. | S | The same per-wall dismiss switch as timers. Drawn with `textContent`, capped and sanitised. |
+| M5.1 | **Timers**: started from a phone, an automation or the admin; countdown, "done" state. **Built**: a Timers widget, minutes then a phase-locked seconds reel, Done for 30 minutes; Timers and messages in the admin. | M | The end instant travels in the manifest and the wall computes the rest, so it works offline. Dismiss on the wall behind a per-wall switch (MD7). Seconds versus the 15 s rebuild: MQ4. |
+| M5.2 | **Messages**: short notes from a phone that expire on their own. **Built**: a Messages widget; an hour unless told otherwise, a day at most. | S | The same per-wall dismiss switch as timers. Drawn with `textContent`, capped and sanitised. |
 | M5.3 | **QR code**: guest Wi-Fi, a link or text. | S | Reuses `http/qr.ts`; verified by decoding, never by looking. One bit is a natural fit, so the panel draws it too. |
 | M5.4 | **Text / heading** widget with optional divider and glyph. | S | Style lane for size and face; household text in the device font (Q9). |
 | M5.5 | **RSS headlines**, list or one at a time, with a QR to read on a phone. | M | Fetched by the server through the SSRF-guarded fetcher; nothing on the wall is a link. Needs an XML parser in `apps/server`. |

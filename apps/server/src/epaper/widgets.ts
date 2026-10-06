@@ -2273,6 +2273,50 @@ function buttonNames(panel: unknown, config: Config): readonly string[] {
   return names;
 }
 
+/**
+ * A Timers widget's lines on a panel (plan item M5.1): each timer's label and
+ * when it ends, or that it is done, as of the frame's own time. Never "4 min
+ * left" — a panel shows one picture for up to an hour, and a count it cannot
+ * keep would be wrong for most of it; a clock time stays true. The words are
+ * what the ETag hashes, so a frame changes when a timer is added, cleared, or
+ * finishes, and at no other minute.
+ */
+function timerLines(manifest: Manifest): readonly string[] {
+  const raw = manifest.panels['timers'];
+  const list = typeof raw === 'object' && raw !== null ? (raw as { timers?: unknown }).timers : undefined;
+  if (!Array.isArray(list)) return [];
+  const clock = new Intl.DateTimeFormat('en-GB', {
+    timeZone: manifest.timezone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const lines: string[] = [];
+  for (const entry of list.slice(0, 4)) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const { label, endsAt } = entry as { label?: unknown; endsAt?: unknown };
+    if (typeof endsAt !== 'number' || !Number.isFinite(endsAt)) continue;
+    const name = typeof label === 'string' && label !== '' ? label : 'Timer';
+    lines.push(endsAt <= manifest.generatedAt ? `${name}: done` : `${name}: ends ${clock.format(new Date(endsAt))}`);
+  }
+  return lines;
+}
+
+/** A Messages widget's lines on a panel (plan item M5.2): each message's text, newest first. */
+function messageLines(manifest: Manifest): readonly string[] {
+  const raw = manifest.panels['messages'];
+  const list = typeof raw === 'object' && raw !== null ? (raw as { messages?: unknown }).messages : undefined;
+  if (!Array.isArray(list)) return [];
+  const lines: string[] = [];
+  for (const entry of list.slice(0, 8)) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const { text, expiresAt } = entry as { text?: unknown; expiresAt?: unknown };
+    if (typeof text !== 'string' || typeof expiresAt !== 'number' || expiresAt <= manifest.generatedAt) continue;
+    lines.push(text);
+  }
+  return lines;
+}
+
 export function panelInput(type: string, manifest: Manifest, config: Config): PanelInput {
   const panels = manifest.panels;
   switch (type) {
@@ -2308,6 +2352,10 @@ export function panelInput(type: string, manifest: Manifest, config: Config): Pa
     // draws — does not refresh one (RFC 018 phase 5).
     case 'buttons':
       return { kind: 'panel', panel: buttonNames(panels['buttons'], config) };
+    case 'timers':
+      return { kind: 'panel', panel: timerLines(manifest) };
+    case 'messages':
+      return { kind: 'panel', panel: messageLines(manifest) };
     case 'homeassistant': {
       const panel = panels['home'] ?? panels['homeassistant'];
       /*
@@ -2405,6 +2453,22 @@ function drawWidget(
     }
     case 'image':
       return drawImage(fb, m, box, config);
+    case 'timers':
+    case 'messages': {
+      // The lines `panelInput` worked out, one a line; nothing to clear, since
+      // a panel has nothing to press (MD7 is a wall's).
+      const lines = input.kind === 'panel' && Array.isArray(input.panel) ? (input.panel as string[]) : [];
+      return drawLines(
+        fb,
+        m,
+        lines.length === 0
+          ? [type === 'timers' ? 'No timers running' : 'No messages']
+          : lines.map((line) => asciiTitle(line)),
+        box,
+        m.body,
+        alignOf(config),
+      );
+    }
     case 'buttons': {
       /*
        * A panel has nothing to tap (RFC 018 §10.1), so a Buttons widget draws
