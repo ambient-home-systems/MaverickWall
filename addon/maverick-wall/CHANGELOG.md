@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.78.0
+
 **Timers and messages on the wall, from your phone.** Start a timer — "Pasta,
 10 minutes" — or send a short message like "Back at 6" from an iOS Shortcut or
 an automation, with the companion token under **System › Phone and
