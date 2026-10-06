@@ -16,6 +16,14 @@
 
 ## Unreleased
 
+**A Heading widget.** Label a part of your wall in your own words: a heading,
+an optional second line under it, a picture beside it from the wall's own set,
+and a rule between the two if you like. Choose how large it may be (small,
+medium or large — never larger than the clock), whether it sits at the top,
+middle or bottom of its box, and capitals. Where the words do not fit, the
+second line gives way first, then the heading steps down a size. An e-paper
+wall draws it too. Find **Heading** under **Add widget**.
+
 ## 0.83.0
 
 **A QR code widget.** Put a code on a wall that a visitor's phone can scan: your

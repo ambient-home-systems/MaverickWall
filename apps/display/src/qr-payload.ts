@@ -1,7 +1,7 @@
 /**
  * What a QR code widget encodes, transcribed from the server's
  * `api/qr-payload.ts` (plan item M5.3), which says why there are two copies
- * and why the password travels. `qr-parity.test.ts` holds them to each other.
+ * and why the password travels. `transcription-parity.test.ts` holds them to each other.
  */
 
 /* qr-payload:begin */

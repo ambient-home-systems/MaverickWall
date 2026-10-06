@@ -35,6 +35,7 @@ import { childCells, groupChildren, topLevelWidgets } from './group-cells.js';
 import { applyStyleTokens, styleTokensOf } from './widget-style.js';
 import { encodeQr } from './qr.js';
 import { qrCaption, qrKind, qrPasswordLine, qrPayload } from './qr-payload.js';
+import { headingDivider, headingPlace, headingSecond, headingSizesFrom, headingText } from './heading.js';
 import { inkOn, readableHue, shiftTint } from './theme.js';
 import {
   HOUSE_ROLES,
@@ -2485,6 +2486,8 @@ export function renderWidget(
       return renderImageWidget(config, mediaBase);
     case 'qr':
       return renderQrWidget(config);
+    case 'heading':
+      return renderHeadingWidget(config);
     /*
      * The motion demonstration (plan P4.3) — a test fixture no server sends:
      * `WIDGET_TYPES` refuses it at the layout save and drops it from a stored
@@ -2496,6 +2499,41 @@ export function renderWidget(
     default:
       return undefined;
   }
+}
+
+/**
+ * The Heading widget (plan item M5.4): the household's own words as a label
+ * for a part of the wall — a heading, a glyph beside it, a rule and a second
+ * line — placed where they asked in the box.
+ *
+ * `textContent`, never markup, and the words as they were typed (Q9): in the
+ * theme's display face, with anything that face lacks drawn by the device's
+ * own. Its size is set by `tierHeading` once the box is laid out, from the
+ * three roles `display.css` names; here it starts at the size asked for.
+ */
+function renderHeadingWidget(config: unknown): HTMLElement {
+  const text = headingText(config);
+  const second = headingSecond(config);
+  const glyph = glyphNode(widgetConfig(config)['glyph'], 'hd-glyph gl');
+  if (text === undefined && second === undefined && glyph === null) {
+    return el('div', 'cd-empty', 'Type a heading in this widget’s options.');
+  }
+  const block = el('div', `hd hd-${headingPlace(config)}`);
+  block.dataset['size'] = headingSizesFrom(config)[0] as string;
+  if (text !== undefined || glyph !== null) {
+    const head = el('div', 'hd-head');
+    head.dataset['part'] = 'text';
+    if (glyph !== null) head.appendChild(glyph);
+    if (text !== undefined) head.appendChild(el('span', 'hd-text', text));
+    block.appendChild(head);
+  }
+  if (headingDivider(config)) block.appendChild(el('div', 'hd-rule'));
+  if (second !== undefined) {
+    const line = el('div', 'hd-second', second);
+    line.dataset['part'] = 'subtitle';
+    block.appendChild(line);
+  }
+  return block;
 }
 
 /**
@@ -3384,6 +3422,10 @@ function applyWidgetTiers(
       tierQr(entry);
       continue;
     }
+    if (entry.widget.type === 'heading') {
+      tierHeading(entry);
+      continue;
+    }
     // Home Assistant's `tile` look is a grid of its own markup with its own
     // table (P5.3); the list keeps `HOUSE_TIERS` below, untouched.
     if (entry.widget.type === 'homeassistant' && variantOf('homeassistant', entry.widget.config) === 'tile') {
@@ -3553,6 +3595,72 @@ function tierCountdown(entry: TieredWidget): void {
   stampTier(entry.box, tier, 1);
   stampRungs(entry.box, kept);
   beltItems(entry.box, [...entry.body.querySelectorAll<HTMLElement>('[data-part]')]);
+}
+
+/**
+ * A heading's form, from its box (plan item M5.4): the first of these that
+ * fits is kept — the size asked for with the second line, then without it,
+ * then a role smaller, and so on — so the box gives up words before it gives
+ * up points, the wall's own rule for a section that does not fit. A heading
+ * still too tall at the small size keeps the whole lines that fit and is cut
+ * between lines, never through one — and in a box without room for one whole
+ * line of the event role, it draws none.
+ *
+ * Measured off the drawn block at each size, because a heading wraps and how
+ * many lines it takes is a fact about the face and the box together. Read off
+ * the body rather than the box, which a title takes its own line of.
+ */
+function tierHeading(entry: TieredWidget): void {
+  const block = entry.body;
+  if (!block.classList.contains('hd')) return;
+  const second = block.querySelector<HTMLElement>('.hd-second');
+  /*
+   * The parts' own height, margins included, against the block's. Not the
+   * block's `scrollHeight`: the block centres its parts, and a centred flex
+   * column that overflows does so at both ends, of which `scrollHeight` sees
+   * only the bottom half — which is how the first version of the cut below
+   * kept a line too many and spilled.
+   */
+  const partsHeight = (except?: Element): number =>
+    [...block.children].reduce((sum, part) => {
+      if (part === except) return sum;
+      const style = getComputedStyle(part);
+      return sum + part.getBoundingClientRect().height + parseFloat(style.marginTop) + parseFloat(style.marginBottom);
+    }, 0);
+  const fits = (): boolean => partsHeight() <= block.clientHeight + 0.5;
+  let kept = false;
+  for (const size of headingSizesFrom(entry.widget.config)) {
+    block.dataset['size'] = size;
+    if (second !== null) block.appendChild(second);
+    if (fits()) {
+      kept = true;
+      break;
+    }
+    if (second !== null) {
+      second.remove();
+      if (fits()) {
+        kept = true;
+        break;
+      }
+    }
+  }
+  const head = block.querySelector<HTMLElement>('.hd-head');
+  if (!kept && head !== null) {
+    // Whole lines only: as many as fit beside everything else in the block,
+    // as a count of lines rather than a height, so the cut is between two.
+    const lineH = parseFloat(getComputedStyle(head).lineHeight);
+    const spare = block.clientHeight - partsHeight(head);
+    const lines = lineH > 0 ? Math.floor((spare + 0.5) / lineH) : 0;
+    if (lines >= 1) {
+      head.classList.add('is-cut');
+      head.style.setProperty('-webkit-line-clamp', String(lines));
+    } else {
+      // Not one whole line of the smallest role fits: a line cut through is a
+      // broken renderer, so the box draws none rather than half of one.
+      head.remove();
+    }
+  }
+  stampRungs(entry.box, [...block.querySelectorAll<HTMLElement>('[data-part]')].map((node) => node.dataset['part'] ?? ''));
 }
 
 /**

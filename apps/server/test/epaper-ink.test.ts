@@ -245,6 +245,9 @@ const BASES: Readonly<Record<string, readonly Record<string, unknown>[]>> = {
   buttons: [{}],
   timers: [{}],
   messages: [{}],
+  // A heading with a second line, so the rule and the line under it have
+  // something to move (plan item M5.4).
+  heading: [{ text: 'This week', subtitle: 'Bins on Tuesday' }],
   // Each of the three kinds of code (plan item M5.3), since a key about one of
   // them only moves the modules of that one.
   qr: [
@@ -369,6 +372,13 @@ const PROBES: Readonly<Record<string, readonly unknown[]>> = {
   // …and the second half's: which occasion, and where a bar counts from.
   occasion: ['birthday', 'new-year'],
   from: ['2026-06-01'],
+  // A heading's own (plan item M5.4): every non-default value of each.
+  subtitle: ['A different line'],
+  textSize: ['small', 'large'],
+  valign: ['top', 'bottom'],
+  glyph: ['clear', 'person'],
+  divider: [true],
+  uppercase: [true],
   // A QR code's own keys (plan item M5.3): each changes what the code carries,
   // and so its modules, on the kind it belongs to.
   ssid: ['Visitors'],

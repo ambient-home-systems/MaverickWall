@@ -3944,7 +3944,7 @@ does not know its type, and cannot misfire on another: only a QR code has an
 
 **The wall encodes for itself**, so the editor's preview shows the code being
 typed. The encoder and the payload builder are transcribed into the display
-between markers (`qr-encoder`, `qr-payload`) and `qr-parity.test.ts` holds them
+between markers (`qr-encoder`, `qr-payload`) and `transcription-parity.test.ts` holds them
 character for character, with the server's copy the spec. The code is one path
 in a square `viewBox` that holds its four-module quiet zone, so it is drawn at
 the shorter side of its room, centred, with `crispEdges`. **It is black on
@@ -3995,6 +3995,67 @@ vitest's default of five, and about two alone. It has a 30-second budget now
 rather than fewer lengths, and passes; the suite was not run again for that.
 **Still unproven where it counts:** no real phone has scanned
 a code off a wall or a panel.
+
+**A Heading widget labels a part of the wall in the household's own words (plan
+item M5.4).** The type is `heading`. The heading is the `text` a note uses and
+`subtitle` the line under it; `textSize` is the most it may be (`small`,
+`medium` when absent, `large`), `valign` where the block sits (`middle` when
+absent), `glyph` a key from the drawn set, `divider` a rule between the two and
+`uppercase` capitals for both. The glyph is the drawn set's rather than the
+bundled emoji because it is the one picture a panel can draw too, and the
+schema refuses a key outside it.
+
+**Its three sizes are three of the wall's own roles, not numbers**: small is
+the event role, medium the lede and large the clock's own capped size, so a
+heading is never larger than the clock may be and never a stat tile. The plan
+said "style lane for size", and the lane has no size, deliberately (§4.1
+deferred `scale`); `textSize` is a widget setting instead, and the face, weight
+and tracking are the lane's as for every widget. The text is drawn as typed
+(Q9): `textContent`, in the theme's display face, with anything the face lacks
+drawn by the device's font.
+
+**The box chooses the form, content before points.** `tierHeading` keeps the
+first of: the asked size with the second line, the asked size without it, a
+role smaller with it, and so on; still too tall at the small size, the heading
+is cut between whole lines (`-webkit-line-clamp`, a count of lines and never a
+height), and a box without room for one line draws none rather than half of
+one. The panel's `drawHeading` makes the same choices from arithmetic. Both
+read the config through `api/heading.ts`, transcribed into the display between
+`heading` markers; `qr-parity.test.ts` became `transcription-parity.test.ts`
+and holds all three pairs. On the panel the size is picked by measuring the
+household's own words, which the refresh contract otherwise forbids; it says so
+at `drawHeading`: the contract is about events, which change under a panel,
+and these words are the canvas, whose change moves the frame's ETag anyway.
+
+**Two faults came out of the browser test.** The
+block centres its parts, and a centred flex column that overflows does so at
+both ends, of which `scrollHeight` sees only the bottom half — so the cut
+counted the room left from `scrollHeight` and kept a line too many, and the
+test's own spill check, written the same way, could not see it. Both read the
+parts' rectangles now. And the first cut always kept at least one line, which
+in a box shorter than a line is a line sliced through; on the wall and the
+panel alike, it is none now.
+
+**Measured.** `browser-heading.test.ts` holds each size to its role's own
+computed size, read off a probe in the same canvas, on an unmeasured wall and a
+measured one; drives the form's order, the cut and the empty box; reads where
+the block sits and that the glyph, the rule and capitals are drawn; and drives
+the editor from typing to Save. `epaper-heading.test.ts` reads the same from
+bands of ink in the frame. A screenshot on Panels and Household was looked at.
+Seventeen mutations were tried: sixteen are red, and one is honestly
+equivalent — the fit check reading `scrollHeight` instead of the parts, which
+still catches any overflow over a pixel; the cut's room is the read that
+matters, and its mutation is red. One more was green as first written: the
+panel's "no half a line" could not be seen in a box the panel skips whole
+(under 16px), so the test uses a 28px box with a glyph in it.
+**5199 tests, over 363 files**: calendar 153 (and 1 skipped) over 10 · core 314
+over 9 · display 950 over 55 · server 3782 over 289, measured with `pnpm test`
+and a real Chromium. The full run read one red, `addon-repository`'s "no tracked
+zero-byte files", because the renamed parity file's deletion was not yet staged
+and the test stats every tracked path; staged, it passes. That file is the
+working tree's, not the code's, and CLAUDE.md has recorded it once before.
+**Still unproven where it counts:** nobody has
+labelled a real kitchen wall with one.
 
 **Rule 12 changed, and the interesting part is how many places said otherwise
 (RFC 012 phase 1).** The rule is no longer "READ-ONLY, no service calls": it

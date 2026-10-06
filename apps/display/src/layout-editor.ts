@@ -121,6 +121,8 @@ import {
   countdownWords,
   daysUntil,
 } from './countdown.js';
+import { GLYPH_KEYS, glyphNode } from './glyphs.js';
+import { headingPlace, headingSize } from './heading.js';
 import { QR_MAX_BYTES, qrBytes, qrKind, qrPayload, wifiSecurity } from './qr-payload.js';
 import { EMOJI_KEYS, emojiNode } from './emoji.js';
 import { TIER_NAMES, type TierName } from './tiers.js';
@@ -4236,6 +4238,7 @@ function boot(): void {
     else if (widget.type === 'buttons') buildButtonsConfig(widget, cfg);
     else if (widget.type === 'image') buildImageConfig(widget, cfg);
     else if (widget.type === 'qr') buildQrConfig(widget, cfg);
+    else if (widget.type === 'heading') buildHeadingConfig(widget, cfg);
     else if (widget.type === 'shift') buildShiftConfig(widget, cfg);
     else if (widget.type === 'clock') buildClockConfig(widget, cfg);
     else if (widget.type === 'weather') buildWeatherConfig(widget, cfg);
@@ -5232,6 +5235,109 @@ function boot(): void {
     area.addEventListener('input', () => setConfig(widget, 'text', area.value));
     field.appendChild(area);
     configPanel.appendChild(field);
+  }
+
+  /**
+   * The Heading widget's own options (plan item M5.4): the heading and the line
+   * under it, how large it may be and where it sits, a glyph from the drawn
+   * set, a rule between the two lines and capitals.
+   *
+   * The words write as they are typed, so the preview follows. Size and place
+   * carry their config keys, because a panel may lay a heading out differently
+   * from the wall it follows and the ink lane offers both; the words, the
+   * glyph and the rule are the heading itself and stay the wall's.
+   */
+  function buildHeadingConfig(widget: Widget, cfg: Record<string, unknown>): void {
+    const words = (label: string, key: string, maxLength: number, placeholder: string): void => {
+      const field = cfgField(label);
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.maxLength = maxLength;
+      input.placeholder = placeholder;
+      input.value = typeof cfg[key] === 'string' ? (cfg[key] as string) : '';
+      input.addEventListener('input', () => setConfig(widget, key, input.value === '' ? undefined : input.value));
+      field.appendChild(input);
+      configPanel.appendChild(field);
+    };
+    words('Heading', 'text', 200, 'e.g. This week');
+    words('Second line', 'subtitle', 200, 'Optional');
+    configPanel.appendChild(
+      segControl(
+        'Size',
+        [
+          ['small', 'Small'],
+          ['medium', 'Medium'],
+          ['large', 'Large'],
+        ],
+        headingSize(cfg),
+        (value) => setConfig(widget, 'textSize', value === 'medium' ? undefined : value),
+        'textSize',
+      ),
+    );
+    const sizeNote = document.createElement('p');
+    sizeNote.className = 'hint';
+    sizeNote.dataset['cfgKey'] = 'textSize';
+    sizeNote.textContent = 'The most it may be. Where the words do not fit, the second line goes first, then the size steps down.';
+    configPanel.appendChild(sizeNote);
+    configPanel.appendChild(
+      segControl(
+        'Place in the box',
+        [
+          ['top', 'Top'],
+          ['middle', 'Middle'],
+          ['bottom', 'Bottom'],
+        ],
+        headingPlace(cfg),
+        (value) => setConfig(widget, 'valign', value === 'middle' ? undefined : value),
+        'valign',
+      ),
+    );
+    configPanel.appendChild(glyphPicker(cfg['glyph'], (key) => setConfig(widget, 'glyph', key)));
+    configPanel.appendChild(
+      switchRow('Rule under the heading', '', cfg['divider'] === true, (on) =>
+        setConfig(widget, 'divider', on ? true : undefined),
+      ),
+    );
+    configPanel.appendChild(
+      switchRow('Capitals', '', cfg['uppercase'] === true, (on) => setConfig(widget, 'uppercase', on ? true : undefined)),
+    );
+  }
+
+  /**
+   * A picture from the drawn glyph set (plan item M5.4): the one set a wall and
+   * an e-paper panel both draw, so a heading's picture is the same on both. Laid
+   * out as the countdown's emoji grid is, each choice named for a screen reader.
+   */
+  function glyphPicker(current: unknown, onPick: (key: string | undefined) => void): HTMLElement {
+    const field = document.createElement('div');
+    field.className = 'le-cfg-field';
+    const heading = document.createElement('span');
+    heading.textContent = 'Picture';
+    field.appendChild(heading);
+    const grid = document.createElement('div');
+    grid.className = 'le-emoji-grid le-glyph-grid';
+    grid.setAttribute('role', 'group');
+    grid.setAttribute('aria-label', 'Picture');
+    const choice = (key: string | undefined, content: Node, name: string): void => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset['glyph'] = key ?? '';
+      button.setAttribute('aria-label', name);
+      button.setAttribute('aria-pressed', key === current || (key === undefined && current === undefined) ? 'true' : 'false');
+      button.appendChild(content);
+      button.addEventListener('click', () => {
+        onPick(key);
+        renderConfigPanel();
+      });
+      grid.appendChild(button);
+    };
+    choice(undefined, document.createTextNode('None'), 'No picture');
+    for (const key of GLYPH_KEYS) {
+      const picture = glyphNode(key, 'gl');
+      if (picture !== null) choice(key, picture, key.charAt(0).toUpperCase() + key.slice(1).replace(/-/g, ' '));
+    }
+    field.appendChild(grid);
+    return field;
   }
 
   /**

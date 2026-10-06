@@ -1,6 +1,6 @@
 # Plan: parity with Magic Frame
 
-**Status: in progress.** RFC 018 (M6.0) is built, and so are the companion token, its Home Assistant to-do add, timers and messages, and refreshing walls and showing one wall's layout on the others (M1.1–M1.5, M2.1, M2.2 but Todoist, M2.3, M4.10 for wallpapers, M5.1–M5.3); everything else is planned. On 2026-10-05 the owner asked for a
+**Status: in progress.** RFC 018 (M6.0) is built, and so are the companion token, its Home Assistant to-do add, timers and messages, and refreshing walls and showing one wall's layout on the others (M1.1–M1.5, M2.1, M2.2 but Todoist, M2.3, M4.10 for wallpapers, M5.1–M5.4); everything else is planned. On 2026-10-05 the owner asked for a
 competitive review of [Magic Frame](https://github.com/jeremiaa/magic-frame)
 against Maverick Wall, then a deeper look at its custom widgets and its
 backgrounds. This document is that review, the decisions taken on it, and the
@@ -142,7 +142,7 @@ Magic Frame's features exist in a form we cannot ship as it is.
 | M5.1 | **Timers**: started from a phone, an automation or the admin; countdown, "done" state. **Built**: a Timers widget, minutes then a phase-locked seconds reel, Done for 30 minutes; Timers and messages in the admin. | M | The end instant travels in the manifest and the wall computes the rest, so it works offline. Dismiss on the wall behind a per-wall switch (MD7). Seconds versus the 15 s rebuild: MQ4. |
 | M5.2 | **Messages**: short notes from a phone that expire on their own. **Built**: a Messages widget; an hour unless told otherwise, a day at most. | S | The same per-wall dismiss switch as timers. Drawn with `textContent`, capped and sanitised. |
 | M5.3 | **QR code**: guest Wi-Fi, a link or text. **Built**: on the wall and on a panel, black on white, read back by a decoder in every test; the encoder's versions 7–10 were unreadable until this found them. Dot and eye styles, gradients and a centre icon are not built. | S | Reuses `http/qr.ts`; verified by decoding, never by looking. One bit is a natural fit, so the panel draws it too. |
-| M5.4 | **Text / heading** widget with optional divider and glyph. | S | Style lane for size and face; household text in the device font (Q9). |
+| M5.4 | **Text / heading** widget with optional divider and glyph. **Built**: a heading and a second line, three sizes that are the wall's own roles (large is the clock's cap), top/middle/bottom, a glyph from the drawn set, a rule and capitals, on the wall and on a panel. Size is a widget setting rather than the style lane's, which still has none. | S | Style lane for size and face; household text in the device font (Q9). |
 | M5.5 | **RSS headlines**, list or one at a time, with a QR to read on a phone. | M | Fetched by the server through the SSRF-guarded fetcher; nothing on the wall is a link. Needs an XML parser in `apps/server`. |
 | M5.6 | **Environment** widget: AQI, PM2.5/PM10, ozone, NO₂, pollen, UV, solar, plus HA sensors. | M | Extends the existing air-quality fetch, which stays off until switched on (Q5). Pollen data exists for Europe only. |
 | M5.7 | **Todoist** as a list source. | M | Token sealed with the keyring. Wall ticks behind the same switch as HA lists. |

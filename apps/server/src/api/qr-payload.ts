@@ -7,7 +7,7 @@
  * refusing a code too long to encode, the panel drawing it, the wall drawing it
  * and the editor previewing it — so the server holds this file and the display
  * bundle transcribes the block between the markers into
- * `apps/display/src/qr-payload.ts`. `qr-parity.test.ts` holds the two copies
+ * `apps/display/src/qr-payload.ts`. `transcription-parity.test.ts` holds the two copies
  * character for character, the way `month-spans-parity` holds its pair: the
  * display bundle has no bundler and the server cannot import it.
  *

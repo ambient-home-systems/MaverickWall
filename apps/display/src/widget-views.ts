@@ -51,6 +51,7 @@ export const WIDGET_VIEWS: Readonly<Record<string, readonly WidgetView[]>> = {
   buttons: [{ value: '', label: 'Buttons' }],
   timers: [{ value: '', label: 'Timers' }],
   messages: [{ value: '', label: 'Messages' }],
+  heading: [{ value: '', label: 'Heading' }],
   // A QR code (plan item M5.3): guest Wi-Fi is the absence, as every type's
   // first view is, and the other two are what the code carries instead.
   qr: [

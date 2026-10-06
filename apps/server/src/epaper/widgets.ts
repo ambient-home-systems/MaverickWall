@@ -25,7 +25,7 @@ import {
   type Manifest,
 } from '../api/manifest.js';
 
-import { drawText, measureText, rungAtMost, rungStep, shorterRung, tallerRung, type TypeRung } from './font.js';
+import { drawText, measureText, nearestRung, rungAtMost, rungStep, shorterRung, tallerRung, type TypeRung } from './font.js';
 import { Framebuffer } from './framebuffer.js';
 import {
   drawGlyph,
@@ -73,6 +73,7 @@ import { clockLabel, type EpaperModel } from './viewmodel.js';
 import { drawAnalogueFace } from './clock-face.js';
 import { encodeQr } from '../http/qr.js';
 import { qrCaption, qrPasswordLine, qrPayload } from '../api/qr-payload.js';
+import { headingDivider, headingPlace, headingSecond, headingSizesFrom, headingText, type HeadingSize } from '../api/heading.js';
 import {
   TODAY_WORDS,
   countDigits,
@@ -1068,6 +1069,120 @@ function drawTodo(fb: Framebuffer, m: EpaperMetrics, box: Box, found: TodoRead |
       rung: m.body,
     });
     y += rowH;
+  }
+}
+
+/**
+ * A heading's three sizes as multiples of the body rung (plan item M5.4): the
+ * wall's own roles in proportion — the event role, the lede at 22 against 14
+ * arc-minutes, and the clock's cap at 39.6 — so a heading is the same size
+ * against everything else on a panel as it is on the wall it follows.
+ */
+const HEADING_OVER_BODY: Readonly<Record<HeadingSize, number>> = { small: 1, medium: 22 / 14, large: 39.6 / 14 };
+
+interface HeadingLayout {
+  readonly rung: TypeRung;
+  readonly lines: readonly string[];
+  readonly glyphScale: GlyphScale | undefined;
+  readonly indent: number;
+  readonly headH: number;
+  readonly secondRung: TypeRung;
+  readonly second: readonly string[];
+  readonly total: number;
+}
+
+/**
+ * A Heading (plan item M5.4): the household's words, a glyph beside them, a
+ * rule and a second line, placed in the box where they asked.
+ *
+ * The size asked for is the most it may be, as on the wall: the first of these
+ * that fits is drawn — at the asked size with the second line, then without
+ * it, then a size down, and so on — so the box gives up content before it
+ * gives up points, the wall's own rule. A heading still too tall at the small
+ * size keeps the whole lines that fit and no part of one, and in a box with
+ * room for no whole line it draws nothing but its frame.
+ *
+ * Its size is chosen by measuring the household's own words, which is a
+ * deliberate difference from the refresh contract's "never by measuring a
+ * string": that rule is about the events, which change under a panel; these
+ * words are the canvas, and changing them is a layout change that moves the
+ * frame's ETag anyway.
+ */
+function drawHeading(fb: Framebuffer, m: EpaperMetrics, box: Box, config: Config): void {
+  const text = headingText(config);
+  const second = headingSecond(config);
+  const glyph = config['glyph'];
+  const hasGlyph = isGlyphKey(glyph);
+  if (text === undefined && second === undefined && !hasGlyph) {
+    drawLines(
+      fb,
+      m,
+      ['No heading yet'],
+      { x: box.x, y: box.y + Math.max(0, Math.floor((box.h - m.body.height) / 2)), w: box.w, h: box.h },
+      m.body,
+      'center',
+    );
+    return;
+  }
+  const pad = m.widget.linePad;
+  const divider = headingDivider(config);
+  const ruleH = divider ? pad * 4 + 1 : 0;
+  const layout = (size: HeadingSize, withSecond: boolean): HeadingLayout => {
+    const rung = tallerRung(m.body, nearestRung(m.body.height * HEADING_OVER_BODY[size]));
+    const glyphScale = hasGlyph ? glyphScaleFor(rung.height) : undefined;
+    const indent = glyphScale === undefined ? 0 : glyphAdvance(glyphScale) + Math.round(rung.height / 3);
+    const lines = text === undefined ? [] : wrap(text, Math.max(1, box.w - indent), rung);
+    const textH = lines.length === 0 ? 0 : lines.length * (rung.height + pad) - pad;
+    const headH = Math.max(textH, glyphScale === undefined ? 0 : glyphHeight(glyphScale));
+    const secondRung = size === 'small' ? m.small : m.body;
+    const secondLines = withSecond && second !== undefined ? wrap(second, box.w, secondRung) : [];
+    const secondH = secondLines.length === 0 ? 0 : secondLines.length * (secondRung.height + pad) - pad + (divider ? 0 : pad * 2);
+    return { rung, lines, glyphScale, indent, headH, secondRung, second: secondLines, total: headH + ruleH + secondH };
+  };
+  const tries: HeadingLayout[] = [];
+  for (const size of headingSizesFrom(config)) {
+    tries.push(layout(size, true));
+    if (second !== undefined) tries.push(layout(size, false));
+  }
+  let chosen = tries.find((one) => one.total <= box.h) ?? (tries[tries.length - 1] as HeadingLayout);
+  if (chosen.total > box.h) {
+    // Still too tall at the smallest: the whole lines that fit, and no part of one.
+    const lineH = chosen.rung.height + pad;
+    const keep = Math.floor((box.h - ruleH + pad) / lineH);
+    // Not one whole line fits: none is drawn rather than half of one, and no
+    // glyph is drawn beside nothing.
+    if (keep < 1) return;
+    const lines = chosen.lines.slice(0, keep);
+    const headH = Math.max(lines.length * lineH - pad, chosen.glyphScale === undefined ? 0 : glyphHeight(chosen.glyphScale));
+    chosen = { ...chosen, lines, headH, total: headH + ruleH };
+  }
+  const place = headingPlace(config);
+  let y =
+    place === 'top' ? box.y : place === 'bottom' ? box.y + box.h - chosen.total : box.y + Math.floor((box.h - chosen.total) / 2);
+  y = Math.max(box.y, y);
+  const align = alignOf(config);
+  const widest = Math.max(0, ...chosen.lines.map((line) => measureText(line, { rung: chosen.rung })));
+  const blockW = Math.min(box.w, chosen.indent + widest);
+  const left =
+    align === 'center' ? box.x + Math.floor((box.w - blockW) / 2) : align === 'right' ? box.x + box.w - blockW : box.x;
+  if (chosen.glyphScale !== undefined) {
+    const lift = chosen.lines.length === 0 ? 0 : Math.floor((chosen.rung.height - glyphHeight(chosen.glyphScale)) / 2);
+    drawGlyph(fb, left, y + Math.max(0, lift), glyph, chosen.glyphScale);
+  }
+  let lineY = y;
+  for (const line of chosen.lines) {
+    drawText(fb, left + chosen.indent, lineY, line, { rung: chosen.rung });
+    lineY += chosen.rung.height + pad;
+  }
+  y += chosen.headH;
+  if (divider) {
+    fb.hLine(box.x, box.x + box.w - 1, y + pad * 2);
+    y += ruleH;
+  } else if (chosen.second.length > 0) {
+    y += pad * 2;
+  }
+  if (chosen.second.length > 0) {
+    drawLines(fb, m, chosen.second, { x: box.x, y, w: box.w, h: box.y + box.h - y }, chosen.secondRung, align);
   }
 }
 
@@ -2529,6 +2644,8 @@ function drawWidget(
       return drawImage(fb, m, box, config);
     case 'qr':
       return drawQr(fb, m, box, config);
+    case 'heading':
+      return drawHeading(fb, m, box, config);
     case 'timers':
     case 'messages': {
       // The lines `panelInput` worked out, one a line; nothing to clear, since
