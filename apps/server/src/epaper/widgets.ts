@@ -1189,6 +1189,27 @@ function drawHeading(fb: Framebuffer, m: EpaperMetrics, box: Box, config: Config
 }
 
 /**
+ * A code for a payload, encoded once and kept (plan items M5.3, M5.5).
+ *
+ * Encoding tries all eight masks and scores each, and a panel's frame is drawn
+ * again on every request for it — so the same guest network or headline link
+ * would be encoded afresh every time a panel asked, for a matrix that cannot
+ * have changed. The encoder is pure, so a payload's code is a fact: kept here,
+ * the most recent few, and dropped oldest first so a household that changes
+ * its codes cannot grow this without bound.
+ */
+const QR_CACHE_SIZE = 32;
+const qrCache = new Map<string, ReturnType<typeof encodeQr>>();
+function encodeQrOnce(payload: string): ReturnType<typeof encodeQr> {
+  const known = qrCache.get(payload);
+  if (known !== undefined || qrCache.has(payload)) return known;
+  const matrix = encodeQr(payload);
+  qrCache.set(payload, matrix);
+  if (qrCache.size > QR_CACHE_SIZE) qrCache.delete(qrCache.keys().next().value as string);
+  return matrix;
+}
+
+/**
  * The quiet zone a scanner needs round a code, in modules: four, which is the
  * standard's own minimum and what `qrSvg` and the wall draw too.
  */
@@ -1256,7 +1277,7 @@ function drawNews(fb: Framebuffer, m: EpaperMetrics, box: Box, rows: readonly Ne
   };
   if (newsMode(config) === 'one') {
     const row = rows[0] as NewsPanelRow;
-    const matrix = row.link === undefined ? undefined : encodeQr(row.link);
+    const matrix = row.link === undefined ? undefined : encodeQrOnce(row.link);
     let wordsW = box.w;
     if (matrix !== undefined) {
       const span = matrix.size + QR_QUIET * 2;
@@ -1314,7 +1335,7 @@ function drawNews(fb: Framebuffer, m: EpaperMetrics, box: Box, rows: readonly Ne
  */
 function drawQr(fb: Framebuffer, m: EpaperMetrics, box: Box, config: Config): void {
   const payload = qrPayload(config);
-  const matrix = payload === undefined ? undefined : encodeQr(payload);
+  const matrix = payload === undefined ? undefined : encodeQrOnce(payload);
   const middle = { x: box.x, y: box.y + Math.max(0, Math.floor((box.h - m.body.height) / 2)), w: box.w, h: box.h };
   if (matrix === undefined) {
     drawLines(fb, m, [payload === undefined ? 'No code yet' : 'Too long for a code'], middle, m.body, 'center');
