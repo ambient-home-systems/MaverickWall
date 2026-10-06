@@ -1,3 +1,4 @@
+import { pushUrl, startPush } from './push.js';
 import { activeLayout, refreshDue } from './wall-commands.js';
 import { scheduledSlot, slotWidgets } from './canvas-schedule.js';
 import { createClock } from './clock.js';
@@ -494,6 +495,21 @@ function start(): void {
     }
   };
 
+  /*
+   * The push channel (plan item M1.1): opened after the first answer that
+   * proves this wall is paired, closed when it is not. Every message is a
+   * reason to poll now rather than at the next minute — nothing more.
+   */
+  let push: ReturnType<typeof startPush> | undefined;
+  const openPush = (): void => {
+    if (push !== undefined) return;
+    push = startPush({ url: pushUrl(location), onNudge: () => void poll() });
+  };
+  const closePush = (): void => {
+    push?.stop();
+    push = undefined;
+  };
+
   /** The server's time on this page's first fresh poll — see `refreshDue`. */
   let pageStartedAt: number | undefined;
 
@@ -555,6 +571,9 @@ function start(): void {
         if (!isStandInManifest(outcome.manifest)) {
           await store.save({ manifest: outcome.manifest, confirmedAt: lastConfirmedAt });
         }
+        // Paired and answered: open the push channel, once (plan item M1.1).
+        // It only ever asks for this same poll sooner.
+        openPush();
         break;
       case 'unchanged':
         clock.sync(outcome.serverTime);
@@ -569,6 +588,9 @@ function start(): void {
       case 'unpaired':
         manifest = undefined;
         heldIsReal = false;
+        // A wall with no pairing has nothing to be told; its socket would only
+        // be refused, over and over.
+        closePush();
         // Nothing is being interrupted about any more, and `draw` returns at
         // its first line from here on, so this is the only place that can say so.
         announce(undefined);

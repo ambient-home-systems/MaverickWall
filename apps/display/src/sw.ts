@@ -72,6 +72,7 @@ const SHELL = [
   '/assets/motion.js',
   '/assets/motion-fixture.js',
   '/assets/orientation.js',
+  '/assets/push.js',
   '/assets/render.js',
   '/assets/shift-style.js',
   '/assets/calendar-filter.js',

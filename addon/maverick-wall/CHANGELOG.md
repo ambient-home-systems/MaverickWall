@@ -16,6 +16,12 @@
 
 ## Unreleased
 
+**Changes reach your walls in about a second.** Save a layout, start a timer
+from your phone, tick a chore on one wall — every other wall shows it a moment
+later, instead of up to a minute later. Walls keep checking in once a minute as
+well, so if the quick connection cannot be made (an unusual network, a proxy in
+the way) nothing stops working; it is only slower.
+
 ## 0.79.0
 
 **Refresh a wall, or show one wall's layout on all of them, from anywhere.**

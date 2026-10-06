@@ -48,7 +48,9 @@ import { createFetcher } from '../src/net/fetcher.js';
 import { createIcsSyncHandler } from '../src/jobs/ics-sync.js';
 import { seedDefaultRules } from '../src/api/rules.js';
 import { backfillClassic } from '../src/api/templates.js';
-import { readHousehold } from '../src/api/queries.js';
+import { readHousehold, type ScreenRow } from '../src/api/queries.js';
+import type { Manifest } from '../src/api/manifest.js';
+import { wirePush, type PushWiring } from '../src/net/push-wire.js';
 import { householdSetUp } from '../src/modules/index.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -265,6 +267,15 @@ export interface InstallOptions {
    * rather than inserting rows behind the sync's back.
    */
   readonly calendars?: readonly NamedFeed[];
+  /**
+   * Run the push channel as boot does (plan item M1.1): `wirePush` on this
+   * server, with the app's writes nudging it. Off by default — every wall in
+   * the suite before it existed was measured on its poll, and a socket that
+   * redraws a wall a second after a fixture write would move what they measure.
+   */
+  readonly push?: boolean;
+  /** The push timer, when a test needs it long so that only a write's nudge can deliver in time. */
+  readonly pushTickMs?: number;
 }
 
 /** A named calendar to serve and add: a feed somebody in the house owns. */
@@ -381,6 +392,8 @@ export interface Installation {
   /** A power cut: the port closes and connections are refused, not stubbed. */
   kill(): Promise<void>;
   dispose(): Promise<void>;
+  /** How many walls hold a push socket now — zero unless installed with `push: true`. */
+  pushConnections(): number;
 }
 
 export async function install(options: InstallOptions = {}): Promise<Installation> {
@@ -437,7 +450,14 @@ export async function install(options: InstallOptions = {}): Promise<Installatio
    */
   const setupToken = createSetupTokenHolder(() => {}, now);
   const keyring = createKeyring(randomBytes(32));
+  // Late-bound, as in boot: the app is built before the server it is wired to.
+  let push: PushWiring | undefined;
+  let buildScreenManifest: ((screen: ScreenRow) => Manifest) | undefined;
   const app = createApp({
+    onWrite: () => push?.nudge(),
+    onManifestBuilder: (build) => {
+      buildScreenManifest = build;
+    },
     db,
     appVersion: '0.0.0-browser-test',
     bootNotices: [],
@@ -464,6 +484,9 @@ export async function install(options: InstallOptions = {}): Promise<Installatio
     listening.on('error', (reason: Error) => reject(new Error(`could not listen: ${reason.message}`)));
   });
   const base = `http://127.0.0.1:${port}`;
+  if (options.push === true) {
+    push = wirePush(listening, { db, build: () => buildScreenManifest, tickMs: options.pushTickMs ?? 5_000 });
+  }
 
   const jar = new Map<string, string>();
   const call = async (path: string, init: RequestInit = {}): Promise<Response> => {
@@ -600,6 +623,7 @@ export async function install(options: InstallOptions = {}): Promise<Installatio
     feedUrl: feedServer?.url,
     sync: (): Promise<void> => syncEveryFeed(db, keyring, now),
     kill,
+    pushConnections: (): number => push?.hub.size ?? 0,
     async dispose(): Promise<void> {
       await kill();
       feedServer?.stop();
@@ -609,6 +633,8 @@ export async function install(options: InstallOptions = {}): Promise<Installatio
   };
 
   async function kill(): Promise<void> {
+    push?.close();
+    push = undefined;
     const dying = server;
     server = undefined;
     await new Promise<void>((resolve) => {
