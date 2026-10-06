@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.80.0
+
 **Changes reach your walls in about a second.** Save a layout, start a timer
 from your phone, tick a chore on one wall — every other wall shows it a moment
 later, instead of up to a minute later. Walls keep checking in once a minute as
