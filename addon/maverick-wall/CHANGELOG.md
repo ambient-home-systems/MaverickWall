@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.83.0
+
 **A QR code widget.** Put a code on a wall that a visitor's phone can scan: your
 guest Wi-Fi (the network's name, its password and whether it is hidden), a
 link, or a few words. The network's name or the link is written under the code,
