@@ -208,7 +208,9 @@ describe('a QR code on a panel', () => {
       for (let x = 4; x < panel.width - 4; x++) if (fb.get(x, y)) words++;
     }
     expect(words, `the ${shortest}px box kept its words under a code`).toBe(0);
-  });
+    // Eighty-six frames decoded and one swept for words: about a second and a
+    // half alone, so a budget rather than fewer heights on a busy runner.
+  }, 30_000);
 
   it('says why there is no code, rather than drawing an empty box', () => {
     const which = CASES['800x480 whole'] as Case;

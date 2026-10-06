@@ -73,6 +73,21 @@ function bands(fb: Framebuffer, box: { x: number; y: number; w: number; h: numbe
   return out;
 }
 
+/**
+ * Every inked pixel outside a box, as "x,y", collected and asserted once: an
+ * `expect` per pixel is 384,000 of them, which timed out on a CI runner.
+ */
+function inkOutside(fb: Framebuffer, box: { x: number; y: number; w: number; h: number }): string[] {
+  const stray: string[] = [];
+  for (let y = 0; y < PANEL.height; y++) {
+    for (let x = 0; x < PANEL.width; x++) {
+      const inside = x >= box.x && x < box.x + box.w && y >= box.y && y < box.y + box.h;
+      if (!inside && fb.get(x, y)) stray.push(`${x},${y}`);
+    }
+  }
+  return stray.slice(0, 20);
+}
+
 const height = (band: [number, number] | undefined): number => (band === undefined ? 0 : band[1] - band[0] + 1);
 
 describe('a heading on a panel', () => {
@@ -133,12 +148,7 @@ describe('a heading on a panel', () => {
     const box = { x: 100, y: 100, w: 200, h: 70 };
     const long = { text: 'A HEADING FAR TOO LONG FOR THIS SMALL BOX TO HOLD AT ANY SIZE', textSize: 'large' };
     const fb = render(long, box);
-    for (let y = 0; y < PANEL.height; y++) {
-      for (let x = 0; x < PANEL.width; x++) {
-        const inside = x >= box.x && x < box.x + box.w && y >= box.y && y < box.y + box.h;
-        if (!inside) expect(fb.get(x, y), `ink at ${x},${y}`).toBe(false);
-      }
-    }
+    expect(inkOutside(fb, box)).toEqual([]);
     // At least one whole line, and every band a full line of type: none cut through.
     const found = bands(fb, box);
     expect(found.length).toBeGreaterThan(0);
@@ -152,12 +162,7 @@ describe('a heading on a panel', () => {
     const box = { x: 100, y: 100, w: 300, h: 28 };
     // With a glyph, which is taller than the line beside it and must not be drawn beside nothing.
     const fb = render({ text: 'HELLO', textSize: 'small', glyph: 'person' }, box);
-    for (let y = 0; y < PANEL.height; y++) {
-      for (let x = 0; x < PANEL.width; x++) {
-        const inside = x >= box.x && x < box.x + box.w && y >= box.y && y < box.y + box.h;
-        if (!inside) expect(fb.get(x, y), `ink at ${x},${y}`).toBe(false);
-      }
-    }
+    expect(inkOutside(fb, box)).toEqual([]);
   });
 
   it('says there is nothing to show, rather than an empty box', () => {
