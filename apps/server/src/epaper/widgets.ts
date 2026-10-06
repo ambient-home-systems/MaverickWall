@@ -74,6 +74,7 @@ import { drawAnalogueFace } from './clock-face.js';
 import { encodeQr } from '../http/qr.js';
 import { qrCaption, qrPasswordLine, qrPayload } from '../api/qr-payload.js';
 import { newsMode, newsShown, newsShows } from '../api/news-view.js';
+import { envAscii, envTiles, type EnvInput, type EnvTile } from '../api/env-tiles.js';
 import { headingDivider, headingPlace, headingSecond, headingSizesFrom, headingText, type HeadingSize } from '../api/heading.js';
 import {
   TODAY_WORDS,
@@ -1188,6 +1189,27 @@ function drawHeading(fb: Framebuffer, m: EpaperMetrics, box: Box, config: Config
 }
 
 /**
+ * A code for a payload, encoded once and kept (plan items M5.3, M5.5).
+ *
+ * Encoding tries all eight masks and scores each, and a panel's frame is drawn
+ * again on every request for it — so the same guest network or headline link
+ * would be encoded afresh every time a panel asked, for a matrix that cannot
+ * have changed. The encoder is pure, so a payload's code is a fact: kept here,
+ * the most recent few, and dropped oldest first so a household that changes
+ * its codes cannot grow this without bound.
+ */
+const QR_CACHE_SIZE = 32;
+const qrCache = new Map<string, ReturnType<typeof encodeQr>>();
+function encodeQrOnce(payload: string): ReturnType<typeof encodeQr> {
+  const known = qrCache.get(payload);
+  if (known !== undefined || qrCache.has(payload)) return known;
+  const matrix = encodeQr(payload);
+  qrCache.set(payload, matrix);
+  if (qrCache.size > QR_CACHE_SIZE) qrCache.delete(qrCache.keys().next().value as string);
+  return matrix;
+}
+
+/**
  * The quiet zone a scanner needs round a code, in modules: four, which is the
  * standard's own minimum and what `qrSvg` and the wall draw too.
  */
@@ -1255,7 +1277,7 @@ function drawNews(fb: Framebuffer, m: EpaperMetrics, box: Box, rows: readonly Ne
   };
   if (newsMode(config) === 'one') {
     const row = rows[0] as NewsPanelRow;
-    const matrix = row.link === undefined ? undefined : encodeQr(row.link);
+    const matrix = row.link === undefined ? undefined : encodeQrOnce(row.link);
     let wordsW = box.w;
     if (matrix !== undefined) {
       const span = matrix.size + QR_QUIET * 2;
@@ -1313,7 +1335,7 @@ function drawNews(fb: Framebuffer, m: EpaperMetrics, box: Box, rows: readonly Ne
  */
 function drawQr(fb: Framebuffer, m: EpaperMetrics, box: Box, config: Config): void {
   const payload = qrPayload(config);
-  const matrix = payload === undefined ? undefined : encodeQr(payload);
+  const matrix = payload === undefined ? undefined : encodeQrOnce(payload);
   const middle = { x: box.x, y: box.y + Math.max(0, Math.floor((box.h - m.body.height) / 2)), w: box.w, h: box.h };
   if (matrix === undefined) {
     drawLines(fb, m, [payload === undefined ? 'No code yet' : 'Too long for a code'], middle, m.body, 'center');
@@ -2578,6 +2600,75 @@ function timerLines(manifest: Manifest): readonly string[] {
   return lines;
 }
 
+/**
+ * An Environment widget's readings as the panel's words (plan item M5.6): a
+ * line a tile — "PM2.5 12 ug/m3", "UV 3 Moderate" — from the same
+ * `envTiles` the wall draws, then the Home Assistant sensors it names. What
+ * the frame's ETag hashes, so a frame changes when a number it draws does.
+ */
+function environmentLines(manifest: Manifest, config: Config): readonly string[] {
+  const weather = manifest.panels['weather'];
+  const record = typeof weather === 'object' && weather !== null ? (weather as Record<string, unknown>) : {};
+  const number = (value: unknown): number | undefined =>
+    typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
+  const current = typeof record['current'] === 'object' && record['current'] !== null ? (record['current'] as Record<string, unknown>) : {};
+  const units = typeof record['units'] === 'object' && record['units'] !== null ? (record['units'] as Record<string, unknown>) : {};
+  const air = typeof record['air'] === 'object' && record['air'] !== null ? (record['air'] as Record<string, unknown>) : undefined;
+  const scale = air?.['scale'];
+  const aqi = number(air?.['aqi']);
+  const label = air?.['label'];
+  const pollen = air?.['pollen'];
+  const input: EnvInput = {
+    ...(air !== undefined && aqi !== undefined && typeof label === 'string' && (scale === 'us' || scale === 'eu')
+      ? {
+          air: {
+            aqi,
+            scale,
+            label,
+            ...Object.fromEntries(
+              (['pm25', 'pm10', 'ozone', 'no2', 'uv'] as const)
+                .map((key) => [key, number(air[key])] as const)
+                .filter((entry) => entry[1] !== undefined),
+            ),
+            ...(typeof pollen === 'object' && pollen !== null && !Array.isArray(pollen)
+              ? { pollen: pollen as Record<string, number> }
+              : {}),
+          },
+        }
+      : {}),
+    ...(number(current['windSpeed']) === undefined ? {} : { windSpeed: number(current['windSpeed']) as number }),
+    ...(typeof current['windDir'] === 'string' ? { windDir: current['windDir'] } : {}),
+    ...(typeof units['wind'] === 'string' ? { windUnit: units['wind'] } : {}),
+    ...(number(current['solar']) === undefined ? {} : { solar: number(current['solar']) as number }),
+    ...(number(current['uv']) === undefined ? {} : { uv: number(current['uv']) as number }),
+  };
+  const line = (tile: EnvTile): string =>
+    asciiTitle(envAscii([tile.label, tile.value, tile.unit, tile.detail].filter((part) => part !== undefined).join(' ')));
+  const lines = envTiles(input, config).map(line);
+  const named = list(config, 'readings');
+  if (named.length > 0) {
+    const panel = manifest.panels['home'] ?? manifest.panels['homeassistant'];
+    const wanted = readingHandlesFor(named, readingIndexOf(panel)) ?? [];
+    for (const reading of houseReadings(panel)) {
+      if (reading.key !== undefined && wanted.includes(reading.key)) lines.push(`${reading.label} ${reading.value}`);
+    }
+  }
+  return lines;
+}
+
+/**
+ * An Environment widget on a panel (plan item M5.6): a line a reading, whole
+ * lines only, the first in the household's order — the wall's tiles as the
+ * one-bit list a panel is read as.
+ */
+function drawEnvironment(fb: Framebuffer, m: EpaperMetrics, box: Box, lines: readonly string[]): void {
+  if (lines.length === 0) {
+    drawLines(fb, m, ['No readings yet'], box, m.body, 'left');
+    return;
+  }
+  drawLines(fb, m, lines, box, m.body, 'left');
+}
+
 /** One headline as a panel draws it: what the frame's ETag hashes for a News widget. */
 interface NewsPanelRow {
   readonly title: string;
@@ -2681,6 +2772,8 @@ export function panelInput(type: string, manifest: Manifest, config: Config): Pa
       return { kind: 'panel', panel: messageLines(manifest) };
     case 'news':
       return { kind: 'panel', panel: newsRows(manifest, config) };
+    case 'environment':
+      return { kind: 'panel', panel: environmentLines(manifest, config) };
     case 'homeassistant': {
       const panel = panels['home'] ?? panels['homeassistant'];
       /*
@@ -2782,6 +2875,8 @@ function drawWidget(
       return drawQr(fb, m, box, config);
     case 'heading':
       return drawHeading(fb, m, box, config);
+    case 'environment':
+      return drawEnvironment(fb, m, box, input.kind === 'panel' && Array.isArray(input.panel) ? (input.panel as string[]) : []);
     case 'news':
       return drawNews(fb, m, box, input.kind === 'panel' && Array.isArray(input.panel) ? (input.panel as NewsPanelRow[]) : [], config);
     case 'timers':

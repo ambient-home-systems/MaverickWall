@@ -459,6 +459,16 @@ const widgetConfigFields = z
      * stays in that view (absent is a minute).
      */
     newsFeeds: z.array(z.string().regex(/^nf-[0-9a-f]{12}$/)).max(8).optional(),
+    /*
+     * Environment (plan item M5.6) — which readings, from the closed set
+     * `api/env-tiles.ts` draws; absent is its default five. The Home
+     * Assistant sensors beside them are the `readings` key a Home Assistant
+     * widget stores, rewritten to handles on the way to the wall the same way.
+     */
+    envFields: z
+      .array(z.enum(['aqi', 'pm25', 'pm10', 'ozone', 'no2', 'pollen', 'uv', 'solar', 'wind']))
+      .max(9)
+      .optional(),
     showSource: z.boolean().optional(),
     showTime: z.boolean().optional(),
     showQr: z.boolean().optional(),
@@ -546,6 +556,7 @@ export const inkOverrideBody = widgetConfigFields
     cellEvents: true,
     clockFormat: true,
     count: true,
+    envFields: true,
     fields: true,
     mode: true,
     people: true,

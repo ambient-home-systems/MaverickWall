@@ -121,6 +121,7 @@ import {
   countdownWords,
   daysUntil,
 } from './countdown.js';
+import { ENV_FIELDS, envFields, type EnvField } from './env-tiles.js';
 import { newsMode, newsRotateMs, newsShows } from './news-view.js';
 import { GLYPH_KEYS, glyphNode } from './glyphs.js';
 import { headingPlace, headingSize } from './heading.js';
@@ -2811,7 +2812,10 @@ function boot(): void {
       const listed = known === undefined ? { ...w } : { ...w, config: { ...w.config, list: known.key } };
       // And a Home Assistant box's readings, the same way (P1.3): stored as
       // entity ids, drawn by the handles the house panel carries.
-      const picked = w.type === 'homeassistant' ? previewReadingKeys(w.config?.['readings'], state.readings) : undefined;
+      const picked =
+        w.type === 'homeassistant' || w.type === 'environment'
+          ? previewReadingKeys(w.config?.['readings'], state.readings)
+          : undefined;
       const placed = picked === undefined ? listed : { ...listed, config: { ...listed.config, readings: picked } };
       /*
        * The style lane, resolved for the preview (RFC 014 §4.1). The wall
@@ -4252,6 +4256,7 @@ function boot(): void {
     else if (widget.type === 'qr') buildQrConfig(widget, cfg);
     else if (widget.type === 'heading') buildHeadingConfig(widget, cfg);
     else if (widget.type === 'news') buildNewsConfig(widget, cfg);
+    else if (widget.type === 'environment') buildEnvironmentConfig(widget, cfg);
     else if (widget.type === 'shift') buildShiftConfig(widget, cfg);
     else if (widget.type === 'clock') buildClockConfig(widget, cfg);
     else if (widget.type === 'weather') buildWeatherConfig(widget, cfg);
@@ -5248,6 +5253,53 @@ function boot(): void {
     area.addEventListener('input', () => setConfig(widget, 'text', area.value));
     field.appendChild(area);
     configPanel.appendChild(field);
+  }
+
+  /**
+   * The Environment widget's own options (plan item M5.6): which outdoor
+   * readings, in the one order every wall draws them, and which Home
+   * Assistant sensors beside them. The readings are written whole once
+   * touched, so "none ticked" is a choice rather than the default coming back.
+   */
+  function buildEnvironmentConfig(widget: Widget, cfg: Record<string, unknown>): void {
+    const names: Readonly<Record<EnvField, string>> = {
+      aqi: 'Air quality index',
+      pm25: 'PM2.5',
+      pm10: 'PM10',
+      ozone: 'Ozone',
+      no2: 'Nitrogen dioxide',
+      pollen: 'Pollen (Europe only)',
+      uv: 'UV',
+      solar: 'Sunlight',
+      wind: 'Wind',
+    };
+    const which = cfgField('Readings to show', 'envFields');
+    which.appendChild(
+      checkList(
+        ENV_FIELDS.map((field) => ({ value: field, label: names[field] })),
+        envFields(cfg),
+        (values) => setConfig(widget, 'envFields', ENV_FIELDS.filter((field) => values.indexOf(field) >= 0)),
+        '',
+      ),
+    );
+    configPanel.appendChild(which);
+    const note = document.createElement('p');
+    note.className = 'hint';
+    note.dataset['cfgKey'] = 'envFields';
+    note.textContent =
+      'Air quality, pollen and UV need air quality turned on under Weather. A reading the service does not ' +
+      'have where you live is left out.';
+    configPanel.appendChild(note);
+    const sensors = cfgField('Home Assistant sensors', 'readings');
+    sensors.appendChild(
+      checkList(
+        state.readings.map((r) => ({ value: r.id, label: r.name })),
+        Array.isArray(cfg['readings']) ? (cfg['readings'] as string[]) : [],
+        (values) => setConfig(widget, 'readings', values.length === 0 ? undefined : values),
+        'No Home Assistant readings yet — connect it and choose entities first.',
+      ),
+    );
+    configPanel.appendChild(sensors);
   }
 
   /**

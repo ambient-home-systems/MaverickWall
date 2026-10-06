@@ -43,6 +43,12 @@ const PAIRS = [
     server: join(HERE, '..', 'src', 'api', 'news-view.ts'),
     display: join(HERE, '..', '..', 'display', 'src', 'news-view.ts'),
   },
+  // The Environment widget's tiles (plan item M5.6).
+  {
+    marker: 'env-tiles',
+    server: join(HERE, '..', 'src', 'api', 'env-tiles.ts'),
+    display: join(HERE, '..', '..', 'display', 'src', 'env-tiles.ts'),
+  },
   {
     marker: 'qr-payload',
     server: join(HERE, '..', 'src', 'api', 'qr-payload.ts'),

@@ -97,6 +97,9 @@ export const WIDGET_TYPES = [
   // Headlines from the household's RSS and Atom feeds (plan item M5.5), read
   // by the server; a link is drawn only as a QR code, never as a link.
   'news',
+  // The air, the pollen, the UV, the sunlight and the wind, and any Home
+  // Assistant sensors the household picks, as tiles (plan item M5.6).
+  'environment',
   // A panel from a registered third-party module (docs/rfc-001-module-framework.md).
   // Still first-party by the rule that matters: the wall draws sanitised strings
   // through renderGenericPanel, never anything the module ships.

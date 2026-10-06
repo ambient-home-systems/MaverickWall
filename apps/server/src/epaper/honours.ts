@@ -126,6 +126,8 @@ export const PANEL_HONOURS: Readonly<Record<string, readonly string[]>> = {
   news: [
     'title', 'showTitle', 'newsFeeds', 'mode', 'count', 'showSource', 'showTime', 'showQr', STYLE_INSET, WHEN_EMPTY,
   ],
+  // Environment (plan item M5.6): which readings, and which sensors beside them.
+  environment: ['title', 'showTitle', 'envFields', 'readings', STYLE_INSET],
   heading: [
     'title', 'showTitle', 'align', 'text', 'subtitle', 'textSize', 'valign', 'glyph', 'divider', 'uppercase',
     STYLE_INSET,
@@ -205,6 +207,8 @@ export const INK_LANE: Readonly<Record<string, readonly string[]>> = {
   // How much a panel says — a list or the newest, how many, the source, the
   // time and the code. Which feeds is the widget's identity.
   news: ['mode', 'count', 'showSource', 'showTime', 'showQr'],
+  // Which readings a panel shows is how much it says, as a forecast's fields are.
+  environment: ['envFields'],
   // A panel could honestly lay a group out differently from the wall it
   // follows — a row on the wall, a column on a narrow panel — and that is
   // density and shape, which is what the lane is for. Empty until the editor

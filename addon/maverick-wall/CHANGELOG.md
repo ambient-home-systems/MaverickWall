@@ -16,6 +16,15 @@
 
 ## Unreleased
 
+**An Environment widget.** Tiles for the air outside: the air-quality index,
+PM2.5, PM10, ozone, nitrogen dioxide, pollen, UV, sunlight and wind — choose
+which — and any Home Assistant sensors you want beside them, such as indoor CO₂
+or the garden thermometer. Air quality, pollen and UV need **air quality**
+turned on under **Weather**; nothing new is contacted beyond that. Pollen is
+available in Europe only: elsewhere its tile is simply not shown, and in Europe
+a day with none says "None". A smaller box shows fewer whole tiles, in your
+order. An e-paper wall lists them. Find **Environment** under **Add widget**.
+
 ## 0.85.0
 
 **News headlines.** Add news sites' and blogs' RSS or Atom feeds on the new

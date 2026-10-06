@@ -38,6 +38,8 @@ export interface CurrentWeather {
   /** A compass point, "NW". */
   readonly windDir?: string;
   readonly uv?: number;
+  /** Sunlight reaching the ground, W/m² — Open-Meteo's `shortwave_radiation` (plan item M5.6). */
+  readonly solar?: number;
 }
 
 /** One hour of the next twenty-four, as the manifest carries it. */
@@ -72,7 +74,29 @@ export interface AirQuality {
   /** "Good", "Moderate" — the scale's own category, in words. */
   readonly label: string;
   readonly observedAt: number;
+  /*
+   * The pollutants behind the index and the UV, for the Environment widget
+   * (plan item M5.6), each spread only when the service reported it. Mass
+   * concentrations in µg/m³, as the service reports them.
+   */
+  readonly pm25?: number;
+  readonly pm10?: number;
+  readonly ozone?: number;
+  readonly no2?: number;
+  readonly uv?: number;
+  /**
+   * Pollen, grains/m³, by plant — **present only where the service models
+   * pollen at all**, which is Europe. There it is the plants with any pollen
+   * in the air, so an empty object says "none today"; elsewhere the service
+   * answers null for every plant and the field is absent, which says "not
+   * available here". Two facts, two shapes.
+   */
+  readonly pollen?: Readonly<Partial<Record<PollenPlant, number>>>;
 }
+
+/** The plants the air-quality service models pollen for, in Europe. */
+export const POLLEN_PLANTS = ['alder', 'birch', 'grass', 'mugwort', 'olive', 'ragweed'] as const;
+export type PollenPlant = (typeof POLLEN_PLANTS)[number];
 
 /**
  * A reading of the conditions, with the temperature it may not have.

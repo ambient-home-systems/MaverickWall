@@ -4139,6 +4139,61 @@ switch names above, and the sidebar test that pins the Integrations group.
 **Still unproven where it counts:** nobody has
 scanned a headline's code off a real wall.
 
+**An Environment widget shows the air outside as tiles, and Home Assistant
+sensors beside them (plan item M5.6).** The type is `environment`, `envFields`
+names its readings from a closed set (`aqi`, `pm25`, `pm10`, `ozone`, `no2`,
+`pollen`, `uv`, `solar`, `wind`; absent is the first, second, pollen, UV and
+wind), and `readings` is the Home Assistant widget's own key, rewritten to
+handles on the way to the wall exactly as it is there. Unlike a Home Assistant
+widget, naming no sensors shows none: the widget's subject is outdoors.
+
+**It extends the air-quality fetch rather than adding a source.** The one
+request the Weather screen's switch consents to (Q5) now asks for PM2.5, PM10,
+ozone, nitrogen dioxide, UV and six plants' pollen beside the two indexes, and
+the forecast asks for `shortwave_radiation`, drawn as Sunlight in W/m². Every
+new field is spread, never null, and an air row cached by the previous release
+reads exactly as before; the cached-air schema names each new field, so a
+malformed one is refused rather than passed along. **Pollen is two facts in two
+shapes**: the service models it for Europe only and answers `null` for every
+plant elsewhere, so `pollen` is absent there (no tile at all) and present in
+Europe as the plants with any in the air (an empty object reads "None"). Real
+answers from London, Berlin and Washington were captured for the tests, and the
+one real record with pollen in it — Berlin's birch at 304.7 grains/m³ — is a
+spring hour from the service's own hourly archive, with the test building the
+`current` answer from it rather than an edited file.
+
+**The tiles are one function on both media.** `api/env-tiles.ts` decides which
+tiles exist, in which order, with which words — the WHO's bands for UV, and a
+general guide for pollen that names the plant with most in the air — and is
+transcribed into the display; `transcription-parity.test.ts` holds five pairs
+now. A reading that is missing is no tile, never a dash. The wall lays tiles at
+a least width of 6.5 of the event role's ems (the longest label fits) and
+`tierEnvironment` keeps the whole tiles the box's columns and rows hold, in the
+household's order; a box with no room for one draws none. A panel reads the
+same tiles as lines in its ASCII — `envAscii` turns "µg/m³" into "ug/m3", where
+`asciiTitle` alone would leave "g/m" — and its frame hashes those lines, so it
+changes when a number it draws does.
+
+**Measured.** `environment.test.ts` reads the real answers and the tiles;
+`epaper-environment.test.ts` the panel's lines and frame input;
+`browser-environment.test.ts` a real wall's tiles, the sensors named and not,
+fewer whole tiles in a smaller box, and the air switch off, then the editor. A
+screenshot was looked at, and the least tile width came down from 7.5 to 6.5 ems
+because a box two-fifths of the wall wide drew one column. Fourteen mutations
+were checked and all are red. **One limit of the harness, recorded where it
+bit**: the editor's preview judges the current conditions' age by the browser's
+clock, which under the harness is hours from the server's pinned one, so the
+preview drops the wind as stale there; on a real install the two agree.
+**5282 tests, over 371 files**: calendar 153 (and 1 skipped) over 10 · core 314
+over 9 · display 957 over 56 · server 3858 over 296, measured with `pnpm test`
+and a real Chromium. The full run read one red, and it was a guard doing its
+job: `open-meteo-rich.test.ts` pinned the air request to "the two indices and
+nothing else". Its point was that the second host is told a place and a list of
+readings and nothing more, so it now pins exactly that — the four parameters,
+and the widened list — and passes; the suite was not run again for it.
+**Still unproven where it counts:** nobody has
+read pollen off a real kitchen wall in spring.
+
 **Rule 12 changed, and the interesting part is how many places said otherwise
 (RFC 012 phase 1).** The rule is no longer "READ-ONLY, no service calls": it
 permits one *write*, `todo.update_item`, and the read it needs. Nothing writes
