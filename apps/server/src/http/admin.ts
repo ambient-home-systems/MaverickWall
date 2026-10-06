@@ -6199,6 +6199,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           `<button class="ovf-item${owner.lastSeenAt === null ? '' : ' is-danger'}" type="submit">` +
           `New pairing link…</button></form>`) +
       `<a class="ovf-item" href="admin/displays/${ownerParam}/gallery">Choose a starter design…</a>` +
+      // Commands for this wall (plan items M1.2, M1.3): reload it, or put its
+      // layout on every other wall for a while.
+      (owner === null
+        ? ''
+        : `<form method="post" action="admin/screens/${ownerParam}/refresh">` +
+          `<button class="ovf-item" type="submit">Refresh this wall</button></form>` +
+          `<a class="ovf-item" href="admin/screens/${ownerParam}/show">Show this layout on every wall…</a>`) +
       (slotNames.length < MAX_LAYOUT_SLOTS
         ? `<button type="button" class="ovf-item" data-new-layout>New timed layout…</button>`
         : '') +

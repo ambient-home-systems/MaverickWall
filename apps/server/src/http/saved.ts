@@ -161,6 +161,12 @@ export const SAVED_MESSAGES = {
   'timer-ended': 'Timer ended.',
   'message-posted': 'Message sent. A Messages widget on a wall shows it until it expires.',
   'message-cleared': 'Message cleared.',
+  // Commands for walls (plan items M1.2, M1.3). "Within a minute", because a
+  // wall acts on one at its next check, which is the truth until push reaches it.
+  'walls-refreshed': 'Every browser wall reloads within a minute.',
+  'wall-refreshed': 'This wall reloads within a minute.',
+  'layout-shown': 'Every other wall shows that layout within a minute, until the time you chose.',
+  'layout-show-ended': 'Every wall goes back to its own layout within a minute.',
   // The companion token (plan item M2.1).
   'companion-created': 'Token made. Show it below to copy it into your shortcut.',
   'companion-replaced': 'Token replaced. The old one no longer works.',

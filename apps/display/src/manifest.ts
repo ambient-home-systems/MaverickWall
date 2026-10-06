@@ -207,6 +207,17 @@ export interface Manifest {
     readonly weekStart?: 'sunday' | 'monday';
   };
   /**
+   * Another wall's layout, shown here until `until` (plan items M1.3, M2.3).
+   * Read through `activeLayout`, which goes back to this wall's own `layout`
+   * at that instant by the wall's own clock — so a borrowed layout can never
+   * outlast its time, even on a wall drawing from its stored copy offline.
+   */
+  readonly layoutOverride?: {
+    readonly from?: string;
+    readonly until?: number;
+    readonly layout?: Manifest['layout'];
+  };
+  /**
    * The free-form layout, when the household arranged one.
    *
    * A display authors two canvases — `portrait` and `landscape` — and the wall
@@ -258,6 +269,8 @@ export interface Manifest {
      */
     readonly allowControl?: boolean;
     readonly allowClear?: boolean;
+    /** When somebody last asked this wall to reload (plan item M1.2). */
+    readonly refreshRequestedAt?: number;
     /**
      * How large this screen is and how far away it is read from, in
      * millimetres — facts, never a size the server derived. All three or none

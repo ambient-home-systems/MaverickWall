@@ -1,3 +1,4 @@
+import { activeLayout, refreshDue } from './wall-commands.js';
 import { scheduledSlot, slotWidgets } from './canvas-schedule.js';
 import { createClock } from './clock.js';
 import {
@@ -413,7 +414,9 @@ function start(): void {
      */
     // `local` again: the schedule reads the same minute the theme just did,
     // so a wall never swaps its canvas and its colours on different ticks.
-    const canvas = pickCanvas(manifest.layout, geo.layout, local);
+    // Another wall's layout while one is being shown here, until its time is
+    // up by this wall's own clock (plan item M1.3); this wall's own otherwise.
+    const canvas = pickCanvas(activeLayout(manifest, now), geo.layout, local);
     // Which theme is on the glass decides which resolution of a style lane
     // the boxes wear (RFC 014 §4.1) — the same `day` the root was just themed by.
     /*
@@ -491,11 +494,25 @@ function start(): void {
     }
   };
 
+  /** The server's time on this page's first fresh poll — see `refreshDue`. */
+  let pageStartedAt: number | undefined;
+
   const poll = async (): Promise<void> => {
     const outcome = await client.poll();
     switch (outcome.status) {
       case 'fresh':
         clock.sync(outcome.serverTime);
+        /*
+         * Asked to reload since this page started (plan item M1.2)? The first
+         * fresh answer is when this page started, by the server's clock, which
+         * is the one the request was stamped with. Safe at any moment: the
+         * reloaded page draws its stored copy before it asks for anything.
+         */
+        if (pageStartedAt === undefined) pageStartedAt = outcome.serverTime;
+        else if (refreshDue(outcome.manifest, pageStartedAt)) {
+          location.reload();
+          return;
+        }
         if (manifest !== undefined && shouldKeepHeld(heldIsReal, outcome.manifest)) {
           /*
            * The server is answering, and answering with its stand-in. Keep the

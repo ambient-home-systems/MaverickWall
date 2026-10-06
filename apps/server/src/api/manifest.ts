@@ -1109,6 +1109,20 @@ export interface Manifest {
     readonly weekStart: 'sunday' | 'monday';
   };
   /**
+   * Another wall's layout, shown here for a while (plan items M1.3, M2.3), and
+   * when it stops. Carried beside this wall's own `layout` rather than in place
+   * of it, so the wall goes back to its own at `until` by its own clock — even
+   * offline, from its stored copy — and can never be left on somebody else's
+   * layout. Absent whenever nothing is borrowed, which is nearly always, so a
+   * wall that never sees one sends the document it always sent.
+   */
+  readonly layoutOverride?: {
+    /** The wall it came from, by name, for the editor's preview and the tests. */
+    readonly from: string;
+    readonly until: number;
+    readonly layout: Manifest['layout'];
+  };
+  /**
    * The free-form layout, when the household has chosen one.
    *
    * `mode` is what the display switches on: `auto` draws the responsive
@@ -1198,6 +1212,11 @@ export interface Manifest {
      * when off, for `allowTodo`'s reason, and read as `=== true`.
      */
     readonly allowClear?: boolean;
+    /**
+     * When somebody last asked this wall to reload (plan items M1.2, M2.3). The
+     * wall reloads once if it started before it. Absent until someone asks.
+     */
+    readonly refreshRequestedAt?: number;
     /**
      * How large this screen is, and how far away it is read from.
      *
@@ -1467,6 +1486,20 @@ export interface BuildManifestInput {
    */
   readonly layoutSlots?: readonly LayoutSlotRows[];
   readonly layoutSchedule?: readonly ScheduleRow[];
+  /**
+   * Another wall's layout to carry beside this one's (plan item M1.3): its own
+   * display settings (the aspect and background its canvases were arranged
+   * at), its rows, and when it stops. Absent when nothing is borrowed.
+   */
+  readonly layoutOverride?: {
+    readonly from: string;
+    readonly until: number;
+    readonly household: HouseholdRow;
+    readonly portrait: readonly PlacedWidgetRow[];
+    readonly landscape: readonly PlacedWidgetRow[];
+    readonly slots: readonly LayoutSlotRows[];
+    readonly schedule: readonly ScheduleRow[];
+  };
   readonly events: readonly EventCacheRow[];
   readonly sources: readonly SourceRow[];
   readonly people: readonly PersonRow[];
@@ -1522,6 +1555,7 @@ export interface BuildManifestInput {
     readonly allowTodo?: boolean;
     readonly allowControl?: boolean;
     readonly allowClear?: boolean;
+    readonly refreshRequestedAt?: number | null;
     /**
      * The wall's own theme, and nothing behind it (RFC 015 phase 2). Required
      * rather than nullable, so a caller that builds a document for a wall has
@@ -2016,6 +2050,9 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       ...(input.screen?.allowTodo === true ? { allowTodo: true } : {}),
       ...(input.screen?.allowControl === true ? { allowControl: true } : {}),
       ...(input.screen?.allowClear === true ? { allowClear: true } : {}),
+      ...(typeof input.screen?.refreshRequestedAt === 'number' && Number.isFinite(input.screen.refreshRequestedAt)
+        ? { refreshRequestedAt: input.screen.refreshRequestedAt }
+        : {}),
       /*
        * Spread rather than emitted as nulls, and refused rather than clamped.
        *
@@ -2100,6 +2137,28 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       // the wall is about to draw, from the same instant.
       readingIndexOf(input.panels?.['home']),
     ),
+    ...(input.layoutOverride === undefined
+      ? {}
+      : {
+          layoutOverride: {
+            from: input.layoutOverride.from,
+            until: input.layoutOverride.until,
+            // The same assembly as this wall's own, against the lending wall's
+            // canvases and their settings, so a borrowed widget is omitted or
+            // rewritten exactly as it would be on the wall it came from.
+            layout: buildLayout(
+              input.layoutOverride.household,
+              input.layoutOverride.portrait,
+              input.layoutOverride.landscape,
+              input.readyModules ?? [],
+              input.watchedTodoLists ?? [],
+              styling,
+              input.layoutOverride.slots,
+              input.layoutOverride.schedule,
+              readingIndexOf(input.panels?.['home']),
+            ),
+          },
+        }),
     days,
     people: people.map((person) => ({
       id: person.id,

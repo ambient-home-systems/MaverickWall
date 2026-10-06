@@ -6,6 +6,14 @@ import type { Keyring } from '../secrets/keyring.js';
 import { authenticateCompanion, presentedCompanionToken, touchCompanionToken } from '../api/companion.js';
 import { addTodoItem, findTodoList, pollTodoList, todoListTitle } from '../modules/todo/index.js';
 import { parse, z } from '../validation.js';
+import {
+  DEFAULT_SHOW_MINUTES,
+  MAX_SHOW_MINUTES,
+  endLayoutOverride,
+  findBrowserWall,
+  requestRefresh,
+  startLayoutOverride,
+} from '../api/wall-commands.js';
 import { MAX_LABEL, MAX_TIMER_MS, MIN_TIMER_MS, TIMER_ID, endTimers, startTimer } from '../modules/timers/index.js';
 import {
   DEFAULT_MESSAGE_MINUTES,
@@ -20,10 +28,10 @@ import {
  * The companion API (plan items M2.1 and M2.2): what a phone shortcut or a
  * Home Assistant automation calls, with a token instead of a session.
  *
- * Five endpoints. `POST /companion/todo/add` is the one write rule 12 reserves
- * for this API: `todo.add_item`, onto a list the household added, never from a
- * wall. The other four start and end timers and post and clear messages, which
- * reach no house at all — only the walls of this one. It sits outside `/api/*` because that prefix is behind the
+ * `POST /companion/todo/add` is the one write rule 12 reserves for this API:
+ * `todo.add_item`, onto a list the household added, never from a wall. The
+ * rest — timers, messages, and telling walls to reload or to show one wall's
+ * layout for a while — reach no house at all, only the walls of this one. It sits outside `/api/*` because that prefix is behind the
  * session gate, and a shortcut has no cookie; it is still behind the setup gate,
  * which answers it in JSON.
  *
@@ -171,6 +179,25 @@ export const messageClearBody = z
     error: 'Say which message: its “id”, or “all”: true.',
   });
 
+/** A wall, by its name or its id — trimmed, bounded, no control characters. */
+const wallName = ownText(80, 'Say which wall, as “wall”.', 'That wall name is too long.');
+
+/** Refreshing: one wall by name, or every browser wall when none is named. */
+export const wallRefreshBody = z.object({ wall: wallName.optional() }).strict();
+
+/** Showing one wall's layout on every wall: which, and for how many minutes (ten when left out). */
+export const wallShowBody = z
+  .object({
+    wall: wallName,
+    minutes: wholeNumber
+      .refine((n) => n >= 1 && n <= MAX_SHOW_MINUTES, `A layout can be shown for between 1 and ${MAX_SHOW_MINUTES} minutes.`)
+      .optional(),
+  })
+  .strict();
+
+/** Stopping it: nothing to say. */
+export const wallShowEndBody = z.object({}).strict();
+
 /** "10 minutes", "90 seconds", "1 hour 30 minutes" — said back to whoever set it. */
 export function durationWords(ms: number): string {
   const seconds = Math.round(ms / 1000);
@@ -238,8 +265,12 @@ export function registerCompanionRoutes(app: Hono, deps: CompanionDeps): void {
 
     const type = (c.req.header('content-type') ?? '').toLowerCase();
     try {
-      const raw: unknown = type.startsWith('application/json') ? await c.req.json() : await c.req.parseBody();
-      return { userId, at, raw };
+      // An empty JSON body is an empty object: "stop showing it" has nothing to say.
+      if (type.startsWith('application/json')) {
+        const text = await c.req.text();
+        return { userId, at, raw: text.trim() === '' ? {} : (JSON.parse(text) as unknown) };
+      }
+      return { userId, at, raw: await c.req.parseBody() };
     } catch {
       return answer(c, 400, { ok: false, error: 'bad-body', message: 'That body could not be read. Send JSON.' });
     }
@@ -337,6 +368,56 @@ export function registerCompanionRoutes(app: Hono, deps: CompanionDeps): void {
       expiresAt: posted.message.expiresAt,
       message: `Posted for ${durationWords(minutes * 60_000)}.`,
     });
+  });
+
+  /** Reload one wall, or every browser wall (plan items M1.2, M2.3). */
+  app.post('/companion/walls/refresh', async (c: Context) => {
+    const admitted = await admit(c);
+    if (admitted instanceof Response) return admitted;
+    const shaped = parse(wallRefreshBody, admitted.raw);
+    if (!shaped.ok) return answer(c, 400, { ok: false, error: 'bad-body', message: shaped.message });
+    touchCompanionToken(deps.db, admitted.userId, admitted.at);
+    if (shaped.value.wall === undefined) {
+      const refreshed = requestRefresh(deps.db, 'all', admitted.at);
+      if (refreshed === 0) return answer(c, 404, { ok: false, error: 'not-found', message: 'There are no browser walls yet.' });
+      return answer(c, 200, { ok: true, refreshed, message: 'Every browser wall reloads within a minute.' });
+    }
+    const match = findBrowserWall(deps.db, shaped.value.wall);
+    if (!match.ok) return answer(c, match.reason === 'ambiguous' ? 409 : 404, { ok: false, error: match.reason, message: match.message });
+    requestRefresh(deps.db, { id: match.wall.id }, admitted.at);
+    return answer(c, 200, { ok: true, refreshed: 1, message: `${match.wall.name} reloads within a minute.` });
+  });
+
+  /** Show one wall's layout on every other browser wall for a while (plan items M1.3, M2.3). */
+  app.post('/companion/walls/show', async (c: Context) => {
+    const admitted = await admit(c);
+    if (admitted instanceof Response) return admitted;
+    const shaped = parse(wallShowBody, admitted.raw);
+    if (!shaped.ok) return answer(c, 400, { ok: false, error: 'bad-body', message: shaped.message });
+    const match = findBrowserWall(deps.db, shaped.value.wall);
+    if (!match.ok) return answer(c, match.reason === 'ambiguous' ? 409 : 404, { ok: false, error: match.reason, message: match.message });
+    const minutes = shaped.value.minutes ?? DEFAULT_SHOW_MINUTES;
+    const started = startLayoutOverride(deps.db, match.wall.id, minutes, admitted.at);
+    if (!started.ok) return answer(c, 409, { ok: false, error: 'refused', message: started.message });
+    touchCompanionToken(deps.db, admitted.userId, admitted.at);
+    return answer(c, 200, {
+      ok: true,
+      until: started.until,
+      message: `${match.wall.name}’s layout is on every other wall for ${durationWords(minutes * 60_000)}.`,
+    });
+  });
+
+  /** Put every wall back on its own layout now (plan items M1.3, M2.3). */
+  app.post('/companion/walls/show/end', async (c: Context) => {
+    const admitted = await admit(c);
+    if (admitted instanceof Response) return admitted;
+    const shaped = parse(wallShowEndBody, admitted.raw);
+    if (!shaped.ok) return answer(c, 400, { ok: false, error: 'bad-body', message: shaped.message });
+    touchCompanionToken(deps.db, admitted.userId, admitted.at);
+    if (!endLayoutOverride(deps.db, admitted.at)) {
+      return answer(c, 404, { ok: false, error: 'not-found', message: 'No wall’s layout was being shown.' });
+    }
+    return answer(c, 200, { ok: true, message: 'Every wall goes back to its own layout within a minute.' });
   });
 
   /** Clear messages, one by id or all (plan item M2.2). */
