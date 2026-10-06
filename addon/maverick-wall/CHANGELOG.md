@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.84.0
+
 **A Heading widget.** Label a part of your wall in your own words: a heading,
 an optional second line under it, a picture beside it from the wall's own set,
 and a rule between the two if you like. Choose how large it may be (small,
