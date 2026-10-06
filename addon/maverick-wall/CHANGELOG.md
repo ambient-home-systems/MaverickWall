@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.85.0
+
 **News headlines.** Add news sites' and blogs' RSS or Atom feeds on the new
 **News** screen, and a **News** widget shows their headlines on a wall: as a
 list, or one at a time with a code to scan to read the story on your phone.
