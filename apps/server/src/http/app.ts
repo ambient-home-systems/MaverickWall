@@ -250,6 +250,15 @@ export interface AppDeps {
    * callback, and the route behaves exactly as before.
    */
   readonly onManifestBuilder?: (build: (screen: ScreenRow) => Manifest) => void;
+  /**
+   * Told after every request that may have changed what a wall shows — any
+   * method but a read, that did not fail (plan item M1.1). Boot hands the push
+   * channel's `nudge`, so a save reaches every connected wall in about a
+   * second. Over-telling costs one tick that finds nothing changed and sends
+   * nothing; under-telling costs a wall up to the next tick. Optional, and a
+   * test with no socket passes none.
+   */
+  readonly onWrite?: () => void;
 }
 
 /**
@@ -663,6 +672,20 @@ export function createApp(deps: AppDeps): Hono {
       );
     }
     await next();
+  });
+
+  /*
+   * A write that went through is a reason for the walls to ask again (M1.1).
+   * Wrapped round everything after it, so it sees the final status — a
+   * refused form is a 4xx and changed nothing — and a redirect, which is how
+   * nearly every admin save answers, counts as one that went through.
+   */
+  app.use('*', async (c: Context, next: Next): Promise<void> => {
+    await next();
+    const method = c.req.method;
+    if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS' && c.res.status < 400) {
+      deps.onWrite?.();
+    }
   });
 
   app.use('*', requireSetupComplete(gateDeps));

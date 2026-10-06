@@ -28,7 +28,6 @@ import { detectWallAddress } from './net/supervisor.js';
 import {
   countUsers,
   readHousehold,
-  readScreens,
   readUpdateState,
   recordUpdateCheck,
   type ScreenRow,
@@ -36,8 +35,8 @@ import {
 import { checkForUpdate } from './api/update-check.js';
 import { readPackageVersion, resolveAppVersion } from './version.js';
 import { pollExternalModules } from './modules/external/index.js';
-import { manifestEtag, type Manifest, type ManifestNotice } from './api/manifest.js';
-import { PushHub, PUSH_PATH } from './net/push-hub.js';
+import { type Manifest, type ManifestNotice } from './api/manifest.js';
+import { wirePush, type PushWiring } from './net/push-wire.js';
 import { startMdnsAdvertiser, MDNS_DEFAULT_NAME, type MdnsHandle } from './net/mdns.js';
 
 /**
@@ -455,6 +454,9 @@ async function main(): Promise<void> {
    * project keeps being bitten by, designed out rather than tested against.
    */
   let buildScreenManifest: ((screen: ScreenRow) => Manifest) | undefined;
+  // The push channel, wired once the server is bound below; until then a write
+  // has nobody to tell, and the walls' own poll covers it.
+  let push: PushWiring | undefined;
 
   const app = createApp({
     db,
@@ -472,6 +474,7 @@ async function main(): Promise<void> {
     },
     startedAt,
     log,
+    onWrite: () => push?.nudge(),
     onManifestBuilder: (build) => {
       buildScreenManifest = build;
     },
@@ -530,47 +533,14 @@ async function main(): Promise<void> {
    * is defined by now; the guard is for the impossible case rather than a real
    * one, and keeps a socket from ever pushing an undefined wall.
    */
-  const pushHub = new PushHub({
-    screens: () => readScreens(db),
-    evaluate: (screen) => {
-      if (buildScreenManifest === undefined) {
-        throw new Error('manifest builder not wired');
-      }
-      const manifest = buildScreenManifest(screen);
-      return { etag: manifestEtag(manifest), interrupts: manifest.interrupts };
-    },
+  push = wirePush(server, {
+    db,
+    // Set synchronously inside `createApp` above, so defined by now; read late
+    // anyway, so the wiring can never push an undefined wall.
+    build: () => buildScreenManifest,
+    tickMs: PUSH_TICK_MS,
     log: (message) => console.log(message),
   });
-
-  /*
-   * Route only `/d/push` into the hub; anything else upgrading is refused.
-   *
-   * A wall connects here with its display token — a cookie set at pairing, or a
-   * bearer from the native app — exactly the credential the poll uses. Under
-   * Home Assistant ingress `ingress_stream: true` is already set for this.
-   */
-  server.on?.('upgrade', (request, socket, head) => {
-    let pathname = '/';
-    try {
-      pathname = new URL(request.url ?? '/', 'http://localhost').pathname;
-    } catch {
-      // A malformed request-target: refuse rather than guess.
-    }
-    if (pathname === PUSH_PATH) {
-      pushHub.handleUpgrade(request, socket, head);
-    } else {
-      socket.destroy();
-    }
-  });
-
-  /*
-   * Every few seconds, push what changed. Far tighter than the sixty-second
-   * poll — a tornado warning reaches the wall in seconds — and cheap: a
-   * household has a handful of screens and the tick does nothing when none are
-   * connected. Unref'd so it never holds the process open on its own.
-   */
-  const pushTimer = setInterval(() => pushHub.tick(), PUSH_TICK_MS);
-  pushTimer.unref?.();
 
   /*
    * Advertise the wall on the LAN so the Android app finds it with no typed
@@ -639,10 +609,9 @@ async function main(): Promise<void> {
   const shutdown = (signal: string): void => {
     console.log(`[shutdown] ${signal}`);
     scheduler.stop();
-    clearInterval(pushTimer);
-    // Close the sockets before the HTTP server, so a held-open push connection
-    // is not what keeps `server.close` waiting.
-    pushHub.close();
+    // Close the sockets (and the push timer) before the HTTP server, so a
+    // held-open push connection is not what keeps `server.close` waiting.
+    push?.close();
     // Withdraw the mDNS record so an app drops us promptly instead of waiting
     // out the TTL and offering a server that has gone.
     mdns?.stop();

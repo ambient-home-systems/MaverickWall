@@ -1121,14 +1121,12 @@ is on the wall in somebody's kitchen.
 things that used to sit beside it are a lesson in how this section rots — all
 three were shipped and none was struck off:
 
-- **ws push is built and half-connected.** `net/push-hub.ts` is a real
-  `WebSocketServer`, wired into `main.ts` and covered by
-  `test/push-socket.test.ts`, and the **Android app connects to it**
-  (`push/PushService.kt`). What does *not* connect is the browser display —
-  `apps/display` still polls on `POLL_MS = 60_000` and has no `WebSocket` in
-  it. So the honest status is: the server half and the native client are done,
-  the browser wall is not, and `ingress_stream: true` finally has something to
-  carry even though the display is not yet the thing carrying it.
+- **ws push is built and connected at both ends.** `net/push-hub.ts` is a real
+  `WebSocketServer`, wired by `net/push-wire.ts` and covered by
+  `test/push-socket.test.ts`. The **Android app connects to it**
+  (`push/PushService.kt`), and since plan item M1.1 so does the browser wall
+  (`apps/display/src/push.ts`, below). The wall still polls on
+  `POLL_MS = 60_000`, which is now the fallback rather than the only way in.
 - **The Android app exists** (`apps/android`), and `release.yml` builds and
   attaches a signed APK to every GitHub Release.
 - **A second weather provider exists.** Open-Meteo
@@ -1674,9 +1672,10 @@ token through `/d/manifest`; the two ingress assertions were confirmed by
 reverting the origin and watching them fail.
 
 Still unwatched, and not a bug: `ingress_stream: true` carrying a **live
-WebSocket upgrade** — which cannot be proven yet because there is no WebSocket
-server, the display polls, and the stream flag is set for a push channel that
-does not exist. It waits on the socket being built. And the *fixed* pairing
+WebSocket upgrade**. The socket exists now and the browser wall opens it, but a
+wall connects on the port with its display token and never through ingress, so
+nothing a household does today sends a push socket through the supervisor's
+proxy. And the *fixed* pairing
 flow has been proven against the app but not yet on real hardware — a household
 adding a screen from the sidebar and opening the link on a tablet is the next
 real-hardware check.
@@ -3746,7 +3745,8 @@ phone or watched one finish on a kitchen wall.
 **A wall can be told to reload, or to show another wall's layout for a while,
 from Walls or from a phone (plan items M1.2, M1.3 and M2.3 except next picture,
 which waits on photo slideshows, M3.6).** Neither command pushes anything,
-because the browser wall still polls (M1.1 is unbuilt). Each is instead a fact
+because when this was built the browser wall only polled (M1.1 has landed
+since, and makes each one reach a wall in about a second). Each is instead a fact
 the manifest carries, and that is what makes them safe. A wall that was off when
 the command was given still acts on it when it comes back, and a wall started
 after it has nothing to act on.
@@ -3789,6 +3789,49 @@ passing, and 1 skipped, over 347 files**: calendar 153 over 10 · core 314 over
 real Chromium. The full run read one red, the grid slice above, and that file
 is green on its own after the fix. **Still unproven where it counts:** nobody
 has refreshed a real kitchen tablet from a phone.
+
+**The browser wall is on the push channel (plan item M1.1).** A save reaches a
+connected wall in about a second, where it used to wait up to the minute's poll.
+The socket carries no data. Every message the hub sends, `MANIFEST_CHANGED` or
+`INTERRUPT_PUSH`, becomes one more poll of `/d/manifest`, with the same ETag
+and the same 304. So the poll stays the only way anything reaches the glass,
+and a socket that never opens, drops, or is refused leaves a wall exactly as it
+was. The upgrade carries the cookie the wall was paired with, because a
+WebSocket handshake to the page's own origin sends its cookies, and the display
+CSP's `connect-src` already allowed the page's own `ws:`/`wss:`.
+
+There are three pieces:
+
+- **`apps/display/src/push.ts`** opens `/d/push` after the first answer that
+  proves the wall is paired, and closes it on a 401. It acts on the hub's two
+  message types at protocol 1 and ignores anything else. It reconnects from a
+  second to a minute, doubling, with equal jitter, and starts again from a
+  second once a socket opens. Exactly one retry is scheduled per close, and
+  `onerror` is a no-op so a failed attempt is never retried twice.
+- **`apps/server/src/net/push-wire.ts`** holds the upgrade router, the 5-second
+  timer and the new nudge. It moved out of `main.ts`, where only a real boot
+  could reach it, so the browser harness now runs the very wiring a household
+  does (`install({ push: true })`).
+- **`createApp`'s `onWrite`** is told after every request that is not a read and
+  did not fail, so a 302 counts and a refused form does not. Boot hands it the
+  wiring's `nudge`, which ticks the hub 250 ms later, debounced, because one
+  save is often several requests.
+
+**Measured.** `browser-push.test.ts` sets the push timer to a minute so that
+only a write's nudge can bring a message in, and sees it on the glass in under
+five seconds. It then revokes the wall and finds the socket gone and no further
+upgrade attempted. Fourteen mutations were checked; thirteen are red. The
+fourteenth, an `onerror` that also schedules a retry, is genuinely the same
+behaviour, because the scheduling guard already refuses a second retry; with the
+guard removed as well, the test reddens. One of the thirteen was green as first
+written: with the harness's 5-second timer a nudge that never ticked still
+delivered inside the test's eight seconds, which is why the test now owns its
+timer. The offline shell's list carries the new module. **5077 tests passing,
+and 1 skipped, over 350 files**: calendar 153 over 10 · core 314 over 9 ·
+display 928 over 53 · server 3682 over 278, measured with `pnpm test` and a
+real Chromium, green on the first full run. **Still unproven where
+it counts:** nobody has watched a real kitchen tablet change a second after a
+phone's save, and no push socket has crossed a real supervisor's proxy.
 
 **Rule 12 changed, and the interesting part is how many places said otherwise
 (RFC 012 phase 1).** The rule is no longer "READ-ONLY, no service calls": it
@@ -9114,12 +9157,6 @@ reddens the dark one.
     the log", and the boot line already prints a full `…/setup?token=` URL;
     the gap is only that the token is not pre-filled into the form a browser
     lands on. Tabled deliberately, not forgotten.
-- **The WebSocket, for the *browser* wall.** No longer the open question it was
-  written as: the hub is built (`net/push-hub.ts`), wired into boot, tested,
-  and the Android app connects to it. What is still open is `apps/display`,
-  which polls every sixty seconds and opens no socket. Polling carries
-  interrupts in the manifest, which is why a reconnecting browser wall gets
-  them at all — so this is an optimisation with a working fallback, not a gap.
 - **Whether a second screen kind needs its own acknowledge affordance.** The
   control is a real button plus a global `Enter` handler, which covers a
   remote, a touchscreen and a keyboard. A voice assistant or a wall switch
