@@ -22,6 +22,11 @@ than carrying on with the old one until somebody restarts it. Walls are spread
 out over that half-minute so they do not all ask at once, and a wall reloads
 for an update at most once every ten minutes.
 
+This starts with the update after this one: a wall still running an older
+version does not know to do it yet. After installing this update, press
+**Refresh every wall** under **Walls** once, and from then on they look after
+themselves.
+
 ## 0.80.0
 
 **Changes reach your walls in about a second.** Save a layout, start a timer
