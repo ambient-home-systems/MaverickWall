@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.86.0
+
 **An Environment widget.** Tiles for the air outside: the air-quality index,
 PM2.5, PM10, ozone, nitrogen dioxide, pollen, UV, sunlight and wind — choose
 which — and any Home Assistant sensors you want beside them, such as indoor CO₂
