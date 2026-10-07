@@ -1,4 +1,5 @@
 import { Hono, type Context, type Next } from 'hono';
+import { readAlbumSlides } from '../api/photo-albums.js';
 import { join } from 'node:path';
 import { localDateOf } from '@maverick-wall/calendar';
 import {
@@ -1332,6 +1333,7 @@ export function createApp(deps: AppDeps): Hono {
       // The to-do lists, for the one widget whose omission is a fact about
       // its own config rather than its type (RFC 012 §6.2).
       watchedTodoLists: setUp.todoLists,
+      albums: readAlbumSlides(deps.db),
       /*
        * Evaluated per poll, from stored signals and stored rules — every wall
        * reads the same document, including which interrupts have been cleared.

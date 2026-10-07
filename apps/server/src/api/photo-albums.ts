@@ -73,6 +73,27 @@ export function readAlbum(db: SqliteDatabase, id: string): Album | undefined {
   return { ...album, photos };
 }
 
+/** Every album and its photos in order, for the manifest's slideshows (plan item M5.12). */
+export interface AlbumSlides {
+  readonly id: string;
+  readonly name: string;
+  readonly photos: readonly string[];
+}
+
+export function readAlbumSlides(db: SqliteDatabase): AlbumSlides[] {
+  const albums = db.prepare('SELECT id, name FROM photo_albums ORDER BY created_at').all() as {
+    id: string;
+    name: string;
+  }[];
+  const items = db
+    .prepare('SELECT album_id AS albumId, media_name AS name FROM photo_album_items ORDER BY position')
+    .all() as { albumId: string; name: string }[];
+  return albums.map((album) => ({
+    ...album,
+    photos: items.filter((item) => item.albumId === album.id).map((item) => item.name),
+  }));
+}
+
 export type AlbumResult = { readonly ok: true; readonly id: string } | { readonly ok: false; readonly message: string };
 
 export function createAlbum(db: SqliteDatabase, name: string, at: number): AlbumResult {

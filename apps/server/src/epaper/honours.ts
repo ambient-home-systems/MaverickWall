@@ -440,6 +440,29 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
    * picture for up to an hour, so it draws the newest headline and stays on
    * it; turning would be a full refresh every minute on a battery panel.
    */
+  /*
+   * An album slideshow (plan item M5.12). A panel draws no photographs at all
+   * (MQ11), so which album, how long each shows and their order are the
+   * wall's alone; a panel turning would be a full refresh at every photo.
+   */
+  {
+    key: 'album',
+    types: ['image'],
+    label: 'Album',
+    why: 'a panel draws no photographs, so it shows the picture box empty.',
+  },
+  {
+    key: 'slideSeconds',
+    types: ['image'],
+    label: 'Each photo shows for',
+    why: 'a panel draws no photographs, and turning would refresh a battery panel at every photo.',
+  },
+  {
+    key: 'slideOrder',
+    types: ['image'],
+    label: 'Order',
+    why: 'a panel draws no photographs.',
+  },
   {
     key: 'rotateSeconds',
     types: ['news'],

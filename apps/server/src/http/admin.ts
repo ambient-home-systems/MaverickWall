@@ -1,4 +1,5 @@
 import type { Context, Hono } from 'hono';
+import { readAlbumSlides } from '../api/photo-albums.js';
 import { addCalendarSource } from '../api/sources.js';
 import { nextPersonColor } from '../api/palette.js';
 import {
@@ -6150,6 +6151,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       todoLists: todoListChoices(deps.db),
       buttons: buttonChoices(deps.db),
       newsFeeds: newsFeedChoices(deps.db),
+      // The photo albums, for the Image widget's picker and its preview (plan item M5.12).
+      albums: readAlbumSlides(deps.db),
       // The bundled faces a widget's style lane may name (RFC 014 §4.1) — the
       // server's allowlist, so the inspector cannot offer a face the schema
       // would refuse.

@@ -493,6 +493,12 @@ const widgetConfigFields = z
     // Image widget — a stored image's own name (RFC 005 Phase 3b). Served from
     // the household's media store, never an external URL (rule three).
     image: storedImageName.optional(),
+    // An album instead, turned by the wall's clock (plan item M5.12): its id,
+    // how long each photo shows, and whether the order is shuffled. The id
+    // leaves the manifest as the album's photos (`displayConfig`).
+    album: z.string().regex(/^[0-9a-f]{16}$/, 'That is not an album.').optional(),
+    slideSeconds: z.union([z.literal(60), z.literal(300), z.literal(900), z.literal(3600)]).optional(),
+    slideOrder: z.enum(['in-order', 'shuffle']).optional(),
     // Notes — free text the household typed, drawn as written (line breaks kept).
     text: z.string().max(2000).optional(),
     // To-do — a static checklist. Each item is a line the household typed, and
