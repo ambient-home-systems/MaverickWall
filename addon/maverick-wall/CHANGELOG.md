@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.90.0
+
 **The weather under the clock.** Turn on **Weather line** in a clock's settings
 and it shows the temperature outside under the time, taken from your
 forecast. You can add the humidity, the wind and the UV index beside it, and
