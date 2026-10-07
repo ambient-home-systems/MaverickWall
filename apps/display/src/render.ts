@@ -26,6 +26,7 @@ import { glyphNode, glyphPartsNode, isGlyphKey } from './glyphs.js';
 import { emojiNode } from './emoji.js';
 import { lockLoop, lockOnce, oneShotPhase } from './motion.js';
 import { ICON_MOTION_MS, iconMotion, iconSetOf, meteoconNode, type WeatherIconSet } from './weather-icons.js';
+import { clockWeatherLine, clockWeatherOf } from './clock-weather.js';
 import { MOTION_FIXTURE_TYPE, renderMotionFixture } from './motion-fixture.js';
 import { renderCountdown } from './countdown-looks.js';
 import { variantOf } from './variants.js';
@@ -2396,7 +2397,7 @@ function renderBanners(model: DisplayModel): HTMLElement | undefined {
  */
 function renderClockWidget(model: DisplayModel, config?: unknown): HTMLElement {
   const variant = variantOf('clock', config);
-  if (variant === 'analogue') return renderAnalogueClock(model);
+  if (variant === 'analogue') return renderAnalogueClock(model, config);
   const view = clockWidgetView(config);
   const box = el('div', variant === 'stacked' ? 'fw-clock clk-stacked' : 'fw-clock');
   /*
@@ -2433,7 +2434,47 @@ function renderClockWidget(model: DisplayModel, config?: unknown): HTMLElement {
   } else if (view.date) {
     box.appendChild(el('div', 'today-date', model.todayLabel));
   }
+  const weather = clockWeatherNode(model, config);
+  if (weather !== null) {
+    box.classList.add('clk-wx');
+    box.appendChild(weather);
+  }
   return box;
+}
+
+/**
+ * The clock's weather line (plan item M5.10): a picture, the temperature and
+ * the readings asked for, from the forecast the wall already holds.
+ *
+ * `null` when the household has not asked for one, and when the forecast has
+ * nothing true to say — no reading and no today — so the clock is the clock it
+ * always was rather than a clock over an empty line. The picture is the
+ * forecast's own set (`icons`), drawn still: a line under a clock is read in
+ * passing, and a turning sun beside the time is motion for its own sake.
+ * `--clk-wx-chars` sizes the line by its own length, the date lines' rule, so
+ * a line the box cannot hold shrinks rather than clipping.
+ */
+function clockWeatherNode(model: DisplayModel, config: unknown): HTMLElement | null {
+  const options = clockWeatherOf(config);
+  if (!options.show) return null;
+  const line = clockWeatherLine(
+    { current: model.weatherCurrent, days: model.weather, todayDate: model.today?.date, units: model.weatherUnits },
+    options.readings,
+  );
+  if (line === undefined) return null;
+  const row = el('div', 'clk-wx-line');
+  row.setAttribute('data-weather', line.mode);
+  const picture =
+    options.pictures === 'drawn'
+      ? glyphNode(line.glyph, 'clk-wx-ico gl')
+      : meteoconNode(options.pictures, line.glyph, line.isDay, model.now, 'clk-wx-ico gl wxi');
+  if (picture !== null) row.appendChild(picture);
+  row.appendChild(el('span', 'clk-wx-temp', line.temp));
+  for (const part of line.parts) row.appendChild(el('span', 'clk-wx-part', part));
+  // The picture counts as two characters, the way it takes about two of room.
+  const chars = [line.temp, ...line.parts].join(' · ').length + (picture === null ? 0 : 2);
+  row.style.setProperty('--clk-wx-chars', String(Math.max(1, chars)));
+  return row;
 }
 
 /**
@@ -2446,7 +2487,7 @@ function renderClockWidget(model: DisplayModel, config?: unknown): HTMLElement {
  * separate paths the stylesheet inks separately; each hand is its own path so
  * the angle it points at is the first point of its data and can be read back.
  */
-function renderAnalogueClock(model: DisplayModel): HTMLElement {
+function renderAnalogueClock(model: DisplayModel, config?: unknown): HTMLElement {
   const box = el('div', 'fw-clock clk-analogue');
   const reading = wallClockReading(model.now, model.timezone);
   const face = analogueFace(reading.hour, reading.minute);
@@ -2469,7 +2510,21 @@ function renderAnalogueClock(model: DisplayModel): HTMLElement {
   path(face.hourPath, 'clk-hand clk-hand-hour');
   path(face.minutePath, 'clk-hand clk-hand-minute');
   path(FACE_HUB_PATH, 'clk-hub');
-  box.appendChild(svg);
+  /*
+   * With a weather line (M5.10) the face sits in a room of its own above it,
+   * so the square is drawn at the shorter side of what the line leaves rather
+   * than under it. Without one the face is the box's only child, as it was.
+   */
+  const weather = clockWeatherNode(model, config);
+  if (weather === null) {
+    box.appendChild(svg);
+    return box;
+  }
+  const room = el('div', 'clk-face-room');
+  room.appendChild(svg);
+  box.classList.add('clk-wx');
+  box.appendChild(room);
+  box.appendChild(weather);
   return box;
 }
 

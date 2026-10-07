@@ -3641,6 +3641,56 @@ img.wxi { display: block; object-fit: contain; }
 }
 .clk-face .clk-dial { fill: var(--ink-scaffold, var(--muted)); }
 
+/*
+ * The clock's weather line (plan item M5.10): a picture, the temperature and
+ * any readings asked for, on one line under whichever clock it is.
+ *
+ * The digits give up room for it the way the stacked look's do for its date:
+ * `--clock-h` is the share of the box's height they may take, so the plain
+ * clock gives 52 down to 42 and the stacked one 44 down to 30 — measured: at
+ * 34 a stacked clock with its two date lines and a line ended 2.1px past its
+ * box on a 1920x1080 Classic wall. A clock with no
+ * line is not `.clk-wx` and computes exactly what it always did. The line is
+ * sized like the date lines: the scaffold role on a measured wall, the
+ * agenda's own rem where nobody has measured it, and never more than the box
+ * holds across its own length (`--clk-wx-chars`, set by the renderer). Its
+ * figures are the temperature and readings, so they are the time role's ink
+ * rather than the scaffold's, and `nowrap` is the belt.
+ */
+.fw-clock.clk-wx { --clock-h: 42; }
+.fw-clock.clk-stacked.clk-wx { --clock-h: 30; }
+.fw-clock .clk-wx-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4em;
+  margin-top: calc(var(--buh) * 3);
+  font-family: var(--f-sans);
+  font-size: min(
+    var(--t-wall-scaffold, 1.65rem),
+    calc(var(--clk-room-w, var(--buw) * 100) * 1.6 / var(--clk-wx-chars, 14)),
+    calc(var(--buh) * 13)
+  );
+  line-height: 1.15;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.fw-clock .clk-wx-temp { color: var(--ink); font-weight: 600; }
+.fw-clock .clk-wx-part + .clk-wx-part::before,
+.fw-clock .clk-wx-temp + .clk-wx-part::before { content: '· '; color: var(--ink-scaffold, var(--muted)); }
+.fw-clock .clk-wx-ico { width: 1.25em; height: 1.25em; flex: 0 0 auto; }
+/* An analogue face with a line keeps its square in the room the line leaves. */
+.fw > .fw-clock.clk-analogue.clk-wx { display: flex; flex-direction: column; }
+.clk-analogue > .clk-face-room { flex: 1 1 auto; min-height: 0; position: relative; }
+.clk-face-room > .clk-face {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  color: var(--ink-event, var(--ink));
+}
+
 .fw-shift { justify-content: center; }
 /*
  * The one-line badge, for a box with room for a single row. It is the wall's

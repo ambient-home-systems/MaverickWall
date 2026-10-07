@@ -76,7 +76,8 @@ configure first, no account to create anywhere else, no key to paste.
   Home Assistant weather entity; or OpenWeatherMap, Pirate Weather or Weather
   Underground with a key of yours, sealed and never sent to a wall. Drawn in
   the wall's own pictures, or in Meteocons, in colour or outline, with
-  tonight's moon on a clear night.
+  tonight's moon on a clear night. A clock can carry the temperature under
+  the time.
 - **Weather alerts.** National Weather Service, United States only. A banner
   for an advisory, the whole screen for a severe warning, and for an Extreme
   warning it can light a screen that has gone dark.

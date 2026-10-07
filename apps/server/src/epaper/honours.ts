@@ -367,7 +367,7 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
    */
   {
     key: 'icons',
-    types: ['weather'],
+    types: ['weather', 'clock'],
     label: 'Pictures',
     why: 'a panel draws its own one-bit weather pictures, whichever set the wall wears.',
   },
@@ -498,8 +498,28 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
   },
   {
     key: 'showWeather',
+    types: ['calendar'],
     label: "The day's weather",
     why: 'the panel draws the date and the titles only.',
+  },
+  /*
+   * The clock's weather line (plan item M5.10). A panel's clock draws the time
+   * and the date, and the forecast widget is where a panel draws the weather —
+   * its own one-bit pictures and figures — so the line and its readings are
+   * the wall's. Scoped, because `showWeather` is also the agenda's key, and
+   * its sentence there is about the agenda.
+   */
+  {
+    key: 'showWeather',
+    types: ['clock'],
+    label: 'Weather line',
+    why: 'a panel’s clock draws the time and the date; the forecast widget draws the weather on a panel.',
+  },
+  {
+    key: 'weatherReadings',
+    types: ['clock'],
+    label: 'Weather readings',
+    why: 'a panel’s clock draws the time and the date; the forecast widget draws the weather on a panel.',
   },
   {
     key: 'showWeekNumbers',
