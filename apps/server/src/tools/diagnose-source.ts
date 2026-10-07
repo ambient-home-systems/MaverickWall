@@ -7,6 +7,11 @@ import { connectionFor } from '../api/feed-credentials.js';
 import { accountForSource } from '../api/caldav-accounts.js';
 import { CTAG_BODY } from '../caldav/query.js';
 import { CALENDARSERVER_NS, prop, readMultistatus } from '../caldav/multistatus.js';
+import { accessToken } from '../oauth/accounts.js';
+import { googleEvents, microsoftEvents } from '../oauth/calendars.js';
+import { OAUTH, providerName } from '../oauth/endpoints.js';
+import { readHousehold } from '../api/queries.js';
+import { WINDOW_AFTER_DAYS, WINDOW_BEFORE_DAYS } from '../jobs/ics-sync.js';
 
 /**
  * Fetch a calendar source and report what actually came back.
@@ -42,6 +47,7 @@ interface SourceRow {
   readonly authUsername: string | null;
   readonly authPasswordEncrypted: string | null;
   readonly caldavAccountId: string | null;
+  readonly oauthAccountId: string | null;
 }
 
 const wanted = process.argv[2];
@@ -52,7 +58,8 @@ const sources = db
             allow_loopback AS allowLoopback, allow_http AS allowHttp,
             auth_username AS authUsername,
             auth_password_encrypted AS authPasswordEncrypted,
-            caldav_account_id AS caldavAccountId
+            caldav_account_id AS caldavAccountId,
+            oauth_account_id AS oauthAccountId
        FROM calendar_sources ${wanted ? 'WHERE id = ?' : ''}`,
   )
   .all(...(wanted ? [wanted] : [])) as SourceRow[];
@@ -81,6 +88,56 @@ for (const source of sources) {
   if (!opened.ok) {
     console.log(`  URL could not be decrypted: ${opened.reason}`);
     console.log('  The address needs entering again.');
+    continue;
+  }
+
+  /*
+   * A signed-in Google or Microsoft calendar (plan item M5.11) has no address
+   * to print or fetch: what it stores is the provider's own id for the
+   * calendar, and that is not printed either — on Google it is often the
+   * account's email address. What is worth saying is the account, whether its
+   * sign-in still works, and what the provider answers for the window the sync
+   * reads, using the same two functions the sync does.
+   */
+  if (source.kind === 'google' || source.kind === 'microsoft') {
+    console.log(`  kind:        ${providerName(source.kind)} calendar, signed in`);
+    const label = source.oauthAccountId === null
+      ? undefined
+      : (db.prepare('SELECT account_label AS label FROM oauth_accounts WHERE id = ?').get(source.oauthAccountId) as
+          | { label: string | null }
+          | undefined);
+    if (source.oauthAccountId === null || label === undefined) {
+      console.log('  account:     (missing — remove this calendar and sign in again)');
+      console.log('');
+      continue;
+    }
+    console.log(`  account:     ${label.label ?? '(no name given)'}`);
+    const at = Date.now();
+    const token = await accessToken({ db, keyring, fetcher, now: at }, OAUTH, source.oauthAccountId);
+    if (!token.ok) {
+      console.log(`  sign-in:     refused`);
+      console.log(`  message:     ${token.message}`);
+      console.log('');
+      continue;
+    }
+    console.log('  sign-in:     working');
+    const window = {
+      from: new Date(at - WINDOW_BEFORE_DAYS * 86_400_000),
+      to: new Date(at + WINDOW_AFTER_DAYS * 86_400_000),
+      timezone: readHousehold(db).timezone,
+    };
+    const read =
+      token.provider === 'google'
+        ? await googleEvents(fetcher, OAUTH, token.token, opened.value, window)
+        : await microsoftEvents(fetcher, OAUTH, token.token, opened.value, window);
+    if (!read.ok) {
+      console.log(`  events:      failed`);
+      console.log(`  message:     ${read.message}`);
+      if (read.status !== undefined) console.log(`  http status: ${read.status}`);
+    } else {
+      console.log(`  events:      ${read.events.length} in the window the sync reads`);
+    }
+    console.log('');
     continue;
   }
 

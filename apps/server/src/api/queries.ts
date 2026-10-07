@@ -2056,6 +2056,9 @@ export interface AdminSourceRow {
   readonly haEntityId: string | null;
   /** The CalDAV account this collection is reached through, or null (§6.2.1). */
   readonly caldavAccountId: string | null;
+  /** The signed-in Google or Microsoft account, and what it is called, or null (plan item M5.11). */
+  readonly oauthAccountId: string | null;
+  readonly oauthLabel: string | null;
   /** The account an `ics` feed signs in as, in clear. Null for most feeds. */
   readonly authUsername: string | null;
   /**
@@ -2095,6 +2098,9 @@ export function readAdminSources(db: SqliteDatabase): AdminSourceRow[] {
               show_in_grid AS showInGrid,
               color, person_id AS personId, kind, ha_entity_id AS haEntityId,
               caldav_account_id AS caldavAccountId,
+              oauth_account_id AS oauthAccountId,
+              (SELECT account_label FROM oauth_accounts a WHERE a.id = calendar_sources.oauth_account_id)
+                AS oauthLabel,
               auth_username AS authUsername,
               CASE WHEN auth_password_encrypted IS NULL THEN 0 ELSE 1 END AS hasAuthPassword,
               created_at AS createdAt
@@ -2119,8 +2125,10 @@ export function deleteSource(db: SqliteDatabase, id: string): boolean {
      * goes, because afterwards there is nothing left to ask (RFC 013 §6.2.1).
      */
     const owner = db
-      .prepare('SELECT caldav_account_id AS accountId FROM calendar_sources WHERE id = ?')
-      .get(sourceId) as { accountId: string | null } | undefined;
+      .prepare(
+        'SELECT caldav_account_id AS accountId, oauth_account_id AS oauthAccountId FROM calendar_sources WHERE id = ?',
+      )
+      .get(sourceId) as { accountId: string | null; oauthAccountId: string | null } | undefined;
 
     // Every kind. A source only ever has one of these, but deleting by kind
     // would mean reading the row first to find out which — and getting that
@@ -2129,6 +2137,7 @@ export function deleteSource(db: SqliteDatabase, id: string): boolean {
     db.prepare('DELETE FROM job_state WHERE key = ?').run(`ics-sync:${sourceId}`);
     db.prepare('DELETE FROM job_state WHERE key = ?').run(`ha-calendar-sync:${sourceId}`);
     db.prepare('DELETE FROM job_state WHERE key = ?').run(`caldav-sync:${sourceId}`);
+    db.prepare('DELETE FROM job_state WHERE key = ?').run(`oauth-sync:${sourceId}`);
     const gone = db.prepare('DELETE FROM calendar_sources WHERE id = ?').run(sourceId).changes > 0;
 
     /*
@@ -2159,6 +2168,16 @@ export function deleteSource(db: SqliteDatabase, id: string): boolean {
         db.prepare('DELETE FROM caldav_accounts WHERE id = ?').run(owner.accountId);
       }
     }
+    // The same rule for a signed-in Google or Microsoft account (plan item
+    // M5.11): its last calendar gone, its sealed refresh token goes with it.
+    if (gone && owner?.oauthAccountId != null) {
+      const left = db
+        .prepare('SELECT count(*) AS n FROM calendar_sources WHERE oauth_account_id = ?')
+        .get(owner.oauthAccountId) as { n: number };
+      if (left.n === 0) {
+        db.prepare('DELETE FROM oauth_accounts WHERE id = ?').run(owner.oauthAccountId);
+      }
+    }
     return gone;
   });
   return remove(id);
@@ -2169,8 +2188,8 @@ export function requestSyncNow(db: SqliteDatabase, id: string): void {
   db.prepare(
     `UPDATE job_state
         SET next_run_at = 0, consecutive_failures = 0, running_since = NULL
-      WHERE key IN (?, ?, ?)`,
-  ).run(`ics-sync:${id}`, `ha-calendar-sync:${id}`, `caldav-sync:${id}`);
+      WHERE key IN (?, ?, ?, ?)`,
+  ).run(`ics-sync:${id}`, `ha-calendar-sync:${id}`, `caldav-sync:${id}`, `oauth-sync:${id}`);
 }
 
 /**

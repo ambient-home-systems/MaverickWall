@@ -61,8 +61,9 @@ configure first, no account to create anywhere else, no key to paste.
   are different layouts rather than one squashed into the other, and a screen
   mounted on its side can be rotated per screen.
 - **Real calendars.** Any ICS feed — Google, Apple, Nextcloud, a school
-  district — expanded server-side so the display never sees an RRULE. Home
-  Assistant calendar entities work too, with no address to find.
+  district — expanded server-side so the display never sees an RRULE. iCloud
+  and any CalDAV account, Google Calendar and Microsoft 365 by signing in, and
+  Home Assistant calendar entities with no address to find.
 - **Shift rotation.** Per person, from a repeating pattern or derived from a
   work calendar, with colours that separate at ten feet. A rest day is drawn as
   a rest day, not as a blank.

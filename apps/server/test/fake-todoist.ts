@@ -136,6 +136,12 @@ export async function fakeTodoist(token = 'todoist-test-token-0123456789abcdef')
         return;
       }
       if (request.method === 'POST' && url.pathname === '/api/v1/tasks') {
+        // Todoist reads a body as what its content type says it is; a task
+        // sent as anything but JSON arrives as no task at all.
+        if (!(request.headers['content-type'] ?? '').startsWith('application/json')) {
+          send(response, 400, { error: 'Invalid argument value', error_tag: 'INVALID_ARGUMENT_VALUE', http_code: 400 });
+          return;
+        }
         const parsed = JSON.parse(body) as { content: string; project_id: string };
         const task: FakeTask = {
           id: String(nextId++),

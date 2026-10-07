@@ -30,6 +30,7 @@ import { DEFAULT_AFTER_SIGN_IN, safeNextPath } from '../auth/next-path.js';
 import { createSetupTokenHolder, registerSetupRoutes, type SetupTokenHolder } from './setup.js';
 import { registerAdminRoutes } from './admin.js';
 import type { TodoistEndpoint } from '../modules/todoist/client.js';
+import type { OAuthEndpoints } from '../oauth/endpoints.js';
 import { registerCompanionRoutes } from './companion.js';
 import { readLayoutOverride } from '../api/wall-commands.js';
 import { versionedShell } from './shell-version.js';
@@ -137,6 +138,8 @@ export interface WallAddress {
 export interface AppDeps {
   /** Where Todoist is — set only by a test, to a stand-in; the product always uses the real one (plan item M5.7). */
   readonly todoist?: TodoistEndpoint;
+  /** Where Google and Microsoft are — set only by a test, to a stand-in (plan item M5.11). */
+  readonly oauth?: OAuthEndpoints;
   readonly db: SqliteDatabase;
   readonly appVersion: string;
   /** Notices from boot — a failed migration, a permissions warning. */
@@ -2024,6 +2027,7 @@ export function createApp(deps: AppDeps): Hono {
 
   registerAdminRoutes(app, {
     ...(deps.todoist === undefined ? {} : { todoist: deps.todoist }),
+    ...(deps.oauth === undefined ? {} : { oauth: deps.oauth }),
     db: deps.db,
     keyring: deps.keyring,
     fetcher: deps.fetcher,

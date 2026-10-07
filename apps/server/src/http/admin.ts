@@ -663,6 +663,9 @@ import { registerChoreRoutes } from './admin-chores.js';
 import { registerButtonRoutes } from './admin-buttons.js';
 import { registerNewsRoutes } from './admin-news.js';
 import { registerTodoistRoutes } from './admin-todoist.js';
+import { oauthAccountsSection, registerOAuthRoutes } from './admin-oauth.js';
+import { readOAuthAccounts } from '../oauth/accounts.js';
+import type { OAuthEndpoints } from '../oauth/endpoints.js';
 import { registerCompanionAdminRoutes } from './admin-companion.js';
 import { registerTimerRoutes } from './admin-timers.js';
 import { wallRotates } from '../api/wall-commands.js';
@@ -729,6 +732,8 @@ import { isUnitedStatesZone } from '../timezone.js';
 export interface AdminDeps {
   /** Where Todoist is — set only by a test, to a stand-in; the product always uses the real one (plan item M5.7). */
   readonly todoist?: TodoistEndpoint;
+  /** Where Google and Microsoft are — set only by a test, to a stand-in (plan item M5.11). */
+  readonly oauth?: OAuthEndpoints;
   readonly db: SqliteDatabase;
   readonly keyring: Keyring;
   readonly fetcher: Fetcher;
@@ -1296,6 +1301,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   registerButtonRoutes(app, deps);
   registerNewsRoutes(app, deps);
   registerTodoistRoutes(app, deps);
+  registerOAuthRoutes(app, deps);
   registerCompanionAdminRoutes(app, deps);
   registerTimerRoutes(app, deps);
   registerThemeRoutes(app, deps);
@@ -6623,7 +6629,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       `<p class="host">${escapeHtml(
         source.kind === 'homeassistant'
           ? `Home Assistant · ${source.haEntityId ?? 'calendar entity'}`
-          : (source.urlHost ?? 'unknown host') +
+          : source.kind === 'google' || source.kind === 'microsoft'
+            ? `${source.kind === 'google' ? 'Google' : 'Microsoft 365'} · ${source.oauthLabel ?? 'signed in'}`
+            : (source.urlHost ?? 'unknown host') +
             (source.authUsername === null || source.authUsername === ''
               ? ''
               : ` · as ${source.authUsername}`),
@@ -6721,7 +6729,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
        * from a blank field would make "I have nothing to say about the password"
        * and "delete it" the same submission.
        */
-      (source.kind === 'homeassistant'
+      // Nor for a signed-in Google or Microsoft calendar: its credential is the
+      // account's, signed in again on the account's own card (plan item M5.11).
+      (signsInElsewhere(source.kind)
         ? ''
         : feedCredentialFields({
             username: shown.authUsername,
@@ -6746,7 +6756,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // an address the household typed. Its events arrive through the one
       // Home Assistant connection, so there is no outbound rule to relax and
       // the control would do nothing whichever way it was set.
-      (source.kind === 'homeassistant'
+      (signsInElsewhere(source.kind)
         ? ''
         : networkAccessDisclosure({
             allowPrivateNetwork: shown.allowLan,
@@ -7181,12 +7191,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    */
   function homeAssistantRouteSection(): string {
     return section(
-      'Google, iCloud and Microsoft 365',
+      'Google, iCloud and Microsoft 365 through Home Assistant',
       undefined,
-      `<p>These do not offer an address this app can use on its own — Apple offers ` +
-        `none at all, and Google's is a secret link rather than a sign-in. Home ` +
-        `Assistant has integrations for all of them, and a calendar it holds can be ` +
-        `added here with no address to find.</p>` +
+      `<p>Signing in above needs an app of your own registered with Google or ` +
+        `Microsoft, and Google's needs this wall on a public https address. Home ` +
+        `Assistant has integrations for all three, and a calendar it holds can be ` +
+        `added here with nothing to register.</p>` +
         `<ul class="plain">` +
         `<li><strong>Google Calendar</strong> and <strong>Microsoft 365</strong> have ` +
         `integrations of their own, and keep up promptly.</li>` +
@@ -7256,7 +7266,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
                 sourceRow(source, at, people, echo?.sourceId === source.id ? echo : undefined),
               )
               .join('')) +
-        caldavAccountsSection(sources),
+        caldavAccountsSection(sources) +
+        oauthAccountsSection(readOAuthAccounts(deps.db), sources),
     });
   }
 
@@ -7298,6 +7309,21 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
               title: 'An iCloud or CalDAV account',
               detail: 'Sign in once and choose which of the account’s calendars go on the wall.',
               href: 'admin/calendars/new/caldav',
+            }) +
+            /*
+             * The two sign-ins of plan item M5.11. Each page explains the app
+             * the household registers first, and Google's says plainly when
+             * this install has no address Google will send a sign-in back to.
+             */
+            listRow('', {
+              title: 'Google Calendar',
+              detail: 'Sign in with an app of your own in Google Cloud. Needs this wall on a public https address.',
+              href: 'admin/calendars/new/google',
+            }) +
+            listRow('', {
+              title: 'Microsoft 365 or Outlook.com',
+              detail: 'Sign in with a code on any device, using an app you register with Microsoft.',
+              href: 'admin/calendars/new/microsoft',
             }),
         ) +
         haCalendarSection(connected, haCalendars, sources) +
@@ -7433,4 +7459,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       body: caldavSection(caldav, readPeopleAdmin(deps.db)),
     });
   }
+}
+
+/**
+ * A calendar whose credential lives somewhere other than its own row: Home
+ * Assistant's connection, or a signed-in Google or Microsoft account (plan item
+ * M5.11). None of them is fetched from an address the household typed, so the
+ * row's own password and network switches would be controls that do nothing.
+ */
+function signsInElsewhere(kind: string): boolean {
+  return kind === 'homeassistant' || kind === 'google' || kind === 'microsoft';
 }

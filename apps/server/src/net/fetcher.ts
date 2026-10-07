@@ -11,6 +11,7 @@ import {
   parseIp,
   validateOutboundUrl,
   validateRedirect,
+  type BodyType,
   type FetchFailureCode,
   type FetchMethod,
   type FetchOutcome,
@@ -115,6 +116,17 @@ function rejected(
     ...(networkOptions.length > 0 ? { networkOptions } : {}),
   };
 }
+
+/**
+ * The one content type each kind of body is sent with (`BodyType` in the
+ * port). Not overridable by `request.headers`: the body is what the caller
+ * said it is, and a header that disagrees with it is the fault.
+ */
+const BODY_CONTENT_TYPES: Readonly<Record<BodyType, string>> = {
+  xml: 'application/xml; charset=utf-8',
+  json: 'application/json; charset=utf-8',
+  form: 'application/x-www-form-urlencoded',
+};
 
 interface FailureExtras {
   readonly httpStatus?: number;
@@ -739,7 +751,9 @@ export function createFetcher(): Fetcher {
            * calendar is named in anything but ASCII should not depend on which
            * of those a server believes.
            */
-          baseHeaders['content-type'] = 'application/xml; charset=utf-8';
+          baseHeaders['content-type'] = BODY_CONTENT_TYPES[
+            request.method !== undefined && request.method !== 'GET' ? (request.bodyType ?? 'xml') : 'xml'
+          ];
           baseHeaders['content-length'] = String(body.byteLength);
         }
 
@@ -774,7 +788,7 @@ export function createFetcher(): Fetcher {
               // The table in the port, not an argument. See `REDIRECT_POLICY`.
               followRedirects: REDIRECT_POLICY[method] === 'follow',
               ...(body !== undefined ? { body } : {}),
-              keepErrorBody: false,
+              keepErrorBody: request.method !== undefined && request.method !== 'GET' && request.keepErrorBody === true,
             },
             headers,
           );

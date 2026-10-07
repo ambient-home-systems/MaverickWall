@@ -4542,6 +4542,94 @@ machine having been suspended under the run, and the same tree was green on
 the next. **Still unproven where it counts:** nobody has looked at a clock with
 its weather line on a kitchen wall.
 
+**A household can sign in to Google Calendar and Microsoft 365, with an app of
+their own (plan item M5.11).** RFC 013 §7.3 refused "bring your own Google
+client" and §8 noted Microsoft's device code as the one OAuth that fits, on a
+multi-tenant app this project would own. Both are built now, and both use the
+**household's** app rather than ours. A shared app would put every household's
+calendar access behind one client this project keeps verified with Google and
+registered with Microsoft, and one revocation would take every wall's
+calendars off at once. So the two add pages walk through registering one: a
+Google Cloud web client, or an Entra app registration with "Allow public client
+flows" on and `Calendars.ReadBasic`. Both scopes are read-only.
+
+**Microsoft is a device code and works on any install.** The household types a
+code at microsoft.com/devicelogin on any phone, then presses "I have signed
+in". Each press is one poll, with no loop and no script, so `slow_down` cannot
+come up. The tenant is `common` unless they registered the app for their
+organisation only, where Microsoft refuses `common` and the hint says so.
+**Google is the browser redirect**, because Google's device flow does not offer
+the Calendar scope, and Google sends a sign-in back only to an https address on
+a public domain. `googleRedirectUri` writes that rule down. On an install
+without one, the Google page says why, names the address it would need
+(`base_url`), offers the secret iCal address and Home Assistant's integration,
+and draws no form. A hand-posted start is a 400 that reaches nobody (MQ12).
+The form is `target="_top"`, because Google refuses to be framed and the
+sidebar is a frame. The seven-day sign-out of an app left in Testing is said on
+the page **before** it happens. When it does happen, the account card says so
+with that reason, and the calendars are held for a week like a refused CalDAV
+password. "Sign in
+again" lifts the hold and asks for every calendar on the account at once.
+
+**`oauth_accounts` is `caldav_accounts`' shape for its reason**: one sign-in to
+many calendars, so signing in again is one act (migration `0066`, generated
+then read: one `CREATE TABLE` and one `ADD COLUMN`). Microsoft's tenant is
+stored in a column called `directory`. The first full run went red on
+`db.test.ts`'s "no tenant_id anywhere", which is right to refuse a column that
+reads like multi-tenancy, and the migration had not shipped, so it was
+regenerated rather than the rule loosened. The refresh token and
+Google's client secret are sealed under purposes of their own. Access tokens
+live in memory only. A calendar is a `calendar_sources` row of kind `google` or
+`microsoft`, with the provider's calendar id sealed where an address would be,
+because Google's is usually an email address. It syncs through the same writer,
+so the manifest, the health notices and the shift matcher cannot tell it from a
+feed. Its row offers no password and no network switches: they would be
+controls that do nothing. The account card has "Sign in again", "Add another
+calendar" (listed from the stored sign-in, less the ones already added) and
+"Remove account". Removing an account's last calendar forgets the account. The
+providers' own recurrence expansion is used. That departs from CalDAV's refusal
+of `<C:expand>`, and `oauth/calendars.ts` says why: neither API offers the raw
+series in a form `packages/calendar` reads, and both expand server-side in the
+account's own zones.
+
+**Nothing secret crosses a page.** The client secret, the device code, the PKCE
+verifier and the refresh token are held in `oauth-pending.ts`, in memory, under
+an opaque id. That is `caldav-pending.ts`'s mechanism, with a fifteen-minute
+lifetime to match Microsoft's codes. Google's `state` **is** that id, so a
+callback carrying any other value names nothing. The picker posts indexes into
+the held list and never a calendar id, so an index the page did not offer adds
+nothing.
+
+**The token exchange found a shipped bug next door.** The fetcher set
+`application/xml` on every request with a body, whatever the caller asked for.
+So a token request had to say `bodyType: 'form'`, and Todoist's "add a task"
+(M5.7) had been sending its JSON labelled as XML since it shipped. The fake
+Todoist accepted it. It now refuses a body that is not labelled JSON, as
+Todoist's API reads a body by its content type, and the shipped client goes red
+against it. `bodyType` is the fix for both. **Not checked against the real
+Todoist service.** The one `postForm` in `oauth/token.ts` is the third POST
+`ha-write-boundary.test.ts` admits, held to an address built from the endpoint
+constants and to exactly three destinations.
+
+**Measured.** `calendar-sign-in.test.ts` (22) drives both journeys against the
+real app and a loopback stand-in for both providers, built from their
+documentation (`fake-oauth.ts`). It checks the PKCE challenge, rotates
+Microsoft's refresh token, refuses an expired grant, pages, and requires
+`Prefer: outlook.timezone="UTC"`. Seventeen mutations were checked and all
+seventeen are red. Two were green at first. Sync now had no test. The
+device-code mutation was aimed at the wrong thing, printing the pending id that
+is meant to be on the page. **Still unproven where it counts, and it is most
+of it**: no real Google or Microsoft account has been signed in. In particular,
+whether Graph returns an all-day event's midnight as-is or converted to UTC is
+not stated in its documentation, so both are read. That reading is the first
+thing to check against a real Outlook calendar.
+
+**5404 tests passing and 1 skipped, over 382 files**: calendar 153 over 10 ·
+core 314 over 9 · display 978 over 58 · server 3959 over 305, measured with
+`pnpm test` and a real Chromium. Against M5.10's 5381 over 381, that is +23 and
++1: the new file's 22, and one test in `ha-write-boundary.test.ts` holding the
+sign-in POST to its three addresses.
+
 
 
 

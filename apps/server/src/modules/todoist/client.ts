@@ -74,11 +74,15 @@ async function request(
     maxBytes: FETCH_LIMITS.json,
     timeoutMs: 15_000,
     userAgent: DEFAULT_USER_AGENT,
-    headers: {
-      authorization: `Bearer ${token}`,
-      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
-    },
-    ...(method === 'GET' ? {} : { method: 'POST' as const, body: body === undefined ? '' : JSON.stringify(body) }),
+    headers: { authorization: `Bearer ${token}` },
+    /*
+     * JSON, said as the body's type rather than as a header. A header here was
+     * overruled: the fetcher labelled every body `application/xml`, so a task
+     * added from a phone went to Todoist as XML (found by plan item M5.11).
+     */
+    ...(method === 'GET'
+      ? {}
+      : { method: 'POST' as const, body: body === undefined ? '' : JSON.stringify(body), bodyType: 'json' as const }),
   });
   if (outcome.status !== 'ok') return { ok: false, message: todoistFailure(outcome) };
   return { ok: true, body: outcome.body };
