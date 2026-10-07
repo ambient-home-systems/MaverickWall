@@ -63,6 +63,9 @@ export const SAVED_MESSAGES = {
   'calendar-settings': 'Calendar settings saved.',
   'calendar-sync': 'Syncing now — it will show as synced within a minute.',
   'calendar-removed': 'Calendar removed.',
+  // Only sent once the new sign-in is stored and every calendar on the account
+  // has been asked for again (plan item M5.11).
+  'calendar-signed-in': 'Signed in again — its calendars are updating now.',
   // System
   'timezone': 'Timezone saved.',
   'update-check': 'Update check setting saved.',

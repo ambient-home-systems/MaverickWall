@@ -865,6 +865,15 @@ hours behind" is one sentence and it converts a mystery into a known trade.
 
 ### 7.3 The escape hatch we are deliberately not building
 
+> **Superseded on 2026-10-07 by plan item M5.11**
+> (`docs/plan-2026-10-magic-frame-parity.md`): the household's own Google client
+> is built, offered only where the wall has a public https address (blocker 4
+> above still stands everywhere else, and the page says so). The seven-day
+> Testing expiry of §7.1 is said on the page before it happens and on the
+> account when it does. Microsoft (§8) is built on the household's own app
+> registration rather than one this project owns. The reasoning below is kept
+> as what was decided at the time.
+
 "Bring your own Google client": the household pastes a client ID and secret and
 we run the code flow. It is technically possible — Home Assistant does it — and
 it is rejected here for three reasons. It is a lot of UI for a journey that

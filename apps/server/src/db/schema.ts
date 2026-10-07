@@ -1154,7 +1154,7 @@ export const calendarSources = sqliteTable(
      * calendars, which is rule seven's `0009` hazard and the one migration
      * fault in this repository that reported success.
      */
-    kind: text('kind', { enum: ['ics', 'homeassistant', 'caldav'] })
+    kind: text('kind', { enum: ['ics', 'homeassistant', 'caldav', 'google', 'microsoft'] })
       .notNull()
       .default('ics'),
 
@@ -1216,6 +1216,20 @@ export const calendarSources = sqliteTable(
     caldavAccountId: text('caldav_account_id').references(() => caldavAccounts.id, {
       onDelete: 'cascade',
     }),
+
+    /**
+     * The signed-in account, for a `google` or `microsoft` source (plan item
+     * M5.11). Null otherwise. `url_encrypted` holds the provider's own id for
+     * the calendar, sealed like every other address here.
+     *
+     * A plain column and deliberately **no** `references()`: drizzle drops a
+     * foreign key's action from an `ALTER TABLE ADD COLUMN`, so a declared
+     * cascade would reach SQLite as NO ACTION and refuse to remove an account
+     * that still has calendars — `caldav_account_id`'s divergence, written
+     * down above. `removeOAuthAccount` and `deleteSource` do the deleting by
+     * hand, which is what that column ends up doing anyway.
+     */
+    oauthAccountId: text('oauth_account_id'),
 
     /**
      * The calendar entity, for a `homeassistant` source. Null otherwise.
@@ -2362,5 +2376,42 @@ export const todoistConnection = sqliteTable('todoist_connection', {
 export const weatherKeys = sqliteTable('weather_keys', {
   provider: text('provider').primaryKey(),
   keyEncrypted: text('key_encrypted').notNull(),
+  updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
+});
+
+/**
+ * A Google or Microsoft account a household signed in to, for its calendars
+ * (plan item M5.11).
+ *
+ * **The household's own app registration.** No client secret ships in this
+ * repository or the image (rule six), so the household registers an app with
+ * Google or Microsoft and pastes its client id here — and, for Google, its
+ * client secret, sealed under `oauth-client-secret`. Microsoft's is a public
+ * client signing in with a code typed at microsoft.com/devicelogin, so it has
+ * no secret at all.
+ *
+ * The refresh token is sealed under `oauth-refresh-token` and opened for one
+ * token request at a time; an access token lives in memory and nowhere else.
+ * `account_label` is what the provider says the account is called — an email
+ * address — shown so a household can tell two accounts apart. `last_error` is
+ * the account's own sentence: a refused refresh token is the account's
+ * fault, not one calendar's.
+ */
+export const oauthAccounts = sqliteTable('oauth_accounts', {
+  id: text('id').primaryKey(),
+  provider: text('provider', { enum: ['google', 'microsoft'] }).notNull(),
+  clientId: text('client_id').notNull(),
+  clientSecretEncrypted: text('client_secret_encrypted'),
+  /**
+   * Microsoft's directory: `common`, `organizations`, `consumers` or a
+   * directory id. Null for Google. Microsoft calls it the tenant; the column
+   * is not named that, because `db.test.ts` holds this schema to having no
+   * column that so much as reads like multi-tenancy.
+   */
+  directory: text('directory'),
+  refreshTokenEncrypted: text('refresh_token_encrypted').notNull(),
+  accountLabel: text('account_label'),
+  lastError: text('last_error'),
+  createdAt: integer('created_at', { mode: 'number' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
 });

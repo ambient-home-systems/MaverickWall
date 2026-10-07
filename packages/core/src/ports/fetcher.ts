@@ -109,15 +109,42 @@ interface FetchRequestCommon {
  */
 export type FetchRequest = FetchRequestCommon &
   (
-    | { readonly method?: 'GET'; readonly body?: never }
+    | { readonly method?: 'GET'; readonly body?: never; readonly bodyType?: never; readonly keepErrorBody?: never }
     /**
-     * Sent as `application/xml; charset=utf-8`. Optional because a bodyless
-     * `PROPFIND` is legal and means `allprop` (RFC 4918 §9.1); nothing here
-     * sends one, and a server that only answers `allprop` is a server this
-     * reader would have to grow a second shape for.
+     * Optional because a bodyless `PROPFIND` is legal and means `allprop` (RFC
+     * 4918 §9.1); nothing here sends one, and a server that only answers
+     * `allprop` is a server this reader would have to grow a second shape for.
      */
-    | { readonly method: BodyMethod; readonly body?: string }
+    | {
+        readonly method: BodyMethod;
+        readonly body?: string;
+        /**
+         * What the body is, which decides its content type — never a header a
+         * caller writes (see `BodyType`). Absent is `xml`, which is what every
+         * body was before this existed.
+         */
+        readonly bodyType?: BodyType;
+        /**
+         * Keep a refused response's body as `responseBody`, capped at
+         * `maxBytes`. For an upstream whose refusal *is* the answer — an OAuth
+         * token endpoint says "the household has not finished signing in yet"
+         * as a 400 with `{"error": "authorization_pending"}` — and nothing else.
+         */
+        readonly keepErrorBody?: boolean;
+      }
   );
+
+/**
+ * What a body is, and therefore the one content type it is sent with.
+ *
+ * Named by the caller and translated by the adapter, rather than a header the
+ * caller writes, because a content type that disagrees with the bytes is how a
+ * server is talked into parsing something as the wrong thing. It also closes a
+ * fault this port shipped with: with one content type for every body, the
+ * Todoist client's JSON went out labelled `application/xml` (plan item M5.11
+ * found it).
+ */
+export type BodyType = 'xml' | 'json' | 'form';
 
 export type FetchRejectionCode =
   /** Blocked before any packet was sent. Carries the URL guard's own code. */
@@ -201,6 +228,11 @@ export type FetchOutcome =
        * none was sent.
        */
       readonly credentialsDropped?: boolean;
+      /**
+       * The upstream's own words, for a request that asked for them
+       * (`keepErrorBody`). Absent for every other request.
+       */
+      readonly responseBody?: string;
     };
 
 /**

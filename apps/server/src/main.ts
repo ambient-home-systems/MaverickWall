@@ -9,6 +9,7 @@ import { JOB_TIMINGS, createScheduler } from './jobs/scheduler.js';
 import { createIcsSyncHandler } from './jobs/ics-sync.js';
 import { createHaCalendarSyncHandler } from './jobs/ha-calendar-sync.js';
 import { createCaldavSyncHandler } from './jobs/caldav-sync.js';
+import { createOAuthSyncHandler } from './jobs/oauth-sync.js';
 import { createAlertJobHandler } from './modules/weather/alert-job.js';
 import { seedDefaultRules } from './api/rules.js';
 import { backfillClassic, reseedClassicForSetUp, retireDefaultWall } from './api/templates.js';
@@ -295,6 +296,17 @@ async function main(): Promise<void> {
        * than run on a schedule at all.
        */
       'caldav-sync': createCaldavSyncHandler({
+        db,
+        fetcher,
+        keyring,
+        timezone: () => readHousehold(db).timezone,
+      }),
+      /*
+       * A signed-in Google or Microsoft calendar (plan item M5.11): its own
+       * kind for the reason each of the others has one — it backs off on its
+       * own, so a provider having a bad hour slows nobody's school feed.
+       */
+      'oauth-sync': createOAuthSyncHandler({
         db,
         fetcher,
         keyring,
@@ -682,6 +694,7 @@ function registerJobs(db: SqliteDatabase): void {
   const icsKeys: string[] = [];
   const haKeys: string[] = [];
   const caldavKeys: string[] = [];
+  const oauthKeys: string[] = [];
   sources.forEach((source, index) => {
     const at = Date.now() + 5_000 + index * 2_000;
     if (source.kind === 'homeassistant') {
@@ -692,6 +705,10 @@ function registerJobs(db: SqliteDatabase): void {
       const key = `caldav-sync:${source.id}`;
       caldavKeys.push(key);
       ensureJob(db, key, 'caldav-sync', at);
+    } else if (source.kind === 'google' || source.kind === 'microsoft') {
+      const key = `oauth-sync:${source.id}`;
+      oauthKeys.push(key);
+      ensureJob(db, key, 'oauth-sync', at);
     } else {
       const key = `ics-sync:${source.id}`;
       icsKeys.push(key);
@@ -703,6 +720,7 @@ function registerJobs(db: SqliteDatabase): void {
   // Its own list, because `removeJobsNotIn` reconciles one kind at a time and
   // reconciling a kind against another's list deletes every job of it.
   removeJobsNotIn(db, 'caldav-sync', caldavKeys);
+  removeJobsNotIn(db, 'oauth-sync', oauthKeys);
 
   ensureJob(db, 'optimize', 'optimize', Date.now() + 60_000);
   // Soon, but not instantly: a restart during a storm should get back into

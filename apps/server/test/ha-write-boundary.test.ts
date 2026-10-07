@@ -208,7 +208,7 @@ describe('the source scan: one door, and it is this one', () => {
 });
 
 describe('the other way a POST could leave', () => {
-  it('has two call sites outside the JSON adapter — a webhook button with no body, and Todoist', () => {
+  it('has three call sites outside the JSON adapter — a webhook button with no body, Todoist, and a calendar sign-in', () => {
     /*
      * `fetch` grew a method in RFC 013 §6.3 and a POST through it would bypass
      * `HA_SERVICES` completely. For two releases nothing needed one and the
@@ -225,6 +225,13 @@ describe('the other way a POST could leave', () => {
      * an address built on the endpoint's base, and — in the test below — to
      * the three paths it is allowed to post to.
      *
+     * Plan item M5.11 is the third, and it is not Home Assistant either: the
+     * one `postForm` in `oauth/token.ts` is every request that trades a code
+     * or a refresh token with Google or Microsoft, and its address comes from
+     * `targetUrl`, which builds it on the `OAuthEndpoints` constants and never
+     * on anything a household typed. The test below holds `targetUrl` to those
+     * three destinations.
+     *
      * The adapter's own `POST: 'refuse'` in `REDIRECT_POLICY` and its
      * `method: 'POST'` when it builds `postJson`'s wire request are the
      * implementation and are not doors, so they are exempted by file and
@@ -235,6 +242,7 @@ describe('the other way a POST could leave', () => {
     let calls = 0;
     let webhook: string | undefined;
     let todoist: string | undefined;
+    let oauth: string | undefined;
     for (const file of filesUnder(SERVER_SRC)) {
       const name = relative(ROOT, file);
       for (const call of fetchCallArguments(readFileSync(file, 'utf8'))) {
@@ -246,6 +254,10 @@ describe('the other way a POST could leave', () => {
         }
         if (name === join('apps', 'server', 'src', 'modules', 'todoist', 'client.ts') && todoist === undefined) {
           todoist = call;
+          continue;
+        }
+        if (name === join('apps', 'server', 'src', 'oauth', 'token.ts') && oauth === undefined) {
+          oauth = call;
           continue;
         }
         posting.push(`${name}  ${call.slice(0, 120)}`);
@@ -262,11 +274,29 @@ describe('the other way a POST could leave', () => {
     // Todoist's one call is to its own fixed base, never a typed address.
     expect(todoist, 'the Todoist client POST moved or vanished').toBeDefined();
     expect(todoist).toMatch(/url: `\$\{endpoint\.base\}\$\{path\}`/);
+    // A calendar sign-in's one call is to an address built from the endpoints.
+    expect(oauth, 'the calendar sign-in POST moved or vanished').toBeDefined();
+    expect(oauth).toContain('url: targetUrl(target, endpoints)');
 
     // And the scan is looking at something. A brace matcher that silently found
     // no calls would pass for ever, which is this project's own complaint about
     // an assertion no edit can turn red.
     expect(calls).toBeGreaterThan(10);
+  });
+
+  it('posts a calendar sign-in to Google’s token address and Microsoft’s two, and nowhere else', () => {
+    const token = readFileSync(join(ROOT, SERVER_SRC, 'oauth', 'token.ts'), 'utf8');
+    const start = token.indexOf('function targetUrl(');
+    const body = token.slice(start, token.indexOf('\n}\n', start));
+    const returns = [...body.matchAll(/return ([^;]+);/g)].map((match) => match[1]);
+    expect(returns).toEqual([
+      'endpoints.googleToken',
+      '`${endpoints.microsoftLogin}/${encodeURIComponent(target.tenant)}/oauth2/v2.0/devicecode`',
+      '`${endpoints.microsoftLogin}/${encodeURIComponent(target.tenant)}/oauth2/v2.0/token`',
+    ]);
+    const endpoints = readFileSync(join(ROOT, SERVER_SRC, 'oauth', 'endpoints.ts'), 'utf8');
+    expect(endpoints).toContain("googleToken: 'https://oauth2.googleapis.com/token',");
+    expect(endpoints).toContain("microsoftLogin: 'https://login.microsoftonline.com',");
   });
 
   it('posts to Todoist on three paths only: close, reopen and a new task', () => {

@@ -156,6 +156,19 @@ export const JOB_TIMINGS: Readonly<Record<string, JobTiming>> = {
     backoffInitialMs: 60_000,
     backoffMaxMs: 60 * 60_000,
   },
+  'oauth-sync': {
+    /*
+     * A signed-in Google or Microsoft calendar (plan item M5.11): the fifteen
+     * minutes every calendar from somebody else's server gets, for the reason
+     * `caldav-sync` gives — nobody has measured either provider's tolerance,
+     * and both meter their APIs per app. A refused sign-in never reaches the
+     * backoff ceiling: the week's hold takes that branch instead.
+     */
+    intervalMs: 15 * 60_000,
+    jitterRatio: 0.15,
+    backoffInitialMs: 60_000,
+    backoffMaxMs: 60 * 60_000,
+  },
   'ha-sync': {
     /*
      * Thirty seconds, which the tick then bounds.

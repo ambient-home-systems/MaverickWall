@@ -80,6 +80,13 @@ export type SecretPurpose =
    * Weather or Weather Underground.
    */
   | 'weather-key'
+  /**
+   * A Google or Microsoft refresh token (plan item M5.11), which reads a
+   * household's calendars until it is revoked.
+   */
+  | 'oauth-refresh-token'
+  /** The client secret of a household's own Google app registration (plan item M5.11). */
+  | 'oauth-client-secret'
   /** Session signing. */
   | 'session';
 

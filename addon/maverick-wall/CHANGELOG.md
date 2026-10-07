@@ -16,6 +16,24 @@
 
 ## Unreleased
 
+**Google Calendar and Microsoft 365, signed in.** Calendars › Add a calendar
+has two new choices. **Microsoft 365 or Outlook.com** signs in with a code you
+type at microsoft.com/devicelogin on any phone, and works on any install.
+**Google Calendar** signs in on Google's own page, and needs this wall on a
+public https address; on an install without one, the page says so and offers
+Google's secret iCal address and Home Assistant's integration instead. Both use
+an app you register yourself with Google or Microsoft, and the page walks you
+through it. Both only read your calendars. Choose which calendars go on the
+wall, and add more later without signing in again.
+
+If Google stops accepting the sign-in, Calendars says so on the account, with
+the reason: an app left in Google's "Testing" mode signs everyone out after
+seven days. **Sign in again** fixes every calendar on that account at once.
+
+**Adding a task to a Todoist list from your phone** sent the task in a form
+Todoist could not read. It is fixed, but has not yet been tried against
+Todoist itself.
+
 ## 0.90.0
 
 **The weather under the clock.** Turn on **Weather line** in a clock's settings
