@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.92.0
+
 **Your own photos, in albums.** A new **Photos** screen, under Household, keeps
 your pictures in named albums on this box. Choose several at once: each one is
 made the right size for a wall before it is sent, which also removes the
