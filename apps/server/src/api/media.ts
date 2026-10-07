@@ -23,6 +23,36 @@ import type { SqliteDatabase } from '../db/open.js';
 /** Enough for a photograph of a person, small enough not to fill an SD card. */
 export const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
 
+/**
+ * A photo for an album (plan item M3.1), which is a bigger thing than an
+ * avatar: a wall can be a 43" television.
+ *
+ * With scripting on, the admin shrinks a photo in the browser before it is
+ * sent (MQ2: no image library in the image), so what arrives is a JPEG of
+ * about half a megabyte. This cap is for the household with scripting off,
+ * sending a phone's photo as it is, and it is the most a wall ever needs.
+ */
+export const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
+
+export type MediaUsage = 'avatar' | 'background' | 'photo' | 'other';
+
+/**
+ * HEIC and AVIF: an ISO-BMFF file whose `ftyp` brand names one.
+ *
+ * Neither is a picture this wall can count on drawing — Chromium on a
+ * tablet does not decode HEIC at all — so both are refused. They are
+ * recognised rather than falling into "not an image", because a household
+ * holding an iPhone photo deserves to be told what it is and what to do.
+ */
+const HEIF_BRANDS = new Set(['heic', 'heix', 'heim', 'heis', 'hevc', 'hevx', 'mif1', 'msf1', 'avif', 'avis']);
+
+export function sniffHeif(bytes: Buffer): 'heic' | 'avif' | undefined {
+  if (bytes.length < 12 || bytes.subarray(4, 8).toString('latin1') !== 'ftyp') return undefined;
+  const brand = bytes.subarray(8, 12).toString('latin1');
+  if (!HEIF_BRANDS.has(brand)) return undefined;
+  return brand.startsWith('avi') ? 'avif' : 'heic';
+}
+
 export type ImageKind = 'png' | 'jpeg' | 'gif' | 'webp';
 
 const CONTENT_TYPES: Readonly<Record<ImageKind, string>> = {
@@ -90,13 +120,32 @@ export function storeImage(
   dataDir: string,
   bytes: Buffer,
   originalName: string,
-  usage: 'avatar' | 'background' | 'other' = 'avatar',
+  usage: MediaUsage = 'avatar',
 ): StoreResult {
   if (bytes.length === 0) return { ok: false, message: 'That file is empty.' };
-  if (bytes.length > MAX_UPLOAD_BYTES) {
+  // HEIC first: an iPhone photo is often over the cap as well, and "too big"
+  // would send somebody to shrink a file that still would not be accepted.
+  const heif = sniffHeif(bytes);
+  if (heif !== undefined) {
+    return heif === 'heic'
+      ? {
+          ok: false,
+          message: 'That is a HEIC photo, the format iPhones save in, and walls cannot show it.',
+          suggestion:
+            'Upload it from Safari on the iPhone, which sends it as a JPEG, or set the iPhone to save JPEGs: ' +
+            'Settings › Camera › Formats › Most Compatible.',
+        }
+      : {
+          ok: false,
+          message: 'That is an AVIF picture, which not every wall can show.',
+          suggestion: 'Save it as a JPEG or PNG and upload that.',
+        };
+  }
+  const cap = usage === 'photo' ? MAX_PHOTO_BYTES : MAX_UPLOAD_BYTES;
+  if (bytes.length > cap) {
     return {
       ok: false,
-      message: 'That image is larger than 2 MB.',
+      message: `That image is larger than ${cap / (1024 * 1024)} MB.`,
       suggestion: 'A photo straight from a phone is usually far bigger than a wall needs. Crop or shrink it first.',
     };
   }
@@ -148,7 +197,7 @@ export interface MediaListItem {
  */
 export function listImages(
   db: SqliteDatabase,
-  usage: 'avatar' | 'background' | 'other' = 'background',
+  usage: MediaUsage = 'background',
 ): MediaListItem[] {
   return db
     .prepare(

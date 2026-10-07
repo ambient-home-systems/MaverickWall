@@ -65,6 +65,14 @@ export const SAVED_MESSAGES = {
   'calendar-removed': 'Calendar removed.',
   // Only sent once the new sign-in is stored and every calendar on the account
   // has been asked for again (plan item M5.11).
+  // Photo albums (plan item M3.1). "Added" only when a photo went in: one
+  // that was already in the album is said as that, because a token is a claim.
+  'album-added': 'Album added. Add some photos to it.',
+  'album-renamed': 'Album renamed.',
+  'album-removed': 'Album deleted.',
+  'photos-added': 'Photos added.',
+  'photos-already-there': 'Those photos are already in this album.',
+  'photo-removed': 'Photo removed.',
   'calendar-signed-in': 'Signed in again — its calendars are updating now.',
   // System
   'timezone': 'Timezone saved.',

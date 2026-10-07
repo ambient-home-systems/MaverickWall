@@ -58,6 +58,9 @@ const ICON_PATHS: Readonly<Record<string, string>> = {
   timers: '<line x1="10" x2="14" y1="2" y2="2"/><line x1="12" x2="15" y1="14" y2="11"/><circle cx="12" cy="14" r="8"/>',
   /* list-checks — Todoist (plan item M5.7), lucide-static 0.469.0 */
   todoist: '<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>',
+  /* images — Photos (plan item M3.1), lucide-static 0.469.0 */
+  photos:
+    '<path d="M18 22H4a2 2 0 0 1-2-2V6"/><path d="m22 13-1.296-1.296a2.41 2.41 0 0 0-3.408 0L11 18"/><circle cx="12" cy="8" r="2"/><rect width="16" height="16" x="6" y="2" rx="2"/>',
   /* newspaper — News (plan item M5.5), lucide-static 0.469.0 */
   news: '<path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/>',
   /* mouse-pointer-click — Buttons (RFC 018 phase 5), lucide-static 0.469.0 */

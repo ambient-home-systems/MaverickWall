@@ -806,6 +806,17 @@ input[type=file]{width:100%;padding:var(--mw-s-2);border-radius:var(--mw-r-1);
 /* And the companion page's Copy button, revealed by copy-button.js only
  * where copying can work. */
 [data-copy][hidden]{display:none}
+/* Photo albums (plan item M3.1): a set of pictures to look at, which is not a
+ * card, a row or a table. Square thumbnails, cropped to fill, each with its
+ * own Remove under it; the album row's cover is one of them at the row's
+ * own lead size. */
+.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(calc(var(--mw-touch) * 3),1fr));
+  gap:var(--mw-s-3);margin:0;padding:0;list-style:none}
+.photo-grid li{display:flex;flex-direction:column;align-items:flex-start;gap:var(--mw-s-1)}
+.photo-grid img{display:block;width:100%;aspect-ratio:1;object-fit:cover;border-radius:var(--mw-r-2);
+  background:var(--mw-surface-2)}
+img.photo-cover{display:block;width:var(--mw-touch);height:var(--mw-touch);object-fit:cover;
+  border-radius:var(--mw-r-1);background:var(--mw-surface-2)}
 .token-show{margin:var(--mw-s-3) 0}
 
 /* ---- Buttons ---------------------------------------------------------------
@@ -3179,6 +3190,8 @@ const GROUPS: readonly NavGroup[] = [
     items: [
       { key: 'calendars', label: 'Calendars', href: 'admin/calendars', icon: 'calendars' },
       { key: 'people', label: 'People', href: 'admin/people', icon: 'people' },
+      // The household's own photos, in albums (plan item M3.1).
+      { key: 'photos', label: 'Photos', href: 'admin/photos', icon: 'photos' },
       { key: 'shifts', label: 'Work Schedule', href: 'admin/shifts', icon: 'shifts' },
       // Defining a chore is admin work; ticking one off is the wall's, and
       // deliberately not here (RFC 008).
@@ -3408,6 +3421,9 @@ const WANTS_GEOLOCATE_SCRIPT = /<button\b[^>]*\bdata-geolocate(?=[\s>])/;
 
 /** A Copy button (`data-copy`, the companion token): same shape, one control along. */
 const WANTS_COPY_SCRIPT = /<button\b[^>]*\bdata-copy(?=[\s=>])/;
+
+/** A photo upload form (`data-photo-upload`, plan item M3.1): resized in the browser before it is sent. */
+const WANTS_PHOTO_UPLOAD_SCRIPT = /<form\b[^>]*\bdata-photo-upload(?=[\s>])/;
 
 /**
  * The strip itself: one sentence and a way to be rid of it.
@@ -3652,6 +3668,9 @@ export function page(options: PageOptions): string {
       : '') +
     (WANTS_COPY_SCRIPT.test(options.body)
       ? `<script type="module" src="assets/copy-button.js"></script>`
+      : '') +
+    (WANTS_PHOTO_UPLOAD_SCRIPT.test(options.body)
+      ? `<script type="module" src="assets/photo-upload.js"></script>`
       : '') +
     `</main></body></html>`
   );

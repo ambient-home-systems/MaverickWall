@@ -470,6 +470,13 @@
       "when": 1791388854222,
       "tag": "0066_aberrant_wolfsbane",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "6",
+      "when": 1791389744510,
+      "tag": "0067_military_fenris",
+      "breakpoints": true
     }
   ]
 }

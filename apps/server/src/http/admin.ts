@@ -664,6 +664,7 @@ import { registerButtonRoutes } from './admin-buttons.js';
 import { registerNewsRoutes } from './admin-news.js';
 import { registerTodoistRoutes } from './admin-todoist.js';
 import { oauthAccountsSection, registerOAuthRoutes } from './admin-oauth.js';
+import { registerPhotoRoutes } from './admin-photos.js';
 import { readOAuthAccounts } from '../oauth/accounts.js';
 import type { OAuthEndpoints } from '../oauth/endpoints.js';
 import { registerCompanionAdminRoutes } from './admin-companion.js';
@@ -1302,6 +1303,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   registerNewsRoutes(app, deps);
   registerTodoistRoutes(app, deps);
   registerOAuthRoutes(app, deps);
+  registerPhotoRoutes(app, deps);
   registerCompanionAdminRoutes(app, deps);
   registerTimerRoutes(app, deps);
   registerThemeRoutes(app, deps);
