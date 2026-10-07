@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.93.0
+
 **Photos from Immich.** If you keep your photos in Immich, connect it on the
 **Photos** screen with an API key, then choose an album, a person, your
 favourites or Immich's "On this day" memories. Each one can be shown on a wall
