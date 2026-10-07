@@ -4480,6 +4480,69 @@ assertion changed its letter. `browser-widget-looks` held the playful look to
 purpose. **Still unproven where it counts:** nobody has looked at a Meteocons
 forecast on a kitchen wall, or watched a sun turn on an old tablet.
 
+**A clock can carry the weather (plan item M5.10).** "Weather line" on a clock
+draws one line under the time: a picture, the temperature, and whichever of the
+humidity, the wind and the UV index are ticked. It works on every look,
+analogue included. It reuses two keys rather than inventing them. `showWeather`
+is the agenda's key with the agenda's reading, absent meaning off, so no clock
+already hanging grows a line. `icons` is the forecast's picture set (M5.9).
+The one new key is `weatherReadings`, refused outside its three values. What
+the line says is `clock-weather.ts`, pure, from the model the forecast widget
+reads. Nothing new is fetched or carried in the manifest. The line shows
+**now** when the forecast has a reading recent enough to call now, and
+otherwise **today's high and low**, the Today card's rule: a clock must not put
+a morning's forecast beside the afternoon's time as though it were the
+temperature outside. Humidity is a reading of now, so it is left out without
+one. The wind and the UV fall back to the day's own maximum. A clock's
+picture holds still, because a turning sun beside the time is motion for its
+own sake.
+
+**The digits give up room for it the way the stacked look's do for its date.**
+`.clk-wx` lowers `--clock-h`: to 42 on a plain clock and to 30 on a stacked
+one. The 30 was measured, not chosen: at 34 a stacked clock with its two date
+lines and a weather line ended 2.1 pixels past its box on a 1920x1080 Classic
+wall. The line is sized like the date lines: the scaffold role, a height term,
+and a width term over its own length (`--clk-wx-chars`, set by the renderer).
+An analogue face with a line moves into a room of its own above it, so the
+square is drawn at the shorter side of what the line leaves.
+
+**The browser test found a second fault, and the unit fixture had been hiding
+it.** With no reading the line read "22° / 13°C". The forecast's strip writes
+its low with the unit after it, and a high and low in what look like two
+scales read as a mistake. The line now writes both temperatures from their
+values. The unit test was green over that bug because its fixture's low was a
+bare "9°", which no forecast writes. It carries the real "9°C" now and goes
+red on the old code. `weather-icons.js`'s lesson came back a second time on
+the first run as well: `clock-weather.js` joined the wall's import graph and
+had to join the offline shell.
+
+**A panel's clock draws the time and the date, and leaves the weather to the
+forecast widget.** `showWeather` was a panel note for every type, worded for
+the agenda. It is scoped to the calendar now, with a clock entry of its own
+beside `weatherReadings`, and `icons` names the clock as well as the forecast.
+`clock-weather-config.test.ts` holds both the boundary and the notes.
+
+**Measured.** `clock-weather.test.ts` (5, display), `clock-weather-config.test.ts`
+(2) and `browser-clock-weather.test.ts` (6: a real paired Classic wall, every
+look at both sizes, a narrow box, the picture set, and the today fallback).
+Eleven mutations were checked, each refused if its build failed, the lesson
+M5.9 recorded, and all eleven are red. One was green as first written. Taking
+the line's width term away changed nothing on Classic's clock box, because
+the height term and the role already kept the line narrow enough there. A
+clock a fifth of the wall wide, carrying all three readings, is the box where
+only the width term can keep the line in, and it is red there.
+
+**5381 tests passing and 1 skipped, over 381 files**: calendar 153 over 10 ·
+core 314 over 9 · display 978 over 58 · server 3936 over 304, measured with
+`pnpm test` and a real Chromium. Against M5.9's 5367 over 378 that is +14 and
++3: the display's 5 and the one row `motion.test.ts` generates for the new
+module, and the server's 2 and 6. One full run before it is not counted:
+dozens of unrelated browser tests "failed" at fifteen minutes each, the
+machine having been suspended under the run, and the same tree was green on
+the next. **Still unproven where it counts:** nobody has looked at a clock with
+its weather line on a kitchen wall.
+
+
 
 
 **Rule 12 changed, and the interesting part is how many places said otherwise

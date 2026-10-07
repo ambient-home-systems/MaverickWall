@@ -318,6 +318,14 @@ const widgetConfigFields = z
      */
     icons: z.enum(['drawn', 'fill', 'line']).optional(),
     /*
+     * The clock's weather line (plan item M5.10): which readings ride beside
+     * the temperature. `showWeather` is what draws the line, the agenda's own
+     * key and reading — absent is off — and `icons` is its picture set, the
+     * forecast's. Refused outside the three, and never more of them than
+     * there are.
+     */
+    weatherReadings: z.array(z.enum(['humidity', 'wind', 'uv'])).max(3).optional(),
+    /*
      * Home Assistant — which watched readings this widget shows, **by entity
      * id** (P1.3); absent or empty is all of them. It held labels until then,
      * so a rename took a reading off every widget that had picked it, and a

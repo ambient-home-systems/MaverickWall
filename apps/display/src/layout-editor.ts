@@ -6692,6 +6692,50 @@ function boot(): void {
         'showDate',
       ),
     );
+
+    /*
+     * The weather line (plan item M5.10), on every look: the temperature from
+     * the forecast the wall already holds, and whichever readings are ticked.
+     * Absent is off — the agenda's `showWeather` reading, one widget along —
+     * so no clock already hanging grows a line. The picture set is the
+     * forecast's own `icons`.
+     */
+    configPanel.appendChild(
+      switchRow(
+        'Weather line',
+        'The temperature under the clock, from your forecast. Today’s high and low when there is no reading for now.',
+        cfg['showWeather'] === true,
+        (checked) => setConfig(widget, 'showWeather', checked ? true : undefined),
+        'showWeather',
+      ),
+    );
+    const readings = cfgField('Beside the temperature', 'weatherReadings');
+    readings.appendChild(
+      checkList(
+        [
+          { value: 'humidity', label: 'Humidity' },
+          { value: 'wind', label: 'Wind' },
+          { value: 'uv', label: 'UV index' },
+        ],
+        Array.isArray(cfg['weatherReadings']) ? (cfg['weatherReadings'] as string[]) : [],
+        (values) => setConfig(widget, 'weatherReadings', values.length === 0 ? undefined : values),
+        '',
+      ),
+    );
+    configPanel.appendChild(readings);
+    configPanel.appendChild(
+      segControl(
+        'Pictures',
+        [
+          ['drawn', 'Drawn'],
+          ['fill', 'Colour'],
+          ['line', 'Outline'],
+        ],
+        typeof cfg['icons'] === 'string' ? cfg['icons'] : 'drawn',
+        (value) => setConfig(widget, 'icons', value === 'drawn' ? undefined : value),
+        'icons',
+      ),
+    );
   }
 
   /**
