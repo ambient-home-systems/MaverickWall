@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.87.0
+
 **Todoist lists on your walls.** Connect Todoist on the new **Todoist** screen
 with your API token, choose the projects to show, and a **To-do** widget draws
 one just as it draws a Home Assistant list. A wall you allow to tick things off
