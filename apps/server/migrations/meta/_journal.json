@@ -477,6 +477,13 @@
       "when": 1791389744510,
       "tag": "0067_military_fenris",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "6",
+      "when": 1791400311957,
+      "tag": "0068_goofy_millenium_guard",
+      "breakpoints": true
     }
   ]
 }

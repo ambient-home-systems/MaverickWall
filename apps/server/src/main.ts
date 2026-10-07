@@ -10,6 +10,7 @@ import { createIcsSyncHandler } from './jobs/ics-sync.js';
 import { createHaCalendarSyncHandler } from './jobs/ha-calendar-sync.js';
 import { createCaldavSyncHandler } from './jobs/caldav-sync.js';
 import { createOAuthSyncHandler } from './jobs/oauth-sync.js';
+import { createImmichSyncHandler } from './jobs/immich-sync.js';
 import { createAlertJobHandler } from './modules/weather/alert-job.js';
 import { seedDefaultRules } from './api/rules.js';
 import { backfillClassic, reseedClassicForSetUp, retireDefaultWall } from './api/templates.js';
@@ -366,6 +367,14 @@ async function main(): Promise<void> {
         await pollExternalModules(db, fetcher, keyring);
         return { status: 'ok' };
       },
+      // Immich (plan item M3.2): every source re-read, a few photos fetched ahead.
+      'immich-sync': createImmichSyncHandler({
+        db,
+        keyring,
+        fetcher,
+        dataDir: resolved,
+        timezone: () => readHousehold(db).timezone,
+      }),
       'update-check': async () => {
         if (!readUpdateState(db).enabled) return { status: 'ok' };
         /*
@@ -729,6 +738,8 @@ function registerJobs(db: SqliteDatabase): void {
   // Registered always, gated by the setting when it fires. Ten minutes out so
   // a restart is never the thing that makes an outbound request.
   ensureJob(db, 'update-check', 'update-check', Date.now() + 10 * 60_000);
+  // Immich, registered always and a no-op without a connection (plan item M3.2).
+  ensureJob(db, 'immich-sync', 'immich-sync', Date.now() + 90_000);
   // Third-party module poll, registered always; does nothing when there are no
   // modules. Half a minute out so a restart never stampedes them.
   ensureJob(db, 'external-modules', 'external-modules', Date.now() + 30_000);

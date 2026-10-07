@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 import type { SqliteDatabase } from '../db/open.js';
 import { isStoredName, mediaDir } from './media.js';
+import { readImmichSlides } from '../modules/immich/store.js';
 
 /**
  * The household's photo albums (plan item M3.1).
@@ -88,10 +89,15 @@ export function readAlbumSlides(db: SqliteDatabase): AlbumSlides[] {
   const items = db
     .prepare('SELECT album_id AS albumId, media_name AS name FROM photo_album_items ORDER BY position')
     .all() as { albumId: string; name: string }[];
-  return albums.map((album) => ({
-    ...album,
-    photos: items.filter((item) => item.albumId === album.id).map((item) => item.name),
-  }));
+  return [
+    ...albums.map((album) => ({
+      ...album,
+      photos: items.filter((item) => item.albumId === album.id).map((item) => item.name),
+    })),
+    // And what the household chose from Immich (plan item M3.2): each source
+    // is one more album to the slideshow, its photos by handle.
+    ...readImmichSlides(db),
+  ];
 }
 
 export type AlbumResult = { readonly ok: true; readonly id: string } | { readonly ok: false; readonly message: string };

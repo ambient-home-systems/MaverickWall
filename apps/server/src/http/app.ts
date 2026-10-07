@@ -1,4 +1,5 @@
 import { Hono, type Context, type Next } from 'hono';
+import { immichPhoto } from '../modules/immich/store.js';
 import { readAlbumSlides } from '../api/photo-albums.js';
 import { join } from 'node:path';
 import { localDateOf } from '@maverick-wall/calendar';
@@ -791,8 +792,14 @@ export function createApp(deps: AppDeps): Hono {
    * family's photographs must not be readable by anything on the network that
    * happens to know a filename.
    */
-  app.get('/d/media/:name', (c: Context) => {
-    const image = readImage(deps.dataDir, c.req.param('name') ?? '');
+  app.get('/d/media/:name', async (c: Context) => {
+    const name = c.req.param('name') ?? '';
+    // The household's own, or a photo from Immich by its handle (plan item
+    // M3.2): one route, so a wall reaches both the same way and never learns
+    // where an Immich photo came from.
+    const image =
+      readImage(deps.dataDir, name) ??
+      (await immichPhoto({ db: deps.db, keyring: deps.keyring, fetcher: deps.fetcher, dataDir: deps.dataDir }, name));
     if (image === undefined) return c.json({ error: 'not-found' }, 404);
     c.header('content-type', image.contentType);
     // The type is sniffed from the bytes; this stops a browser deciding it

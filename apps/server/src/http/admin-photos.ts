@@ -18,6 +18,7 @@ import { destructive, emptyState, listRow, section } from './components.js';
 import { readSaved, savedRedirect } from './saved.js';
 import { navModules, type AdminDeps } from './admin.js';
 import { selfHref } from './self.js';
+import { immichSection } from './admin-immich.js';
 
 /**
  * Photo albums, in the admin (plan item M3.1).
@@ -175,7 +176,7 @@ export function registerPhotoRoutes(app: Hono, deps: AdminDeps): void {
       action: { label: 'Add an album', href: 'admin/photos/new' },
       intro: 'Your own photos, kept on this box in albums. An Image widget can show an album as a slideshow.',
       body:
-        albums.length === 0
+        (albums.length === 0
           ? emptyState('No albums yet.', { label: 'Add an album', href: 'admin/photos/new' })
           : albums
               .map((album) =>
@@ -190,7 +191,9 @@ export function registerPhotoRoutes(app: Hono, deps: AdminDeps): void {
                   },
                 ),
               )
-              .join(''),
+              .join('')) +
+        // Immich, below the household's own albums (plan item M3.2).
+        immichSection(deps.db),
     });
   }
 

@@ -396,6 +396,8 @@ interface WireRequest {
   readonly body?: Buffer;
   /** Keep a non-2xx body as the upstream's own diagnosis. See `readErrorBody`. */
   readonly keepErrorBody: boolean;
+  /** Hand a successful body back as base64 rather than text — the bytes, untouched. */
+  readonly base64Body: boolean;
 }
 
 /**
@@ -637,7 +639,7 @@ async function performRequest(
             kind: 'done',
             outcome: {
               status: 'ok',
-              body: decoded.body.toString('utf8'),
+              body: decoded.body.toString(request.base64Body ? 'base64' : 'utf8'),
               contentType: type,
               finalUrl: target.href,
               // The decompressed size, which is what a caller cares about.
@@ -785,6 +787,7 @@ export function createFetcher(): Fetcher {
               conditional:
                 request.conditional?.etag !== undefined ||
                 request.conditional?.lastModified !== undefined,
+              base64Body: request.bodyEncoding === 'base64',
               // The table in the port, not an argument. See `REDIRECT_POLICY`.
               followRedirects: REDIRECT_POLICY[method] === 'follow',
               ...(body !== undefined ? { body } : {}),
@@ -911,6 +914,7 @@ export function createFetcher(): Fetcher {
           {
             method: 'POST',
             maxBytes: request.maxBytes,
+            base64Body: false,
             ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
             // Not `acceptContentTypes`: the `accept` header above says what we
             // asked for, and refusing the *answer* on its content type would

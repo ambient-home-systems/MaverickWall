@@ -4727,6 +4727,69 @@ server suites were then run in full on the fixed tree. Against M3.1's 5422 over
 `motion.test.ts` generates for the new module. **Still unproven where it
 counts:** nobody has watched an album turn on a kitchen wall.
 
+**Immich is a photo source, and a wall cannot tell its photos from the
+household's own (plan item M3.2).** Photos has a "From Immich" section. Connect
+it with an address and an API key; the key is used before it is kept, so
+"Connected" is never said of a refused key, then sealed under `immich-key`.
+Then choose what to show: an album, a person, Favourites, or "On this day"
+(Immich's memories). Each choice is a *source*, read before "Added" is said
+(migration `0068`, generated then read: `immich_connection`, `immich_sources`,
+`immich_assets`, three `CREATE TABLE`s). A source's photos are kept as
+**handles**: the asset id's hash, shaped like a stored media name (64 hex and
+`.jpg`). So `readAlbumSlides` returns each source as one more album, M5.12's
+slideshow draws it unchanged, and a wall reaches the photos through the same
+`/d/media/` route behind its display token. No wall ever sees Immich's
+address, the key or an asset id. A handle no source names serves nothing, so a
+photo the household did not choose cannot be reached by guessing.
+
+**Read from Immich's own OpenAPI description (3.3.0-rc.0), not from memory, and
+it changed the design twice.** Current Immich lists an album's photos with
+the album no longer, so albums, people and favourites are all
+`POST /api/search/metadata`. That is a read, but it is a POST, so it is the
+fourth call `ha-write-boundary.test.ts` admits, held to one constant path. And
+3.2 moved that search's paging from `page`/`nextPage` to `cursor`/`nextCursor`,
+so the client sends the first and follows whichever comes back. The fake
+(`fake-immich.ts`) pages both ways and refuses a search not labelled JSON.
+Memories are `GET /api/memories?for=<date>`, the household's date read in its
+own zone (`todayIn`, held at fixed instants either side of midnight). An
+Immich too old to have the route is told so. Photos are
+`/api/assets/{id}/thumbnail?size=preview`, Immich's own screen-sized JPEG. The
+key always travels in `x-api-key` and never in an address. Videos and unnamed
+people are left out.
+
+**Photos are kept on this box, so a wall keeps turning while Immich is down
+(rule nine).** A photo is fetched the first time a wall asks, sniffed like
+every picture this application serves, and written to `immich-cache/`. The
+half-hourly `immich-sync` job, registered always and a no-op without a
+connection, re-reads every source and fetches ahead up to forty photos a run.
+A source Immich will not answer keeps its last good list and says why on
+Photos. A copy no source names any more is deleted on the next sync or
+removal, and disconnecting deletes them all.
+
+**The fetcher gained one field for it.** `bodyEncoding: 'base64'` hands back a
+successful body as base64 rather than text, because decoding a JPEG as UTF-8
+replaces every byte that is not valid text. Every existing caller still
+receives text. A mutation that drops the field leaves every photo unservable,
+and the test sees it.
+
+**Measured.** `immich.test.ts` (17) runs against the real app, a real data
+directory and the stand-in, plus one test in `ha-write-boundary.test.ts`.
+Eighteen mutations were checked and all eighteen are red. Six failed to build
+at first and were not counted until re-aimed. Two compiled and stayed green
+until acted on:
+- **Hidden people.** The client re-checked `isHidden` on people the request had
+  already asked Immich to leave out. A line nothing can contradict is not a
+  fix, so it is deleted.
+- **Videos.** The client's video filter could only be seen once a video sat
+  among the memories, which come back unfiltered, so the fixture now has one.
+
+**5452 tests passing and 1 skipped, over 389 files**: calendar 153 over 10 ·
+core 314 over 9 · display 986 over 60 · server 3999 over 310, measured with
+`pnpm test` and a real Chromium. Against M5.12's 5434 over 388 that is +18 and
++1, this change's own count. **Still unproven where it counts:** no real Immich
+has been connected. The stand-in follows Immich's published description, and
+a real server is the first thing to try.
+
 
 
 
