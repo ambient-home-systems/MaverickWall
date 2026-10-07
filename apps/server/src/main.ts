@@ -14,7 +14,7 @@ import { seedDefaultRules } from './api/rules.js';
 import { backfillClassic, reseedClassicForSetUp, retireDefaultWall } from './api/templates.js';
 import { householdSetUp } from './modules/index.js';
 import { createApp, MODULES } from './http/app.js';
-import { defaultDisplayDir, defaultWallpapersDir } from './http/static.js';
+import { defaultDisplayDir, defaultMeteoconsDir, defaultWallpapersDir } from './http/static.js';
 import { WALLPAPERS } from './wallpapers.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -515,6 +515,18 @@ async function main(): Promise<void> {
     console.warn('[boot] set WALLPAPERS_DIR to where the wallpaper JPEGs live');
   } else {
     console.log(`[boot] wallpapers ${wallpapersDir}`);
+  }
+  /*
+   * The forecast's Meteocons pictures (plan item M5.9), said out loud for the
+   * same reason, and no more fatal: a missing picture draws nothing in its
+   * box, which is `meteoconNode`'s rule for a sky it has no picture for.
+   */
+  const meteoconsDir = defaultMeteoconsDir();
+  if (!existsSync(join(meteoconsDir, 'fill', 'clear-day.svg')) || !existsSync(join(meteoconsDir, 'line', 'clear-day.svg'))) {
+    console.warn(`[boot] the forecast's Meteocons pictures are missing from ${meteoconsDir}`);
+    console.warn('[boot] set METEOCONS_DIR to where the fill and line directories live');
+  } else {
+    console.log(`[boot] meteocons ${meteoconsDir}`);
   }
 
   // Take the port back from the holder and wait for it to release the socket,

@@ -145,6 +145,22 @@ export function defaultWallpapersDir(): string {
   return new URL('../../assets/wallpapers', import.meta.url).pathname;
 }
 
+/**
+ * Where the bundled Meteocons pictures are (plan item M5.9), a `fill` and a
+ * `line` directory beside each other.
+ *
+ * `METEOCONS_DIR` first, for the image, for the reason `EMOJI_DIR` exists:
+ * `pnpm deploy` flattens the server package, so the repo-relative fallback
+ * resolves nowhere in a flattened tree. The fallback is
+ * `apps/server/assets/meteocons`, for a checkout run in development.
+ */
+export function defaultMeteoconsDir(): string {
+  const configured = globalThis.process?.env?.['METEOCONS_DIR'];
+  if (configured !== undefined && configured !== '') return configured;
+  // apps/server/dist/http/static.js → apps/server/assets/meteocons
+  return new URL('../../assets/meteocons', import.meta.url).pathname;
+}
+
 export function createStaticFiles(directory: string): StaticFiles {
   // Keyed on name, invalidated by mtime and size rather than time: the point
   // of Cache-Control: no-cache is that a rebuild must be visible on the very

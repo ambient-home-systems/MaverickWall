@@ -4396,6 +4396,91 @@ Underground, and no real Home Assistant weather entity has been read. Pirate
 Weather's `apikey` header in particular is its documentation's word, not a
 request that has been answered.
 
+**The forecast has a second picture set, and it is still artwork moved by the
+wall rather than artwork that moves itself (plan item M5.9).** Meteocons, by Bas
+Milius under MIT, in two of its styles. "Pictures" on the forecast widget is
+Drawn (the absence, the glyphs every wall had), Colour (`fill`) or Outline
+(`line`), and `icons` on the widget's config is the enum, refused outside the
+three. Meteocons ships every picture twice, and the animated half moves by
+SVG's own `<animate>`. Nothing on a wall could scope that to reduced motion or
+to the Motion switch, and it would restart on every fifteen-second rebuild. So
+the bundled files are `@meteocons/svg-static` 0.1.0, copied unedited, which is
+MQ7's "ship them still". What moves a picture is what moves everything else
+on a wall: a class `weather-icons.ts` names, keyframes in `display.css`'s
+scoped block, and `lockLoop`. A sun turns over 27 s, anything with cloud in
+it sways over 6.2 s, and a night sky is still, `skyMotion`'s rule one widget
+along. Both cycles clear the sky cycles' bar, which the test holds: a
+restart on the rebuild lands at least a quarter of a cycle from a continuous
+loop.
+
+**Twenty-four pictures per set, and the set is exactly what the wall names.**
+`meteoconFor` maps the twelve sky glyphs by day and by night. Only the skies
+with a sun in them follow the clock. A clear night is tonight's moon, in
+eight phases from the mean lunation counted from the new moon of 6 January
+2000, which `weather-icons.test.ts` holds to the 2024 almanac's quarters.
+`meteocons.test.ts` reads `METEOCON_FILES` out of the display's source, since
+the server cannot import the bundle, and holds each set's directory to it
+exactly. It also holds every one of the 48 files to carrying no SMIL, no
+`<style>`, no script and no reference to another document or origin. That
+check found ten files with an inline `style="mask-type:alpha"`, which is
+drawing rather than styling, so a `style` attribute is allowed to carry that
+and nothing else. Served from `/assets/meteocons/<set>/<name>.svg` with a
+day's cache rather than the emoji route's year: the names are Meteocons'
+rather than content hashes, so a redrawn picture reaches a wall within a day.
+`METEOCONS_DIR` is in the Dockerfile and the boot log, and the credit is in
+`NOTICE` and the directory's `LICENSES.md`, with the MIT text.
+
+**A picture takes the drawn glyph's box, so choosing a set moves nothing.**
+The `<img>` carries the glyph's own class, which sizes it, so every density
+tier measured against the glyph is still true. The browser test holds each
+picture's rectangle to the drawn glyph's within half a pixel, measured with
+reduced motion on. Its first draft measured a picture mid-sway and found it
+0.55 and 1.17 pixels off, because a rectangle counts a transform. The strip,
+the colour strip, the range rows and the Today card all wear the set. The
+range rows and the Today card's hours hold still, as a list does, and an
+hour wears its own hour's sky. The playful look keeps its emoji, so
+`VARIANT_HIDES` takes the control off it. A panel keeps its one-bit glyphs,
+so `icons` is in `PANEL_IGNORES` with its sentence and `epaper-ink` proves it
+by rendering. The admin's previews sit under the ingress `<base>`, so the
+three admin entry points call `useAdminIconBase` for a relative address. That
+is the wallpapers' split, set once per page rather than threaded through
+every renderer, and the editor test reads it out of the live preview.
+
+**Measured.** `weather-icons.test.ts` (14, display), `meteocons.test.ts` (6)
+and `browser-weather-icons.test.ts` (8, a real paired wall and a real
+editor). Fourteen mutations were checked, each on a rebuilt bundle where a
+browser test was the judge, and all fourteen are red. Three needed a second
+run, and each is a lesson already in this file:
+- **"Hours wear the day" was green.** The harness pins eleven o'clock, so every
+  hour on the Today card is daylight and nothing could tell a night picture
+  from a day one. The test now moves the wall's clock seven hours into the
+  evening, asserts as its premise that an hour after sunset is on the card,
+  and holds each hour's picture to that hour's cached sky.
+- **"Picture box its own size" was green because the mutation never
+  applied.** It gave `img.wxi` a width, and the strip's tier rules
+  (`[data-tier="T3"] .wx-ico`) have the same specificity and come later.
+  A margin, which nothing overrides, is red.
+- **The full run found two more, and both are this file's own faults
+  arriving again.** `weather-icons.js` joined the wall's import graph and not
+  the service worker's shell, so a wall reloading offline would have fetched
+  it from a server that is down. `sw-shell.test.ts` walks the compiled graph,
+  which is why it saw it. And `variants.test.ts` pins the forecast's hide
+  table exactly, so the playful look's new entry had to be written there too.
+- **"Picture never moved" first failed to compile.** So the browser test ran
+  against the previous mutant's bundle and came back red for the wrong reason.
+  A red run is evidence only once the build under it is the one being tested.
+
+**5367 tests passing and 1 skipped, over 378 files**: calendar 153 over 10 ·
+core 314 over 9 · display 972 over 57 · server 3928 over 302, measured with
+`pnpm test` and a real Chromium. Against M5.8's 5338 over 375 that is +29 and
++3: the display's 14 and the one row `motion.test.ts` generates for the new
+module in `main.ts`'s graph, and the server's 6 and 8. One existing browser
+assertion changed its letter. `browser-widget-looks` held the playful look to
+"the strip's controls and advice", and playful now gives up one of them on
+purpose. **Still unproven where it counts:** nobody has looked at a Meteocons
+forecast on a kitchen wall, or watched a sun turn on an old tablet.
+
+
 
 **Rule 12 changed, and the interesting part is how many places said otherwise
 (RFC 012 phase 1).** The rule is no longer "READ-ONLY, no service calls": it

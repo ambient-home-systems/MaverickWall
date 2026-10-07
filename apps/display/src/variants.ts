@@ -158,13 +158,15 @@ export const VARIANT_HIDES: {
   // today, so it reads neither the day count nor the ladder — its next days
   // are however many fit on one line (P5.1: "`today` hides the day count").
   // The advice line is `playful`'s alone, so every other look hides its
-  // switch: an option that does nothing is worse than one not offered.
+  // switch: an option that does nothing is worse than one not offered. The
+  // picture set (M5.9) is every look's but `playful`'s, whose pictures are
+  // its own emoji artwork.
   weather: {
     strip: ['advice'],
     today: ['count', 'fields', 'advice'],
     range: ['fields', 'advice'],
     colour: ['advice'],
-    playful: [],
+    playful: ['icons'],
   },
   // The occasion picker is `occasion`'s alone and the start date is
   // `progress`'s alone (P5.2): on any other look each is a control that moves

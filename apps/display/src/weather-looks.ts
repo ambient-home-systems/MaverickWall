@@ -197,6 +197,9 @@ export interface TodayHour {
   readonly label: string;
   readonly glyph: GlyphKey | undefined;
   readonly temp: string;
+  /** When the hour begins, and whether the sun is up then — for a picture set with a night (M5.9). */
+  readonly at: number;
+  readonly isDay: boolean;
 }
 
 /** One of the days after today, as the Today card's one line draws it. */
@@ -224,6 +227,8 @@ export interface TodayCard {
   /** In `forecast` mode, today's low, drawn as the lede's quieter partner. */
   readonly ledeLow: string | undefined;
   readonly glyph: GlyphKey | undefined;
+  /** Whether the card's sky is a daytime one, for a picture set with a night (M5.9). */
+  readonly isDay: boolean;
   readonly sky: SkyKind;
   readonly motion: SkyMotion;
   /** In `now` mode, today's high and low, "22°" and "13°"; undefined without a today. */
@@ -290,6 +295,8 @@ export function todayCard(input: TodayCardInput): TodayCard | undefined {
       : hourLabel(hour.at, input.timezone, input.hour12),
     glyph: hour.glyph,
     temp: hour.temp,
+    at: hour.at,
+    isDay: hour.isDay,
   }));
 
   if (current !== undefined) {
@@ -298,6 +305,7 @@ export function todayCard(input: TodayCardInput): TodayCard | undefined {
       lede: current.temp,
       ledeLow: undefined,
       glyph: current.glyph,
+      isDay: current.isDay,
       sky: skyFor(current.glyph, current.isDay),
       motion: skyMotion(current.glyph, current.isDay),
       high: bare(today?.highValue),
@@ -321,6 +329,7 @@ export function todayCard(input: TodayCardInput): TodayCard | undefined {
     lede: high,
     ledeLow: bare(today.lowValue),
     glyph: today.glyph,
+    isDay,
     sky: skyFor(today.glyph, isDay),
     motion: skyMotion(today.glyph, isDay),
     high: undefined,

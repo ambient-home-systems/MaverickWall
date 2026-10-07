@@ -311,6 +311,13 @@ const widgetConfigFields = z
      */
     advice: z.boolean().optional(),
     /*
+     * The forecast's picture set (plan item M5.9): the drawn glyphs, or
+     * Meteocons in colour (`fill`) or outline (`line`). Absent is the drawn
+     * set, so no forecast already hanging changes. Refused rather than coerced
+     * outside the three, as every enum here is.
+     */
+    icons: z.enum(['drawn', 'fill', 'line']).optional(),
+    /*
      * Home Assistant — which watched readings this widget shows, **by entity
      * id** (P1.3); absent or empty is all of them. It held labels until then,
      * so a rename took a reading off every widget that had picked it, and a

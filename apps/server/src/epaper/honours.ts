@@ -360,6 +360,18 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
     why: 'a panel draws the playful forecast as its strip, and the strip has no advice line.',
   },
   /*
+   * The forecast's picture set (plan item M5.9). Meteocons are colour artwork
+   * with gradients and soft edges, which one bit has no way to draw, so a
+   * panel keeps its own drawn one-bit pictures whichever set the wall wears —
+   * and `epaper-ink.test.ts` proves no frame moves by setting it.
+   */
+  {
+    key: 'icons',
+    types: ['weather'],
+    label: 'Pictures',
+    why: 'a panel draws its own one-bit weather pictures, whichever set the wall wears.',
+  },
+  /*
    * A widget's Look (plan item P4.1), on every type that has looks but the
    * clock, the forecast, the countdown and Home Assistant. The clock's three
    * are drawn on one bit and are in `PANEL_HONOURS`, and so is the forecast's

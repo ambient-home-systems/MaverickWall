@@ -155,12 +155,13 @@ describe('which controls a look hides', () => {
     // The colour look is the strip painted, and keeps every control the strip
     // has. Today is a card about today: no day count and no ladder ("`today`
     // hides the day count", the plan). The advice line is playful's alone, so
-    // every other look hides its switch — and playful hides nothing, since it
-    // reads the strip's count and ladder as well as its own advice.
+    // every other look hides its switch — and playful hides only the picture
+    // set (M5.9), since its pictures are its own artwork; it reads the strip's
+    // count and ladder as well as its own advice.
     expect(hiddenByVariant('weather', {})).toEqual(['advice']);
     expect(hiddenByVariant('weather', { variant: 'range' })).toEqual(['fields', 'advice']);
     expect(hiddenByVariant('weather', { variant: 'colour' })).toEqual(['advice']);
     expect(hiddenByVariant('weather', { variant: 'today' })).toEqual(['count', 'fields', 'advice']);
-    expect(hiddenByVariant('weather', { variant: 'playful' })).toEqual([]);
+    expect(hiddenByVariant('weather', { variant: 'playful' })).toEqual(['icons']);
   });
 });

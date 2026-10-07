@@ -1,4 +1,5 @@
 import { Hono, type Context, type Next } from 'hono';
+import { join } from 'node:path';
 import { localDateOf } from '@maverick-wall/calendar';
 import {
   issueDisplayToken,
@@ -40,6 +41,7 @@ import {
   defaultEmojiDir,
   defaultFontsDir,
   defaultWallpapersDir,
+  defaultMeteoconsDir,
 } from './static.js';
 import { WALLPAPER_FILE } from '../wallpapers.js';
 import { acceptsGzip, gzipped } from './compress.js';
@@ -222,6 +224,12 @@ export interface AppDeps {
    * flattened image.
    */
   readonly wallpapersDir?: string;
+  /**
+   * Where the bundled Meteocons pictures live (plan item M5.9). Defaults to
+   * the sibling of the compiled server; `METEOCONS_DIR` overrides it in the
+   * flattened image.
+   */
+  readonly meteoconsDir?: string;
   /** Where the database and the encryption key live. */
   readonly dataDir: string;
   /**
@@ -439,6 +447,11 @@ export function createApp(deps: AppDeps): Hono {
   const fontFiles = createStaticFiles(deps.fontsDir ?? defaultFontsDir());
   const emojiFiles = createStaticFiles(deps.emojiDir ?? defaultEmojiDir());
   const wallpaperFiles = createStaticFiles(deps.wallpapersDir ?? defaultWallpapersDir());
+  const meteoconsDir = deps.meteoconsDir ?? defaultMeteoconsDir();
+  const meteoconFiles = {
+    fill: createStaticFiles(join(meteoconsDir, 'fill')),
+    line: createStaticFiles(join(meteoconsDir, 'line')),
+  } as const;
 
   const auth = createAuth({ db: deps.db, secret: deps.auth.secret, baseUrl: deps.auth.baseUrl });
 
@@ -2344,6 +2357,24 @@ export function createApp(deps: AppDeps): Hono {
    * JPEG with any other name is not one of ours. Open, like `/assets/*`: a
    * wallpaper is not the household's data.
    */
+  /*
+   * The forecast's Meteocons pictures (plan item M5.9), one directory per set.
+   *
+   * The emoji route's promises one level down: the set must be one of the two
+   * and the name a `.svg`, so nothing but a picture is ever served from here.
+   * A day's cache rather than a year's: the names are Meteocons' own rather
+   * than content hashes, so a picture a later release redraws reaches a wall
+   * within a day, and the ETag makes every revisit before then a 304.
+   */
+  app.get('/assets/meteocons/:set/:name', (c: Context) => {
+    const set = c.req.param('set') ?? '';
+    const name = c.req.param('name') ?? '';
+    if ((set !== 'fill' && set !== 'line') || !name.endsWith('.svg')) return c.json({ error: 'not-found' }, 404);
+    const file = meteoconFiles[set].read(name);
+    if (file === undefined) return c.json({ error: 'not-found' }, 404);
+    return serveWithEtag(c, file, 'public, max-age=86400');
+  });
+
   app.get('/assets/wallpapers/:name', (c: Context) => {
     const name = c.req.param('name') ?? '';
     if (!WALLPAPER_FILE.test(name)) return c.json({ error: 'not-found' }, 404);
