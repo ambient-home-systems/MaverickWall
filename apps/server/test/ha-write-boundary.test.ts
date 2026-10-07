@@ -208,7 +208,7 @@ describe('the source scan: one door, and it is this one', () => {
 });
 
 describe('the other way a POST could leave', () => {
-  it('has one call site outside the JSON adapter — a webhook button, with no body', () => {
+  it('has two call sites outside the JSON adapter — a webhook button with no body, and Todoist', () => {
     /*
      * `fetch` grew a method in RFC 013 §6.3 and a POST through it would bypass
      * `HA_SERVICES` completely. For two releases nothing needed one and the
@@ -219,6 +219,12 @@ describe('the other way a POST could leave', () => {
      * three switches. It is held here to exactly one file and to **no body**,
      * so a second caller, or a body on this one, fails this line again.
      *
+     * Plan item M5.7 is the second, and it is not Home Assistant either: the
+     * Todoist client's one `request()` posts to `TODOIST_API`, a constant in
+     * that file and never an address anybody typed. It is held to one call, to
+     * an address built on the endpoint's base, and — in the test below — to
+     * the three paths it is allowed to post to.
+     *
      * The adapter's own `POST: 'refuse'` in `REDIRECT_POLICY` and its
      * `method: 'POST'` when it builds `postJson`'s wire request are the
      * implementation and are not doors, so they are exempted by file and
@@ -228,6 +234,7 @@ describe('the other way a POST could leave', () => {
     const posting: string[] = [];
     let calls = 0;
     let webhook: string | undefined;
+    let todoist: string | undefined;
     for (const file of filesUnder(SERVER_SRC)) {
       const name = relative(ROOT, file);
       for (const call of fetchCallArguments(readFileSync(file, 'utf8'))) {
@@ -235,6 +242,10 @@ describe('the other way a POST could leave', () => {
         if (!call.includes(POST_METHOD)) continue;
         if (name === join('apps', 'server', 'src', 'modules', 'webhooks', 'index.ts') && webhook === undefined) {
           webhook = call;
+          continue;
+        }
+        if (name === join('apps', 'server', 'src', 'modules', 'todoist', 'client.ts') && todoist === undefined) {
+          todoist = call;
           continue;
         }
         posting.push(`${name}  ${call.slice(0, 120)}`);
@@ -248,11 +259,24 @@ describe('the other way a POST could leave', () => {
     // The webhook press is there, and carries nothing a household typed.
     expect(webhook, 'the webhook button POST moved or vanished').toBeDefined();
     expect(webhook).not.toMatch(/\bbody\s*:/);
+    // Todoist's one call is to its own fixed base, never a typed address.
+    expect(todoist, 'the Todoist client POST moved or vanished').toBeDefined();
+    expect(todoist).toMatch(/url: `\$\{endpoint\.base\}\$\{path\}`/);
 
     // And the scan is looking at something. A brace matcher that silently found
     // no calls would pass for ever, which is this project's own complaint about
     // an assertion no edit can turn red.
     expect(calls).toBeGreaterThan(10);
+  });
+
+  it('posts to Todoist on three paths only: close, reopen and a new task', () => {
+    // Nothing deletes, moves or edits: every POST the client makes names its path here.
+    const client = readFileSync(join(ROOT, SERVER_SRC, 'modules', 'todoist', 'client.ts'), 'utf8');
+    expect(client).toContain("export const TODOIST_API = 'https://api.todoist.com/api/v1';");
+    const posts = [...client.matchAll(/await request\(([^;]*?)'POST'/gs)].map((match) => match[1] ?? '');
+    expect(posts).toHaveLength(2);
+    expect(posts[0]).toContain("${done ? 'close' : 'reopen'}");
+    expect(posts[1]).toContain("'/tasks'");
   });
 });
 

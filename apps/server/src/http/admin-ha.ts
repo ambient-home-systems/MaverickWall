@@ -55,7 +55,7 @@ import {
   moveTodoList,
   parseTodoEntities,
   pollTodoList,
-  readTodoLists,
+  readHaTodoLists,
   unwatchTodoList,
   watchTodoList,
   type TodoEntity,
@@ -1284,7 +1284,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
    */
   app.get('/admin/home-assistant/lists/:entity/remove', (c: Context) => {
     const entityId = decodeURIComponent(c.req.param('entity') ?? '');
-    const row = readTodoLists(deps.db).find((list) => list.entityId === entityId);
+    const row = readHaTodoLists(deps.db).find((list) => list.entityId === entityId);
     if (row === undefined) return c.redirect('/admin/home-assistant/lists', 302);
     return c.html(
       confirmDestroyPage({
@@ -1309,7 +1309,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     const entityId = decodeURIComponent(c.req.param('entity') ?? '');
     // Only a list that is watched can be removed, and the token says so: a
     // POST for an unknown id lands back on the page with nothing announced.
-    const known = readTodoLists(deps.db).some((list) => list.entityId === entityId);
+    const known = readHaTodoLists(deps.db).some((list) => list.entityId === entityId);
     if (!known) return c.redirect('/admin/home-assistant/lists', 302);
     unwatchTodoList(deps.db, entityId);
     return savedRedirect(c, '/admin/home-assistant/lists', 'todo-list-removed');
@@ -1510,7 +1510,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
   function hubRows(live: LiveState): string {
     const watched = readWatched(deps.db).filter((row) => row.watched === 1).length;
     const added = haCalendarEntityIds(deps.db).size;
-    const lists = readTodoLists(deps.db).length;
+    const lists = readHaTodoLists(deps.db).length;
     const ruleCount = readRuleRows(deps.db).filter(
       (row) => row.trigger === 'homeassistant' || row.trigger === 'ha_entity',
     ).length;
@@ -2235,7 +2235,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
    * refusal moved again in P2.1, one page along, to `addList`.
    */
   function todoLists(): string {
-    const watched = readTodoLists(deps.db);
+    const watched = readHaTodoLists(deps.db);
 
     const rows = watched
       .map((list, index) => listRowFor(list, index === 0, index === watched.length - 1))
@@ -2259,7 +2259,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
    * was when the form sat under the list.
    */
   function addList(live: LiveState): string {
-    const watched = readTodoLists(deps.db);
+    const watched = readHaTodoLists(deps.db);
     const watchedIds = new Set(watched.map((list) => list.entityId));
     const available = live.todo.filter((entity) => !watchedIds.has(entity.entityId));
     const options = available

@@ -662,11 +662,14 @@ import { registerShiftTypeRoutes } from './admin-shifts.js';
 import { registerChoreRoutes } from './admin-chores.js';
 import { registerButtonRoutes } from './admin-buttons.js';
 import { registerNewsRoutes } from './admin-news.js';
+import { registerTodoistRoutes } from './admin-todoist.js';
 import { registerCompanionAdminRoutes } from './admin-companion.js';
 import { registerTimerRoutes } from './admin-timers.js';
 import { wallRotates } from '../api/wall-commands.js';
 import { readWebhookTargets } from '../modules/webhooks/index.js';
 import { readNewsFeeds } from '../modules/news/index.js';
+import { isTodoistList } from '../modules/todoist/store.js';
+import type { TodoistEndpoint } from '../modules/todoist/client.js';
 import { registerThemeRoutes } from './admin-themes.js';
 import { registerEpaperRoutes } from './admin-epaper.js';
 import { displaysPage, registerWallsRoutes } from './admin-walls.js';
@@ -724,6 +727,8 @@ import { isUnitedStatesZone } from '../timezone.js';
  */
 
 export interface AdminDeps {
+  /** Where Todoist is — set only by a test, to a stand-in; the product always uses the real one (plan item M5.7). */
+  readonly todoist?: TodoistEndpoint;
   readonly db: SqliteDatabase;
   readonly keyring: Keyring;
   readonly fetcher: Fetcher;
@@ -1233,9 +1238,10 @@ export function omissionFacts(db: SqliteDatabase): {
  * list the box names without a second opinion about how the handle is made.
  */
 export function todoListChoices(db: SqliteDatabase): { id: string; name: string; key: string }[] {
+  // A Todoist project says so, since a household may have a "Shopping" in both places (plan item M5.7).
   return readTodoLists(db).map((list) => ({
     id: list.entityId,
-    name: list.label ?? list.name,
+    name: `${list.label ?? list.name}${isTodoistList(list.entityId) ? ' (Todoist)' : ''}`,
     key: todoListHandle(list.entityId),
   }));
 }
@@ -1289,6 +1295,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   registerChoreRoutes(app, deps);
   registerButtonRoutes(app, deps);
   registerNewsRoutes(app, deps);
+  registerTodoistRoutes(app, deps);
   registerCompanionAdminRoutes(app, deps);
   registerTimerRoutes(app, deps);
   registerThemeRoutes(app, deps);

@@ -75,7 +75,8 @@ configure first, no account to create anywhere else, no key to paste.
   for an advisory, the whole screen for a severe warning, and for an Extreme
   warning it can light a screen that has gone dark.
 - **Arrange the wall yourself.** Drag the calendar, a clock, the forecast, a
-  shift badge, Home Assistant readings, notes, a to-do list, a countdown, the
+  shift badge, Home Assistant readings, notes, a to-do list (yours, or from
+  Home Assistant or Todoist), a countdown, the
   timers and messages you send from your phone, a QR code for your guest Wi-Fi, a heading, news headlines, the air outside,
   or a photograph anywhere in the layout — or start from a design and move things
   around. Each browser wall owns its portrait and landscape layouts and its
@@ -174,7 +175,7 @@ be limited to reading, so the limit lives on this side instead:
   Readings screen lists the last fortnight of presses — which wall, which
   thing, and whether it worked.
 - A phone shortcut or an automation can add an item to a to-do list you chose
-  (`todo.add_item`), with a companion token you make under System › Phone and
+  — a Home Assistant list (`todo.add_item`) or a Todoist project — with a companion token you make under System › Phone and
   automations — never from a wall. The same token can start and end timers,
   send and clear messages, reload your walls and show one wall's layout on the
   others for a while, and it can do nothing else; you can replace it or turn it

@@ -379,7 +379,7 @@ describe('POST /companion/todo/add', () => {
     const response = await h.phone('/companion/todo/add', json(token, { item: 'Eggs' }));
     expect(response.status).toBe(404);
     expect(((await response.json()) as { message: string }).message).toBe(
-      'No to-do lists have been added yet. Add one under Home Assistant › To-do lists first.',
+      'No to-do lists have been added yet. Add one under Home Assistant › To-do lists, or on the Todoist screen, first.',
     );
   });
 });
