@@ -75,6 +75,11 @@ export type SecretPurpose =
    * account, so it is sealed under a purpose of its own like every secret here.
    */
   | 'todoist-token'
+  /**
+   * A weather service's API key (plan item M5.8): OpenWeatherMap, Pirate
+   * Weather or Weather Underground.
+   */
+  | 'weather-key'
   /** Session signing. */
   | 'session';
 

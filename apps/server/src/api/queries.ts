@@ -3,6 +3,7 @@ import type { ShiftOverride, ShiftPlan, ShiftType } from '@maverick-wall/core';
 import type { SqliteDatabase } from '../db/open.js';
 import { DEFAULT_TIMEZONE } from '../timezone.js';
 import { nextPersonColor } from './palette.js';
+import { providerOr, type Provider } from '../modules/weather/providers.js';
 import type { SetupState } from '../auth/session.js';
 import type {
   EventCacheRow,
@@ -1723,8 +1724,8 @@ export interface WeatherSettings {
   readonly enabled: boolean;
   readonly latitude: number | null;
   readonly longitude: number | null;
-  /** `nws` (US only) or `openmeteo` (worldwide, key-less). */
-  readonly provider: 'nws' | 'openmeteo';
+  /** Where the forecast comes from: one of `WEATHER_PROVIDERS` (plan item M5.8). */
+  readonly provider: Provider;
   /** `imperial` (°F) or `metric` (°C). */
   readonly units: 'imperial' | 'metric';
   /**
@@ -1733,14 +1734,23 @@ export interface WeatherSettings {
    * saves the forecast settings and has no opinion about this switch.
    */
   readonly airQuality?: boolean;
+  /**
+   * The Home Assistant weather entity and the Weather Underground station
+   * (plan item M5.8). Optional on a write, like `airQuality`: absent leaves the
+   * stored one as it is, so the wizard, which knows neither, cannot clear them.
+   */
+  readonly entity?: string | null;
+  readonly station?: string | null;
 }
 
-export function readWeatherSettings(db: SqliteDatabase): WeatherSettings & { readonly airQuality: boolean } {
+export function readWeatherSettings(
+  db: SqliteDatabase,
+): WeatherSettings & { readonly airQuality: boolean; readonly entity: string | null; readonly station: string | null } {
   const row = db
     .prepare(
       `SELECT weather_enabled AS enabled, latitude, longitude,
               weather_provider AS provider, weather_units AS units,
-              air_quality_enabled AS airQuality
+              air_quality_enabled AS airQuality, weather_entity AS entity, weather_station AS station
          FROM household_settings WHERE id = 'singleton'`,
     )
     .get() as
@@ -1751,15 +1761,19 @@ export function readWeatherSettings(db: SqliteDatabase): WeatherSettings & { rea
         provider: string | null;
         units: string | null;
         airQuality: number | null;
+        entity: string | null;
+        station: string | null;
       }
     | undefined;
   return {
     enabled: row?.enabled === 1,
     latitude: row?.latitude ?? null,
     longitude: row?.longitude ?? null,
-    provider: row?.provider === 'openmeteo' ? 'openmeteo' : 'nws',
+    provider: providerOr(row?.provider),
     units: row?.units === 'metric' ? 'metric' : 'imperial',
     airQuality: row?.airQuality === 1,
+    entity: row?.entity ?? null,
+    station: row?.station ?? null,
   };
 }
 
@@ -1775,11 +1789,16 @@ export function writeWeatherSettings(db: SqliteDatabase, settings: WeatherSettin
   // Move, provider swap or a units change all make the cached forecast wrong —
   // it is for the old place, the old service, or the old scale. Drop it so the
   // wall never shows the previous answer while the new one is on its way.
+  const entity = settings.entity === undefined ? previous.entity : settings.entity;
+  const station = settings.station === undefined ? previous.station : settings.station;
   const invalidated =
     previous.latitude !== settings.latitude ||
     previous.longitude !== settings.longitude ||
     previous.provider !== settings.provider ||
-    previous.units !== settings.units;
+    previous.units !== settings.units ||
+    // Another entity or another station is another answer, as a move is.
+    previous.entity !== entity ||
+    previous.station !== station;
   /*
    * A move is more than a stale forecast: the alert zones are derived from the
    * coordinates and then never re-derived, because `resolveZones` only runs
@@ -1825,7 +1844,8 @@ export function writeWeatherSettings(db: SqliteDatabase, settings: WeatherSettin
     db.prepare(
       `UPDATE household_settings
           SET weather_enabled = ?, latitude = ?, longitude = ?,
-              weather_provider = ?, weather_units = ?, air_quality_enabled = ?, updated_at = ?
+              weather_provider = ?, weather_units = ?, air_quality_enabled = ?,
+              weather_entity = ?, weather_station = ?, updated_at = ?
         WHERE id = 'singleton'`,
     ).run(
       settings.enabled ? 1 : 0,
@@ -1834,6 +1854,8 @@ export function writeWeatherSettings(db: SqliteDatabase, settings: WeatherSettin
       settings.provider,
       settings.units,
       air ? 1 : 0,
+      entity,
+      station,
       Date.now(),
     );
 

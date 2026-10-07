@@ -1,0 +1,33 @@
+{
+  "observations": [
+    {
+      "stationID": "KWASEATT2743",
+      "obsTimeUtc": "2026-10-06T02:50:00Z",
+      "obsTimeLocal": "2026-10-05 19:50:00",
+      "neighborhood": "Ballard",
+      "softwareType": "EasyWeatherV1.6.4",
+      "country": "US",
+      "solarRadiation": 12.4,
+      "lon": -122.384,
+      "realtimeFrequency": null,
+      "epoch": 1791255000,
+      "lat": 47.668,
+      "uv": 0.0,
+      "winddir": 205,
+      "humidity": 88,
+      "qcStatus": 1,
+      "metric": {
+        "temp": 11.6,
+        "heatIndex": 11.6,
+        "dewpt": 9.7,
+        "windChill": 11.6,
+        "windSpeed": 6.1,
+        "windGust": 11.2,
+        "pressure": 1012.53,
+        "precipRate": 0.3,
+        "precipTotal": 1.8,
+        "elev": 31
+      }
+    }
+  ]
+}

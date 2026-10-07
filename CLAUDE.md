@@ -4270,6 +4270,133 @@ where it counts:** no real Todoist account has been connected — the stand-in
 is built from Todoist's own description, which is the best that could be done
 without a token, and is not the same thing.
 
+**A forecast can come from seven places now, and the provider is one table
+(plan item M5.8).** `modules/weather/providers.ts` names them — the National
+Weather Service and Open-Meteo, which there were, and DWD ICON, a Home
+Assistant weather entity, OpenWeatherMap, Pirate Weather and Weather
+Underground — with what each says on the Weather screen, the host it asks and
+whether its "now" is measured. The settings reader refuses anything not in it
+(`providerOr`, NWS on a value nobody recognises, as it always was), the
+screen draws its list and its per-provider hints from it, and the job routes
+by it. It imports nothing, because `api/queries.ts` reads it and must not pull
+five fetchers in behind it. Migration `0065` is generated, then read: one
+`CREATE TABLE weather_keys` and two `ADD COLUMN`s on `household_settings`
+(`weather_entity`, `weather_station`), no recreate.
+
+**Every provider but NWS reads into one shape and goes through one refresh.**
+`WeatherParts` (`forecast`, `current`, `hours`, each optional) moved from
+`open-meteo.ts` into `readings.ts`, and `refreshParts` is the Open-Meteo
+refresh generalised: ask once for whatever is due, write only what was, keep
+the last good copy of anything an answer did not carry. What is new is the
+failure: it is written under `<provider>:status`, which no wall reads and the
+Weather screen draws above the form ("Not read from OpenWeatherMap last time.
+… The wall keeps what it had."), and a successful answer deletes it. NWS keeps
+its own refresh, because its gridpoint and station are cached state the
+others do not have.
+
+**DWD ICON cost one parameter.** Open-Meteo's `/v1/dwd-icon` takes the forecast
+endpoint's own query and answers its own shape, so `forecastUrl` and
+`fetchOpenMeteo` take an endpoint and the reader is untouched. ICON produces no
+UV index, which arrives as `null` and is simply absent — the two live captures
+under `test/fixtures/weather-providers/real/` hold that, and a fifteen-minute
+`current` step the reader already parsed.
+
+**A Home Assistant entity is the first caller `weather.get_forecasts` has
+had.** The row was in `HA_SERVICES` since RFC 018 phase 1 with no caller;
+`ha-weather.ts` reads the entity's state through `call` (its state is the
+condition, its attributes the temperature, humidity and wind, each in the unit
+the entity names) and its forecasts through `buildCall` and `callService` —
+`daily` when bit 1 of `supported_features` is set, `twice_daily` when that is
+all there is, `hourly` only when bit 2 is. A twice-daily pair is one day: the
+day's high, the night's low. Home Assistant's fifteen conditions are a fixed
+vocabulary and map to the glyphs; `unavailable` and `unknown` are states too,
+and are no "now" rather than a temperature the integration no longer has.
+Everything is converted into the household's units, so an entity set up in
+Fahrenheit draws Celsius on a Celsius wall. An entity is its own somewhere,
+so this is the one provider that needs no coordinates: `ready` asks
+`configured`, and with none the sun's times are simply absent. The entity id
+stays here, as every Home Assistant id does — the panel carries
+`provider: 'homeassistant'` and values, and the test reads the manifest for
+the id and the token. The fake house gained weather entities that answer
+`get_forecasts` only when asked for a response and refuse a type the entity
+does not forecast with core's own sentence; none exists until a test adds
+one, so no other test's house changed.
+
+**The three keys are sealed per provider, and where each one travels is a
+fact about its API rather than a choice.** `weather_keys` holds one row per
+provider under the keyring's `weather-key` purpose, so switching provider and
+back keeps a key already pasted, and `openWeatherKey` opens it for one run.
+The plan says "never in a URL", and that was probed rather than assumed.
+**Pirate Weather** documents an `apikey` header with a placeholder in the
+path, so the key is never in an address at all. **OpenWeatherMap** documents
+`appid` in the query and nothing else (an `x-api-key` header tried live
+answers exactly what no key at all answers), and **Weather Underground** documents `apiKey` in the query. For
+those two the address carrying the key is built in memory for one request.
+It is never stored and never shown, and no sentence about a failure is the
+fetcher's own. So the rule kept is the one "never in a URL" exists for: the
+key is in no stored row, page, log, message or manifest. The job test reads
+every row the database holds and the panel for it, and the screen test reads
+a refused form for it. A key is saved without being tried, unlike a Todoist
+token. A new OpenWeatherMap key is refused for a couple of hours after it is
+made, so trying it would turn a good key away. The job is brought forward
+instead, and what it finds is on the Weather screen on the next look.
+
+**What each keyed provider cannot do is said rather than faked.**
+OpenWeatherMap's free calls have no daily forecast, so a day's high and low are
+the highest and lowest of its three-hour steps, grouped by the household's own
+date, and the hours ahead are three hours apart. Its wind is metres per second
+in metric and its rain millimetres whatever the units, so both are converted.
+Pirate Weather answers an accumulation in **centimetres** in `units=ca`, and
+`precipAccumulation` adds centimetres of snow to millimetres of rain, so the
+reader takes `liquidAccumulation` where it is said. A Weather Underground key
+belongs to a station owner and reaches the five-day forecast and a station's
+observation and no hourly forecast. So that panel has no hours. Its "now" is
+a named station's measurement or nothing, with the sky borrowed from the
+forecast, because a station measures air and not cloud. And a day's UV is its
+day part's alone, since a night's is always 0. With no station, "now" and the
+hours are never written and so stay due every run. A guard keeps that from
+becoming an empty request, and a false "answered without a forecast", every
+quarter hour.
+
+**The Weather screen's preview had been empty for every provider, and adding
+a provider is what found it.** "On the wall now" printed `day.icon`, a field
+the cache has not carried since glyphs replaced emoji (488fd1f0). So
+`escapeHtml(undefined)` threw, the `catch` labelled "a malformed cache is not
+worth failing the settings page over" swallowed it, and the section said
+"Location set — the forecast arrives on the next check" over a forecast that
+had arrived. No test read that section. It prints the day's words now, and the
+Home Assistant test reads the row. The screen grew three provider-only fields
+(an entity picker read from `/api/states` with a five-second wait, a key, a
+station) under `data-cond-show`, so each is shown for its provider alone and
+all of them with script off. `alertsPage` became async to ask Home Assistant
+for its entities, and the picker keeps an entity Home Assistant no longer
+lists choosable as "(not found)" rather than preselecting another.
+
+**Measured.** `weather-providers.test.ts` reads every parser against the
+fixtures (DWD live, the rest built from each provider's own published answer —
+the fixtures' README says which), `weather-providers-job.test.ts` runs the job
+with the real fetcher against one local server that checks each key the way
+its provider does, and `weather-providers-admin.test.ts` drives the screen
+and a Home Assistant entity through the real app and the fake house. Nineteen
+mutations were checked and all are red. Four were green as first written, and
+each was the test's fault. A key put in Pirate Weather's path was first
+mutated through an unset variable, so it changed nothing. The fixture gave
+`precipAccumulation` and `liquidAccumulation` the same value. In Rome, at UTC+2,
+three-hour steps fall on the same date either way, so the grouping is now
+also asked in New York. And the no-station guard was invisible to a test that
+counted requests, because the fetcher makes none without a station. What the
+guard prevents is a false complaint, and that is what the test now reads.
+
+**5338 tests passing and 1 skipped, over 375 files**: calendar 153 over 10 ·
+core 314 over 9 · display 957 over 56 · server 3914 over 300, measured with
+`pnpm test` and a real Chromium. Against M5.7's 5294 over 372 that is +44 and
++3, the three new files' 21, 13 and 10. **Still unproven where it counts:** no
+real key has been used against OpenWeatherMap, Pirate Weather or Weather
+Underground, and no real Home Assistant weather entity has been read. Pirate
+Weather's `apikey` header in particular is its documentation's word, not a
+request that has been answered.
+
+
 **Rule 12 changed, and the interesting part is how many places said otherwise
 (RFC 012 phase 1).** The rule is no longer "READ-ONLY, no service calls": it
 permits one *write*, `todo.update_item`, and the read it needs. Nothing writes

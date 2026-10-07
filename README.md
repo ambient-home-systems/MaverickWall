@@ -71,6 +71,10 @@ configure first, no account to create anywhere else, no key to paste.
   fans you can switch from it — each off on every wall until you turn it on for
   that wall. It cannot unlock a door or open a garage — see below for the one
   exception you can make, a script.
+- **Weather from where you choose.** The National Weather Service, Open-Meteo
+  or the German weather service's ICON model with no account at all; your own
+  Home Assistant weather entity; or OpenWeatherMap, Pirate Weather or Weather
+  Underground with a key of yours, sealed and never sent to a wall.
 - **Weather alerts.** National Weather Service, United States only. A banner
   for an advisory, the whole screen for a severe warning, and for an Extreme
   warning it can light a screen that has gone dark.

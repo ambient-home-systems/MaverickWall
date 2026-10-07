@@ -297,6 +297,14 @@ export function todoStateBody(entityId: string): {
   };
 }
 
+/** One weather entity, in Home Assistant's own shapes. */
+export interface FakeWeather {
+  state: string;
+  attributes: Record<string, unknown>;
+  last_updated: string;
+  forecasts: Partial<Record<'daily' | 'hourly' | 'twice_daily', Record<string, unknown>[]>>;
+}
+
 export interface FakeHa {
   base: string;
   /** Every Authorization header seen, so the token can be proven to arrive. */
@@ -352,6 +360,13 @@ export interface FakeHa {
    * `todo/add_item` answer agree about, the way a real integration does.
    */
   readonly todoFeatures: Record<string, number>;
+  /**
+   * Weather entities (plan item M5.8), none until a test adds one, so every
+   * other test's house is the one it always was. Each is a state and the
+   * forecasts `weather.get_forecasts` answers with, by type; a type the entity
+   * has no forecast for is refused the way core refuses it.
+   */
+  readonly weather: Record<string, FakeWeather>;
   /** Stand the fake down without reaching into a module-level array. */
   close(): Promise<void>;
 }
@@ -370,6 +385,7 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
     refuseToggle: false,
     gone: new Set<string>(),
     todoFeatures: {},
+    weather: {},
     todo: {
       'todo.shopping': {
         items: [
@@ -449,7 +465,35 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
         lastKitchen = state.kitchen;
         kitchenChangedAt = Date.now();
       }
-      return json(withToggles(statesBody(state.kitchen, born, kitchenChangedAt)));
+      const listed = JSON.parse(withToggles(statesBody(state.kitchen, born, kitchenChangedAt))) as unknown[];
+      const weather = Object.entries(state.weather).map(([entityId, one]) => ({
+        entity_id: entityId,
+        state: one.state,
+        attributes: one.attributes,
+        last_changed: one.last_updated,
+        last_updated: one.last_updated,
+        context: { id: '01W', parent_id: null, user_id: null },
+      }));
+      return json(JSON.stringify([...listed, ...weather]));
+    }
+    if (url.startsWith('/api/states/weather.')) {
+      const entityId = decodeURIComponent(url.slice('/api/states/'.length));
+      const one = state.weather[entityId];
+      if (one === undefined) {
+        response.writeHead(404, { 'content-type': 'application/json' });
+        response.end('{"message":"Entity not found."}');
+        return;
+      }
+      return json(
+        JSON.stringify({
+          entity_id: entityId,
+          state: one.state,
+          attributes: one.attributes,
+          last_changed: one.last_updated,
+          last_updated: one.last_updated,
+          context: { id: '01W', parent_id: null, user_id: null },
+        }),
+      );
     }
     // One list's own state — `supported_features` lives here and nowhere else,
     // since `get_items` does not return it. A list this house has not got is a
@@ -536,6 +580,37 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
 
         const entity = typeof parsed['entity_id'] === 'string' ? parsed['entity_id'] : '';
         const list = state.todo[entity];
+
+        /*
+         * `weather.get_forecasts`, answered as core answers it: a response
+         * only when asked for one, keyed by entity, and a type the entity does
+         * not forecast refused with core's own sentence (`weather/__init__.py`).
+         */
+        if (service === 'weather/get_forecasts') {
+          if (query !== 'return_response') {
+            response.writeHead(400, { 'content-type': 'application/json' });
+            response.end(
+              '{"message":"Service call requires responses but caller did not ask for responses"}',
+            );
+            return;
+          }
+          const weather = state.weather[entity];
+          const type = parsed['type'];
+          if (weather === undefined) {
+            response.writeHead(400, { 'content-type': 'application/json' });
+            response.end(`{"message":"Entity ${entity} does not exist"}`);
+            return;
+          }
+          const forecast =
+            type === 'daily' || type === 'hourly' || type === 'twice_daily' ? weather.forecasts[type] : undefined;
+          if (forecast === undefined) {
+            response.writeHead(400, { 'content-type': 'application/json' });
+            response.end(`{"message":"Weather entity '${entity}' does not support '${String(type)}' forecast"}`);
+            return;
+          }
+          json(JSON.stringify({ changed_states: [], service_response: { [entity]: { forecast } } }));
+          return;
+        }
 
         if (service === 'todo/get_items') {
           if (state.refuseItems) {

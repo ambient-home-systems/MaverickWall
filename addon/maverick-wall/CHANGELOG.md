@@ -16,6 +16,29 @@
 
 ## Unreleased
 
+**Five more places the forecast can come from.** On the **Weather** screen,
+**Forecast from** now offers, beside the National Weather Service and
+Open-Meteo:
+
+- **DWD ICON**: the German weather service's model, through Open-Meteo, with
+  no account or key.
+- **Home Assistant**: any weather entity you already have, such as Met.no or
+  a station of your own. It needs no location of its own.
+- **OpenWeatherMap**, **Pirate Weather** and **Weather Underground**, each
+  with a free key of yours. Weather Underground can also name your own
+  personal weather station, so the temperature now is measured there.
+
+A key is sealed when you save it and never shown again, and a link beside it
+forgets it. Each provider says under the list what it gives a wall: whether
+the temperature now is measured or modelled, whether there is a UV index, and
+whether there are hours ahead. If a provider turns your key away, the Weather
+screen says so above the form, and the wall keeps the forecast it had.
+Everything reaches the wall in your own units.
+
+**The Weather screen shows the forecast again.** Its "On the wall now" preview
+had been empty for some time, while it said the forecast was still on its way.
+It now lists the days the wall is drawing.
+
 ## 0.87.0
 
 **Todoist lists on your walls.** Connect Todoist on the new **Todoist** screen

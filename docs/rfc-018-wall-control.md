@@ -392,7 +392,8 @@ controls, and "never" only of what no row in the table can reach.
    `ha-write-boundary.test.ts`, the claims, and migration `0056` with two of the
    three switches as unread columns (`screens.allow_control`,
    `ha_entity_cache.controllable`). Nothing is drawable and no wall can press
-   anything. `weather.get_forecasts` is a row with no caller until M5.8.
+   anything. `weather.get_forecasts` was a row with no caller until M5.8,
+   which reads it for a household that picked a weather entity as its forecast.
    **One deviation, deliberate:** the widget's `tapAction` key moves to phase 2.
    A widget key nothing reads is an option that does nothing, and the e-paper
    honours tables, which are closed against the widget schema and proved by
