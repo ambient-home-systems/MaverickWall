@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.89.0
+
 **New weather pictures.** A forecast can now be drawn with Meteocons as well
 as the wall's own pictures. Choose **Pictures** in the forecast widget's
 settings: **Colour** or **Outline**. On a clear night it shows tonight's moon,
