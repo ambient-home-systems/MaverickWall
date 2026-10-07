@@ -12,7 +12,10 @@ import {
   type PollenPlant,
   type ConditionsReading,
   type HourRecord,
+  type WeatherParts,
   type WeatherUnits,
+  dayLabel,
+  present,
 } from './readings.js';
 
 /**
@@ -189,7 +192,22 @@ export function conditionWords(code: number): string {
   return CONDITION_WORDS[code] ?? '';
 }
 
-export function forecastUrl(at: Coordinates, units: Units, forecastDays: number): string {
+/**
+ * Which of Open-Meteo's forecast endpoints to ask (plan item M5.8).
+ *
+ * `forecast` is its best match of models for the place; `dwd-icon` is the
+ * German weather service's ICON model alone, which a household can choose by
+ * name. Same parameters, same answer, same reader — a variable that model does
+ * not produce (ICON has no UV index) comes back null and is simply absent.
+ */
+export type OpenMeteoEndpoint = 'forecast' | 'dwd-icon';
+
+export function forecastUrl(
+  at: Coordinates,
+  units: Units,
+  forecastDays: number,
+  endpoint: OpenMeteoEndpoint = 'forecast',
+): string {
   const params = new URLSearchParams({
     // Four decimals is about ten metres — plenty, and it keeps the URL short.
     latitude: at.latitude.toFixed(4),
@@ -222,7 +240,7 @@ export function forecastUrl(at: Coordinates, units: Units, forecastDays: number)
     // Starting at the current hour, which is where "the next day" begins.
     forecast_hours: '24',
   });
-  return `https://api.open-meteo.com/v1/forecast?${params.toString()}`;
+  return `https://api.open-meteo.com/v1/${endpoint}?${params.toString()}`;
 }
 
 /** The second host, contacted only when the household switched it on (Q5). */
@@ -306,27 +324,8 @@ function sunTimes(
   return { sunrise, sunset };
 }
 
-/** A number the provider sent, or nothing — never a zero standing in for "unknown". */
-function present(value: number | null | undefined): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
-}
-
-/** The weekday label for an ISO date, tz-agnostic; the first is "Today". */
-function label(dateIso: string, todayIso: string): string {
-  if (dateIso === todayIso) return 'Today';
-  // Anchored at UTC midnight so the weekday is the calendar date's own, not a
-  // reading shifted across a zone boundary.
-  const at = new Date(`${dateIso}T00:00:00Z`);
-  if (Number.isNaN(at.getTime())) return dateIso;
-  return new Intl.DateTimeFormat('en', { weekday: 'short', timeZone: 'UTC' }).format(at);
-}
-
 /** What one Open-Meteo answer holds, part by part; any part may be missing. */
-export interface OpenMeteoParts {
-  readonly forecast?: Forecast;
-  readonly current?: ConditionsReading;
-  readonly hours?: readonly HourRecord[];
-}
+export type OpenMeteoParts = WeatherParts;
 
 export interface OpenMeteoParseOptions {
   readonly now: number;
@@ -437,7 +436,7 @@ function readDays(document: ForecastDocument, options: OpenMeteoParseOptions): F
     const wind = daily.wind_speed_10m_max[i];
     const uv = daily.uv_index_max[i];
     days.push({
-      name: label(date, options.todayIso),
+      name: dayLabel(date, options.todayIso),
       // Already the household's own calendar date: the request asks for
       // `timezone: auto`, so the daily series is local to the location.
       date,
@@ -551,11 +550,16 @@ export type OpenMeteoResult =
 export async function fetchOpenMeteo(
   fetcher: Fetcher,
   at: Coordinates,
-  options: Omit<OpenMeteoParseOptions, 'limit'> & { readonly limit?: number },
+  options: Omit<OpenMeteoParseOptions, 'limit'> & {
+    readonly limit?: number;
+    readonly endpoint?: OpenMeteoEndpoint;
+  },
 ): Promise<OpenMeteoResult> {
   const limit = options.limit ?? 5;
+  const endpoint = options.endpoint ?? 'forecast';
+  const service = endpoint === 'dwd-icon' ? 'DWD ICON forecast (through Open-Meteo)' : 'Open-Meteo forecast service';
   const response = await fetcher.fetch({
-    url: forecastUrl(at, options.units, limit),
+    url: forecastUrl(at, options.units, limit, endpoint),
     policy: {},
     maxBytes: FETCH_LIMITS.json,
     acceptContentTypes: ['application/json'],
@@ -566,14 +570,14 @@ export async function fetchOpenMeteo(
   if (response.status !== 'ok') {
     return {
       ok: false,
-      message: 'Could not reach the Open-Meteo forecast service.',
+      message: `Could not reach the ${service}.`,
       suggestion: 'It needs an internet connection but no account or key. It will keep trying.',
     };
   }
 
   const parts = parseOpenMeteo(response.body, { ...options, limit });
   if (parts.forecast === undefined && parts.current === undefined && parts.hours === undefined) {
-    return { ok: false, message: 'Open-Meteo answered without a forecast in it.' };
+    return { ok: false, message: `The ${service} answered without a forecast in it.` };
   }
   return { ok: true, parts };
 }

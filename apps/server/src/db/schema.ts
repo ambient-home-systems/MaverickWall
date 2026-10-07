@@ -100,6 +100,19 @@ export const householdSettings = sqliteTable('household_settings', {
    * the update check's rule, one switch along.
    */
   airQualityEnabled: integer('air_quality_enabled', { mode: 'boolean' }).notNull().default(false),
+  /**
+   * The Home Assistant weather entity the forecast is read from, when the
+   * provider is `homeassistant` (plan item M5.8). Never sent to a wall: the
+   * panel carries values, and the entity id stays on this side, as every other
+   * Home Assistant id does.
+   */
+  weatherEntity: text('weather_entity'),
+  /**
+   * A Weather Underground personal weather station, when the provider is
+   * `wunderground` (plan item M5.8). Optional: without one the forecast still
+   * draws, and "now" is not measured.
+   */
+  weatherStation: text('weather_station'),
   alertsEnabled: integer('alerts_enabled', { mode: 'boolean' }).notNull().default(true),
 
   /**
@@ -2335,5 +2348,19 @@ export const todoistConnection = sqliteTable('todoist_connection', {
   tokenEncrypted: text('token_encrypted').notNull(),
   connectedAt: integer('connected_at', { mode: 'number' }).notNull(),
   lastError: text('last_error'),
+  updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
+});
+
+/**
+ * A key for a weather service that needs one (plan item M5.8): OpenWeatherMap,
+ * Pirate Weather and Weather Underground, one row each, sealed under the
+ * keyring's `weather-key` purpose. Kept per provider rather than as one column,
+ * so switching provider and back does not cost the key a household already
+ * pasted. Opened for one request at a time, never sent to a wall, never shown
+ * again.
+ */
+export const weatherKeys = sqliteTable('weather_keys', {
+  provider: text('provider').primaryKey(),
+  keyEncrypted: text('key_encrypted').notNull(),
   updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
 });

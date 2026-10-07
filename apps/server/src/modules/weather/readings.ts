@@ -1,4 +1,6 @@
 import type { GlyphKey } from '../../glyphs.js';
+import type { Forecast } from './nws.js';
+import { PROVIDER_FACTS, type Provider } from './providers.js';
 
 /**
  * The weather panel's richer half (plan item P3.1), as shapes and arithmetic.
@@ -9,9 +11,64 @@ import type { GlyphKey } from '../../glyphs.js';
  * the serialisation, so a `"current": null` on every wall in the world would
  * move every stored ETag at one image pull for a household that gained nothing.
  *
- * Pure, and no `Intl`: the only things that need a zone (the sun's local times,
+ * Pure, and no zone of its own (`dayLabel` asks `Intl` for a weekday in UTC
+ * alone): the only things that need a zone (the sun's local times,
  * and whether it is up) are computed by the callers and handed in.
  */
+
+/**
+ * What one provider's answer holds, part by part; any part may be missing.
+ *
+ * Every provider but NWS reads into this one shape, so the job writes each
+ * part it was due and keeps the last good copy of any part an answer did not
+ * carry (keep-last-good per part, plan item P3.2).
+ */
+export interface WeatherParts {
+  readonly forecast?: Forecast;
+  readonly current?: ConditionsReading;
+  readonly hours?: readonly HourRecord[];
+}
+
+export type PartsResult =
+  | { readonly ok: true; readonly parts: WeatherParts }
+  | { readonly ok: false; readonly message: string; readonly suggestion?: string };
+
+/**
+ * What every reader is handed, bound to one household.
+ *
+ * `localTime` and `isDayAt` come from `sun.ts` through the household's zone;
+ * `sunFor` is the NOAA sunrise for a date, for a provider whose answer carries
+ * none. Each is optional so a parser stays testable with nothing but a body.
+ */
+export interface ReadOptions {
+  readonly now: number;
+  readonly units: 'metric' | 'imperial';
+  readonly todayIso: string;
+  readonly limit: number;
+  readonly localTime?: (instantMs: number) => string;
+  readonly isDayAt?: (instantMs: number) => boolean | undefined;
+  readonly sunFor?: (date: string) => { sunrise?: string; sunset?: string };
+}
+
+/** The household's civil date at an instant, from `localTime`, or UTC's without one. */
+export function localDateOf(instantMs: number, options: Pick<ReadOptions, 'localTime'>): string {
+  return (options.localTime?.(instantMs) ?? new Date(instantMs).toISOString()).slice(0, 10);
+}
+
+/** A number the provider sent, or nothing — never a zero standing in for "unknown". */
+export function present(value: number | null | undefined): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+/** The weekday label for an ISO date, tz-agnostic; the first is "Today". */
+export function dayLabel(dateIso: string, todayIso: string): string {
+  if (dateIso === todayIso) return 'Today';
+  // Anchored at UTC midnight so the weekday is the calendar date's own, not a
+  // reading shifted across a zone boundary.
+  const at = new Date(`${dateIso}T00:00:00Z`);
+  if (Number.isNaN(at.getTime())) return dateIso;
+  return new Intl.DateTimeFormat('en', { weekday: 'short', timeZone: 'UTC' }).format(at);
+}
 
 /** The units a panel's numbers are in, beside the temperature's own letter. */
 export interface WeatherUnits {
@@ -141,6 +198,50 @@ export function kmhToMph(kmh: number): number {
   return tenth(kmh / 1.609344);
 }
 
+/*
+ * Conversions into the panel's units (plan item M5.8).
+ *
+ * A provider that answers in a unit the household did not choose — a Home
+ * Assistant entity set up in another scale, OpenWeatherMap's metres per second
+ * — is converted here, once, so a panel is never half one scale. A unit
+ * nobody recognises is `undefined`: a number with no unit is not a reading.
+ */
+
+/** A temperature in the panel's scale, from a provider's own unit ("°C", "C", "°F"). */
+export function temperatureIn(value: number, from: string, to: 'C' | 'F'): number | undefined {
+  const unit = from.replace('°', '').trim().toUpperCase();
+  if (unit !== 'C' && unit !== 'F') return undefined;
+  if (unit === to) return value;
+  return to === 'F' ? celsiusToFahrenheit(value) : tenth(((value - 32) * 5) / 9);
+}
+
+/** Metres per second of each wind unit a provider might send. */
+const WIND_MPS: Readonly<Record<string, number>> = {
+  'm/s': 1,
+  'km/h': 1 / 3.6,
+  mph: 0.44704,
+  kn: 0.514444,
+  'ft/s': 0.3048,
+};
+
+/** A wind speed in the panel's unit, from a provider's own. */
+export function windIn(value: number, from: string, to: 'mph' | 'km/h'): number | undefined {
+  const mps = WIND_MPS[from.trim()];
+  if (mps === undefined) return undefined;
+  if (from.trim() === to) return value;
+  const metres = value * mps;
+  return tenth(to === 'mph' ? metres / 0.44704 : metres * 3.6);
+}
+
+/** A rainfall in the panel's unit, from a provider's own ("mm", "in", "cm"). */
+export function precipIn(value: number, from: string, to: 'in' | 'mm'): number | undefined {
+  const unit = from.trim();
+  const mm = unit === 'mm' ? value : unit === 'cm' ? value * 10 : unit === 'in' ? value * 25.4 : undefined;
+  if (mm === undefined) return undefined;
+  if (unit === to) return value;
+  return to === 'mm' ? tenth(mm) : Math.round((mm / 25.4) * 100) / 100;
+}
+
 const COMPASS = [
   'N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
   'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW',
@@ -179,7 +280,7 @@ export function knownCompassPoint(value: string): string | undefined {
  * `now` is an argument so the ninety minutes is a test rather than a hope.
  */
 export function presentCurrent(options: {
-  readonly provider: 'nws' | 'openmeteo';
+  readonly provider: Provider;
   readonly reading: ConditionsReading | undefined;
   readonly hours: readonly HourRecord[];
   readonly now: number;
@@ -187,7 +288,7 @@ export function presentCurrent(options: {
   const { provider, reading, hours, now } = options;
 
   if (reading !== undefined && reading.temp !== null && now - reading.observedAt <= CURRENT_MAX_AGE_MS) {
-    return { ...reading, temp: reading.temp, source: provider === 'nws' ? 'observed' : 'modelled' };
+    return { ...reading, temp: reading.temp, source: PROVIDER_FACTS[provider].observed ? 'observed' : 'modelled' };
   }
 
   if (provider !== 'nws') return undefined;

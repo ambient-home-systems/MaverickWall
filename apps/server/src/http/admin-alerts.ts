@@ -1,7 +1,7 @@
 import type { Context, Hono } from 'hono';
 import {
-  defaultSubmit, dirtyForm, escapeHtml, errorBlock, icon, noticeBlock, page, saveRow, selectField, switchRow,
-  textField,
+  confirmDestroyPage, defaultSubmit, dirtyForm, escapeHtml, errorBlock, icon, noticeBlock, page, saveRow,
+  selectField, switchRow, textField,
 } from './html.js';
 import { card, emptyState, section, tag } from './components.js';
 import { LIFE_SAFETY_DISCLAIMER } from '../api/disclaimer.js';
@@ -15,6 +15,24 @@ import { ago, navModules, type AdminDeps } from './admin.js';
 import { selfHref } from './self.js';
 import { isUnitedStatesZone } from '../timezone.js';
 import { AIR_QUALITY_HOST } from '../modules/weather/open-meteo.js';
+import {
+  KEYED_PROVIDERS,
+  PROVIDER_FACTS,
+  WEATHER_PROVIDERS,
+  isKeyedProvider,
+  providerOr,
+  type KeyedProvider,
+  type Provider,
+} from '../modules/weather/providers.js';
+import {
+  WEATHER_KEY_PATTERN,
+  forgetWeatherKey,
+  saveWeatherKey,
+  savedWeatherKeys,
+} from '../modules/weather/keys.js';
+import { WEATHER_ENTITY_PATTERN } from '../modules/weather/ha-weather.js';
+import { WU_STATION_PATTERN } from '../modules/weather/wunderground.js';
+import { statusKey } from '../modules/weather/index.js';
 
 /**
  * The screen's one form (RFC 009 Phase 3.1).
@@ -44,6 +62,15 @@ const weatherBody = z.object({
   // an older form. Only the two known values are honoured.
   weather_provider: optionalText(20),
   weather_units: optionalText(20),
+  /*
+   * The provider's own facts (plan item M5.8): the Home Assistant entity, the
+   * Weather Underground station, and a key for the provider chosen. Text, and
+   * checked in the handler against the provider, because which of them is
+   * needed depends on the choice made in the same submission.
+   */
+  weather_entity: optionalText(255),
+  weather_station: optionalText(40),
+  weather_key: optionalText(200),
   // The town/postcode field (P2.3). Never stored — it only ever feeds a
   // lookup — so it has no counterpart in `writeWeatherSettings` at all.
   place: optionalText(120),
@@ -64,6 +91,9 @@ const haLocationBody = z.object({
   air_quality_enabled: checkbox(),
   weather_provider: optionalText(20),
   weather_units: optionalText(20),
+  weather_entity: optionalText(255),
+  weather_station: optionalText(40),
+  weather_key: optionalText(200),
 });
 
 /**
@@ -128,6 +158,8 @@ interface WeatherEcho {
   readonly provider: string;
   readonly units: string;
   readonly place: string;
+  readonly entity: string;
+  readonly station: string;
 }
 
 /** The echo, read off the raw body — before any schema has had an opinion. */
@@ -142,6 +174,9 @@ function echoOf(body: Record<string, unknown>): WeatherEcho {
     provider: str('weather_provider'),
     units: str('weather_units'),
     place: str('place'),
+    entity: str('weather_entity'),
+    station: str('weather_station'),
+    // Never the key: a key is not written back into a page, refused or not.
   };
 }
 
@@ -162,10 +197,22 @@ const ACTION_WORDS: Readonly<Record<string, string>> = {
   none: 'Nothing',
 };
 
+/** A weather entity Home Assistant listed, for the picker. */
+interface WeatherEntity {
+  readonly id: string;
+  readonly name: string;
+}
+
+/** One row of `GET /api/states`, as far as the picker reads it. */
+const haStateRow = z.object({
+  entity_id: z.string().max(255),
+  attributes: z.looseObject({ friendly_name: z.string().max(200).optional().catch(undefined) }).optional().catch(undefined),
+});
+
 export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
   const now = deps.now ?? ((): number => Date.now());
 
-  app.get('/admin/alerts', (c: Context) => c.html(alertsPage(c)));
+  app.get('/admin/alerts', async (c: Context) => c.html(await alertsPage(c)));
 
   /**
    * The alerts switch's old endpoint, kept only to say it has moved.
@@ -179,9 +226,9 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
    * It is not re-honoured, because honouring half a stale page is how a
    * household comes to believe the stale page works. One rule: reload.
    */
-  app.post('/admin/alerts', (c: Context) =>
+  app.post('/admin/alerts', async (c: Context) =>
     c.html(
-      alertsPage(c, 'That page was out of date, so nothing was changed. Reload this page and try again.'),
+      await alertsPage(c, 'That page was out of date, so nothing was changed. Reload this page and try again.'),
       400,
     ),
   );
@@ -208,6 +255,79 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
   });
 
   /**
+   * The provider and what it needs, checked together (plan item M5.8).
+   *
+   * Which fields are required depends on the choice made in the same
+   * submission, so this reads them as a set: a Home Assistant provider needs
+   * an entity, a keyed one needs a key typed here or saved before, and each
+   * value is checked for the shape it has to have. Each refusal names what to
+   * do. A value for a provider that was not chosen is left alone rather than
+   * written, so a hidden field cannot clear a stored entity or station.
+   */
+  function providerChoice(value: {
+    readonly weather_provider?: string | undefined;
+    readonly weather_entity?: string | undefined;
+    readonly weather_station?: string | undefined;
+    readonly weather_key?: string | undefined;
+  }):
+    | {
+        readonly ok: true;
+        readonly provider: Provider;
+        readonly entity?: string | null;
+        readonly station?: string | null;
+        readonly key?: { readonly provider: KeyedProvider; readonly key: string };
+      }
+    | { readonly ok: false; readonly message: string } {
+    const provider = providerOr(value.weather_provider);
+    const facts = PROVIDER_FACTS[provider];
+    const entity = value.weather_entity;
+    if (provider === 'homeassistant') {
+      if (entity === undefined) {
+        return {
+          ok: false,
+          message: resolveConnection(deps.db, deps.keyring).ok
+            ? 'Choose which Home Assistant weather entity the forecast comes from.'
+            : 'Home Assistant is not connected. Connect it on the Home Assistant page, or choose another ' +
+              'forecast.',
+        };
+      }
+      if (!WEATHER_ENTITY_PATTERN.test(entity)) {
+        return { ok: false, message: 'That is not a Home Assistant weather entity. Its id starts “weather.”.' };
+      }
+    }
+    const station = value.weather_station;
+    if (provider === 'wunderground' && station !== undefined && !WU_STATION_PATTERN.test(station)) {
+      return { ok: false, message: 'A station id is letters and digits, the way Weather Underground prints it: KMAHANOV10.' };
+    }
+    const key = value.weather_key;
+    if (key !== undefined) {
+      if (!isKeyedProvider(provider)) {
+        return {
+          ok: false,
+          message:
+            `${facts.name} needs no key. A key is for OpenWeatherMap, Pirate Weather or Weather ` +
+            'Underground: choose one of them, or clear the key field.',
+        };
+      }
+      if (!WEATHER_KEY_PATTERN.test(key)) {
+        return {
+          ok: false,
+          message: `That does not look like a ${facts.name} key. Copy it again, without spaces around it.`,
+        };
+      }
+    } else if (isKeyedProvider(provider) && !savedWeatherKeys(deps.db).has(provider)) {
+      return { ok: false, message: `${facts.name} needs a key. Paste the one from ${facts.host ?? 'its website'}.` };
+    }
+    return {
+      ok: true,
+      provider,
+      ...(provider === 'homeassistant' ? { entity: entity ?? null } : {}),
+      ...(provider === 'wunderground' ? { station: station ?? null } : {}),
+      ...(key !== undefined && isKeyedProvider(provider) ? { key: { provider, key } } : {}),
+    };
+  }
+
+  /**
    * Both settings, written together.
    *
    * `alerts_enabled` used to have a POST of its own. It has none now, because
@@ -220,9 +340,12 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
     alertsEnabled: boolean;
     latitude: number | null;
     longitude: number | null;
-    provider: 'nws' | 'openmeteo';
+    provider: Provider;
     units: 'imperial' | 'metric';
     airQuality: boolean;
+    entity?: string | null;
+    station?: string | null;
+    key?: { readonly provider: KeyedProvider; readonly key: string };
   }): void {
     writeWeatherSettings(deps.db, {
       enabled: value.weatherEnabled,
@@ -231,7 +354,20 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       provider: value.provider,
       units: value.units,
       airQuality: value.airQuality,
+      ...(value.entity === undefined ? {} : { entity: value.entity }),
+      ...(value.station === undefined ? {} : { station: value.station }),
     });
+    /*
+     * A key is saved without being tried, unlike a Todoist token: a new
+     * OpenWeatherMap key is refused for a couple of hours after it is made, so
+     * trying it here would turn a good key away. The job is brought forward
+     * instead, and what it finds is shown above this form on the next look.
+     */
+    if (value.key !== undefined) {
+      saveWeatherKey(deps.db, deps.keyring, value.key.provider, value.key.key, now());
+      deps.db.prepare('DELETE FROM weather_cache WHERE cache_key = ?').run(statusKey(value.key.provider));
+      deps.db.prepare(`UPDATE job_state SET next_run_at = 0 WHERE kind = 'weather-sync'`).run();
+    }
     /*
      * The poll is brought forward on the *transition*, not on every save.
      *
@@ -263,10 +399,10 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
    */
   async function renderPlaceMatches(c: Context, place: string, echo: WeatherEcho): Promise<Response> {
     const found = await findPlace(deps.fetcher, place);
-    if (!found.ok) return c.html(alertsPage(c, found.message, echo), 400);
+    if (!found.ok) return c.html(await alertsPage(c, found.message, echo), 400);
     if (found.matches.length === 0) {
       return c.html(
-        alertsPage(
+        await alertsPage(
           c,
           'No place by that name. Try a nearby town, or add the state or country, the way ' +
             '“Springfield, Illinois” does.',
@@ -275,7 +411,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
         400,
       );
     }
-    return c.html(alertsPage(c, undefined, echo, found.matches));
+    return c.html(await alertsPage(c, undefined, echo, found.matches));
   }
 
   /**
@@ -297,7 +433,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
      */
     if (!fromTheForm(body)) {
       return c.html(
-        alertsPage(c, 'That page was out of date, so nothing was changed. Reload this page and try again.'),
+        await alertsPage(c, 'That page was out of date, so nothing was changed. Reload this page and try again.'),
         400,
       );
     }
@@ -305,7 +441,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
     // Echoed back on every failure below, so a rejected number never also costs
     // the switch they flipped or the provider they chose.
     const echo = echoOf(body);
-    if (!shaped.ok) return c.html(alertsPage(c, shaped.message, echo), 400);
+    if (!shaped.ok) return c.html(await alertsPage(c, shaped.message, echo), 400);
 
     /*
      * Blank is "not set yet"; wrong is an error. The difference is the whole
@@ -348,7 +484,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
     const lon = parse(coordinate('Longitude', 180), shaped.value.longitude);
     if (!blank && (!lat.ok || !lon.ok)) {
       return c.html(
-        alertsPage(
+        await alertsPage(
           c,
           'A location is both numbers together — latitude between -90 and 90, longitude ' +
             'between -180 and 180. Your phone’s map app shows both if you press and hold ' +
@@ -371,7 +507,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
      */
     if (blank && hasWeatherLocation(deps.db) && (shaped.value.weather_enabled || shaped.value.alerts_enabled)) {
       return c.html(
-        alertsPage(
+        await alertsPage(
           c,
           'That would clear the location this household already has, and both the forecast ' +
             'and the weather alerts are worked out from it. Type a new location, or turn ' +
@@ -382,12 +518,15 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       );
     }
 
+    const choice = providerChoice(shaped.value);
+    if (!choice.ok) return c.html(await alertsPage(c, choice.message, echo), 400);
+
     writeAll({
       weatherEnabled: shaped.value.weather_enabled,
       alertsEnabled: shaped.value.alerts_enabled,
       latitude: lat.ok ? lat.value : null,
       longitude: lon.ok ? lon.value : null,
-      provider: shaped.value.weather_provider === 'openmeteo' ? 'openmeteo' : 'nws',
+      ...choice,
       units: shaped.value.weather_units === 'metric' ? 'metric' : 'imperial',
       airQuality: shaped.value.air_quality_enabled,
     });
@@ -421,12 +560,12 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
      * form at all.
      */
     if (posted !== undefined && !posted.ok) {
-      return c.html(alertsPage(c, posted.message, echo), 400);
+      return c.html(await alertsPage(c, posted.message, echo), 400);
     }
     const resolved = resolveConnection(deps.db, deps.keyring);
     if (!resolved.ok) {
       return c.html(
-        alertsPage(
+        await alertsPage(
           c,
           'Home Assistant is not connected. Connect it on the Home Assistant page, then try this again.',
           echo,
@@ -436,7 +575,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
     }
     const home = await call(deps.fetcher, resolved.connection, '/states/zone.home');
     if (!home.ok) {
-      return c.html(alertsPage(c, 'Could not read your Home Assistant home location.', echo), 400);
+      return c.html(await alertsPage(c, 'Could not read your Home Assistant home location.', echo), 400);
     }
     let raw: unknown;
     try {
@@ -450,7 +589,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
     );
     if (!located.ok) {
       return c.html(
-        alertsPage(
+        await alertsPage(
           c,
           'Home Assistant did not return a home location. Set your home zone in Home Assistant ' +
             '(Settings → Areas, labels & zones), then try again.',
@@ -471,11 +610,13 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
      * an empty body reads as "turn everything off" (see `POST /admin/weather`).
      */
     const stored = readWeatherSettings(deps.db);
-    const rest = posted?.ok === true
+    const choice = posted?.ok === true ? providerChoice(posted.value) : undefined;
+    if (choice !== undefined && !choice.ok) return c.html(await alertsPage(c, choice.message, echo), 400);
+    const rest = posted?.ok === true && choice?.ok === true
       ? {
           weatherEnabled: posted.value.weather_enabled,
           alertsEnabled: posted.value.alerts_enabled,
-          provider: posted.value.weather_provider === 'openmeteo' ? ('openmeteo' as const) : ('nws' as const),
+          ...choice,
           units: posted.value.weather_units === 'metric' ? ('metric' as const) : ('imperial' as const),
           airQuality: posted.value.air_quality_enabled,
         }
@@ -506,16 +647,16 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     if (!fromTheForm(body)) {
       return c.html(
-        alertsPage(c, 'That page was out of date, so nothing was changed. Reload this page and try again.'),
+        await alertsPage(c, 'That page was out of date, so nothing was changed. Reload this page and try again.'),
         400,
       );
     }
     const shaped = parse(placeLookupBody, body);
     const echo = echoOf(body);
-    if (!shaped.ok) return c.html(alertsPage(c, shaped.message, echo), 400);
+    if (!shaped.ok) return c.html(await alertsPage(c, shaped.message, echo), 400);
     if (shaped.value.place === undefined) {
       return c.html(
-        alertsPage(
+        await alertsPage(
           c,
           'Type a town first — or use the latitude and longitude below, if you already have them.',
           echo,
@@ -541,23 +682,63 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
     if (!fromTheForm(body)) {
       return c.html(
-        alertsPage(c, 'That page was out of date, so nothing was changed. Reload this page and try again.'),
+        await alertsPage(c, 'That page was out of date, so nothing was changed. Reload this page and try again.'),
         400,
       );
     }
     const posted = parse(usePlaceBody, body);
     const echo = echoOf(body);
-    if (!posted.ok) return c.html(alertsPage(c, posted.message, echo), 400);
+    if (!posted.ok) return c.html(await alertsPage(c, posted.message, echo), 400);
+    const choice = providerChoice(posted.value);
+    if (!choice.ok) return c.html(await alertsPage(c, choice.message, echo), 400);
     writeAll({
       weatherEnabled: posted.value.weather_enabled,
       alertsEnabled: posted.value.alerts_enabled,
-      provider: posted.value.weather_provider === 'openmeteo' ? 'openmeteo' : 'nws',
+      ...choice,
       units: posted.value.weather_units === 'metric' ? 'metric' : 'imperial',
       latitude: posted.value.place_choice.latitude,
       longitude: posted.value.place_choice.longitude,
       airQuality: posted.value.air_quality_enabled,
     });
     return savedRedirect(c, '/admin/alerts', 'weather-location-place');
+  });
+
+  /**
+   * Forget a saved key (plan item M5.8), behind a confirmation of its own.
+   *
+   * A link from the form rather than a button in it, because HTML has no
+   * nested forms and a submit here would carry the whole form with it.
+   */
+  app.get('/admin/weather/keys/:provider/forget', (c: Context) => {
+    const provider = c.req.param('provider') ?? '';
+    if (!isKeyedProvider(provider) || !savedWeatherKeys(deps.db).has(provider)) return c.redirect('/admin/alerts', 302);
+    const name = PROVIDER_FACTS[provider].name;
+    return c.html(
+      confirmDestroyPage({
+        self: selfHref(c),
+        modules: navModules(deps.db),
+        title: `Forget the ${name} key`,
+        nav: 'alerts',
+        heading: `Forget the ${name} key?`,
+        intro:
+          readWeatherSettings(deps.db).provider === provider
+            ? `The forecast comes from ${name}, so the wall keeps the forecast it has until another key ` +
+              'or another provider is chosen, and then shows nothing new. To stop the key working at all, ' +
+              `delete it on ${name}’s own site as well.`
+            : `Nothing on a wall uses it now. To stop the key working at all, delete it on ${name}’s own ` +
+              'site as well.',
+        destroyAction: `admin/weather/keys/${provider}/forget`,
+        destroyLabel: 'Forget the key',
+        cancelAction: 'admin/alerts',
+      }),
+    );
+  });
+
+  app.post('/admin/weather/keys/:provider/forget', (c: Context) => {
+    const provider = c.req.param('provider') ?? '';
+    // A token is a claim: a key already gone changed nothing.
+    if (!isKeyedProvider(provider) || !forgetWeatherKey(deps.db, provider)) return c.redirect('/admin/alerts', 302);
+    return savedRedirect(c, '/admin/alerts', 'weather-key-forgotten');
   });
 
   /** Whether National Weather Service alerts are on, as one reader. */
@@ -581,7 +762,22 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
   function forecastPreview(): string {
     const weather = readWeatherSettings(deps.db);
     const located = weather.latitude !== null && weather.longitude !== null;
-    const providerName = weather.provider === 'openmeteo' ? 'Open-Meteo' : 'National Weather Service';
+    const providerName = PROVIDER_FACTS[weather.provider].name;
+    /*
+     * Why the last refresh failed, when it did (plan item M5.8): a key that
+     * was refused, an entity that went away. Said here, above the form that
+     * fixes it, and never on a wall.
+     */
+    const status = deps.db
+      .prepare(`SELECT payload FROM weather_cache WHERE cache_key = ?`)
+      .get(statusKey(weather.provider)) as { payload: string } | undefined;
+    let problem: string | undefined;
+    try {
+      const message = status === undefined ? undefined : (JSON.parse(status.payload) as { message?: unknown }).message;
+      problem = typeof message === 'string' ? message : undefined;
+    } catch {
+      problem = undefined;
+    }
 
     let forecastBlock = '';
     const row = deps.db
@@ -589,8 +785,16 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       .get(`${weather.provider}:forecast`) as { payload: string; fetchedAt: number } | undefined;
     if (row !== undefined) {
       try {
+        /*
+         * The day's words, not a picture: the cache carries a glyph *key*,
+         * which the wall draws, and this page has no renderer for one. This
+         * read `day.icon`, a field the cache has not carried since glyphs
+         * replaced emoji, so `escapeHtml(undefined)` threw, the catch below
+         * swallowed it, and the preview was empty for every provider while
+         * saying the forecast was still on its way (found by plan item M5.8).
+         */
         const days = (JSON.parse(row.payload) as {
-          days?: { name: string; high: number | null; low: number | null; icon: string }[];
+          days?: { name: string; high: number | null; low: number | null; summary?: string }[];
         }).days ?? [];
         if (days.length > 0) {
           const strip = days
@@ -598,7 +802,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
             .map(
               (day) =>
                 `<li><span class="when">${escapeHtml(day.name)}</span><span>` +
-                `${escapeHtml(day.icon)} ` +
+                (typeof day.summary === 'string' && day.summary !== '' ? `${escapeHtml(day.summary)} ` : '') +
                 (day.high === null ? '' : `${day.high}°`) +
                 (day.low === null ? '' : ` / ${day.low}°`) +
                 `</span></li>`,
@@ -625,10 +829,133 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       undefined,
       `<p class="hint">A five-day forecast strip. It is a widget like any other — ` +
         `choose where it sits on <a class="link" href="admin/walls">any wall</a>.</p>` +
+        (problem === undefined
+          ? ''
+          : noticeBlock(`Not read from ${providerName} last time.`, `${problem} The wall keeps what it had.`)) +
         forecastBlock +
         (weather.enabled && located && forecastBlock === ''
           ? `<p class="hint">Location set — the forecast arrives on the next check, within a few minutes.</p>`
           : ''),
+    );
+  }
+
+  /**
+   * The weather entities Home Assistant has, to choose from (plan item M5.8).
+   *
+   * Read at the moment the screen is drawn, with a short wait, and only when
+   * there is a connection: a Home Assistant that does not answer in time
+   * costs the picker, never the page, which then offers the entity id as text.
+   */
+  async function weatherEntities(): Promise<readonly WeatherEntity[] | undefined> {
+    const resolved = resolveConnection(deps.db, deps.keyring);
+    if (!resolved.ok) return undefined;
+    const answer = await call(deps.fetcher, resolved.connection, '/states', 5_000);
+    if (!answer.ok) return undefined;
+    let raw: unknown;
+    try {
+      raw = JSON.parse(answer.body);
+    } catch {
+      return undefined;
+    }
+    if (!Array.isArray(raw)) return undefined;
+    const found: WeatherEntity[] = [];
+    for (const item of raw) {
+      const shaped = haStateRow.safeParse(item);
+      if (!shaped.success || !WEATHER_ENTITY_PATTERN.test(shaped.data.entity_id)) continue;
+      found.push({ id: shaped.data.entity_id, name: shaped.data.attributes?.friendly_name ?? shaped.data.entity_id });
+    }
+    return found.sort((a, b) => a.name.localeCompare(b.name)).slice(0, 100);
+  }
+
+  /**
+   * The fields that belong to one provider (plan item M5.8), each shown for
+   * its provider alone by `conditional-fields.js` and all of them with script
+   * off, where the hint under each says which provider it is for.
+   */
+  function providerFields(
+    provider: Provider,
+    entity: string,
+    station: string,
+    entities: readonly WeatherEntity[] | undefined,
+  ): string {
+    const saved = savedWeatherKeys(deps.db);
+    const connected = resolveConnection(deps.db, deps.keyring).ok;
+
+    const entityField = !connected
+      ? `<p class="hint">Home Assistant is not connected. Connect it on the ` +
+        `<a class="link" href="admin/home-assistant">Home Assistant</a> page, and its weather ` +
+        `entities are offered here.</p>`
+      : entities === undefined
+        ? textField({
+            label: 'Home Assistant weather entity',
+            name: 'weather_entity',
+            placeholder: 'weather.home',
+            value: entity,
+            attrs: 'autocomplete="off" spellcheck="false"',
+            hint: 'Home Assistant did not list its entities just now, so type the id: it starts “weather.”.',
+          })
+        : entities.length === 0 && entity === ''
+          ? `<p class="hint">Home Assistant has no weather entity. Add a weather integration there ` +
+            `(Met.no is built in), and it is offered here.</p>`
+          : selectField({
+              label: 'Home Assistant weather entity',
+              name: 'weather_entity',
+              optionsHtml:
+                // The stored one stays choosable even when Home Assistant no
+                // longer lists it, so the form says what is saved rather than
+                // silently preselecting another.
+                (entity !== '' && !entities.some((one) => one.id === entity)
+                  ? `<option value="${escapeHtml(entity)}" selected>${escapeHtml(entity)} (not found)</option>`
+                  : '') +
+                entities
+                  .map(
+                    (one) =>
+                      `<option value="${escapeHtml(one.id)}"${one.id === entity ? ' selected' : ''}>` +
+                      `${escapeHtml(one.name)}</option>`,
+                  )
+                  .join(''),
+              hint: 'Read with Home Assistant’s own “get forecasts”, which only reads.',
+            });
+
+    const keyedNames = KEYED_PROVIDERS.filter((key) => saved.has(key)).map((key) => PROVIDER_FACTS[key].name);
+    const keyField =
+      textField({
+        label: 'API key',
+        name: 'weather_key',
+        type: 'password',
+        attrs: 'autocomplete="off" spellcheck="false"',
+        hint:
+          (isKeyedProvider(provider) && saved.has(provider)
+            ? `A key for ${PROVIDER_FACTS[provider].name} is saved. Leave this empty to keep it. `
+            : '') +
+          'For OpenWeatherMap, Pirate Weather or Weather Underground: a key typed here is saved for ' +
+          'the one chosen above, sealed, and never shown again or sent to a wall.',
+      }) +
+      (keyedNames.length === 0
+        ? ''
+        : `<p class="hint">Keys saved: ${KEYED_PROVIDERS.filter((key) => saved.has(key))
+            .map(
+              (key) =>
+                `${escapeHtml(PROVIDER_FACTS[key].name)} ` +
+                `(<a class="link" href="admin/weather/keys/${key}/forget">forget</a>)`,
+            )
+            .join(', ')}.</p>`);
+
+    return (
+      `<div data-cond-show="homeassistant">${entityField}</div>` +
+      `<div data-cond-show="${KEYED_PROVIDERS.join(' ')}">${keyField}</div>` +
+      `<div data-cond-show="wunderground">` +
+      textField({
+        label: 'Weather Underground station (optional)',
+        name: 'weather_station',
+        placeholder: 'e.g. KMAHANOV10',
+        value: station,
+        attrs: 'autocomplete="off" spellcheck="false"',
+        hint:
+          'A personal weather station’s id, from its page on wunderground.com. With one, the ' +
+          'conditions now are measured there; without one, the wall shows the forecast alone.',
+      }) +
+      `</div>`
     );
   }
 
@@ -647,7 +974,11 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
    * manages the one control marked `data-dirty-save`, and a button whose whole
    * job is to fill a field in must work before anything has been edited.
    */
-  function weatherForm(echo?: WeatherEcho, matches?: readonly PlaceMatch[]): string {
+  function weatherForm(
+    entities: readonly WeatherEntity[] | undefined,
+    echo?: WeatherEcho,
+    matches?: readonly PlaceMatch[],
+  ): string {
     const stored = readWeatherSettings(deps.db);
     const haConnected = resolveConnection(deps.db, deps.keyring).ok;
     // The echo wins wherever there is one, so a 400 hands the form back exactly
@@ -667,12 +998,9 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
        * `systemPage`), and the rule is the same: an echo belongs on a text
        * field; a `<select>` gets the value a save would actually store.
        */
-      provider:
-        echo === undefined
-          ? stored.provider
-          : echo.provider === 'openmeteo'
-            ? ('openmeteo' as const)
-            : ('nws' as const),
+      provider: echo === undefined ? stored.provider : providerOr(echo.provider),
+      entity: echo === undefined ? (stored.entity ?? '') : echo.entity,
+      station: echo === undefined ? (stored.station ?? '') : echo.station,
       units:
         echo === undefined
           ? stored.units
@@ -795,11 +1123,14 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       selectField({
         label: 'Forecast from',
         name: 'weather_provider',
-        optionsHtml:
-          `<option value="nws"${weather.provider === 'nws' ? ' selected' : ''}>` +
-          `National Weather Service (US only)</option>` +
-          `<option value="openmeteo"${weather.provider === 'openmeteo' ? ' selected' : ''}>` +
-          `Open-Meteo (worldwide)</option>`,
+        // `data-cond`: the fields below that belong to one provider are shown
+        // for that provider alone, and every one of them with script off.
+        attrs: 'data-cond',
+        optionsHtml: WEATHER_PROVIDERS.map(
+          (key) =>
+            `<option value="${key}"${weather.provider === key ? ' selected' : ''}>` +
+            `${escapeHtml(PROVIDER_FACTS[key].name)} (${escapeHtml(PROVIDER_FACTS[key].reach)})</option>`,
+        ).join(''),
       }) +
       selectField({
         label: 'Units',
@@ -810,31 +1141,32 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
       }) +
       `</div>` +
       `<p class="hint">The National Weather Service always reports in Fahrenheit; ` +
-      `the units choice applies to Open-Meteo.</p>` +
+      `the units choice applies to every other provider, and a Home Assistant ` +
+      `entity in the other scale is converted.</p>` +
       /*
-       * What each provider actually gives a wall (plan item P3.8), because the
-       * two are no longer the same strip with a different map behind it: one
-       * measures the conditions and one models them, and only one has the UV
-       * index and the day's rainfall. A household choosing between them is
-       * choosing between those, not between two names.
+       * What each provider actually gives a wall (plan item P3.8, widened for
+       * M5.8), because they are not the same strip with a different map
+       * behind it: one measures the conditions and another models them, some
+       * have the UV index and the day's rainfall, one has no hours ahead. A
+       * household choosing between them is choosing between those.
        */
-      `<p class="hint"><b>National Weather Service</b> — the United States only. ` +
-      `The conditions now are measured at the nearest weather station, and come ` +
-      `from its hourly forecast when the station has no reading. Each day has ` +
-      `its chance of rain, its wind and the forecaster’s own words.</p>` +
-      `<p class="hint"><b>Open-Meteo</b> — worldwide, with no account or key. ` +
-      `The conditions now are modelled rather than measured. Each day also has ` +
-      `its UV index and how much rain is expected.</p>` +
+      WEATHER_PROVIDERS.map(
+        (key) =>
+          `<p class="hint" data-cond-show="${key}"><b>${escapeHtml(PROVIDER_FACTS[key].name)}</b> — ` +
+          `${escapeHtml(PROVIDER_FACTS[key].about)}</p>`,
+      ).join('') +
 
-      (weather.provider === 'openmeteo'
-        ? `<p class="hint">Open-Meteo covers the whole world and needs no account ` +
-          `or key. Weather alerts, below, are still the US National Weather Service ` +
-          `only — Open-Meteo has no alert feed.</p>`
-        : noticeBlock(
+      providerFields(weather.provider, weather.entity, weather.station, entities) +
+
+      (weather.provider === 'nws'
+        ? noticeBlock(
             'The forecast comes from the US National Weather Service.',
             'It covers the United States only. Outside the US, switch “Forecast from” ' +
-              'to Open-Meteo above.',
-          )) +
+              'to Open-Meteo or another provider above.',
+          )
+        : `<p class="hint">${escapeHtml(PROVIDER_FACTS[weather.provider].name)} draws the forecast. ` +
+          `Weather alerts, below, are still the US National Weather Service only — no other ` +
+          `provider here has an alert feed.</p>`) +
 
       /*
        * Its own switch, off until the household turns it on (Q5), and it says
@@ -892,12 +1224,12 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
     );
   }
 
-  function alertsPage(
+  async function alertsPage(
     c: Context,
     error?: string,
     echo?: WeatherEcho,
     matches?: readonly PlaceMatch[],
-  ): string {
+  ): Promise<string> {
     const zones = deps.db
       .prepare(
         /*
@@ -943,7 +1275,7 @@ export function registerAlertRoutes(app: Hono, deps: AdminDeps): void {
         // Status first, then the one form, then the things that are not
         // settings: the zones, what is in force, and the ladder.
         forecastPreview() +
-        weatherForm(echo, matches) +
+        weatherForm(await weatherEntities(), echo, matches) +
 
         section(
           'Zones being watched',

@@ -12,6 +12,13 @@ import {
   unitsFor,
   type Units,
 } from './open-meteo.js';
+import { fetchPirateWeather } from './pirate-weather.js';
+import { fetchOpenWeatherMap } from './openweathermap.js';
+import { fetchWunderground } from './wunderground.js';
+import { fetchHaWeather } from './ha-weather.js';
+import { openWeatherKey } from './keys.js';
+import { PROVIDER_FACTS, providerOr, type KeyedProvider, type Provider } from './providers.js';
+import { resolveConnection } from '../homeassistant/client.js';
 import {
   AIR_MAX_AGE_MS,
   POLLEN_PLANTS,
@@ -22,6 +29,8 @@ import {
   type CurrentWeather,
   type HourRecord,
   type HourlyWeather,
+  type PartsResult,
+  type ReadOptions,
   type WeatherUnits,
 } from './readings.js';
 import { localIso, sunDay, sunIsUp } from './sun.js';
@@ -42,7 +51,7 @@ import { DEFAULT_TIMEZONE } from '../../timezone.js';
 
 export const WEATHER_BLOCK = 'weather';
 
-export type Provider = 'nws' | 'openmeteo';
+export type { Provider } from './providers.js';
 
 /**
  * Where each part lives (plan item P3.2).
@@ -59,6 +68,8 @@ const hourlyKey = (provider: Provider): string => `${provider}:hourly`;
 /** Open-Meteo's whichever provider draws the strip: NWS has no air quality. */
 const AIR_KEY = 'openmeteo:air';
 const POINT_KEY = 'nws:point';
+/** Why the active provider's last refresh failed, for the Weather screen; never read by a wall. */
+export const statusKey = (provider: Provider): string => `${provider}:status`;
 const STATIONS_KEY = 'nws:stations';
 
 /**
@@ -92,6 +103,10 @@ interface HouseholdWeather {
   readonly units: Units;
   readonly timezone: string;
   readonly airQuality: boolean;
+  /** The Home Assistant weather entity, for `homeassistant` (plan item M5.8). */
+  readonly entity: string | null;
+  /** A Weather Underground station, for `wunderground`. */
+  readonly station: string | null;
 }
 
 function settings(db: SqliteDatabase): HouseholdWeather {
@@ -99,7 +114,7 @@ function settings(db: SqliteDatabase): HouseholdWeather {
     .prepare(
       `SELECT weather_enabled AS enabled, latitude, longitude,
               weather_provider AS provider, weather_units AS units, timezone,
-              air_quality_enabled AS airQuality
+              air_quality_enabled AS airQuality, weather_entity AS entity, weather_station AS station
          FROM household_settings WHERE id = 'singleton'`,
     )
     .get() as
@@ -111,22 +126,39 @@ function settings(db: SqliteDatabase): HouseholdWeather {
         units: string | null;
         timezone: string | null;
         airQuality: number | null;
+        entity: string | null;
+        station: string | null;
       }
     | undefined;
   return {
     enabled: row?.enabled === 1,
     latitude: row?.latitude ?? null,
     longitude: row?.longitude ?? null,
-    // Anything but the two known providers falls back to NWS, the shipped
-    // default, rather than drawing nothing on a typo.
-    provider: row?.provider === 'openmeteo' ? 'openmeteo' : 'nws',
+    // Anything but a known provider falls back to NWS, the shipped default,
+    // rather than drawing nothing on a typo.
+    provider: providerOr(row?.provider),
     units: row?.units === 'metric' ? 'metric' : 'imperial',
     // Same shared fallback the manifest and the column default use, so a
     // household with no row cannot get a forecast labelled in one zone and a
     // calendar anchored in another.
     timezone: row?.timezone ?? DEFAULT_TIMEZONE,
     airQuality: row?.airQuality === 1,
+    entity: row?.entity ?? null,
+    station: row?.station ?? null,
   };
+}
+
+/**
+ * Whether a household has told the provider enough to ask it anything.
+ *
+ * A location for every provider — the forecast is for a place — except a
+ * Home Assistant entity, which already is one: a household on that provider
+ * has named their weather and needs no coordinates for it. The location is
+ * still what the sun's times and the alert zones are worked out from.
+ */
+function configured(config: HouseholdWeather): boolean {
+  if (config.provider === 'homeassistant') return config.entity !== null;
+  return config.latitude !== null && config.longitude !== null;
 }
 
 /** The household's local date, for labelling Open-Meteo's first day "Today". */
@@ -305,6 +337,7 @@ export interface WeatherPanel {
  * household's units, wind and rain included.
  */
 function panelUnits(provider: Provider, units: Units): WeatherUnits {
+  // Every other provider is asked for, or converted into, the household's own.
   return provider === 'nws' ? unitsFor('imperial') : unitsFor(units);
 }
 
@@ -328,8 +361,9 @@ export const weatherModule: PanelModule = {
   ready(db: SqliteDatabase): boolean {
     const config = settings(db);
     // A location is as necessary as the switch: a weather panel with nowhere
-    // to be is a hole in the wall rather than a feature.
-    return config.enabled && config.latitude !== null && config.longitude !== null;
+    // to be is a hole in the wall rather than a feature. (A Home Assistant
+    // entity is its own somewhere — see `configured`.)
+    return config.enabled && configured(config);
   },
 
   contribute(context: ModuleContext): WeatherPanel | null {
@@ -410,13 +444,36 @@ export const weatherModule: PanelModule = {
 
     async run(context: ModuleContext): Promise<void> {
       const config = settings(context.db);
-      if (!config.enabled || config.latitude === null || config.longitude === null) return;
+      if (!config.enabled || !configured(config)) return;
 
+      if (config.latitude === null || config.longitude === null) {
+        // A Home Assistant entity with no location: no sun to work out, so the
+        // entity's own conditions decide day and night.
+        await refreshHomeAssistant(context, config, undefined);
+        return;
+      }
       const at = { latitude: config.latitude, longitude: config.longitude };
       const sun = sunContext(at, config.timezone);
 
-      if (config.provider === 'openmeteo') await refreshOpenMeteo(context, at, config, sun);
-      else await refreshNws(context, at, sun);
+      switch (config.provider) {
+        case 'nws':
+          await refreshNws(context, at, sun);
+          break;
+        case 'openmeteo':
+          await refreshOpenMeteo(context, at, config, sun);
+          break;
+        case 'dwd':
+          await refreshOpenMeteo(context, at, config, sun, 'dwd');
+          break;
+        case 'homeassistant':
+          await refreshHomeAssistant(context, config, sun);
+          break;
+        case 'openweathermap':
+        case 'pirateweather':
+        case 'wunderground':
+          await refreshKeyed(context, at, config, sun, config.provider);
+          break;
+      }
 
       /*
        * Air quality, when the household asked for it (Q5: off unless they
@@ -446,34 +503,117 @@ async function refreshOpenMeteo(
   at: Coordinates,
   config: HouseholdWeather,
   sun: Sun,
+  provider: 'openmeteo' | 'dwd' = 'openmeteo',
+): Promise<void> {
+  await refreshParts(context, provider, (_due) =>
+    fetchOpenMeteo(context.fetcher, at, {
+      ...readOptions(config, context.now, sun),
+      endpoint: provider === 'dwd' ? 'dwd-icon' : 'forecast',
+    }),
+  );
+}
+
+type Due = { readonly forecast: boolean; readonly current: boolean; readonly hourly: boolean };
+
+/** What every reader is handed, bound to this household and this run. */
+function readOptions(config: HouseholdWeather, now: number, sun: Sun | undefined): ReadOptions {
+  return {
+    now,
+    units: config.units,
+    todayIso: localToday(config.timezone, now),
+    limit: 5,
+    ...(sun === undefined ? {} : { localTime: sun.localTime, isDayAt: sun.isDayAt, sunFor: sun.sunFor }),
+  };
+}
+
+/**
+ * Every provider but NWS: ask once for whatever is due, write only what was.
+ *
+ * The answer may carry every part, and only the due ones are written — so the
+ * days are re-stamped hourly, as they always were, rather than every time the
+ * temperature is. A part the answer did not carry keeps its old copy and stays
+ * due. A failure costs freshness, not the panel, and is kept for the Weather
+ * screen under `statusKey`, which no wall reads.
+ */
+async function refreshParts(
+  context: ModuleContext,
+  provider: Provider,
+  ask: (due: Due) => Promise<PartsResult>,
 ): Promise<void> {
   const now = context.now;
-  const due = {
-    forecast: partDue(readCache(context.db, forecastKey('openmeteo')), PART_INTERVAL.forecast, now),
-    current: partDue(readCache(context.db, currentKey('openmeteo')), PART_INTERVAL.current, now),
-    hourly: partDue(readCache(context.db, hourlyKey('openmeteo')), PART_INTERVAL.hourly, now),
+  const due: Due = {
+    forecast: partDue(readCache(context.db, forecastKey(provider)), PART_INTERVAL.forecast, now),
+    current: partDue(readCache(context.db, currentKey(provider)), PART_INTERVAL.current, now),
+    hourly: partDue(readCache(context.db, hourlyKey(provider)), PART_INTERVAL.hourly, now),
   };
   if (!due.forecast && !due.current && !due.hourly) return;
 
-  const result = await fetchOpenMeteo(context.fetcher, at, {
-    units: config.units,
-    todayIso: localToday(config.timezone, now),
-    now,
-    localTime: sun.localTime,
-    isDayAt: sun.isDayAt,
-  });
-  // A failed refresh costs freshness, not the panel: every old part stays.
-  if (!result.ok) return;
+  const result = await ask(due);
+  if (!result.ok) {
+    writeCache(context.db, provider, statusKey(provider), { message: result.message }, null, now);
+    return;
+  }
+  context.db.prepare('DELETE FROM weather_cache WHERE cache_key = ?').run(statusKey(provider));
   const { forecast, current, hours } = result.parts;
   if (due.forecast && forecast !== undefined) {
-    writeCache(context.db, 'openmeteo', forecastKey('openmeteo'), forecast, null, now);
+    writeCache(context.db, provider, forecastKey(provider), forecast, null, now);
   }
   if (due.current && current !== undefined) {
-    writeCache(context.db, 'openmeteo', currentKey('openmeteo'), { reading: current }, null, now);
+    writeCache(context.db, provider, currentKey(provider), { reading: current }, null, now);
   }
   if (due.hourly && hours !== undefined) {
-    writeCache(context.db, 'openmeteo', hourlyKey('openmeteo'), { hours }, null, now);
+    writeCache(context.db, provider, hourlyKey(provider), { hours }, null, now);
   }
+}
+
+/** A Home Assistant weather entity, through the connection the household already made. */
+async function refreshHomeAssistant(context: ModuleContext, config: HouseholdWeather, sun: Sun | undefined): Promise<void> {
+  const entity = config.entity;
+  if (entity === null) return;
+  await refreshParts(context, 'homeassistant', async (due) => {
+    const resolved = resolveConnection(context.db, context.keyring);
+    if (!resolved.ok) return { ok: false, message: resolved.message };
+    return fetchHaWeather(context.fetcher, resolved.connection, entity, readOptions(config, context.now, sun), {
+      current: due.current,
+      forecast: due.forecast,
+      hourly: due.hourly,
+    });
+  });
+}
+
+/** The three that need a key: opened for this run's requests and no longer. */
+async function refreshKeyed(
+  context: ModuleContext,
+  at: Coordinates,
+  config: HouseholdWeather,
+  sun: Sun,
+  provider: KeyedProvider,
+): Promise<void> {
+  await refreshParts(context, provider, async (due) => {
+    const opened = openWeatherKey(context.db, context.keyring, provider, PROVIDER_FACTS[provider].name);
+    if (!opened.ok) return opened;
+    const options = readOptions(config, context.now, sun);
+    switch (provider) {
+      case 'pirateweather':
+        return fetchPirateWeather(context.fetcher, at, opened.key, options);
+      case 'openweathermap':
+        return fetchOpenWeatherMap(context.fetcher, at, opened.key, options, {
+          current: due.current,
+          forecast: due.forecast || due.hourly,
+        });
+      case 'wunderground':
+        /*
+         * No station is no "now", and this key reaches no hours: neither part
+         * is ever written, so both stay due every run — which must not become
+         * a request every quarter hour for nothing.
+         */
+        if (!due.forecast && config.station === null) return { ok: true, parts: {} };
+        return fetchWunderground(context.fetcher, at, opened.key, config.station, options, {
+          current: due.current,
+          forecast: due.forecast,
+        });
+    }
+  });
 }
 
 /**
