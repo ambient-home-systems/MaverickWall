@@ -19,6 +19,7 @@ import { readSaved, savedRedirect } from './saved.js';
 import { navModules, type AdminDeps } from './admin.js';
 import { selfHref } from './self.js';
 import { immichSection } from './admin-immich.js';
+import { folderSection } from './admin-folders.js';
 
 /**
  * Photo albums, in the admin (plan item M3.1).
@@ -193,7 +194,9 @@ export function registerPhotoRoutes(app: Hono, deps: AdminDeps): void {
               )
               .join('')) +
         // Immich, below the household's own albums (plan item M3.2).
-        immichSection(deps.db),
+        immichSection(deps.db) +
+        // And NAS folders (plan item M3.3).
+        folderSection(deps.db),
     });
   }
 

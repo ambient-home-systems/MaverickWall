@@ -218,6 +218,13 @@ export const JOB_TIMINGS: Readonly<Record<string, JobTiming>> = {
     backoffInitialMs: 5 * 60_000,
     backoffMaxMs: 2 * 60 * 60_000,
   },
+  'photo-folders-sync': {
+    // Immich's half hour, for its reason: the photos already shown are kept here.
+    intervalMs: 30 * 60_000,
+    jitterRatio: 0.15,
+    backoffInitialMs: 5 * 60_000,
+    backoffMaxMs: 2 * 60 * 60_000,
+  },
   'update-check': {
     // Once a day. Anything more often is a household's address book of
     // requests to somebody else's server for a number that changes monthly.

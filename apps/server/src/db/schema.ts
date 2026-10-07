@@ -2515,3 +2515,51 @@ export const immichAssets = sqliteTable(
     bySource: index('immich_assets_source').on(table.sourceId, table.position),
   }),
 );
+
+// ---------------------------------------------------------------------------
+// A folder on the household's NAS (plan item M3.3)
+// ---------------------------------------------------------------------------
+
+/**
+ * A WebDAV folder of photos, as a slideshow source.
+ *
+ * The address is sealed under `photo-folder-url` for the reason a calendar's
+ * is: a share link's path can be its credential. `host` is kept in clear so
+ * the Photos screen can say where it is. The username is in clear, as a feed's
+ * is; the password is sealed under `photo-folder-password`. What a wall cannot
+ * show is counted, so the screen can name it: HEIC photos, RAW files, and
+ * pictures larger than this application will fetch.
+ */
+export const photoFolders = sqliteTable('photo_folders', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  urlEncrypted: text('url_encrypted').notNull(),
+  host: text('host').notNull(),
+  username: text('username'),
+  passwordEncrypted: text('password_encrypted'),
+  allowLan: integer('allow_lan', { mode: 'number' }).notNull().default(0),
+  allowHttp: integer('allow_http', { mode: 'number' }).notNull().default(0),
+  subfolders: integer('subfolders', { mode: 'number' }).notNull().default(0),
+  skippedHeic: integer('skipped_heic', { mode: 'number' }).notNull().default(0),
+  skippedRaw: integer('skipped_raw', { mode: 'number' }).notNull().default(0),
+  skippedLarge: integer('skipped_large', { mode: 'number' }).notNull().default(0),
+  lastFetchedAt: integer('last_fetched_at', { mode: 'number' }),
+  lastError: text('last_error'),
+  ...timestamps,
+});
+
+/** A folder's photos by the handle a wall knows them as, as `immich_assets` keeps Immich's. */
+export const photoFolderAssets = sqliteTable(
+  'photo_folder_assets',
+  {
+    handle: text('handle').notNull(),
+    folderId: text('folder_id').notNull(),
+    path: text('path').notNull(),
+    position: integer('position', { mode: 'number' }).notNull(),
+  },
+  (table) => ({
+    once: uniqueIndex('photo_folder_assets_once').on(table.folderId, table.handle),
+    byHandle: index('photo_folder_assets_handle').on(table.handle),
+    byFolder: index('photo_folder_assets_folder').on(table.folderId, table.position),
+  }),
+);

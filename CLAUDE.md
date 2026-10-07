@@ -4790,6 +4790,51 @@ core 314 over 9 · display 986 over 60 · server 3999 over 310, measured with
 has been connected. The stand-in follows Immich's published description, and
 a real server is the first thing to try.
 
+**A folder on the household's NAS is a photo source too (plan item M3.3).**
+"From a folder on your NAS" on Photos adds any folder shared over WebDAV, such
+as a Synology, a QNAP, Nextcloud or Apache `mod_dav`. It takes an address, a
+username and password if it asks, and "Include the folders inside it" (three
+deep). The folder is read before it is kept, so "Added" is never said of one
+the NAS refused. The address and password are sealed (`photo-folder-url`,
+`photo-folder-password`). The address is sealed too, because a share link's
+path can be its credential, which is the reason a calendar's is. A password
+typed into the address is refused and sent to its own box (migration `0069`,
+generated then read: `photo_folders`, `photo_folder_assets`). After that it is
+Immich's arrangement exactly: photos are handles, a folder is one more album to
+the slideshow, walls fetch through `/d/media/`, and each photo is kept on this
+box as it is first shown, with the half-hourly `photo-folders-sync` fetching
+ahead. A changed file gets a new handle, because the handle carries its ETag,
+so a kept copy is never the old picture.
+
+**The listing is the CalDAV reader's**, as the plan asked: a `PROPFIND`
+`Depth: 1`, read by `caldav/multistatus.ts`. That is how it reads the
+lowercase `d:` prefix Nextcloud sends without knowing it exists. **A server's
+hrefs are followed only inside the folder** (`insideFolder`): same origin,
+under the folder's own path, with no encoded climb. A listing tells this code
+where to send a password, so a href to another host or above the folder would
+be the server choosing where the household's password goes. The stand-in
+(`fake-webdav.ts`) lists one of each, plus an encoded `..%2f`. The test holds
+that none is kept and that nothing outside the folder is ever requested.
+Subfolders are walked the same way, folder by folder.
+
+**What a wall cannot show is counted and named, never silently missing.** A
+HEIC photo (by its name or its content type), a RAW file from any of nineteen
+camera extensions, and a picture over the fetch ceiling (10 MB) are left out.
+The folder's card says "3 HEIC photos, 1 RAW file and 1 picture over 10 MB left
+out: walls cannot show them. Save as JPEG to include them." One of the HEIC
+cases has only its type to go by, a phone's shared photo with no extension,
+because the name test alone passed the type mutant.
+
+**Measured.** `photo-folders.test.ts` (14) runs against the real app, a real
+data directory and the stand-in. Twenty-one mutations were checked and all
+twenty-one are red. Three failed to build at first and were not counted until
+re-aimed, and one of those needed the type-only HEIC fixture before it could
+go red. **5466 tests passing and 1 skipped, over 390 files**: calendar 153
+over 10 · core 314 over 9 · display 986 over 60 · server 4013 over 311,
+measured with `pnpm test` and a real Chromium. Against M3.2's 5452 over 389
+that is +14 and +1. **Still unproven where it counts:** no real NAS has been
+listed. A Synology, and Nextcloud's own WebDAV, are the first two to try.
+
 
 
 

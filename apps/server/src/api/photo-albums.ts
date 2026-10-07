@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import type { SqliteDatabase } from '../db/open.js';
 import { isStoredName, mediaDir } from './media.js';
 import { readImmichSlides } from '../modules/immich/store.js';
+import { readFolderSlides } from '../modules/folder/store.js';
 
 /**
  * The household's photo albums (plan item M3.1).
@@ -97,6 +98,8 @@ export function readAlbumSlides(db: SqliteDatabase): AlbumSlides[] {
     // And what the household chose from Immich (plan item M3.2): each source
     // is one more album to the slideshow, its photos by handle.
     ...readImmichSlides(db),
+    // And the household's NAS folders (plan item M3.3).
+    ...readFolderSlides(db),
   ];
 }
 

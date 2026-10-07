@@ -79,6 +79,9 @@ export const SAVED_MESSAGES = {
   'immich-source-added': 'Added from Immich. An Image widget can show it now.',
   'immich-source-removed': 'Removed. Nothing in Immich was changed.',
   'immich-disconnected': 'Immich disconnected.',
+  // NAS folders (plan item M3.3): added only after the folder was read.
+  'folder-added': 'Folder added. An Image widget can show it now.',
+  'folder-removed': 'Folder removed. Nothing on your NAS was changed.',
   'calendar-signed-in': 'Signed in again — its calendars are updating now.',
   // System
   'timezone': 'Timezone saved.',
