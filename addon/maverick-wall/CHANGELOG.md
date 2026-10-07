@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.94.0
+
 **Photos from a folder on your NAS.** On the **Photos** screen, add any folder
 your NAS shares over WebDAV (a Synology, a QNAP, Nextcloud, or a computer
 sharing a folder) and show it on a wall as a slideshow, like an album of your
