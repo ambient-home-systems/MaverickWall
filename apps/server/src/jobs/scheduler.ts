@@ -208,6 +208,16 @@ export const JOB_TIMINGS: Readonly<Record<string, JobTiming>> = {
     backoffInitialMs: 60_000,
     backoffMaxMs: 30 * 60_000,
   },
+  'immich-sync': {
+    // Half an hour: an album changes when somebody adds to it, and the photos
+    // already shown are kept on this box, so a slower pass costs nothing a wall
+    // can see. A day's memories turn over at the household's midnight, and a
+    // half hour's lag on that is a photo, not a fault.
+    intervalMs: 30 * 60_000,
+    jitterRatio: 0.15,
+    backoffInitialMs: 5 * 60_000,
+    backoffMaxMs: 2 * 60 * 60_000,
+  },
   'update-check': {
     // Once a day. Anything more often is a household's address book of
     // requests to somebody else's server for a number that changes monthly.

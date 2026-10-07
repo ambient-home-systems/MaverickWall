@@ -16,6 +16,13 @@
 
 ## Unreleased
 
+**Photos from Immich.** If you keep your photos in Immich, connect it on the
+**Photos** screen with an API key, then choose an album, a person, your
+favourites or Immich's "On this day" memories. Each one can be shown on a wall
+by an Image widget as a slideshow, just like an album of your own. Your walls
+never see Immich's address or your key. Photos already shown are kept on this
+box, so a slideshow keeps going if Immich is down for a while.
+
 ## 0.92.0
 
 **Your own photos, in albums.** A new **Photos** screen, under Household, keeps

@@ -208,7 +208,7 @@ describe('the source scan: one door, and it is this one', () => {
 });
 
 describe('the other way a POST could leave', () => {
-  it('has three call sites outside the JSON adapter — a webhook button with no body, Todoist, and a calendar sign-in', () => {
+  it('has four call sites outside the JSON adapter — a webhook button with no body, Todoist, a calendar sign-in, and an Immich search', () => {
     /*
      * `fetch` grew a method in RFC 013 §6.3 and a POST through it would bypass
      * `HA_SERVICES` completely. For two releases nothing needed one and the
@@ -232,6 +232,11 @@ describe('the other way a POST could leave', () => {
      * on anything a household typed. The test below holds `targetUrl` to those
      * three destinations.
      *
+     * Plan item M3.2 is the fourth, and it is a read: Immich takes a search as
+     * a `POST`, and the one in `modules/immich/client.ts` goes to
+     * `SEARCH_PATH`, a constant, on the server the household connected. The
+     * test below holds that path, and that the call builds its address on it.
+     *
      * The adapter's own `POST: 'refuse'` in `REDIRECT_POLICY` and its
      * `method: 'POST'` when it builds `postJson`'s wire request are the
      * implementation and are not doors, so they are exempted by file and
@@ -243,6 +248,7 @@ describe('the other way a POST could leave', () => {
     let webhook: string | undefined;
     let todoist: string | undefined;
     let oauth: string | undefined;
+    let immich: string | undefined;
     for (const file of filesUnder(SERVER_SRC)) {
       const name = relative(ROOT, file);
       for (const call of fetchCallArguments(readFileSync(file, 'utf8'))) {
@@ -258,6 +264,10 @@ describe('the other way a POST could leave', () => {
         }
         if (name === join('apps', 'server', 'src', 'oauth', 'token.ts') && oauth === undefined) {
           oauth = call;
+          continue;
+        }
+        if (name === join('apps', 'server', 'src', 'modules', 'immich', 'client.ts') && immich === undefined) {
+          immich = call;
           continue;
         }
         posting.push(`${name}  ${call.slice(0, 120)}`);
@@ -277,6 +287,9 @@ describe('the other way a POST could leave', () => {
     // A calendar sign-in's one call is to an address built from the endpoints.
     expect(oauth, 'the calendar sign-in POST moved or vanished').toBeDefined();
     expect(oauth).toContain('url: targetUrl(target, endpoints)');
+    // Immich's one call is its search, at its one path.
+    expect(immich, 'the Immich search POST moved or vanished').toBeDefined();
+    expect(immich).toMatch(/^\.fetch\(\{\s*url,/);
 
     // And the scan is looking at something. A brace matcher that silently found
     // no calls would pass for ever, which is this project's own complaint about
@@ -297,6 +310,17 @@ describe('the other way a POST could leave', () => {
     const endpoints = readFileSync(join(ROOT, SERVER_SRC, 'oauth', 'endpoints.ts'), 'utf8');
     expect(endpoints).toContain("googleToken: 'https://oauth2.googleapis.com/token',");
     expect(endpoints).toContain("microsoftLogin: 'https://login.microsoftonline.com',");
+  });
+
+  it('posts to Immich at its search and nowhere else', () => {
+    const client = readFileSync(join(ROOT, SERVER_SRC, 'modules', 'immich', 'client.ts'), 'utf8');
+    expect(client).toContain("export const SEARCH_PATH = '/api/search/metadata';");
+    // The function that posts builds its address on that constant and nothing else.
+    const start = client.indexOf('async function search(');
+    const body = client.slice(start, client.indexOf('\n}\n', start));
+    expect(body).toContain('const url = `${endpoint.base}${SEARCH_PATH}`;');
+    expect(body.match(/method: 'POST'/g)).toHaveLength(1);
+    expect(client.match(/method: 'POST'/g)).toHaveLength(1);
   });
 
   it('posts to Todoist on three paths only: close, reopen and a new task', () => {

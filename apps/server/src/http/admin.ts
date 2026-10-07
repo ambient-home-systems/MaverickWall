@@ -1,4 +1,5 @@
 import type { Context, Hono } from 'hono';
+import { immichPhoto } from '../modules/immich/store.js';
 import { readAlbumSlides } from '../api/photo-albums.js';
 import { addCalendarSource } from '../api/sources.js';
 import { nextPersonColor } from '../api/palette.js';
@@ -666,6 +667,7 @@ import { registerNewsRoutes } from './admin-news.js';
 import { registerTodoistRoutes } from './admin-todoist.js';
 import { oauthAccountsSection, registerOAuthRoutes } from './admin-oauth.js';
 import { registerPhotoRoutes } from './admin-photos.js';
+import { registerImmichRoutes } from './admin-immich.js';
 import { readOAuthAccounts } from '../oauth/accounts.js';
 import type { OAuthEndpoints } from '../oauth/endpoints.js';
 import { registerCompanionAdminRoutes } from './admin-companion.js';
@@ -1304,6 +1306,8 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   registerNewsRoutes(app, deps);
   registerTodoistRoutes(app, deps);
   registerOAuthRoutes(app, deps);
+  // Before the albums, whose `/admin/photos/:id` would otherwise answer for `immich`.
+  registerImmichRoutes(app, deps);
   registerPhotoRoutes(app, deps);
   registerCompanionAdminRoutes(app, deps);
   registerTimerRoutes(app, deps);
@@ -2584,8 +2588,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   });
 
   /** The same bytes as `/d/media`, behind the session instead of a screen token. */
-  app.get('/admin/media/:name', (c: Context) => {
-    const image = readImage(deps.dataDir, c.req.param('name') ?? '');
+  app.get('/admin/media/:name', async (c: Context) => {
+    const name = c.req.param('name') ?? '';
+    const image =
+      readImage(deps.dataDir, name) ??
+      (await immichPhoto({ db: deps.db, keyring: deps.keyring, fetcher: deps.fetcher, dataDir: deps.dataDir }, name));
     if (image === undefined) return c.json({ error: 'not-found' }, 404);
     c.header('content-type', image.contentType);
     c.header('x-content-type-options', 'nosniff');

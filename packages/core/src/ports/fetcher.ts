@@ -81,6 +81,13 @@ interface FetchRequestCommon {
   readonly headers?: Readonly<Record<string, string>>;
   /** Identifies us to upstreams. Politeness, and it keeps NWS happy. */
   readonly userAgent?: string;
+  /**
+   * How a successful body comes back: text (the default, every caller before
+   * this existed) or base64, for a caller that wants the bytes — an Immich
+   * photo (plan item M3.2). Decoding a JPEG as UTF-8 replaces every byte that
+   * is not valid text, so a picture fetched as text is a different picture.
+   */
+  readonly bodyEncoding?: 'utf8' | 'base64';
 }
 
 /**

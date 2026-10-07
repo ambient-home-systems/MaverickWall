@@ -73,6 +73,12 @@ export const SAVED_MESSAGES = {
   'photos-added': 'Photos added.',
   'photos-already-there': 'Those photos are already in this album.',
   'photo-removed': 'Photo removed.',
+  // Immich (plan item M3.2). Connected only after the key was used; added only
+  // after the source was read.
+  'immich-connected': 'Connected to Immich.',
+  'immich-source-added': 'Added from Immich. An Image widget can show it now.',
+  'immich-source-removed': 'Removed. Nothing in Immich was changed.',
+  'immich-disconnected': 'Immich disconnected.',
   'calendar-signed-in': 'Signed in again — its calendars are updating now.',
   // System
   'timezone': 'Timezone saved.',

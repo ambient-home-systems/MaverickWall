@@ -2451,3 +2451,67 @@ export const photoAlbumItems = sqliteTable(
     byAlbum: index('photo_album_items_album').on(table.albumId, table.position),
   }),
 );
+
+// ---------------------------------------------------------------------------
+// Immich (plan item M3.2)
+// ---------------------------------------------------------------------------
+
+/**
+ * The household's Immich server, if they connected one: one row, `id`
+ * `'immich'`.
+ *
+ * The address is in clear because it is not a credential — an Immich API key
+ * is, and it is sealed under `immich-key`. Only the host is ever logged. The
+ * two switches are the news feed's pair: most Immich servers are on the
+ * household's own network over plain http, and neither is reachable until the
+ * household says so.
+ */
+export const immichConnection = sqliteTable('immich_connection', {
+  id: text('id').primaryKey(),
+  baseUrl: text('base_url').notNull(),
+  apiKeyEncrypted: text('api_key_encrypted').notNull(),
+  allowLan: integer('allow_lan', { mode: 'number' }).notNull().default(0),
+  allowHttp: integer('allow_http', { mode: 'number' }).notNull().default(0),
+  accountLabel: text('account_label'),
+  lastError: text('last_error'),
+  ...timestamps,
+});
+
+/**
+ * What the household chose to show from Immich: an album, a person, their
+ * favourites, or the day's memories. Each is a slideshow source beside the
+ * household's own albums; `ref` is Immich's id for the album or the person.
+ */
+export const immichSources = sqliteTable('immich_sources', {
+  id: text('id').primaryKey(),
+  kind: text('kind', { enum: ['album', 'person', 'favourites', 'memories'] }).notNull(),
+  ref: text('ref'),
+  name: text('name').notNull(),
+  lastFetchedAt: integer('last_fetched_at', { mode: 'number' }),
+  lastError: text('last_error'),
+  ...timestamps,
+});
+
+/**
+ * Each source's photos, by the handle the wall knows them as.
+ *
+ * The handle is shaped like a stored media name — 64 hex and `.jpg` — so a
+ * wall serves an Immich photo through the same `/d/media/` route, slideshow
+ * and offline rules as one of the household's own, and never sees Immich's
+ * address or an asset id. It is the asset's hash, so it is the same handle
+ * every sync and a cached copy stays valid.
+ */
+export const immichAssets = sqliteTable(
+  'immich_assets',
+  {
+    handle: text('handle').notNull(),
+    sourceId: text('source_id').notNull(),
+    assetId: text('asset_id').notNull(),
+    position: integer('position', { mode: 'number' }).notNull(),
+  },
+  (table) => ({
+    once: uniqueIndex('immich_assets_once').on(table.sourceId, table.handle),
+    byHandle: index('immich_assets_handle').on(table.handle),
+    bySource: index('immich_assets_source').on(table.sourceId, table.position),
+  }),
+);
