@@ -25,11 +25,15 @@
 
 import { renderFreeform } from './render.js';
 import { ADMIN_WALLPAPER_BASE } from './wallpaper.js';
+import { useAdminIconBase } from './weather-icons.js';
 import { buildModel } from './viewmodel.js';
 import { applyTheme } from './theme.js';
 import { geometryFor } from './orientation.js';
 import type { Manifest, ManifestWidget } from './manifest.js';
 import { createCustomCssSheet, customCssBlocks, type CustomCssSheet } from './custom-css.js';
+
+// The forecast's Meteocons pictures, under the admin's `<base>` (plan item M5.9).
+useAdminIconBase();
 
 const mount = document.getElementById('css-editor');
 if (mount !== null) init(mount);

@@ -14,10 +14,14 @@
 
 import { renderFreeform } from './render.js';
 import { ADMIN_WALLPAPER_BASE } from './wallpaper.js';
+import { useAdminIconBase } from './weather-icons.js';
 import { buildModel, type DisplayModel } from './viewmodel.js';
 import { applyTheme } from './theme.js';
 import { PREVIEW_ROOT_CLASS, layoutPreviewRoot, previewStylesheet } from './preview-css.js';
 import type { Manifest, ManifestWidget, CanvasBackground } from './manifest.js';
+
+// The forecast's Meteocons pictures, under the admin's `<base>` (plan item M5.9).
+useAdminIconBase();
 
 /**
  * A widget as a *template* ships it: a wall preview needs no id and a template

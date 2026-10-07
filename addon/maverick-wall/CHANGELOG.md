@@ -16,6 +16,16 @@
 
 ## Unreleased
 
+**New weather pictures.** A forecast can now be drawn with Meteocons as well
+as the wall's own pictures. Choose **Pictures** in the forecast widget's
+settings: **Colour** or **Outline**. On a clear night it shows tonight's moon,
+in whichever of its eight phases it is. A sun turns slowly and cloud sways a
+little, in step with the wall's clock. Nothing moves when your device asks for
+reduced motion or the wall's Motion switch is off, and a night sky stays still.
+Choosing a set moves nothing else on the wall: each picture sits in the space
+the old one had. The playful look keeps its own pictures, and an e-paper panel
+keeps its own one-bit drawings.
+
 ## 0.88.0
 
 **Five more places the forecast can come from.** On the **Weather** screen,

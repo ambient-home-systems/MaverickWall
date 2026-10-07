@@ -93,6 +93,7 @@ const SHELL = [
   '/assets/wallpaper.js',
   '/assets/watchdog.js',
   '/assets/weather-advice.js',
+  '/assets/weather-icons.js',
   '/assets/weather-looks.js',
   '/assets/weather-scale.js',
   '/assets/widget-options.js',

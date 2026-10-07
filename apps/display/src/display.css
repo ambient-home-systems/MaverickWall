@@ -796,6 +796,14 @@ body {
  * rung), so all three of these are live: T1 small, T2 the anchor, T3 large.
  */
 .wx-ico { width: 2rem; height: 2rem; margin: 0 auto; }
+/*
+ * A Meteocons picture (plan item M5.9) takes the box the drawn glyph it stands
+ * in for was given — the same class sizes it — so choosing a set moves no
+ * rectangle on the wall, and the density tiers measured against the glyph's
+ * box stay true. Contained rather than cropped: the artwork leaves its own
+ * margin inside the square, and that is the artist's spacing to keep.
+ */
+img.wxi { display: block; object-fit: contain; }
 [data-tier="T1"] .wx-ico { width: 1.5rem; height: 1.5rem; }
 [data-tier="T3"] .wx-ico { width: 2.7rem; height: 2.7rem; }
 .wx-temp { font-size: 1.7rem; font-weight: 600; }
@@ -4758,6 +4766,33 @@ body {
   }
   .canvas[data-motion="on"] .wp-emoji {
     animation-name: wp-bob;
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
+  }
+
+  /*
+   * A Meteocons picture (plan item M5.9), moved whole and never by the SVG's
+   * own animation (MQ7): the bundled files are the static set. A sun turns,
+   * slowly; anything with cloud in it sways a little side to side; a night
+   * sky is still (`iconMotion` in `weather-icons.ts`). Both are `transform`
+   * alone, so the column around the picture never moves, and both are locked
+   * to the wall clock by `render.ts` through `lockLoop`.
+   */
+  @keyframes wxi-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  @keyframes wxi-sway {
+    0%, 100% { transform: translateX(0); }
+    50% { transform: translateX(6%); }
+  }
+  .canvas[data-motion="on"] .wxi-spin {
+    animation-name: wxi-spin;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+  }
+  .canvas[data-motion="on"] .wxi-sway {
+    animation-name: wxi-sway;
     animation-timing-function: ease-in-out;
     animation-iteration-count: infinite;
   }

@@ -353,14 +353,19 @@ describe('the editor offers exactly each type’s looks', () => {
         );
         // The advice line is the playful look's alone: on the strip it is not
         // offered at all, and on playful it is, beside every control the strip
-        // has — playful reads the day count and the ladder too.
+        // has but one — playful reads the day count and the ladder too. The
+        // one is the picture set (M5.9): playful's pictures are its own emoji
+        // artwork, so the set is the strip's and every other look's.
         expect(asStrip, 'the strip offered the playful look’s advice switch').not.toContain('advice');
+        expect(asStrip, 'the strip offers no picture set').toContain('icons');
         await page.locator('.insp-tab', { hasText: 'Style' }).click();
         await page.locator('.le-config [data-cfg-key="variant"] button', { hasText: 'Playful' }).click();
         await save(page);
         expect(storedConfig('weather')).toEqual({ variant: 'playful' });
         const playful = await contentKeys('weather');
-        expect([...playful].sort(), 'Playful lost a control or gained one').toEqual([...asStrip, 'advice'].sort());
+        expect([...playful].sort(), 'Playful lost a control or gained one').toEqual(
+          [...asStrip.filter((key) => key !== 'icons'), 'advice'].sort(),
+        );
         // …and the switch writes the key the wall reads, as an absence when on.
         const advice = page.locator('.le-config label.switch[data-cfg-key="advice"] input');
         expect(await advice.isChecked(), 'the advice line is off before anybody touched it').toBe(true);

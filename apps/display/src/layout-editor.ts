@@ -18,6 +18,7 @@
 
 import { renderFreeform } from './render.js';
 import { ADMIN_WALLPAPER_BASE, currentPicture, wallpaperPosition, widgetGroundFor, type WidgetGround } from './wallpaper.js';
+import { useAdminIconBase } from './weather-icons.js';
 import { buildModel, type DisplayModel } from './viewmodel.js';
 import { applyTheme, themeTokens } from './theme.js';
 import {
@@ -139,6 +140,9 @@ import {
   shiftLadder,
   weatherLadder,
 } from './ladder.js';
+
+// The forecast's Meteocons pictures, under the admin's `<base>` (plan item M5.9).
+useAdminIconBase();
 
 /*
  * The widget, the background and the canvas as one shape, defined in
@@ -6720,6 +6724,23 @@ function boot(): void {
     // The symbol and the low used to be two switches here; they are rows on the
     // ladder now, which is the one place a widget's rows are decided.
     buildLadder(widget, cfg);
+
+    // Which pictures the forecast wears (plan item M5.9): the drawn glyphs, or
+    // Meteocons in colour or in outline. Absent is the drawn set. Taken off the
+    // playful look by `VARIANT_HIDES`, whose pictures are its own.
+    configPanel.appendChild(
+      segControl(
+        'Pictures',
+        [
+          ['drawn', 'Drawn'],
+          ['fill', 'Colour'],
+          ['line', 'Outline'],
+        ],
+        typeof cfg['icons'] === 'string' ? cfg['icons'] : 'drawn',
+        (value) => setConfig(widget, 'icons', value === 'drawn' ? undefined : value),
+        'icons',
+      ),
+    );
 
     // The playful look's advice line (P5.1). Built for every look and taken off
     // by `VARIANT_HIDES` wherever it does nothing, which is everywhere else.

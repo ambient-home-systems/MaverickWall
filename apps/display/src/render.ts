@@ -25,6 +25,7 @@ import type { ManifestWidget, CanvasBackground } from './manifest.js';
 import { glyphNode, glyphPartsNode, isGlyphKey } from './glyphs.js';
 import { emojiNode } from './emoji.js';
 import { lockLoop, lockOnce, oneShotPhase } from './motion.js';
+import { ICON_MOTION_MS, iconMotion, iconSetOf, meteoconNode, type WeatherIconSet } from './weather-icons.js';
 import { MOTION_FIXTURE_TYPE, renderMotionFixture } from './motion-fixture.js';
 import { renderCountdown } from './countdown-looks.js';
 import { variantOf } from './variants.js';
@@ -507,7 +508,8 @@ const WEATHER_ROW_CLASS: Readonly<Record<WeatherField, string>> = {
 function weatherColumn(
   rows: readonly { readonly field: WeatherField; readonly text: string }[],
   paired: boolean,
-  tint?: { readonly day: WeatherDayModel; readonly unit: TempUnit },
+  tint: { readonly day: WeatherDayModel; readonly unit: TempUnit } | undefined,
+  pictures: { readonly set: WeatherIconSet; readonly now: number; readonly step: number },
 ): HTMLElement {
   const cell = el('div', 'wx-day');
   /*
@@ -564,7 +566,24 @@ function weatherColumn(
      * the one that matters if the first is ever loosened.
      */
     if (row.field === 'icon') {
-      const glyph = (tint === undefined ? glyphNode : glyphPartsNode)(row.text, `${WEATHER_ROW_CLASS[row.field]} gl`);
+      /*
+       * A Meteocons picture in place of the drawn glyph (plan item M5.9), in
+       * the glyph's own box, moving whole through `lockLoop` — a day's
+       * picture is its daytime one, as a forecast column is a day. Each column
+       * a fixed step behind its neighbour, the playful strip's wave.
+       */
+      const picture = meteoconNode(
+        pictures.set, row.text, true, pictures.now, `${WEATHER_ROW_CLASS[row.field]} gl wxi`,
+      );
+      if (picture !== null) {
+        movePicture(picture, row.text, true, pictures.now + pictures.step);
+        picture.setAttribute('data-field', row.field);
+        cell.appendChild(picture);
+        continue;
+      }
+      const glyph = pictures.set !== 'drawn'
+        ? null
+        : (tint === undefined ? glyphNode : glyphPartsNode)(row.text, `${WEATHER_ROW_CLASS[row.field]} gl`);
       if (glyph !== null) {
         glyph.setAttribute('data-field', row.field);
         cell.appendChild(glyph);
@@ -580,6 +599,24 @@ function weatherColumn(
     cell.appendChild(line);
   }
   return cell;
+}
+
+/** How far apart two neighbouring columns' pictures are in their loop: the playful bob's step. */
+const PICTURE_STEP_MS = PLAYFUL_BOB_STEP_MS;
+
+/**
+ * Move a Meteocons picture whole, locked to the wall clock (plan item M5.9).
+ *
+ * The class names a keyframe set in `display.css`'s scoped block and
+ * `lockLoop` gives it its duration and its phase; a picture whose sky does
+ * not move (`iconMotion`) is drawn still. Never the SVG's own motion: the
+ * bundled files are the static set (MQ7).
+ */
+function movePicture(picture: HTMLElement, glyph: unknown, isDay: boolean, at: number): void {
+  const motion = iconMotion(isGlyphKey(glyph) ? glyph : undefined, isDay);
+  if (motion === 'none') return;
+  picture.classList.add(`wxi-${motion}`);
+  lockLoop(picture, ICON_MOTION_MS[motion], at);
 }
 
 function renderWeather(
@@ -598,8 +635,11 @@ function renderWeather(
    * the picture is an `<img>` that moves.
    */
   const variant = variantOf('weather', config);
-  if (variant === 'range') return renderWeatherRange(model, view.days, RANGE_ALL);
-  if (variant === 'today') return renderWeatherToday(model, TODAY_ALL);
+  // Which picture set the forecast wears (plan item M5.9); the playful look's
+  // pictures are its own emoji artwork, so it reads none of this.
+  const pictures = iconSetOf(config);
+  if (variant === 'range') return renderWeatherRange(model, view.days, RANGE_ALL, view.days.length, pictures);
+  if (variant === 'today') return renderWeatherToday(model, TODAY_ALL, pictures);
   if (variant === 'playful') {
     return renderWeatherPlayful(model, view.days, ladder, playfulAdvice(model, config));
   }
@@ -608,14 +648,20 @@ function renderWeather(
   const colour = variant === 'colour';
   const unit = unitOf(view.days, model.weatherUnits?.temp);
   const strip = el('section', colour ? 'wx wx-colour' : 'wx');
-  for (const day of view.days) {
+  view.days.forEach((day, index) => {
     const rows = ladderRows(
       ladder,
       { name: day.name, icon: day.glyph ?? '', high: day.high, low: day.low },
       WEATHER_ROLES,
     );
-    strip.appendChild(weatherColumn(rows, paired, colour ? { day, unit } : undefined));
-  }
+    strip.appendChild(
+      weatherColumn(rows, paired, colour ? { day, unit } : undefined, {
+        set: pictures,
+        now: model.now,
+        step: index * PICTURE_STEP_MS,
+      }),
+    );
+  });
 
   if (model.weatherNote !== undefined) {
     strip.appendChild(el('div', 'wx-note', model.weatherNote));
@@ -654,6 +700,7 @@ function renderWeatherRange(
   week: readonly WeatherDayModel[],
   columns: readonly RangeColumn[],
   rows = week.length,
+  pictures: WeatherIconSet = 'drawn',
 ): HTMLElement {
   const section = el('section', 'wx-range');
   const days = week.slice(0, rows);
@@ -689,7 +736,10 @@ function renderWeatherRange(
     const row = el('div', 'wr-row');
     row.appendChild(el('span', 'wr-name', day.name));
     if (glyphs) {
-      const glyph = glyphNode(day.glyph, 'wr-ico gl');
+      // A list holds still: its pictures are the set's, and none of them moves.
+      const glyph = pictures === 'drawn'
+        ? glyphNode(day.glyph, 'wr-ico gl')
+        : meteoconNode(pictures, day.glyph, true, model.now, 'wr-ico gl wxi');
       row.appendChild(glyph ?? el('span', 'wr-ico'));
     }
     if (rain) {
@@ -782,7 +832,11 @@ const TODAY_ALL: TodayDraw = {
  * through `motion.ts`: phase-locked to the wall clock so a redraw resumes it,
  * and still wherever the scoped block in `display.css` does not reach.
  */
-function renderWeatherToday(model: DisplayModel, draw: TodayDraw): HTMLElement | undefined {
+function renderWeatherToday(
+  model: DisplayModel,
+  draw: TodayDraw,
+  pictures: WeatherIconSet = 'drawn',
+): HTMLElement | undefined {
   const card = todayCard({
     days: model.weather,
     current: model.weatherCurrent,
@@ -805,7 +859,9 @@ function renderWeatherToday(model: DisplayModel, draw: TodayDraw): HTMLElement |
   lede.appendChild(el('span', 'wt-temp', card.lede));
   if (card.ledeLow !== undefined) lede.appendChild(el('span', 'wt-temp-lo', card.ledeLow));
   head.appendChild(lede);
-  const glyph = glyphNode(card.glyph, 'wt-glyph gl');
+  const picture = meteoconNode(pictures, card.glyph, card.isDay, model.now, 'wt-glyph gl wxi');
+  if (picture !== null) movePicture(picture, card.glyph, card.isDay, model.now);
+  const glyph = pictures === 'drawn' ? glyphNode(card.glyph, 'wt-glyph gl') : picture;
   if (glyph !== null) head.appendChild(glyph);
   top.appendChild(head);
   // Today's range rides with the lede: it is part of the rung that is never
@@ -825,7 +881,7 @@ function renderWeatherToday(model: DisplayModel, draw: TodayDraw): HTMLElement |
   section.appendChild(top);
 
   if (draw.rungs.includes('next')) {
-    const next = todayNext(card, draw);
+    const next = todayNext(card, draw, pictures);
     if (next !== undefined) section.appendChild(next);
   }
   return section;
@@ -837,13 +893,16 @@ function renderWeatherToday(model: DisplayModel, draw: TodayDraw): HTMLElement |
  * line is what a card without the height for three lines of them draws —
  * or a forecast with no hours in it at all.
  */
-function todayNext(card: TodayCard, draw: TodayDraw): HTMLElement | undefined {
+function todayNext(card: TodayCard, draw: TodayDraw, pictures: WeatherIconSet): HTMLElement | undefined {
   if (draw.next === 'hours' && card.hours.length > 0) {
     const row = el('div', 'wt-next wt-hours');
     for (const hour of card.hours.slice(0, draw.hours)) {
       const item = el('div', 'wt-hour');
       item.appendChild(el('span', 'wt-hour-at', hour.label));
-      const glyph = glyphNode(hour.glyph, 'wt-hour-ico gl');
+      // The hours hold still, as a list does, and wear their own hour's sky.
+      const glyph = pictures === 'drawn'
+        ? glyphNode(hour.glyph, 'wt-hour-ico gl')
+        : meteoconNode(pictures, hour.glyph, hour.isDay, hour.at, 'wt-hour-ico gl wxi');
       // An hour with no glyph keeps an empty cell, so its temperature stays on
       // the line with everybody else's.
       item.appendChild(glyph ?? el('span', 'wt-hour-ico'));
@@ -3925,7 +3984,7 @@ function tierRange(
   const capacity = pitch > 0 ? Math.floor((room - rowH) / pitch + 1 + 0.001) : Infinity;
   const days = Math.min(view.days.length, itemsAt(tier, capacity));
 
-  replaceBody(entry, renderWeatherRange(model, view.days, columns, days));
+  replaceBody(entry, renderWeatherRange(model, view.days, columns, days, iconSetOf(config)));
   const section = entry.body;
   section.style.setProperty('--wr-name-w', `${widest(section, '.wr-name')}px`);
   section.style.setProperty('--wr-temp-w', `${widest(section, '.wr-temp')}px`);
@@ -4016,7 +4075,7 @@ function tierToday(
   let days = Number.POSITIVE_INFINITY;
   let lede = cap;
   for (;;) {
-    replaceBody(entry, renderWeatherToday(model, { rungs, next, hours, days }) ?? first);
+    replaceBody(entry, renderWeatherToday(model, { rungs, next, hours, days }, iconSetOf(entry.widget.config)) ?? first);
     const card = entry.body;
     const top = card.querySelector<HTMLElement>('.wt-top');
     const drawnHead = card.querySelector<HTMLElement>('.wt-head');
