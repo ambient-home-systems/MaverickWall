@@ -1,6 +1,6 @@
 # Plan: parity with Magic Frame
 
-**Status: in progress.** RFC 018 (M6.0) is built, and so are the companion token, its Home Assistant to-do add, timers and messages, and refreshing walls and showing one wall's layout on the others (M1.1–M1.5, M2.1, M2.2, M2.3, M3.1, M3.2, M4.10 for wallpapers, M5.1–M5.12); everything else is planned. On 2026-10-05 the owner asked for a
+**Status: in progress.** RFC 018 (M6.0) is built, and so are the companion token, its Home Assistant to-do add, timers and messages, and refreshing walls and showing one wall's layout on the others (M1.1–M1.5, M2.1, M2.2, M2.3, M3.1–M3.3, M4.10 for wallpapers, M5.1–M5.12); everything else is planned. On 2026-10-05 the owner asked for a
 competitive review of [Magic Frame](https://github.com/jeremiaa/magic-frame)
 against Maverick Wall, then a deeper look at its custom widgets and its
 backgrounds. This document is that review, the decisions taken on it, and the
@@ -306,7 +306,7 @@ the widgets rather than a picture between them.
 | --- | --- | --- | --- |
 | M3.1 | **Uploaded photo albums** in our own media store. **Built**: albums on a Photos screen; photos shrunk to 2560 and stripped of their metadata in the browser (MQ2); HEIC and AVIF named; a file deleted only when nothing names it. Nothing on a wall reads an album until M5.12. | M | Type sniffed from bytes, SVG refused (`api/media.ts`), HEIC named and refused with a sentence. Resizing is MQ2. |
 | M3.2 | **Immich**: albums, people, favourites, memories. **Built**: connected on Photos with a sealed key; each choice is a slideshow source whose photos reach a wall by handle through `/d/media/`, kept on this box for when Immich is down. Read from Immich's OpenAPI 3.3.0-rc.0; no real Immich connected yet. | M | One connection, key sealed with the keyring; previews fetched through the SSRF-guarded fetcher with the LAN opt-in; the wall gets handles behind the display token, never a URL. |
-| M3.3 | **WebDAV / NAS folder.** | M | Credentials sealed; reuses the CalDAV multistatus parser (`caldav/multistatus.ts`); HEIC and RAW counted and named. |
+| M3.3 | **WebDAV / NAS folder.** **Built**: a folder (and up to three levels inside it) read with the CalDAV multistatus reader; hrefs followed only inside the folder; HEIC, RAW and over-size pictures counted and named; photos reach walls by handle and are kept for when the NAS sleeps. No real NAS listed yet. | M | Credentials sealed; reuses the CalDAV multistatus parser (`caldav/multistatus.ts`); HEIC and RAW counted and named. |
 | M3.4 | **Album art while music plays.** | M | A state read of the chosen `media_player`; artwork proxied by handle. |
 | M3.5 | **Fit modes, including blur-fill**, for portrait photos on landscape walls. | S | Blur-fill is `filter: blur` on a copy of the picture, a different cost from Q4's `backdrop-filter`; prefer a pre-blurred copy if MQ2 ends with a resizer. |
 | M3.6 | **Crossfade and slow zoom** between pictures. | M | `opacity` and `transform` only, phase-locked to the wall clock, inside reduced motion and the wall's Motion switch (D7, `motion.test.ts`). The next picture is decoded before the swap. The photo layer must survive the 15 s rebuild: MQ8. No slow zoom behind Glass. |
