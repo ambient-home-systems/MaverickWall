@@ -79,6 +79,9 @@ configure first, no account to create anywhere else, no key to paste.
   the wall's own pictures, or in Meteocons, in colour or outline, with
   tonight's moon on a clear night. A clock can carry the temperature under
   the time.
+- **Your own photos.** Albums uploaded on the Photos screen, shrunk in the
+  browser before they are sent, and shown as a slideshow in an Image widget
+  that turns on the wall's clock, so every wall shows the same photo.
 - **Weather alerts.** National Weather Service, United States only. A banner
   for an advisory, the whole screen for a severe warning, and for an Extreme
   warning it can light a screen that has gone dark.

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 
+import type { AlbumSlides } from './photo-albums.js';
 import { isHhmm, isSlotName, type ScheduleRow } from './layout-slots.js';
 
 import {
@@ -364,6 +365,13 @@ export function displayConfig(
   type: string,
   config: unknown,
   index: readonly ReadingIndexEntry[] = [],
+  /*
+   * The household's albums and their photos (plan item M5.12), so an Image
+   * widget showing an album leaves with its photos and no id. Defaulted to
+   * none because none is safe: the widget then says its album is gone rather
+   * than drawing anything a household did not choose.
+   */
+  albums: readonly AlbumSlides[] = [],
 ): unknown {
   if (typeof config !== 'object' || config === null) return config;
   let out = config as Record<string, unknown>;
@@ -372,6 +380,11 @@ export function displayConfig(
     out = rest;
   }
   out = withReadingHandles(out, index);
+  if (type === 'image' && typeof out['album'] === 'string') {
+    const { album: id, ...rest } = out;
+    const album = albums.find((one) => one.id === id);
+    return album === undefined ? { ...rest, slides: [] } : { ...rest, slides: [...album.photos], albumName: album.name };
+  }
   if (type !== 'todo') return out;
   const list = out['list'];
   if (typeof list !== 'string' || list === '') return out;
@@ -708,6 +721,7 @@ function placeCanvas(
   setUp: HouseholdSetUp,
   styling: StyleContext,
   readings: readonly ReadingIndexEntry[],
+  albums: readonly AlbumSlides[],
 ): Manifest['layout']['portrait']['widgets'] {
   const drawable = widgets.filter((widget) =>
     (WIDGET_TYPES as readonly string[]).includes(widget.type),
@@ -732,7 +746,7 @@ function placeCanvas(
       z: Number.isFinite(widget.z) ? Math.trunc(widget.z) : 0,
       // Untouched, except that the entity ids a to-do widget's list and a
       // Home Assistant widget's readings name leave as handles.
-      config: displayConfig(widget.type, widget.config, readings),
+      config: displayConfig(widget.type, widget.config, readings, albums),
       // The style lane, resolved (RFC 014 §4.1) — absent for a widget that
       // carries none, which is every widget until a household opens the tab.
       ...widgetStyleFields(widget.type, widget.config, styling),
@@ -929,14 +943,16 @@ export function buildLayout(
    * to none because none is safe — see `displayConfig`.
    */
   readingIndex: readonly ReadingIndexEntry[] = [],
+  /* The albums an Image widget may show (plan item M5.12); none is safe, as above. */
+  albums: readonly AlbumSlides[] = [],
 ): Manifest['layout'] {
   const setUp: HouseholdSetUp = {
     modules: readyModules,
     shift: household.shiftEnabled === 1,
     todoLists: watchedTodoLists,
   };
-  const portrait = placeCanvas(portraitWidgets, setUp, styling, readingIndex);
-  const landscape = placeCanvas(landscapeWidgets, setUp, styling, readingIndex);
+  const portrait = placeCanvas(portraitWidgets, setUp, styling, readingIndex, albums);
+  const landscape = placeCanvas(landscapeWidgets, setUp, styling, readingIndex, albums);
   /*
    * Every slot goes through the same `placeCanvas` as the default — the same
    * omission, the same fallback, the same style resolution — so a schedule
@@ -948,8 +964,8 @@ export function buildLayout(
   const slots: ManifestLayoutSlot[] = [];
   for (const row of slotRows) {
     if (!isSlotName(row.slot)) continue;
-    const p = placeCanvas(row.portrait, setUp, styling, readingIndex);
-    const l = placeCanvas(row.landscape, setUp, styling, readingIndex);
+    const p = placeCanvas(row.portrait, setUp, styling, readingIndex, albums);
+    const l = placeCanvas(row.landscape, setUp, styling, readingIndex, albums);
     if (p.length === 0 && l.length === 0) continue;
     slots.push({ slot: row.slot, portrait: { widgets: p }, landscape: { widgets: l } });
   }
@@ -1608,6 +1624,11 @@ export interface BuildManifestInput {
    */
   readonly watchedTodoLists?: readonly string[];
   /**
+   * The household's photo albums and their photos, for an Image widget showing
+   * one (plan item M5.12). Read by the caller for the reason `panels` is.
+   */
+  readonly albums?: readonly AlbumSlides[];
+  /**
    * Interrupts already evaluated, for the same reason panels are already
    * collected: assembly is pure and reads no cache of its own.
    */
@@ -2216,6 +2237,7 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       // the label a legacy widget stored is resolved against the same readings
       // the wall is about to draw, from the same instant.
       readingIndexOf(input.panels?.['home']),
+      input.albums ?? [],
     ),
     ...(input.layoutOverride === undefined
       ? {}
@@ -2236,6 +2258,7 @@ export function buildManifest(input: BuildManifestInput): Manifest {
               input.layoutOverride.slots,
               input.layoutOverride.schedule,
               readingIndexOf(input.panels?.['home']),
+              input.albums ?? [],
             ),
           },
         }),

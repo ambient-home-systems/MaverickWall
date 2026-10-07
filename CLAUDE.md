@@ -4682,6 +4682,51 @@ alone after that one-line test change. Against M5.11's 5404 over 382, that is
 +18 and +3, this change's own count. **Still unproven where it counts:** nobody
 has uploaded a photo from a real iPhone, in Safari or out of it.
 
+**An Image widget can show an album, turned by the wall's clock (plan item
+M5.12).** "Show: One picture / An album" leads the widget's settings. An album
+brings "Each photo shows for" (a minute, 5, 15, an hour; 5 is the absence) and
+"Order" (as in the album, or shuffled). The choice is offered only once an
+album exists: with none, the editor says to make one on Photos, because a
+slideshow of no album could only ever say it had gone. Choosing an album
+clears the single picture and the other way round, so a box never stores both.
+
+**The wall picks the photo from its corrected clock, and nothing else.**
+`slideshow.ts` is pure: the step is the epoch over the interval, so every wall
+showing an album shows the same photo, a wall booted at any moment lands on it,
+and the fifteen-second redraw cannot move it. Shuffled is a new order each
+round, keyed on the round and each photo's name. Every photo still shows once a
+round, and two walls agree on the order without asking each other. The next
+photo is drawn as a hidden `<img>`, which a browser fetches, unlike a hidden
+element's background, so it is in the cache before the swap. The swap is a plain
+swap: the crossfade is M3.6's, under the wall's motion rules.
+
+**The manifest carries the album's photos and never its id.** `displayConfig`
+rewrites an Image widget's `album` into `slides`, the stored names, which the
+wall already reads behind its display token, plus `albumName`. That is the
+to-do list's handle arrangement one widget along, and the editor's preview
+substitutes the same way from the albums its bootstrap carries. An empty album
+says "Add photos to Garden on the Photos screen." and a deleted one says it is
+not here any more, in words, rather than leaving a hole. An e-paper panel draws
+no photographs (MQ11): `album`, `slideSeconds` and `slideOrder` are scoped
+`PANEL_IGNORES` notes, which `epaper-ink` proves by rendering. The offline shell
+gained `slideshow.js`, caught by `sw-shell.test.ts` on the first full run, as it
+was for the two items before this one.
+
+**Measured.** `slideshow.test.ts` (5, display); `image-slideshow.test.ts` (4,
+the rewrite and the schema); and `browser-image-slideshow.test.ts` (2, real
+Chromium). The browser test reads the drawn photo against the clock, the next
+one fetched and taking no room, and a turn when the server clock crosses the
+hour with the album unchanged. It also covers both empty states, a manifest with
+no album id, and the editor offering, previewing and saving an album. Fifteen
+mutations were checked and all fifteen are red. One failed to build at first
+and was not counted until re-aimed. **5434 tests passing and 1 skipped, over 388
+files**: calendar 153 over 10 · core 314 over 9 · display 986 over 60 · server
+3981 over 309. The full `pnpm test` stopped at the shell test; the display and
+server suites were then run in full on the fixed tree. Against M3.1's 5422 over
+385, that is +12 and +3, this change's own count, with the one row
+`motion.test.ts` generates for the new module. **Still unproven where it
+counts:** nobody has watched an album turn on a kitchen wall.
+
 
 
 

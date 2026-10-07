@@ -173,7 +173,7 @@ export function registerPhotoRoutes(app: Hono, deps: AdminDeps): void {
       heading: 'Photos',
       saved: readSaved(c),
       action: { label: 'Add an album', href: 'admin/photos/new' },
-      intro: 'Your own photos, kept on this box in albums.',
+      intro: 'Your own photos, kept on this box in albums. An Image widget can show an album as a slideshow.',
       body:
         albums.length === 0
           ? emptyState('No albums yet.', { label: 'Add an album', href: 'admin/photos/new' })

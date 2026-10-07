@@ -129,6 +129,7 @@ import { headingPlace, headingSize } from './heading.js';
 import { QR_MAX_BYTES, qrBytes, qrKind, qrPayload, wifiSecurity } from './qr-payload.js';
 import { EMOJI_KEYS, emojiNode } from './emoji.js';
 import { TIER_NAMES, type TierName } from './tiers.js';
+import { DEFAULT_SLIDE_SECONDS, slideConfig } from './slideshow.js';
 import { shiftStyle, shiftsShown } from './shift-style.js';
 import { drawsRows, monthLooks, type MonthLooks, type MonthTreatment } from './calendar-looks.js';
 import { PALETTE, SWATCH, describeWidget, describeWidgetIn, labelFor } from './widget-labels.js';
@@ -207,6 +208,12 @@ interface LayoutState {
   buttons: readonly { readonly id: string; readonly name: string }[];
   /** The household's news feeds, for the News widget's picker (plan item M5.5). */
   newsFeeds: readonly { readonly id: string; readonly name: string }[];
+  /**
+   * The household's photo albums and their photos (plan item M5.12), for the
+   * Image widget's picker and for the preview, which draws an album the way
+   * the manifest hands it to the wall.
+   */
+  albums: readonly { readonly id: string; readonly name: string; readonly photos: readonly string[] }[];
 }
 
 /** The editor is on the admin page, so its preview reads media behind the session. */
@@ -488,6 +495,7 @@ function boot(): void {
       readonly todoLists?: unknown;
       readonly buttons?: unknown;
       readonly newsFeeds?: unknown;
+      readonly albums?: unknown;
       readonly fonts?: unknown;
       readonly wallpapers?: unknown;
       readonly wallTone?: unknown;
@@ -674,13 +682,22 @@ function boot(): void {
               typeof (one as { name?: unknown }).name === 'string',
           )
         : [],
+      albums: Array.isArray(parsed.albums)
+        ? (parsed.albums as unknown[]).filter(
+            (one): one is LayoutState['albums'][number] =>
+              typeof one === 'object' && one !== null &&
+              typeof (one as { id?: unknown }).id === 'string' &&
+              typeof (one as { name?: unknown }).name === 'string' &&
+              Array.isArray((one as { photos?: unknown }).photos),
+          )
+        : [],
     };
   } catch {
     state = {
       screen: null, mode: 'auto', orientation: 'portrait', slot: null, aspect: 0.5625, widgets: [],
       stash: { [canvasKey('landscape', null)]: { aspect: 1.7778, widgets: [] } },
       slots: [], maxSlots: 4,
-      calendars: [], readings: [], modules: [], people: [], todoLists: [], buttons: [], newsFeeds: [],
+      calendars: [], readings: [], modules: [], people: [], todoLists: [], buttons: [], newsFeeds: [], albums: [],
     };
   }
 
@@ -2820,7 +2837,22 @@ function boot(): void {
         w.type === 'homeassistant' || w.type === 'environment'
           ? previewReadingKeys(w.config?.['readings'], state.readings)
           : undefined;
-      const placed = picked === undefined ? listed : { ...listed, config: { ...listed.config, readings: picked } };
+      const read = picked === undefined ? listed : { ...listed, config: { ...listed.config, readings: picked } };
+      // And an album, as `displayConfig` hands it over (plan item M5.12): its
+      // photos and its name in place of the id, or none for one that has gone.
+      const album = w.type === 'image' && typeof read.config?.['album'] === 'string' ? read.config['album'] : undefined;
+      const knownAlbum = album === undefined ? undefined : state.albums.find((one) => one.id === album);
+      const placed =
+        album === undefined
+          ? read
+          : {
+              ...read,
+              config: {
+                ...Object.fromEntries(Object.entries(read.config ?? {}).filter(([key]) => key !== 'album')),
+                slides: knownAlbum === undefined ? [] : [...knownAlbum.photos],
+                ...(knownAlbum === undefined ? {} : { albumName: knownAlbum.name }),
+              },
+            };
       /*
        * The style lane, resolved for the preview (RFC 014 §4.1). The wall
        * reads what the server resolved; an unsaved lane has no server behind
@@ -5240,11 +5272,106 @@ function boot(): void {
     return wrap;
   }
 
+  /**
+   * One picture, or an album turned by the wall's clock (plan item M5.12).
+   *
+   * Choosing an album clears the single picture and the other way round, so a
+   * box never stores both and leaves a household guessing which one draws.
+   */
   function buildImageConfig(widget: Widget, cfg: Record<string, unknown>): void {
-    const field = cfgField('Picture');
-    const current = typeof cfg['image'] === 'string' ? (cfg['image'] as string) : undefined;
-    field.appendChild(mediaPicker(current, (name) => setConfig(widget, 'image', name)));
-    configPanel.appendChild(field);
+    const album = typeof cfg['album'] === 'string' ? (cfg['album'] as string) : undefined;
+    if (album === undefined && state.albums.length === 0) {
+      // Nothing to choose, so no choice: a slideshow of no album would only
+      // ever say it had gone.
+      const field = cfgField('Picture');
+      const current = typeof cfg['image'] === 'string' ? (cfg['image'] as string) : undefined;
+      field.appendChild(mediaPicker(current, (name) => setConfig(widget, 'image', name)));
+      configPanel.appendChild(field);
+      const note = document.createElement('p');
+      note.className = 'hint';
+      note.textContent = 'To show a slideshow here instead, make an album on the Photos page.';
+      configPanel.appendChild(note);
+      return;
+    }
+    configPanel.appendChild(
+      segControl(
+        'Show',
+        [
+          ['picture', 'One picture'],
+          ['album', 'An album'],
+        ],
+        album === undefined ? 'picture' : 'album',
+        (value) => {
+          if (value === 'album') {
+            setConfig(widget, 'image', undefined);
+            const first = state.albums[0];
+            if (first !== undefined) setConfig(widget, 'album', first.id);
+          } else {
+            setConfig(widget, 'album', undefined);
+            setConfig(widget, 'slideSeconds', undefined);
+            setConfig(widget, 'slideOrder', undefined);
+          }
+          renderConfigPanel();
+        },
+        'album',
+      ),
+    );
+    if (album === undefined) {
+      const field = cfgField('Picture');
+      const current = typeof cfg['image'] === 'string' ? (cfg['image'] as string) : undefined;
+      field.appendChild(mediaPicker(current, (name) => setConfig(widget, 'image', name)));
+      configPanel.appendChild(field);
+      return;
+    }
+    const which = cfgField('Album', 'album');
+    {
+      const select = document.createElement('select');
+      for (const one of state.albums) {
+        const option = document.createElement('option');
+        option.value = one.id;
+        option.textContent = `${one.name} (${one.photos.length} photo${one.photos.length === 1 ? '' : 's'})`;
+        if (one.id === album) option.selected = true;
+        select.appendChild(option);
+      }
+      // An album that has gone is still named, so the choice is honest about it.
+      if (!state.albums.some((one) => one.id === album)) {
+        const gone = document.createElement('option');
+        gone.value = album;
+        gone.textContent = 'An album that has been deleted';
+        gone.selected = true;
+        select.insertBefore(gone, select.firstChild);
+      }
+      select.addEventListener('change', () => setConfig(widget, 'album', select.value));
+      which.appendChild(select);
+    }
+    configPanel.appendChild(which);
+    const slides = slideConfig(cfg);
+    configPanel.appendChild(
+      segControl(
+        'Each photo shows for',
+        [
+          ['60', 'A minute'],
+          ['300', '5 minutes'],
+          ['900', '15 minutes'],
+          ['3600', 'An hour'],
+        ],
+        String(slides.seconds),
+        (value) => setConfig(widget, 'slideSeconds', Number(value) === DEFAULT_SLIDE_SECONDS ? undefined : Number(value)),
+        'slideSeconds',
+      ),
+    );
+    configPanel.appendChild(
+      segControl(
+        'Order',
+        [
+          ['in-order', 'As in the album'],
+          ['shuffle', 'Shuffled'],
+        ],
+        slides.order,
+        (value) => setConfig(widget, 'slideOrder', value === 'shuffle' ? 'shuffle' : undefined),
+        'slideOrder',
+      ),
+    );
   }
 
   function buildNotesConfig(widget: Widget, cfg: Record<string, unknown>): void {

@@ -1,6 +1,6 @@
 # Plan: parity with Magic Frame
 
-**Status: in progress.** RFC 018 (M6.0) is built, and so are the companion token, its Home Assistant to-do add, timers and messages, and refreshing walls and showing one wall's layout on the others (M1.1–M1.5, M2.1, M2.2, M2.3, M3.1, M4.10 for wallpapers, M5.1–M5.11); everything else is planned. On 2026-10-05 the owner asked for a
+**Status: in progress.** RFC 018 (M6.0) is built, and so are the companion token, its Home Assistant to-do add, timers and messages, and refreshing walls and showing one wall's layout on the others (M1.1–M1.5, M2.1, M2.2, M2.3, M3.1, M4.10 for wallpapers, M5.1–M5.12); everything else is planned. On 2026-10-05 the owner asked for a
 competitive review of [Magic Frame](https://github.com/jeremiaa/magic-frame)
 against Maverick Wall, then a deeper look at its custom widgets and its
 backgrounds. This document is that review, the decisions taken on it, and the
@@ -150,7 +150,7 @@ Magic Frame's features exist in a form we cannot ship as it is.
 | M5.9 | **Animated weather icon sets** (Meteocons is MIT). **Built**: Meteocons' static set, in Colour and Outline, as bundled `<img>` artwork. Each picture moves as a whole through `motion.ts`: a sun turns, cloud sways, a night sky is still. A clear night shows the moon's phase. The animated files' SMIL is never shipped. The 3D set and a separate solid set are not built. | M | Bundled artwork only. Animation goes through `motion.ts` and D7's rules, never SVG's own: MQ7. |
 | M5.10 | **Mini weather line on the clock.** **Built**: `showWeather` on a clock draws a picture and the temperature under every look, with humidity, wind and UV when ticked and the forecast's picture set (`icons`). With no reading for now it shows today's high and low. A panel's clock leaves the line to the forecast widget. | S | Values from the existing forecast panel. |
 | M5.11 | **Google and Microsoft 365 calendar sign-in.** **Built**: both sign in with the household's own app, read-only. Microsoft uses a code at microsoft.com/devicelogin and works on any install. Google uses its consent page, offered only where the wall has a public https address; elsewhere the page says why and points to the iCal address and Home Assistant (MQ12). A revoked sign-in is said on the account and held for a week, and Sign in again lifts it. | L | The household's own OAuth app; read-only scopes; tokens sealed. Google refuses private redirect addresses, so this needs a public HTTPS name: MQ12. A failed refresh says so, unlike Magic Frame's silent empty feed. |
-| M5.12 | **Image widget slideshow** from the same sources as backgrounds. | S | Depends on Part 3's photo sources. |
+| M5.12 | **Image widget slideshow** from the same sources as backgrounds. **Built** on M3.1's albums: one picture or an album, a minute to an hour a photo, in order or shuffled, picked from the wall's clock so every wall agrees; the next photo fetched before the swap. Immich and a NAS folder plug in when M3.2–M3.3 land. | S | Depends on Part 3's photo sources. |
 
 ### M6 — Home Assistant depth
 

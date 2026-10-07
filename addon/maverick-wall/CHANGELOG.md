@@ -21,8 +21,14 @@ your pictures in named albums on this box. Choose several at once: each one is
 made the right size for a wall before it is sent, which also removes the
 location your phone stores in every photo. An iPhone's HEIC photo is named and
 explained rather than refused without a reason. Removing a photo deletes it
-from this box unless something else still uses it. Showing an album on a wall
-comes next.
+from this box unless something else still uses it.
+
+**A slideshow on the wall.** An Image widget can now show an album instead of
+one picture: choose **An album** in its settings, how long each photo shows (a
+minute to an hour), and whether they come in order or shuffled. Every wall
+showing the same album shows the same photo at the same time, and the next one
+is fetched before it is needed. An empty album says so in words rather than
+leaving a hole.
 
 ## 0.91.0
 

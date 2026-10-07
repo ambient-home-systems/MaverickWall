@@ -105,6 +105,7 @@ import {
   type WidgetTier,
 } from './widget-tiers.js';
 import { adviceLine, type Advice } from './weather-advice.js';
+import { slideAt, slideConfig } from './slideshow.js';
 import {
   TILE_KEEP,
   barKeepsEveryTile,
@@ -2599,7 +2600,7 @@ export function renderWidget(
     case 'chores':
       return renderChoresWidget(model, config);
     case 'image':
-      return renderImageWidget(config, mediaBase);
+      return renderImageWidget(config, mediaBase, model.now);
     case 'qr':
       return renderQrWidget(config);
     case 'heading':
@@ -2874,9 +2875,46 @@ function renderQrWidget(config: unknown): HTMLElement {
  * is a stored hash the server validated; `url()` around it and nothing else, so
  * there is no path and no external origin (rule three). Empty until a picture is
  * chosen, which it says rather than drawing a blank box.
+ *
+ * Or an album, turned by the wall's clock (plan item M5.12). The server hands
+ * over the album's photos as `slides` — stored names, the same handles a single
+ * picture is — and `slideshow.ts` says which is on show, so every wall agrees
+ * and a redraw never moves it. The next photo is drawn too, hidden, so the
+ * browser has it before the swap rather than drawing a blank box while it
+ * loads. A plain swap: a crossfade is M3.6's, with the wall's motion rules.
  */
-function renderImageWidget(config: unknown, mediaBase: string): HTMLElement {
-  const name = widgetConfig(config)['image'];
+function renderImageWidget(config: unknown, mediaBase: string, now: number): HTMLElement {
+  const c = widgetConfig(config);
+  const slides = c['slides'];
+  if (Array.isArray(slides)) {
+    const photos = slides.filter((one): one is string => typeof one === 'string' && STORED_IMAGE_NAME.test(one));
+    const name = typeof c['albumName'] === 'string' ? c['albumName'] : undefined;
+    const shown = slideAt(photos, now, slideConfig(c));
+    if (shown === undefined) {
+      // Said in words, never a hole: the album is empty, or it has gone.
+      return el(
+        'div',
+        'cd-empty',
+        name === undefined
+          ? 'That album is not here any more. Choose another in this widget’s options.'
+          : `Add photos to ${name} on the Photos screen.`,
+      );
+    }
+    const box = el('div', 'fw-image');
+    box.style.backgroundImage = `url("${mediaBase}${shown.current}")`;
+    if (shown.next !== shown.current) {
+      // An `<img>`, because a hidden element's background is never fetched and
+      // a hidden image is: this is what puts the next photo in the cache.
+      const next = document.createElement('img');
+      next.className = 'fw-image-next';
+      next.alt = '';
+      next.setAttribute('aria-hidden', 'true');
+      next.src = `${mediaBase}${shown.next}`;
+      box.appendChild(next);
+    }
+    return box;
+  }
+  const name = c['image'];
   if (typeof name !== 'string' || name === '') {
     return el('div', 'cd-empty', 'Choose a picture in this widget’s options.');
   }
@@ -2884,6 +2922,9 @@ function renderImageWidget(config: unknown, mediaBase: string): HTMLElement {
   box.style.backgroundImage = `url("${mediaBase}${name}")`;
   return box;
 }
+
+/** A stored name, as the server checks it: the only thing a slide may be inside a `url()`. */
+const STORED_IMAGE_NAME = /^[a-f0-9]{64}\.(png|jpg|gif|webp)$/;
 
 /**
  * The Notes widget: free text the household typed, drawn as written.
