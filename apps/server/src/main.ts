@@ -11,6 +11,7 @@ import { createHaCalendarSyncHandler } from './jobs/ha-calendar-sync.js';
 import { createCaldavSyncHandler } from './jobs/caldav-sync.js';
 import { createOAuthSyncHandler } from './jobs/oauth-sync.js';
 import { createImmichSyncHandler } from './jobs/immich-sync.js';
+import { createPhotoFoldersSyncHandler } from './jobs/photo-folders-sync.js';
 import { createAlertJobHandler } from './modules/weather/alert-job.js';
 import { seedDefaultRules } from './api/rules.js';
 import { backfillClassic, reseedClassicForSetUp, retireDefaultWall } from './api/templates.js';
@@ -375,6 +376,8 @@ async function main(): Promise<void> {
         dataDir: resolved,
         timezone: () => readHousehold(db).timezone,
       }),
+      // NAS folders (plan item M3.3), the same arrangement as Immich's.
+      'photo-folders-sync': createPhotoFoldersSyncHandler({ db, keyring, fetcher, dataDir: resolved }),
       'update-check': async () => {
         if (!readUpdateState(db).enabled) return { status: 'ok' };
         /*
@@ -740,6 +743,8 @@ function registerJobs(db: SqliteDatabase): void {
   ensureJob(db, 'update-check', 'update-check', Date.now() + 10 * 60_000);
   // Immich, registered always and a no-op without a connection (plan item M3.2).
   ensureJob(db, 'immich-sync', 'immich-sync', Date.now() + 90_000);
+  // NAS folders, the same way (plan item M3.3).
+  ensureJob(db, 'photo-folders-sync', 'photo-folders-sync', Date.now() + 120_000);
   // Third-party module poll, registered always; does nothing when there are no
   // modules. Half a minute out so a restart never stampedes them.
   ensureJob(db, 'external-modules', 'external-modules', Date.now() + 30_000);

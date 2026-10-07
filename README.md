@@ -80,8 +80,8 @@ configure first, no account to create anywhere else, no key to paste.
   tonight's moon on a clear night. A clock can carry the temperature under
   the time.
 - **Your own photos.** Albums uploaded on the Photos screen, shrunk in the
-  browser before they are sent, or albums, people, favourites and memories
-  from your own Immich. Shown as a slideshow in an Image widget that turns on
+  browser before they are sent; albums, people, favourites and memories
+  from your own Immich; or a folder your NAS shares over WebDAV. Shown as a slideshow in an Image widget that turns on
   the wall's clock, so every wall shows the same photo.
 - **Weather alerts.** National Weather Service, United States only. A banner
   for an advisory, the whole screen for a severe warning, and for an Extreme

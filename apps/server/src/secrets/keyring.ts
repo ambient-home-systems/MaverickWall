@@ -88,6 +88,8 @@ export type SecretPurpose =
   /** The client secret of a household's own Google app registration (plan item M5.11). */
   | 'oauth-client-secret'
   | 'immich-key'
+  | 'photo-folder-url'
+  | 'photo-folder-password'
   /** Session signing. */
   | 'session';
 

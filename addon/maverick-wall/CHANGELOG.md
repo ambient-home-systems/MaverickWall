@@ -16,6 +16,14 @@
 
 ## Unreleased
 
+**Photos from a folder on your NAS.** On the **Photos** screen, add any folder
+your NAS shares over WebDAV (a Synology, a QNAP, Nextcloud, or a computer
+sharing a folder) and show it on a wall as a slideshow, like an album of your
+own. The photos stay where they are, and the ones already shown are kept here
+so the slideshow keeps going while the NAS sleeps. HEIC photos, RAW files and
+very large pictures can't be shown on a wall, so the screen tells you how many
+of each were left out instead of quietly missing them.
+
 ## 0.93.0
 
 **Photos from Immich.** If you keep your photos in Immich, connect it on the
