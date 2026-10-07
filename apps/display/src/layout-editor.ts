@@ -2842,13 +2842,16 @@ function boot(): void {
       // photos and its name in place of the id, or none for one that has gone.
       const album = w.type === 'image' && typeof read.config?.['album'] === 'string' ? read.config['album'] : undefined;
       const knownAlbum = album === undefined ? undefined : state.albums.find((one) => one.id === album);
+      // A player the box names is `nowPlaying: true` to the wall, never its id (plan item M3.4).
+      const playing = w.type === 'image' && typeof read.config?.['nowPlaying'] === 'string';
+      const placedRead = playing ? { ...read, config: { ...read.config, nowPlaying: true } } : read;
       const placed =
         album === undefined
-          ? read
+          ? placedRead
           : {
               ...read,
               config: {
-                ...Object.fromEntries(Object.entries(read.config ?? {}).filter(([key]) => key !== 'album')),
+                ...Object.fromEntries(Object.entries(placedRead.config ?? {}).filter(([key]) => key !== 'album')),
                 slides: knownAlbum === undefined ? [] : [...knownAlbum.photos],
                 ...(knownAlbum === undefined ? {} : { albumName: knownAlbum.name }),
               },
@@ -5291,6 +5294,7 @@ function boot(): void {
       note.className = 'hint';
       note.textContent = 'To show a slideshow here instead, make an album on the Photos page.';
       configPanel.appendChild(note);
+      nowPlayingField(widget, cfg);
       return;
     }
     configPanel.appendChild(
@@ -5321,6 +5325,7 @@ function boot(): void {
       const current = typeof cfg['image'] === 'string' ? (cfg['image'] as string) : undefined;
       field.appendChild(mediaPicker(current, (name) => setConfig(widget, 'image', name)));
       configPanel.appendChild(field);
+      nowPlayingField(widget, cfg);
       return;
     }
     const which = cfgField('Album', 'album');
@@ -5372,6 +5377,46 @@ function boot(): void {
         'slideOrder',
       ),
     );
+    nowPlayingField(widget, cfg);
+  }
+
+  /**
+   * Album art while music plays (plan item M3.4): any media player the
+   * household watches on Home Assistant's Readings, or none.
+   */
+  function nowPlayingField(widget: Widget, cfg: Record<string, unknown>): void {
+    const players = state.readings.filter((reading) => reading.id.startsWith('media_player.'));
+    const current = typeof cfg['nowPlaying'] === 'string' ? (cfg['nowPlaying'] as string) : '';
+    const field = cfgField('While music plays, show its album art', 'nowPlaying');
+    if (players.length === 0 && current === '') {
+      const none = document.createElement('p');
+      none.className = 'hint';
+      none.textContent = 'Add a media player under Home Assistant › Readings to choose it here.';
+      field.appendChild(none);
+    } else {
+      const select = document.createElement('select');
+      const off = document.createElement('option');
+      off.value = '';
+      off.textContent = 'No';
+      select.appendChild(off);
+      for (const player of players) {
+        const option = document.createElement('option');
+        option.value = player.id;
+        option.textContent = player.name;
+        if (player.id === current) option.selected = true;
+        select.appendChild(option);
+      }
+      if (current !== '' && !players.some((player) => player.id === current)) {
+        const gone = document.createElement('option');
+        gone.value = current;
+        gone.textContent = 'A player no longer watched';
+        gone.selected = true;
+        select.appendChild(gone);
+      }
+      select.addEventListener('change', () => setConfig(widget, 'nowPlaying', select.value === '' ? undefined : select.value));
+      field.appendChild(select);
+    }
+    configPanel.appendChild(field);
   }
 
   function buildNotesConfig(widget: Widget, cfg: Record<string, unknown>): void {

@@ -26,6 +26,12 @@ export async function closeFakeHomeAssistants(): Promise<void> {
 }
 
 /** The token a household would paste in. Asserted absent from several places. */
+/** A record sleeve: a real PNG, so the picture can be sniffed the way a wall's always is (plan item M3.4). */
+export const ARTWORK = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR4nGP8z8Dwn4GBgYGJAQoAAB0cAgHq5X7YAAAAAElFTkSuQmCC',
+  'base64',
+);
+
 export const TOKEN = 'eyJhbGciOiJIUzI1NiJ9.a-long-lived-access-token-that-controls-the-house.sig';
 
 /**
@@ -367,6 +373,8 @@ export interface FakeHa {
    * has no forecast for is refused the way core refuses it.
    */
   readonly weather: Record<string, FakeWeather>;
+  /** What the media player proxy answers with (plan item M3.4): a real PNG unless a test says otherwise. */
+  artwork: Buffer;
   /** Stand the fake down without reaching into a module-level array. */
   close(): Promise<void>;
 }
@@ -386,6 +394,7 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
     gone: new Set<string>(),
     todoFeatures: {},
     weather: {},
+    artwork: ARTWORK,
     todo: {
       'todo.shopping': {
         items: [
@@ -524,6 +533,19 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
         return;
       }
       return json(JSON.stringify(listed));
+    }
+    // A media player's artwork (plan item M3.4), the way Home Assistant's own
+    // proxy answers: the picture's bytes, for a player the house has.
+    if (url.startsWith('/api/media_player_proxy/')) {
+      const entityId = decodeURIComponent(url.slice('/api/media_player_proxy/'.length).split('?')[0] ?? '');
+      if (entityId !== 'media_player.kitchen' || state.gone.has(entityId)) {
+        response.writeHead(404, { 'content-type': 'application/json' });
+        response.end('{"message":"Entity not found."}');
+        return;
+      }
+      response.writeHead(200, { 'content-type': 'image/png' });
+      response.end(state.artwork);
+      return;
     }
     if (url === '/api/calendars') {
       return json(JSON.stringify([{ entity_id: 'calendar.family', name: 'Family' }]));

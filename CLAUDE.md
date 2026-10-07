@@ -4835,6 +4835,50 @@ measured with `pnpm test` and a real Chromium. Against M3.2's 5452 over 389
 that is +14 and +1. **Still unproven where it counts:** no real NAS has been
 listed. A Synology, and Nextcloud's own WebDAV, are the first two to try.
 
+**While music plays, an Image widget can show the record's sleeve (plan item
+M3.4).** "While music plays, show its album art" sits in the Image widget's
+settings. It lists the media players the household watches under Home Assistant
+› Readings, so the half-minute poll that already reads them is the only
+read. While that player is *playing*, the box shows its artwork whole on the
+theme's ground (`background-size: contain`, because a sleeve's edges are the
+design). Otherwise it shows its own picture or album, or says "Nothing is
+playing.". A panel draws no photographs (MQ11), so `nowPlaying` is a scoped
+`PANEL_IGNORES` note.
+
+**The artwork's address is never kept, and that decided the design.** A media
+player's `entity_picture` is `/api/media_player_proxy/…?token=…`: an access
+token on the household's Home Assistant, the exact field `ATTRIBUTE_ALLOWLIST`
+was written to keep out of a backup. So the cache keeps a hash of it,
+`picture_key` (the one derived attribute in that table, computed by us and
+never taken from an integration that sends one). The manifest hands the wall
+that hash as a handle shaped like a stored media name, and `nowPlaying: true`
+in place of the entity id. Asked for the picture, `artwork.ts` reads the
+player's state *again*, live, and fetches only when the live address hashes to
+the handle. A guessed handle, a finished song and a paused player each serve
+nothing. A picture on Home Assistant is fetched through `callPicture`, beside
+`call` so the token is still attached in one file, and held to `/api/` paths.
+One on a music service's own server is fetched with no credential at the
+guard's default, public https only. An earlier draft also checked the protocol
+itself. That check could never decide anything the guard had not, so it is
+deleted. Only the pictures playing now are kept in `art-cache/`.
+
+**Measured.** `album-art.test.ts` (12) uses the Home Assistant stand-in, whose
+speaker already carried a tokened picture "that must not travel", and now
+serves it. `browser-album-art.test.ts` (1, real Chromium) checks the sleeve
+drawn `contain` from a picture that loaded, "Nothing is playing." beside it,
+and a manifest with no player, picture or token. Fifteen mutations were checked
+and all fifteen are red. One failed to build at first and was not counted until
+re-aimed. One compiled and stayed green until acted on: the stand-in only ever
+served a real PNG, so skipping the sniff changed nothing. It can serve an SVG
+now, and that is refused and never kept. The full run also caught "screen" in
+the editor's hint (`admin-vocabulary`), now "Home Assistant › Readings". **5479
+tests passing and 1 skipped, over 392 files**: calendar 153 over 10 · core 314
+over 9 · display 986 over 60 · server 4026 over 313. After that one-word fix the
+display and server suites were run again in full. Against M3.3's 5466 over 390
+that is +13 and +2. **Still unproven where it counts:** no real speaker has
+played to a wall. A Sonos or a Music Assistant player through a real Home
+Assistant is the first to try.
+
 
 
 
