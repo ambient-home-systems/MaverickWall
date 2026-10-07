@@ -4630,6 +4630,58 @@ core 314 over 9 · display 978 over 58 · server 3959 over 305, measured with
 +1: the new file's 22, and one test in `ha-write-boundary.test.ts` holding the
 sign-in POST to its three addresses.
 
+**A household keeps its own photos in albums (plan item M3.1).** Photos, under
+Household, lists the albums; an album is a name and an ordered list of files in
+the media store (migration `0067`: `photo_albums` and `photo_album_items`, two
+`CREATE TABLE`s, generated then read). The store's promises hold for every
+file. The type is sniffed from the bytes, SVG is refused, and the stored name is
+the content hash, so the same photo in two albums is one file. Nothing on a
+wall reads an album yet: the Image widget's slideshow is M5.12, and the
+household chose to build this first so the slideshow has somewhere to read
+from. The Photos page says only what is true today.
+
+**Resizing is the browser's, as MQ2 decided.** `photo-upload.js` draws each photo
+onto a canvas no longer than 2560 on its long side and sends a JPEG. A phone's
+4000x3000 photo arrives at 2560x1920 and smaller, and without the metadata
+block a phone writes into it, which includes where it was taken. That is
+measured on the stored bytes. A small JPEG, PNG or WebP is sent untouched (its
+hash is the file's), and a GIF always is, because drawing one keeps its first
+frame. With scripting off the form still works and sends the files as they
+are. The sentence promising the resize is rendered `hidden` and revealed only
+by the script, because without it the sentence is false. A photo may be 8 MB
+where an avatar may be 2 (`MAX_PHOTO_BYTES`), for that no-script household.
+
+**HEIC is named rather than "not an image".** `sniffHeif` reads the ISO-BMFF
+`ftyp` brand, and an iPhone photo is refused with the two ways out: upload from
+Safari, which sends a JPEG, or set the iPhone to save JPEGs. AVIF has its own
+sentence. The check comes before the size, so nobody shrinks a file that would
+still be refused. In Safari the resizer is also the conversion, because Safari
+draws HEIC. Chromium cannot, so a HEIC there reaches the server and is named.
+One bad file among twenty costs that file, named by its own file name, and the
+rest are added.
+
+**A photo leaves the disk only when nothing names it.** Removing a photo, or
+deleting an album, deletes the file and its `media_assets` row only when the
+file was uploaded as a photo **and** no text column in any table still holds
+its name. The name is a 64-character hash, so it cannot match by accident.
+Every column is asked, not a list of the ones known to hold image names, so
+the next feature that stores one is not the one this forgot. An avatar or a
+canvas background is never deleted from here. A photo an Image widget names is
+kept, as is one another album holds.
+
+**Measured.** `photo-albums.test.ts` (13) runs against the real app and a real
+data directory, `browser-photo-upload.test.ts` (3) in a real Chromium, and
+`photo-upload.test.ts` (2, display) covers the arithmetic. Fifteen mutations
+were checked and all fifteen are red. Three display mutants failed to build at
+first and were not counted until re-aimed. The pinned navigation in
+`admin-walls-list.test.ts` went red on the new item, which is its job, and now
+names it. **5422 tests passing and 1 skipped, over 385 files**: calendar 153
+over 10 · core 314 over 9 · display 980 over 59 · server 3975 over 307,
+measured with `pnpm test` and a real Chromium. The server suite was re-run
+alone after that one-line test change. Against M5.11's 5404 over 382, that is
++18 and +3, this change's own count. **Still unproven where it counts:** nobody
+has uploaded a photo from a real iPhone, in Safari or out of it.
+
 
 
 

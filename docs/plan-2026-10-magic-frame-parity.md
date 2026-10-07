@@ -1,6 +1,6 @@
 # Plan: parity with Magic Frame
 
-**Status: in progress.** RFC 018 (M6.0) is built, and so are the companion token, its Home Assistant to-do add, timers and messages, and refreshing walls and showing one wall's layout on the others (M1.1–M1.5, M2.1, M2.2, M2.3, M4.10 for wallpapers, M5.1–M5.11); everything else is planned. On 2026-10-05 the owner asked for a
+**Status: in progress.** RFC 018 (M6.0) is built, and so are the companion token, its Home Assistant to-do add, timers and messages, and refreshing walls and showing one wall's layout on the others (M1.1–M1.5, M2.1, M2.2, M2.3, M3.1, M4.10 for wallpapers, M5.1–M5.11); everything else is planned. On 2026-10-05 the owner asked for a
 competitive review of [Magic Frame](https://github.com/jeremiaa/magic-frame)
 against Maverick Wall, then a deeper look at its custom widgets and its
 backgrounds. This document is that review, the decisions taken on it, and the
@@ -304,7 +304,7 @@ the widgets rather than a picture between them.
 
 | ID | Item | Size | What it must respect |
 | --- | --- | --- | --- |
-| M3.1 | **Uploaded photo albums** in our own media store. | M | Type sniffed from bytes, SVG refused (`api/media.ts`), HEIC named and refused with a sentence. Resizing is MQ2. |
+| M3.1 | **Uploaded photo albums** in our own media store. **Built**: albums on a Photos screen; photos shrunk to 2560 and stripped of their metadata in the browser (MQ2); HEIC and AVIF named; a file deleted only when nothing names it. Nothing on a wall reads an album until M5.12. | M | Type sniffed from bytes, SVG refused (`api/media.ts`), HEIC named and refused with a sentence. Resizing is MQ2. |
 | M3.2 | **Immich**: albums, people, favourites, memories. | M | One connection, key sealed with the keyring; previews fetched through the SSRF-guarded fetcher with the LAN opt-in; the wall gets handles behind the display token, never a URL. |
 | M3.3 | **WebDAV / NAS folder.** | M | Credentials sealed; reuses the CalDAV multistatus parser (`caldav/multistatus.ts`); HEIC and RAW counted and named. |
 | M3.4 | **Album art while music plays.** | M | A state read of the chosen `media_player`; artwork proxied by handle. |

@@ -2238,7 +2238,7 @@ export const mediaAssets = sqliteTable(
     height: integer('height', { mode: 'number' }),
     /** Content hash, so the same photo uploaded twice is stored once. */
     sha256: text('sha256').notNull(),
-    usage: text('usage', { enum: ['background', 'avatar', 'other'] }).notNull().default('other'),
+    usage: text('usage', { enum: ['background', 'avatar', 'photo', 'other'] }).notNull().default('other'),
     ...timestamps,
   },
   (table) => ({
@@ -2415,3 +2415,39 @@ export const oauthAccounts = sqliteTable('oauth_accounts', {
   createdAt: integer('created_at', { mode: 'number' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
 });
+
+// ---------------------------------------------------------------------------
+// Photo albums (plan item M3.1)
+// ---------------------------------------------------------------------------
+
+/**
+ * A household's own photo albums, of pictures uploaded to the media store.
+ *
+ * An album is a name and an order of stored files. The files are the media
+ * store's — sniffed, deduplicated by hash and named by it — so an album item
+ * holds the stored name (`media_assets.path`) and nothing an uploader wrote.
+ * The same photo in two albums is one file. No foreign keys, for the reason
+ * `oauth_account_id` gives: drizzle drops the action, and deleting an album
+ * deletes its items by hand (`photo-albums.ts`).
+ */
+export const photoAlbums = sqliteTable('photo_albums', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  ...timestamps,
+});
+
+export const photoAlbumItems = sqliteTable(
+  'photo_album_items',
+  {
+    albumId: text('album_id').notNull(),
+    /** The stored file's own name: 64 hex and an extension, `media_assets.path`. */
+    mediaName: text('media_name').notNull(),
+    /** Order within the album; a new photo goes last. */
+    position: integer('position', { mode: 'number' }).notNull(),
+    addedAt: integer('added_at', { mode: 'number' }).notNull(),
+  },
+  (table) => ({
+    once: uniqueIndex('photo_album_items_once').on(table.albumId, table.mediaName),
+    byAlbum: index('photo_album_items_album').on(table.albumId, table.position),
+  }),
+);

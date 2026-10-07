@@ -385,7 +385,8 @@ describe('the sidebar is grouped by subject', () => {
     expect(groups).toEqual([
       { label: null, items: ['Overview'] },
       // Timers and messages since plan items M5.1–M5.2: the household's own, beside the chores.
-      { label: 'Household', items: ['Calendars', 'People', 'Work Schedule', 'Chores', 'Timers and messages'] },
+      // Photos since plan item M3.1: the household's own pictures, beside its people.
+      { label: 'Household', items: ['Calendars', 'People', 'Photos', 'Work Schedule', 'Chores', 'Timers and messages'] },
       // Buttons since RFC 018 phase 5: webhook buttons, an integration with anything.
       // News since plan item M5.5: feeds read from the internet, like the weather.
       // Todoist since plan item M5.7: to-do lists, beside Home Assistant's.

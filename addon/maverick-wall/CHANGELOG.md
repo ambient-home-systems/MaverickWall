@@ -16,6 +16,14 @@
 
 ## Unreleased
 
+**Your own photos, in albums.** A new **Photos** screen, under Household, keeps
+your pictures in named albums on this box. Choose several at once: each one is
+made the right size for a wall before it is sent, which also removes the
+location your phone stores in every photo. An iPhone's HEIC photo is named and
+explained rather than refused without a reason. Removing a photo deletes it
+from this box unless something else still uses it. Showing an album on a wall
+comes next.
+
 **Google Calendar and Microsoft 365, signed in.** Calendars › Add a calendar
 has two new choices. **Microsoft 365 or Outlook.com** signs in with a code you
 type at microsoft.com/devicelogin on any phone, and works on any install.
