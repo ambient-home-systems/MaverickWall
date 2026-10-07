@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.88.0
+
 **Five more places the forecast can come from.** On the **Weather** screen,
 **Forecast from** now offers, beside the National Weather Service and
 Open-Meteo:
