@@ -24,6 +24,8 @@ explained rather than refused without a reason. Removing a photo deletes it
 from this box unless something else still uses it. Showing an album on a wall
 comes next.
 
+## 0.91.0
+
 **Google Calendar and Microsoft 365, signed in.** Calendars › Add a calendar
 has two new choices. **Microsoft 365 or Outlook.com** signs in with a code you
 type at microsoft.com/devicelogin on any phone, and works on any install.
