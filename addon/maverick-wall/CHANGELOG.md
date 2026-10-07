@@ -23,6 +23,8 @@ it can use the forecast's Meteocons pictures. When there is no recent reading
 it shows today's high and low instead. It works under every clock look, and a
 clock you have not changed stays exactly as it is.
 
+## 0.89.0
+
 **New weather pictures.** A forecast can now be drawn with Meteocons as well
 as the wall's own pictures. Choose **Pictures** in the forecast widget's
 settings: **Colour** or **Outline**. On a clear night it shows tonight's moon,
