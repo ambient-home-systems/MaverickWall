@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.95.0
+
 **Album art while music plays.** An Image widget can now show the cover of
 whatever a Home Assistant speaker is playing. Choose the speaker in the
 widget's settings (it must be one of your readings under Home Assistant ›
