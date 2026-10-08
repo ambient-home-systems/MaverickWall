@@ -16,6 +16,13 @@
 
 ## Unreleased
 
+**Album art while music plays.** An Image widget can now show the cover of
+whatever a Home Assistant speaker is playing. Choose the speaker in the
+widget's settings (it must be one of your readings under Home Assistant ›
+Readings). While it plays, the cover is shown whole; when it stops, the widget
+goes back to its own picture or album. Your walls never see the speaker,
+Home Assistant's address or its links.
+
 ## 0.94.0
 
 **Photos from a folder on your NAS.** On the **Photos** screen, add any folder

@@ -1,6 +1,7 @@
 import { Hono, type Context, type Next } from 'hono';
 import { immichPhoto } from '../modules/immich/store.js';
 import { folderPhoto } from '../modules/folder/store.js';
+import { artworkPhoto, nowPlayingArt } from '../modules/homeassistant/artwork.js';
 import { readAlbumSlides } from '../api/photo-albums.js';
 import { join } from 'node:path';
 import { localDateOf } from '@maverick-wall/calendar';
@@ -800,7 +801,10 @@ export function createApp(deps: AppDeps): Hono {
     // where an Immich photo came from.
     const sources = { db: deps.db, keyring: deps.keyring, fetcher: deps.fetcher, dataDir: deps.dataDir };
     const image =
-      readImage(deps.dataDir, name) ?? (await immichPhoto(sources, name)) ?? (await folderPhoto(sources, name));
+      readImage(deps.dataDir, name) ??
+      (await immichPhoto(sources, name)) ??
+      (await folderPhoto(sources, name)) ??
+      (await artworkPhoto(sources, name));
     if (image === undefined) return c.json({ error: 'not-found' }, 404);
     c.header('content-type', image.contentType);
     // The type is sniffed from the bytes; this stops a browser deciding it
@@ -1342,6 +1346,7 @@ export function createApp(deps: AppDeps): Hono {
       // its own config rather than its type (RFC 012 §6.2).
       watchedTodoLists: setUp.todoLists,
       albums: readAlbumSlides(deps.db),
+      playing: nowPlayingArt(deps.db),
       /*
        * Evaluated per poll, from stored signals and stored rules — every wall
        * reads the same document, including which interrupts have been cleared.
