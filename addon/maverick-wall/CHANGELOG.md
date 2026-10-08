@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.97.0
+
 **Photos can fade into each other.** An Image widget showing an album, Immich
 or a NAS folder has a new **Between photos** setting: a cut (as before), a
 two-second fade into the next photo, or a fade with a slow zoom while each
