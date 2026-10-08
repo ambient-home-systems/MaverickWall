@@ -6,6 +6,7 @@ import type { Fetcher, NetworkOption } from '@maverick-wall/core';
 import type { SqliteDatabase } from '../../db/open.js';
 import type { Keyring } from '../../secrets/keyring.js';
 import { sniffImage } from '../../api/media.js';
+import { PHOTO_UNFETCHED } from '../../wallpapers.js';
 import { folderPolicy, folderUrl, listFolder, photoBytes, type FolderEndpoint } from './client.js';
 
 /**
@@ -217,7 +218,11 @@ export async function folderPhoto(
   const endpoint = folderEndpoint(context.db, context.keyring, row.folderId);
   if (endpoint === undefined) return undefined;
   const fetched = await photoBytes(context.fetcher, endpoint, row.path);
-  if (!fetched.ok) return undefined;
+  if (!fetched.ok) {
+    // Said where the household looks (plan item M3.8), as `immichPhoto` does.
+    context.db.prepare('UPDATE photo_folders SET last_error = ? WHERE id = ?').run(`${fetched.message} ${PHOTO_UNFETCHED}`, row.folderId);
+    return undefined;
+  }
   const kind = sniffImage(fetched.value);
   if (kind === undefined) return undefined;
   mkdirSync(cacheDir(context.dataDir), { recursive: true });

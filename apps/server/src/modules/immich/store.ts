@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { PHOTO_UNFETCHED } from '../../wallpapers.js';
 import { recordShape } from '../../api/photo-shapes.js';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -280,7 +281,15 @@ export async function immichPhoto(
   const endpoint = immichEndpoint(context.db, context.keyring);
   if (endpoint === undefined) return undefined;
   const fetched = await previewBytes(context.fetcher, endpoint, row.assetId);
-  if (!fetched.ok) return undefined;
+  if (!fetched.ok) {
+    // Said where the household looks (plan item M3.8): a wall that asked for
+    // this draws a bundled picture in its place, and the Photos screen says why
+    // until the next sync that works clears it.
+    context.db
+      .prepare('UPDATE immich_sources SET last_error = ? WHERE id IN (SELECT source_id FROM immich_assets WHERE handle = ?)')
+      .run(`${fetched.message} ${PHOTO_UNFETCHED}`, handle);
+    return undefined;
+  }
   // Sniffed, as every picture this application serves is: what Immich says
   // it sent is a claim, and an SVG would be a script.
   const kind = sniffImage(fetched.value);

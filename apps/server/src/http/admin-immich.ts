@@ -296,6 +296,14 @@ export function immichSection(db: AdminDeps['db']): string {
                 source.lastError === null ? '' : tag('Problem', 'danger'),
               ) +
                 (source.lastError === null ? '' : errorBlock(source.lastError, 'The photos it had are still shown.')) +
+                // Nothing in it is not a fault, and a wall does not go blank over it (plan item M3.8).
+                (source.count === 0 && source.lastError === null
+                  ? `<p class="hint">${escapeHtml(
+                      source.kind === 'memories'
+                        ? 'Immich has no memories for today. A wall showing them draws a bundled picture until there are.'
+                        : 'Nothing to show right now. A wall showing it draws a bundled picture until there is.',
+                    )}</p>`
+                  : '') +
                 `<form method="post" action="admin/photos/immich/sources/${escapeHtml(source.id)}/remove">` +
                 `<button class="secondary" type="submit" aria-label="Remove ${escapeHtml(source.name)}">Remove</button></form>`,
               source.lastError === null ? {} : { tone: 'danger' },

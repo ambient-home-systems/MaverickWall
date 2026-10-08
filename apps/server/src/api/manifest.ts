@@ -21,7 +21,17 @@ import {
 import { canvasGutterStep } from '../gutter.js';
 import { isEinkWall, physicalWall } from '../wall-sizes.js';
 import { wallMotion } from '../wall-motion.js';
-import { ROTATION_COLLECTIONS, isWidgetGround, rotationPictures, wallpaperById, type RotationCollection, type WidgetGround } from '../wallpapers.js';
+import {
+  ROTATION_COLLECTIONS,
+  isWidgetGround,
+  photoFallback,
+  rotationPictures,
+  themeTone,
+  wallpaperById,
+  type PhotoFallback,
+  type RotationCollection,
+  type WidgetGround,
+} from '../wallpapers.js';
 import { ROTATION_EVERY } from './picture-rotation.js';
 import { builtinThemeTokens } from './builtin-themes.js';
 import { lookLane, resolveStyleTokens, storedStyleLayer, styleLayerOf, type WidgetStyle } from './widget-style.js';
@@ -379,6 +389,12 @@ export function displayConfig(
    * while it plays, the picture's handle. None is safe — nothing playing.
    */
   playing: Readonly<Record<string, string>> = {},
+  /*
+   * The bundled picture an album's box draws when it has no photo to show
+   * (plan item M3.8), for the wall's own tone. None is safe: the box then
+   * draws what it drew before this existed.
+   */
+  fallback?: PhotoFallback,
 ): unknown {
   if (typeof config !== 'object' || config === null) return config;
   let out = config as Record<string, unknown>;
@@ -402,11 +418,20 @@ export function displayConfig(
      * always sent, so no hanging wall's manifest moves at the upgrade.
      */
     const portraits = rest['pairPortraits'] === true ? (album.portraits ?? []) : [];
+    const stand = fallback === undefined ? {} : { fallback };
+    /*
+     * An Immich source or a folder with nothing in it leaves with no name, so
+     * the wall draws the bundled picture rather than telling the household to
+     * add photos to something they do not fill by hand. The Photos screen says
+     * why. An album of their own still asks for photos: that one is theirs.
+     */
+    if (album.remote === true && album.photos.length === 0 && fallback !== undefined) return { ...rest, slides: [], ...stand };
     return {
       ...rest,
       slides: [...album.photos],
       albumName: album.name,
       ...(portraits.length === 0 ? {} : { portraits: [...portraits] }),
+      ...stand,
     };
   }
   if (type !== 'todo') return out;
@@ -748,6 +773,8 @@ function placeCanvas(
   albums: readonly AlbumSlides[],
   playing: Readonly<Record<string, string>>,
 ): Manifest['layout']['portrait']['widgets'] {
+  // A slideshow's stand-in picture, for this wall's tone (plan item M3.8).
+  const fallback = photoFallback(themeTone(styling.active['--bg'] ?? '#000000'));
   const drawable = widgets.filter((widget) =>
     (WIDGET_TYPES as readonly string[]).includes(widget.type),
   );
@@ -771,7 +798,7 @@ function placeCanvas(
       z: Number.isFinite(widget.z) ? Math.trunc(widget.z) : 0,
       // Untouched, except that the entity ids a to-do widget's list and a
       // Home Assistant widget's readings name leave as handles.
-      config: displayConfig(widget.type, widget.config, readings, albums, playing),
+      config: displayConfig(widget.type, widget.config, readings, albums, playing, fallback),
       // The style lane, resolved (RFC 014 §4.1) — absent for a widget that
       // carries none, which is every widget until a household opens the tab.
       ...widgetStyleFields(widget.type, widget.config, styling),

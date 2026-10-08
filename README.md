@@ -86,7 +86,8 @@ configure first, no account to create anywhere else, no key to paste.
   picture fills its box, sits whole, or sits whole over a soft blur of itself. Shown as a slideshow in an Image widget that turns on
   the wall's clock, so every wall shows the same photo, with a cut, a fade, or
   a fade and a slow zoom between photos, and two portrait photos side by side
-  in a wide box.
+  in a wide box. A photo that can't be fetched shows a bundled picture, never
+  an empty box.
 - **Weather alerts.** National Weather Service, United States only. A banner
   for an advisory, the whole screen for a severe warning, and for an Extreme
   warning it can light a screen that has gone dark.
