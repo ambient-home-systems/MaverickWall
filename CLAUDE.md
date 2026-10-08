@@ -10001,6 +10001,37 @@ the continuity cases cancel by comparing two phases under one offset. It read
 pull request that followed. An absolute reading is a claim about the clock
 too, and the clock was not the subject.
 
+**`advanceLocks` paid back half the gap, and a slower machine is what showed
+the other half.** The throttled case went on failing on CI after it landed,
+at 359ms, 387ms and 439ms, while reading 26–40ms on a laptop. An instrumented
+page found the rest, with a CPU hog on every core. The browser starts an
+animation only after laying out and painting the wall the draw rebuilt, and
+that rendering is slowed by throttling like the script is. From the draw's end
+to the glow's own start time it measured 36ms at 40x, 173ms at 120x and 312ms
+at 200x, about a tenth of the draw each time. The clock's offset was identical
+across both draws, so the poll was not the cause. A runner is slower than the
+laptop, so its 40x is the laptop's 120–200x. `settleLocks` in `motion.ts` waits
+for each lock's animation to be `ready`, reads its `startTime`, and moves the
+lock on by how far that start was after the lock. It maps the start to the
+wall clock through `performance.now()`, the clock the document timeline counts
+from. A browser that cannot list an element's animations keeps `advanceLocks`
+alone. Five loaded runs of both continuity cases now read 0.02–19ms. At 200x,
+three runs read 0.05–1.0ms with the fix and 356, 374 and 363ms without it,
+which reproduces CI's figure on the laptop. `motion.test.ts` now lets
+`motion.ts` say `getAnimations`, and nothing else new. **The test had to
+change how it reads, or the fix would have read exactly like no fix.**
+`readPhase` read the timing in the same turn as the correction, and the new
+delay is inline style the browser has not yet folded into the animation, so it
+read the uncorrected phase over a glass that was right. It reads two frames
+later now, from a fresh `getAnimations()`, and the rain case takes each drop
+back to the instant of the first read, since those reads are now about 40ms
+apart. `TOLERANCE_MS` and `THROTTLE` are unchanged, and the test's comment says
+why. **5470 tests passing and 1 skipped, over
+390 files**: calendar 153 over 10 · core 314 over 9 · display 990 over 60 ·
+server 4013 over 311, measured with `pnpm test` and a real Chromium. Against
+M3.3's 5466 over 390, that is the four `settleLocks` cases in
+`motion-phase.test.ts`.
+
 **4779 tests passing and 1 skipped, over 332 files**: calendar 153 over 10 ·
 core 314 over 9 · display 873 over 49 · server 3439 over 264. Measured with
 `pnpm test` and a real Chromium (`MW_BROWSER_EXECUTABLE`, for the revision

@@ -22,6 +22,12 @@ whole photo over a soft blur of itself — the way a tall phone photo looks good
 on a wide wall without black bars beside it. It works for a single picture,
 an album, Immich and NAS folders alike.
 
+**Moving pictures stay smooth on the slowest tablets too.** A glowing sun,
+drifting clouds or falling rain could still jump back about a third of a
+second each time a very slow tablet redrew the wall. The wall now checks when
+each moving picture actually started and corrects it, so it carries on from
+where it was.
+
 ## 0.95.0
 
 **Album art while music plays.** An Image widget can now show the cover of
