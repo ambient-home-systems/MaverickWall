@@ -250,11 +250,21 @@ function frame(type: string, config: Record<string, unknown>): string {
     config: widget.config as Record<string, unknown>,
   }));
   const fb: Framebuffer = renderFreeformEpaper(MODEL, M, widgets, PANEL);
-  let bits = '';
-  for (let y = 0; y < PANEL.height; y++) {
-    for (let x = 0; x < PANEL.width; x++) bits += fb.get(x, y) ? '1' : '0';
-  }
-  return bits;
+  /*
+   * The framebuffer's own bytes, rather than a character per pixel read
+   * through `get`. The panel is a whole number of bytes wide (asserted under
+   * "the fixture itself"), so a row has no padding bits for two equal frames
+   * to disagree in, and the bytes are the frame exactly.
+   *
+   * **This, and not the drawing, was what made this file slow.** The bodies
+   * below were split in halves and then thirds on the stated ground that "the
+   * render cost is real and fixed", and the calendar's third still ran out of
+   * its 5s in a full local run, at 6.4s. Measured: the whole file's tests took
+   * 15.3s idle building a 156,000-character string per frame one pixel at a
+   * time, and 0.66s comparing bytes, with every probe the same. `baseFrame`
+   * halves what is left.
+   */
+  return Buffer.from(fb.bits).toString('latin1');
 }
 
 /**
@@ -497,12 +507,35 @@ function withKey(start: Record<string, unknown>, key: string, value: unknown): R
   return { ...start, style: { ...lane, [key.slice('style.'.length)]: value } };
 }
 
+/**
+ * A base's frame, drawn once per type and config rather than once per key.
+ *
+ * Every key probed on a type is compared against the same few starting
+ * frames, and drawing them again for each key was about half of what the
+ * probes spent once `frame` stopped building strings: the calendar's three
+ * bases, each with and without a title, redrawn for every one of its keys.
+ * Measured, the whole file's tests take 0.66s without this and 0.45s with it.
+ * Keyed on the config's JSON, which is the whole of what `frame` reads beyond
+ * the type, so a key that moved ink cannot be compared against the wrong base:
+ * keyed on the type alone, 139 of this file's tests go red.
+ */
+const BASE_FRAMES = new Map<string, string>();
+function baseFrame(type: string, start: Record<string, unknown>): string {
+  const key = `${type} ${JSON.stringify(start)}`;
+  let drawn = BASE_FRAMES.get(key);
+  if (drawn === undefined) {
+    drawn = frame(type, start);
+    BASE_FRAMES.set(key, drawn);
+  }
+  return drawn;
+}
+
 /** Does setting this key change what the panel draws for this widget type? */
 function movesInk(type: string, key: string): boolean {
   const values = PROBES[key] ?? [];
   for (const base of [...(BASES[type] ?? []), ...(KEY_BASES[type]?.[key] ?? [])]) {
     for (const start of [base, { ...base, showTitle: true, title: 'Base' }]) {
-      const before = frame(type, start);
+      const before = baseFrame(type, start);
       for (const value of values) {
         if (frame(type, withKey(start, key, value)) !== before) return true;
       }
@@ -594,6 +627,10 @@ describe('what a panel honours, checked against the panel', () => {
      * and 5s on a loaded CI runner is a factor of two away. A third of that is
      * the same cure the style lane and the month's looks already take, applied
      * once to what is left rather than once per key somebody adds next.
+     *
+     * Kept, though what made these bodies slow turned out to be `frame`
+     * building a string rather than the drawing (see `frame`): each third now
+     * takes 15–25ms. The splits cost nothing and name a failure more narrowly.
      */
     const plain = unhonoured.filter(
       (key) => !key.startsWith('style.') && !ASKED_BY_VALUE.has(key) && !MONTH_LOOKS.has(key),
@@ -953,8 +990,15 @@ describe('the fixture itself', () => {
     // assertion above pass for the wrong reason.
     for (const type of TYPES) {
       const base = BASES[type]?.[0] ?? {};
-      expect(frame(type, base).includes('1'), type).toBe(true);
+      expect(/[^\x00]/.test(frame(type, base)), type).toBe(true);
     }
     expect(TODAY).toBe(MODEL.today);
+  });
+
+  it('is a whole number of bytes wide, so a frame\'s bytes are its pixels exactly', () => {
+    // `frame` compares the framebuffer's raw bytes. A width that is not a
+    // multiple of eight would leave padding bits at the end of every row,
+    // which no draw promises to leave alone.
+    expect(PANEL.width % 8).toBe(0);
   });
 });
