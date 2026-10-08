@@ -265,6 +265,34 @@ export async function call(
   };
 }
 
+/**
+ * A picture Home Assistant serves — a media player's artwork (plan item M3.4)
+ * — as bytes.
+ *
+ * Beside `call` because the token is attached in this file and nowhere else.
+ * The path is Home Assistant's own (`/api/…`), joined to the connection's
+ * origin and checked to stay there, so a picture address cannot be the thing
+ * that sends the house's token somewhere else.
+ */
+export async function callPicture(
+  fetcher: Fetcher,
+  connection: Connection,
+  path: string,
+): Promise<{ readonly ok: true; readonly bytes: Buffer } | { readonly ok: false; readonly message: string }> {
+  if (!path.startsWith('/api/') || path.includes('..')) return { ok: false, message: 'That is not a Home Assistant picture.' };
+  const url = `${connection.baseUrl.replace(/\/api$/, '')}${path}`;
+  const response = await fetcher.fetch({
+    url,
+    policy: connection.policy,
+    maxBytes: FETCH_LIMITS.image,
+    timeoutMs: 15_000,
+    headers: { authorization: `Bearer ${connection.token}` },
+    bodyEncoding: 'base64',
+  });
+  if (response.status !== 'ok') return { ok: false, message: 'Home Assistant did not hand over the picture.' };
+  return { ok: true, bytes: Buffer.from(response.body, 'base64') };
+}
+
 /*
  * The allowlist and its one constructor live in `services.ts`, which is pure:
  * the table, the eligibility rules and the value bounds can be tested without a

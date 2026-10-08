@@ -2885,6 +2885,18 @@ function renderQrWidget(config: unknown): HTMLElement {
  */
 function renderImageWidget(config: unknown, mediaBase: string, now: number): HTMLElement {
   const c = widgetConfig(config);
+  /*
+   * Album art while music plays (plan item M3.4): the picture's handle, when
+   * the player this widget names is playing. Shown whole on the theme's
+   * ground, never cropped: a record sleeve is square and its edges are the
+   * design, where a photo's are only where the camera stopped.
+   */
+  const art = c['art'];
+  if (typeof art === 'string' && STORED_IMAGE_NAME.test(art)) {
+    const box = el('div', 'fw-image fw-art');
+    box.style.backgroundImage = `url("${mediaBase}${art}")`;
+    return box;
+  }
   const slides = c['slides'];
   if (Array.isArray(slides)) {
     const photos = slides.filter((one): one is string => typeof one === 'string' && STORED_IMAGE_NAME.test(one));
@@ -2916,6 +2928,8 @@ function renderImageWidget(config: unknown, mediaBase: string, now: number): HTM
   }
   const name = c['image'];
   if (typeof name !== 'string' || name === '') {
+    // A widget that is only for album art, with nothing playing, says so.
+    if (c['nowPlaying'] === true) return el('div', 'cd-empty', 'Nothing is playing.');
     return el('div', 'cd-empty', 'Choose a picture in this widget’s options.');
   }
   const box = el('div', 'fw-image');

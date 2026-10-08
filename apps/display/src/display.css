@@ -4332,6 +4332,8 @@ img.wxi { display: block; object-fit: contain; }
    empty space and leaves the picture square. */
 .fw-image { width: 100%; height: 100%; background-position: center; background-size: cover;
   background-repeat: no-repeat; border-radius: var(--fw-radius, 0); }
+/* Album art, whole on the theme's ground rather than cropped (plan item M3.4). */
+.fw-art { background-size: contain; background-color: var(--panel); }
 /* An album slideshow's next photo, fetched ahead of the swap and never shown. */
 .fw-image-next { display: none; }
 

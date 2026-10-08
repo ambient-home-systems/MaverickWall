@@ -1,6 +1,7 @@
 import type { Context, Hono } from 'hono';
 import { immichPhoto } from '../modules/immich/store.js';
 import { folderPhoto } from '../modules/folder/store.js';
+import { artworkPhoto } from '../modules/homeassistant/artwork.js';
 import { readAlbumSlides } from '../api/photo-albums.js';
 import { addCalendarSource } from '../api/sources.js';
 import { nextPersonColor } from '../api/palette.js';
@@ -2595,7 +2596,10 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     const name = c.req.param('name') ?? '';
     const sources = { db: deps.db, keyring: deps.keyring, fetcher: deps.fetcher, dataDir: deps.dataDir };
     const image =
-      readImage(deps.dataDir, name) ?? (await immichPhoto(sources, name)) ?? (await folderPhoto(sources, name));
+      readImage(deps.dataDir, name) ??
+      (await immichPhoto(sources, name)) ??
+      (await folderPhoto(sources, name)) ??
+      (await artworkPhoto(sources, name));
     if (image === undefined) return c.json({ error: 'not-found' }, 404);
     c.header('content-type', image.contentType);
     c.header('x-content-type-options', 'nosniff');

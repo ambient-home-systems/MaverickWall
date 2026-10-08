@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { parseJsonOr, z } from '../../validation.js';
 import { isGlyphKey, type GlyphKey } from '../../glyphs.js';
 import { haReadingHandle } from '../../api/manifest.js';
@@ -159,7 +160,9 @@ export const ATTRIBUTE_ALLOWLIST: Readonly<Partial<Record<SupportedDomain, reado
   fan: ['percentage', 'supported_features', 'percentage_step'],
   // What a wall needs to offer transport and a volume slider (RFC 018 phase
   // 6): the features it supports and where its volume is. Not the title.
-  media_player: ['supported_features', 'volume_level'],
+  // And `picture_key` (plan item M3.4): a hash of the artwork's address,
+  // never the address, which carries an access token — see `pictureKey`.
+  media_player: ['supported_features', 'volume_level', 'picture_key'],
 };
 
 export type AttributeKey =
@@ -173,6 +176,7 @@ export type AttributeKey =
   | 'supported_color_modes'
   | 'min_color_temp_kelvin'
   | 'max_color_temp_kelvin'
+  | 'picture_key'
   | 'color_temp_kelvin'
   | 'percentage_step'
   | 'volume_level';
@@ -201,6 +205,8 @@ export type HaAttributes = Readonly<Partial<{
   percentage_step: number;
   /** A media player's volume, 0.0-1.0 as Home Assistant says it. */
   volume_level: number;
+  /** The hash of a media player's `entity_picture` — see `pictureKey`. */
+  picture_key: string;
 }>>;
 
 /**
@@ -228,6 +234,7 @@ const ATTRIBUTE_SCHEMAS: Readonly<Record<AttributeKey, z.ZodType<number | string
   color_temp_kelvin: KELVIN,
   percentage_step: z.number().finite().gt(0).max(100),
   volume_level: z.number().finite().min(0).max(1),
+  picture_key: z.string().regex(/^[0-9a-f]{64}$/),
 };
 
 /**
@@ -258,6 +265,30 @@ export function pickAttributes(domain: string, raw: unknown): HaAttributes {
  */
 export function cachedAttributes(state: HaState): string {
   return JSON.stringify({ device_class: state.deviceClass, ...state.attributes });
+}
+
+/**
+ * A media player's artwork, as a key and never as an address (plan item M3.4).
+ *
+ * `entity_picture` is a path on the household's Home Assistant carrying a
+ * short-lived access token — `/api/media_player_proxy/media_player.x?token=…`
+ * — or an address on some service's own server. Either way it is not for a
+ * backup or a diagnostics export, which is why the allowlist above exists. So
+ * the cache keeps its hash: enough to say *which* picture is showing and to
+ * name it to a wall as a handle, and nothing a reader could use. The picture
+ * itself is fetched by asking Home Assistant again, live, and only when the
+ * live address hashes to the key the wall asked for (`artwork.ts`).
+ */
+export function pictureKey(entityPicture: string): string {
+  return createHash('sha256').update(`art:${entityPicture}`).digest('hex');
+}
+
+function withPictureKey(domain: string, picked: HaAttributes, raw: Record<string, unknown>): HaAttributes {
+  if (domain !== 'media_player') return picked;
+  // Never an integration's own `picture_key`: the key is ours, from the picture.
+  const { picture_key: _ignored, ...rest } = picked;
+  const picture = raw['entity_picture'];
+  return typeof picture === 'string' && picture !== '' && picture.length <= 2000 ? { ...rest, picture_key: pictureKey(picture) } : rest;
 }
 
 export function domainOf(entityId: string): string {
@@ -334,7 +365,11 @@ export function parseStates(body: string): HaState[] {
       unit: record.attributes.unit_of_measurement,
       deviceClass: record.attributes.device_class,
       lastChangedAt: Number.isFinite(changed) ? changed : null,
-      attributes: pickAttributes(domainOf(record.entity_id), record.attributes),
+      attributes: withPictureKey(
+        domainOf(record.entity_id),
+        pickAttributes(domainOf(record.entity_id), record.attributes),
+        record.attributes,
+      ),
     });
   }
   return states;
