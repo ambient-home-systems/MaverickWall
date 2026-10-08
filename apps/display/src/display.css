@@ -4332,6 +4332,17 @@ img.wxi { display: block; object-fit: contain; }
    empty space and leaves the picture square. */
 .fw-image { width: 100%; height: 100%; background-position: center; background-size: cover;
   background-repeat: no-repeat; border-radius: var(--fw-radius, 0); }
+/* How a picture sits in its box (plan item M3.5). Whole, on the theme's
+   ground; or whole over a blurred, dimmed copy of itself that overhangs the
+   box by twice its radius and is clipped by it, so its soft edge never shows.
+   A blur on a copy inside the box, never a backdrop-filter behind a widget (Q4). */
+.fw-fit-contain { background-size: contain; background-color: var(--panel); }
+.fw-fit-blur { position: relative; overflow: hidden;
+  --fit-blur: 2rem; }
+.fw-fit-back { position: absolute; inset: calc(-2 * var(--fit-blur)); background-position: center;
+  background-size: cover; background-repeat: no-repeat; filter: blur(var(--fit-blur)) brightness(0.8); }
+.fw-fit-front { position: absolute; inset: 0; background-position: center; background-size: contain;
+  background-repeat: no-repeat; }
 /* Album art, whole on the theme's ground rather than cropped (plan item M3.4). */
 .fw-art { background-size: contain; background-color: var(--panel); }
 /* An album slideshow's next photo, fetched ahead of the swap and never shown. */

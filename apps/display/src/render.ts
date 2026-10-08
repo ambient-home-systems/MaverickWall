@@ -2892,6 +2892,7 @@ function renderImageWidget(config: unknown, mediaBase: string, now: number): HTM
    * design, where a photo's are only where the camera stopped.
    */
   const art = c['art'];
+  const fit = pictureFit(c);
   if (typeof art === 'string' && STORED_IMAGE_NAME.test(art)) {
     const box = el('div', 'fw-image fw-art');
     box.style.backgroundImage = `url("${mediaBase}${art}")`;
@@ -2912,8 +2913,7 @@ function renderImageWidget(config: unknown, mediaBase: string, now: number): HTM
           : `Add photos to ${name} on the Photos screen.`,
       );
     }
-    const box = el('div', 'fw-image');
-    box.style.backgroundImage = `url("${mediaBase}${shown.current}")`;
+    const box = pictureBox(`url("${mediaBase}${shown.current}")`, fit);
     if (shown.next !== shown.current) {
       // An `<img>`, because a hidden element's background is never fetched and
       // a hidden image is: this is what puts the next photo in the cache.
@@ -2932,8 +2932,46 @@ function renderImageWidget(config: unknown, mediaBase: string, now: number): HTM
     if (c['nowPlaying'] === true) return el('div', 'cd-empty', 'Nothing is playing.');
     return el('div', 'cd-empty', 'Choose a picture in this widget’s options.');
   }
-  const box = el('div', 'fw-image');
-  box.style.backgroundImage = `url("${mediaBase}${name}")`;
+  return pictureBox(`url("${mediaBase}${name}")`, fit);
+}
+
+/**
+ * How a picture sits in its box (plan item M3.5).
+ *
+ * `cover`, the absence, fills the box and crops what does not fit, which is
+ * every Image widget drawn before this existed. `contain` shows the whole
+ * picture on the theme's ground. `blur` shows the whole picture over a
+ * blurred, dimmed copy of itself filling the box: the way a portrait photo
+ * sits on a landscape wall without two bars beside it.
+ */
+type PictureFit = 'cover' | 'contain' | 'blur';
+
+function pictureFit(c: Record<string, unknown>): PictureFit {
+  return c['fit'] === 'contain' || c['fit'] === 'blur' ? c['fit'] : 'cover';
+}
+
+/**
+ * One picture in a box, in its fit.
+ *
+ * The blurred copy is the same `url()`, so it costs no second download. It is
+ * a `filter: blur()` on a copy *inside* the box, never a `backdrop-filter`
+ * behind a widget (Q4): nothing is read over it, and it is drawn once per
+ * draw rather than on every frame something moves. It overhangs the box by
+ * twice its own radius on every side, so its soft edge falls outside the box,
+ * which clips it — by inset, never by `scale()`.
+ */
+function pictureBox(url: string, fit: PictureFit): HTMLElement {
+  const box = el('div', `fw-image fw-fit-${fit}`);
+  if (fit !== 'blur') {
+    box.style.backgroundImage = url;
+    return box;
+  }
+  const back = el('div', 'fw-fit-back');
+  back.setAttribute('aria-hidden', 'true');
+  back.style.backgroundImage = url;
+  const front = el('div', 'fw-fit-front');
+  front.style.backgroundImage = url;
+  box.append(back, front);
   return box;
 }
 

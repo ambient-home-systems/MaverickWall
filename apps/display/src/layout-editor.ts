@@ -5294,6 +5294,7 @@ function boot(): void {
       note.className = 'hint';
       note.textContent = 'To show a slideshow here instead, make an album on the Photos page.';
       configPanel.appendChild(note);
+      fitField(widget, cfg);
       nowPlayingField(widget, cfg);
       return;
     }
@@ -5325,6 +5326,7 @@ function boot(): void {
       const current = typeof cfg['image'] === 'string' ? (cfg['image'] as string) : undefined;
       field.appendChild(mediaPicker(current, (name) => setConfig(widget, 'image', name)));
       configPanel.appendChild(field);
+      fitField(widget, cfg);
       nowPlayingField(widget, cfg);
       return;
     }
@@ -5377,6 +5379,7 @@ function boot(): void {
         'slideOrder',
       ),
     );
+    fitField(widget, cfg);
     nowPlayingField(widget, cfg);
   }
 
@@ -5384,6 +5387,24 @@ function boot(): void {
    * Album art while music plays (plan item M3.4): any media player the
    * household watches on Home Assistant's Readings, or none.
    */
+  /** How the picture sits in its box (plan item M3.5). Fill is the absence. */
+  function fitField(widget: Widget, cfg: Record<string, unknown>): void {
+    const current = cfg['fit'] === 'contain' || cfg['fit'] === 'blur' ? (cfg['fit'] as string) : 'cover';
+    configPanel.appendChild(
+      segControl(
+        'Fit',
+        [
+          ['cover', 'Fill the box'],
+          ['contain', 'Whole picture'],
+          ['blur', 'Whole, over a blur'],
+        ],
+        current,
+        (value) => setConfig(widget, 'fit', value === 'cover' ? undefined : value),
+        'fit',
+      ),
+    );
+  }
+
   function nowPlayingField(widget: Widget, cfg: Record<string, unknown>): void {
     const players = state.readings.filter((reading) => reading.id.startsWith('media_player.'));
     const current = typeof cfg['nowPlaying'] === 'string' ? (cfg['nowPlaying'] as string) : '';

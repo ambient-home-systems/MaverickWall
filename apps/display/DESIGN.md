@@ -357,6 +357,14 @@ renders". Two of the three are reversed and one stands:
   still excluded; a widget over a picture sits on a flat ground (plan item
   P6.3), because nothing measures text over a blur and an old tablet pays for
   one on every frame.
+- **One blur is in, and it is not that one (plan item M3.5).** An Image
+  widget's "Whole, over a blur" fit draws a photo whole over a blurred, dimmed
+  copy of itself — a `filter: blur()` on a copy *inside* the box, the way a
+  portrait photo sits on a landscape wall without two bars beside it. Nothing
+  is read over it, it is the same picture so it costs no second download, and
+  it is drawn once a draw rather than every frame. The copy overhangs the box
+  by twice its radius and the box clips it, by inset and never by `scale()`.
+  A panel draws no photographs, so it has none of this.
 
 ### Named Rules
 **The Shadow-Is-A-Token Rule.** *(Was the No-Shadow Rule, rewritten 2026-09-24

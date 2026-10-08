@@ -458,6 +458,12 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
     why: 'a panel draws no photographs, and turning would refresh a battery panel at every photo.',
   },
   {
+    key: 'fit',
+    types: ['image'],
+    label: 'Fit',
+    why: 'a panel draws no photographs, so there is nothing for it to fit.',
+  },
+  {
     key: 'nowPlaying',
     types: ['image'],
     label: 'Album art while music plays',

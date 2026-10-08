@@ -16,6 +16,12 @@
 
 ## Unreleased
 
+**Pictures that fit.** An Image widget's new **Fit** setting chooses how a
+photo sits in its box: fill it (as before), show the whole photo, or show the
+whole photo over a soft blur of itself — the way a tall phone photo looks good
+on a wide wall without black bars beside it. It works for a single picture,
+an album, Immich and NAS folders alike.
+
 **Moving pictures stay smooth on the slowest tablets too.** A glowing sun,
 drifting clouds or falling rain could still jump back about a third of a
 second each time a very slow tablet redrew the wall. The wall now checks when

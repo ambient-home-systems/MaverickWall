@@ -4879,6 +4879,51 @@ that is +13 and +2. **Still unproven where it counts:** no real speaker has
 played to a wall. A Sonos or a Music Assistant player through a real Home
 Assistant is the first to try.
 
+**A picture can sit whole in its box, or whole over a blur of itself (plan item
+M3.5).** "Fit" leads the Image widget's settings. *Fill the box* is the absence
+and is every Image widget drawn before this. *Whole picture* puts the picture on
+the theme's `--panel`. *Whole, over a blur* puts it over a blurred, dimmed copy
+of itself that fills the box, which is how a portrait photo sits on a landscape
+wall without two bars beside it. It applies to one picture, an album and every
+source alike. Album art keeps `contain`, its own design.
+
+**This is a blur, and Q4's "blur stays out" still stands.** Q4 is
+`backdrop-filter` behind a widget on a wallpaper, where text would be read over
+it. This is a `filter: blur()` on a copy of the same picture *inside* the box,
+with nothing read over it. It is the same `url()`, so there is no second
+download, and it is drawn once a draw rather than every frame. The copy
+overhangs the box by twice its radius (`--fit-blur`, in `rem`) and the box
+clips it, so the soft edge never shows, by inset and never by `scale()`. The
+display's DESIGN.md says so beside the Q4 line, and a panel ignores `fit`
+(MQ11). No resizer means no pre-blurred copy (MQ2), which the plan foresaw.
+
+**What it costs was measured, and is a note rather than a test.** At 6x CPU
+throttling a tick of three filled boxes cost 19 and 22ms of main-thread task
+time, and three blurred ones 21 and 31ms. The raster of the blur itself happens
+off the main thread and is not in that figure. As a test it waited out six
+redraws under throttling, took up to seven minutes on a loaded machine and
+asserted nothing a fault could turn red, so it was removed.
+
+**Measured.** `browser-picture-fit.test.ts` (2, real Chromium) reads, rather
+than any class:
+- the computed sizes;
+- the copy's computed filter and how far it overhangs a box that clips it;
+- the pixels beside a tall striped picture: the theme's ground for "whole", and
+  a grey that is not the ground for "over a blur".
+The editor saves only a fit that is not the absence. One schema test sits in
+`image-slideshow.test.ts`. Twelve mutations were checked and all twelve are
+red. One failed to build at first and was not counted until re-aimed. One
+compiled and stayed green until a schema test was written for the key. The
+first full run caught `--fit-blur` declared inline, where `tokens.test.ts`
+counts only a declaration that starts its line, so it now has a line of its
+own. **5482 tests passing and 1 skipped, over 393 files**: calendar 153 over 10 · core 314 over 9 · display
+986 over 60 · server 4029 over 314. After that fix the display and server
+suites were run again in full, and calendar on its own. One server run read
+`qr.test.ts` timing out at 31s with the machine's load average near 30 from
+another session; it passed alone and on the rerun. Against M3.4's 5479 over 392
+that is +3 and +1. **Still unproven where it counts:** nobody has looked at a
+blurred portrait on a real kitchen television.
+
 
 
 
