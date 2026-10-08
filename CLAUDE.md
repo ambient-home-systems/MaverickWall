@@ -9987,6 +9987,24 @@ server 4013 over 311, measured with `pnpm test` and a real Chromium. Against
 M3.3's 5466 over 390, that is the four `settleLocks` cases in
 `motion-phase.test.ts`.
 
+**`epaper-ink`'s timeouts were never the drawing.** The file's bodies had been
+split into halves and then thirds, each time on the stated ground that the
+render cost is real and fixed, and the calendar's third still ran out of its
+5s in a full local run, at 6.4s. Measured, the drawing was the small part.
+`frame` turned every 520x300 framebuffer into a 156,000-character string one
+`get(x, y)` at a time, and that was about 95% of the file: its tests took
+15.3s idle that way and 0.66s comparing the framebuffer's own bytes. A memo of
+each type's base frames, which every key on that type is compared against,
+takes it to 0.45s, and under a CPU hog on every core to 0.83s; no body is now
+over 60ms. Five mutations were checked and all five are red: `count` or
+`cellEvents` dropped from the calendar's honours, `style.--ink` claimed
+honoured, the memo keyed on the type alone (139 red), and a frame that
+compares nothing (26 red). Eleven other e-paper test files build frames the
+same way. They draw far fewer and are not slow, so they are left as they are. **5484 tests
+passing and 1 skipped, over 392 files**: calendar 153 over 10 · core 314 over
+9 · display 990 over 60 · server 4027 over 313, measured with `pnpm test` and
+a real Chromium, every file green.
+
 **4779 tests passing and 1 skipped, over 332 files**: calendar 153 over 10 ·
 core 314 over 9 · display 873 over 49 · server 3439 over 264. Measured with
 `pnpm test` and a real Chromium (`MW_BROWSER_EXECUTABLE`, for the revision
