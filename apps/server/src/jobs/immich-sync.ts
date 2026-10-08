@@ -1,6 +1,7 @@
 import type { Fetcher, JobHandler, JobResult } from '@maverick-wall/core';
 import type { SqliteDatabase } from '../db/open.js';
 import type { Keyring } from '../secrets/keyring.js';
+import { measureKeptShapes } from '../api/photo-shapes.js';
 import { prefetchImmich, readImmichConnection, readImmichSources, syncImmichSource } from '../modules/immich/store.js';
 
 /**
@@ -49,6 +50,8 @@ export function createImmichSyncHandler(deps: {
       if (!synced.ok && failure === undefined) failure = synced.message;
     }
     await prefetchImmich(context, PREFETCH_PER_RUN);
+    // What was just fetched ahead can be measured for pairing (plan item M3.7).
+    measureKeptShapes(deps.db, deps.dataDir, at);
     return failure === undefined ? { status: 'ok' } : { status: 'failed', error: failure };
   };
 }

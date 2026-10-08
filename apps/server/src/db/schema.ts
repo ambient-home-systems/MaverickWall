@@ -2563,3 +2563,22 @@ export const photoFolderAssets = sqliteTable(
     byFolder: index('photo_folder_assets_folder').on(table.folderId, table.position),
   }),
 );
+
+/**
+ * How big each slideshow photo is, as a wall draws it (plan item M3.7), by the
+ * handle a wall knows it as: a stored name, an Immich handle or a folder's.
+ *
+ * Only the shape is kept — a width and a height, upright — so a slideshow can
+ * pair two portrait photos in a wide box. `measured` is 1 when the numbers
+ * came from the picture's own header, EXIF orientation applied, and 0 when they
+ * are Immich's own guess from its metadata; a measurement replaces a guess and
+ * a guess never replaces a measurement. A photo with no row is shown on its
+ * own, which is what every slideshow did before this existed.
+ */
+export const photoShapes = sqliteTable('photo_shapes', {
+  handle: text('handle').primaryKey(),
+  width: integer('width', { mode: 'number' }).notNull(),
+  height: integer('height', { mode: 'number' }).notNull(),
+  measured: integer('measured', { mode: 'number' }).notNull().default(0),
+  updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
+});

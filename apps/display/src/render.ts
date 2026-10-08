@@ -105,7 +105,7 @@ import {
   type WidgetTier,
 } from './widget-tiers.js';
 import { adviceLine, type Advice } from './weather-advice.js';
-import { FADE_MS, slideAt, slideConfig, slideTiming } from './slideshow.js';
+import { FADE_MS, frameAt, PAIR_MIN_ASPECT, sameFrame, slideConfig, type SlideFrame, slideTiming } from './slideshow.js';
 import {
   TILE_KEEP,
   barKeepsEveryTile,
@@ -2884,7 +2884,17 @@ function renderQrWidget(config: unknown): HTMLElement {
  * loads. With `slideMotion` set the swap is a crossfade, and with zoom a slow
  * zoom too (plan item M3.6), scheduled on the wall clock by `crossfadeBox`.
  */
-function renderImageWidget(config: unknown, mediaBase: string, now: number): HTMLElement {
+function renderImageWidget(
+  config: unknown,
+  mediaBase: string,
+  now: number,
+  /**
+   * Whether the box is wide enough to pair two portrait photos (plan item
+   * M3.7): measured after layout by `renderFreeform`, which draws the widget
+   * again with this set. Off, the album shows one photo at a time.
+   */
+  wide = false,
+): HTMLElement {
   const c = widgetConfig(config);
   /*
    * Album art while music plays (plan item M3.4): the picture's handle, when
@@ -2904,7 +2914,12 @@ function renderImageWidget(config: unknown, mediaBase: string, now: number): HTM
     const photos = slides.filter((one): one is string => typeof one === 'string' && STORED_IMAGE_NAME.test(one));
     const name = typeof c['albumName'] === 'string' ? c['albumName'] : undefined;
     const show = slideConfig(c);
-    const shown = slideAt(photos, now, show);
+    const portraits = new Set(
+      wide && c['pairPortraits'] === true && Array.isArray(c['portraits'])
+        ? c['portraits'].filter((one): one is string => typeof one === 'string' && STORED_IMAGE_NAME.test(one))
+        : [],
+    );
+    const shown = frameAt(photos, portraits, now, show);
     if (shown === undefined) {
       // Said in words, never a hole: the album is empty, or it has gone.
       return el(
@@ -2916,17 +2931,18 @@ function renderImageWidget(config: unknown, mediaBase: string, now: number): HTM
       );
     }
     const box =
-      show.motion === 'cut' || shown.next === shown.current
-        ? pictureBox(`url("${mediaBase}${shown.current}")`, fit)
-        : crossfadeBox(`url("${mediaBase}${shown.current}")`, `url("${mediaBase}${shown.next}")`, fit, show.motion === 'zoom', now, show.seconds);
-    if (shown.next !== shown.current) {
+      show.motion === 'cut' || sameFrame(shown.next, shown.current)
+        ? frameBox(shown.current, mediaBase, fit)
+        : crossfadeBox(shown.current, shown.next, mediaBase, fit, show.motion === 'zoom', now, show.seconds);
+    for (const photo of shown.next) {
+      if (shown.current.includes(photo)) continue;
       // An `<img>`, because a hidden element's background is never fetched and
       // a hidden image is: this is what puts the next photo in the cache.
       const next = document.createElement('img');
       next.className = 'fw-image-next';
       next.alt = '';
       next.setAttribute('aria-hidden', 'true');
-      next.src = `${mediaBase}${shown.next}`;
+      next.src = `${mediaBase}${photo}`;
       // Decoded now, minutes before the swap, so the crossfade's first frame
       // is not the frame the browser spends decoding it (plan item M3.6).
       if (typeof next.decode === 'function') next.decode().catch(() => undefined);
@@ -2995,12 +3011,20 @@ function pictureBox(url: string, fit: PictureFit): HTMLElement {
  * back. Where motion is off the stylesheet moves nothing and the top layer
  * stays clear: a cut at the next draw, which is what `cut` draws anyway.
  */
-function crossfadeBox(current: string, next: string, fit: PictureFit, zoom: boolean, now: number, seconds: number): HTMLElement {
+function crossfadeBox(
+  current: SlideFrame,
+  next: SlideFrame,
+  mediaBase: string,
+  fit: PictureFit,
+  zoom: boolean,
+  now: number,
+  seconds: number,
+): HTMLElement {
   const { swapAtMs, intervalMs } = slideTiming(now, seconds);
   const box = el('div', 'fw-image fw-slides');
-  const layer = (url: string, top: boolean): HTMLElement => {
+  const layer = (frame: SlideFrame, top: boolean): HTMLElement => {
     const photo = el('div', top ? 'fw-photo fw-photo-next' : 'fw-photo');
-    const picture = pictureBox(url, fit);
+    const picture = frameBox(frame, mediaBase, fit);
     if (zoom) {
       picture.classList.add('fw-zoom');
       // From the start of this photo's own fade to the end of the next one.
@@ -3013,6 +3037,24 @@ function crossfadeBox(current: string, next: string, fit: PictureFit, zoom: bool
   };
   box.append(layer(current, false), layer(next, true));
   return box;
+}
+
+/**
+ * What a slideshow shows at once (plan item M3.7): one photo, or two portraits
+ * side by side, each fitted to its own half as the household chose. A pair is
+ * one box, so a crossfade fades it and a slow zoom grows it as one picture.
+ */
+function frameBox(frame: SlideFrame, mediaBase: string, fit: PictureFit): HTMLElement {
+  if (frame.length === 1) return pictureBox(`url("${mediaBase}${frame[0]}")`, fit);
+  const pair = el('div', 'fw-image fw-pair');
+  for (const photo of frame) pair.appendChild(pictureBox(`url("${mediaBase}${photo}")`, fit));
+  return pair;
+}
+
+/** Whether an Image widget's album pairs its portrait photos and has any to pair. */
+function pairsPortraits(config: unknown): boolean {
+  const c = widgetConfig(config);
+  return c['pairPortraits'] === true && Array.isArray(c['portraits']) && c['portraits'].length > 0;
 }
 
 /** A stored name, as the server checks it: the only thing a slide may be inside a `url()`. */
@@ -5510,6 +5552,8 @@ export function renderFreeform(
   // type, they get narrower columns, so a small box produces seven slivers with
   // a letter in each. Measured after layout, because a box's width is a
   // percentage of a canvas that is itself letterboxed into the frame.
+  /** Image widgets that pair portrait photos, measured once the canvas has laid out (plan item M3.7). */
+  const pairing: { box: HTMLElement; widget: ManifestWidget; body: HTMLElement }[] = [];
   const weekBoxes: { readonly box: HTMLElement; readonly widget: ManifestWidget }[] = [];
 
   // Agenda sections, to be re-checked for whether they kept room for a time
@@ -5595,6 +5639,8 @@ export function renderFreeform(
       // motion fixture is two shapes positioned in percentages of its box, and
       // has no form to take from a tier either.
       box.appendChild(body);
+      // An album that pairs portrait photos asks its box's shape, once it has one.
+      if (widget.type === 'image' && pairsPortraits(widget.config)) pairing.push({ box, widget, body });
     } else if (widget.type === 'calendar' && calendarGridFills(widget.config)) {
       // The month and week grids fill their box: their rows/cells stretch to the
       // box height rather than keeping the rem-based natural height the stacked
@@ -5732,6 +5778,18 @@ export function renderFreeform(
   // The wallpaper, now the canvas has a size to pick a file by.
   if (layout.background?.type === 'wallpaper') {
     applyWallpaper(canvas, layout.background, options.wallpaperBase ?? WALLPAPER_BASE);
+  }
+
+  /*
+   * A slideshow that pairs portrait photos reads its own box (plan item M3.7):
+   * two portraits share a box at least `PAIR_MIN_ASPECT` wide, and a narrower
+   * one shows a photo at a time. The box's shape is the arrangement's, never
+   * the photos', so the answer is the same on every tick.
+   */
+  for (const { box, widget, body } of pairing) {
+    const height = body.clientHeight;
+    if (height <= 0 || body.clientWidth / height < PAIR_MIN_ASPECT) continue;
+    box.replaceChild(renderImageWidget(widget.config, mediaBase, model.now, true), body);
   }
 
   /*

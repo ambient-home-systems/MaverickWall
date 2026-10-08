@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { recordShape } from '../../api/photo-shapes.js';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Fetcher, NetworkOption } from '@maverick-wall/core';
@@ -10,6 +11,7 @@ import {
   immichBase,
   immichPolicy,
   memoryPhotos,
+  type ImmichShapes,
   previewBytes,
   searchPhotos,
   whoAmI,
@@ -200,9 +202,10 @@ export async function syncImmichSource(
   if (source === undefined) return { ok: false, message: 'That is not here any more.' };
   const endpoint = immichEndpoint(context.db, context.keyring);
   if (endpoint === undefined) return { ok: false, message: 'Immich is not connected.' };
+  const shapes: ImmichShapes = new Map();
   const read =
     source.kind === 'memories'
-      ? await memoryPhotos(context.fetcher, endpoint, today)
+      ? await memoryPhotos(context.fetcher, endpoint, today, shapes)
       : await searchPhotos(
           context.fetcher,
           endpoint,
@@ -211,6 +214,7 @@ export async function syncImmichSource(
             : source.kind === 'person'
               ? { personIds: [source.ref ?? ''] }
               : { isFavorite: true },
+          shapes,
         );
   if (!read.ok) {
     context.db.prepare('UPDATE immich_sources SET last_error = ?, updated_at = ? WHERE id = ?').run(read.message, context.now, sourceId);
@@ -222,6 +226,8 @@ export async function syncImmichSource(
       'INSERT OR IGNORE INTO immich_assets (handle, source_id, asset_id, position) VALUES (?, ?, ?, ?)',
     );
     read.value.forEach((assetId, position) => insert.run(immichHandle(assetId), sourceId, assetId, position));
+    // Immich's own sizes, as a guess until each preview is measured (plan item M3.7).
+    for (const [assetId, size] of shapes) recordShape(context.db, immichHandle(assetId), size, false, context.now);
     context.db
       .prepare('UPDATE immich_sources SET last_fetched_at = ?, last_error = NULL, updated_at = ? WHERE id = ?')
       .run(context.now, context.now, sourceId);

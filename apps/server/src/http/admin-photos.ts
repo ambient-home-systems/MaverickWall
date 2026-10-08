@@ -1,5 +1,7 @@
 import type { Context, Hono } from 'hono';
 
+import { imageSize } from '../api/image-size.js';
+import { recordShape } from '../api/photo-shapes.js';
 import {
   addPhoto,
   createAlbum,
@@ -89,11 +91,15 @@ export function registerPhotoRoutes(app: Hono, deps: AdminDeps): void {
         refused.push(`${label}: larger than ${MAX_PHOTO_BYTES / (1024 * 1024)} MB. Shrink it first.`);
         continue;
       }
-      const stored = storeImage(deps.db, deps.dataDir, Buffer.from(await file.arrayBuffer()), file.name, 'photo');
+      const bytes = Buffer.from(await file.arrayBuffer());
+      const stored = storeImage(deps.db, deps.dataDir, bytes, file.name, 'photo');
       if (!stored.ok) {
         refused.push(`${label}: ${stored.message}${stored.suggestion === undefined ? '' : ` ${stored.suggestion}`}`);
         continue;
       }
+      // Its shape, from the bytes in hand, so a slideshow can pair it (plan item M3.7).
+      const size = imageSize(bytes);
+      if (size !== undefined) recordShape(deps.db, stored.name, size, true, now());
       const put = addPhoto(deps.db, album.id, stored.name, now());
       if (!put.ok) {
         refused.push(`${label}: ${put.message}`);

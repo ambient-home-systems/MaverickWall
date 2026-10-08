@@ -16,6 +16,14 @@
 
 ## Unreleased
 
+**Two portrait photos side by side.** An Image widget showing an album,
+Immich or a NAS folder has a new **Portrait photos** setting. Choose **Two
+side by side**, and in a box wider than it is tall, two portrait photos share
+it, each in its own half, instead of one sitting in the middle with empty
+space beside it. Landscape photos still show one at a time. Photos from
+Immich or a folder pair once they have been fetched, which can take until the
+next sync.
+
 ## 0.97.0
 
 **Photos can fade into each other.** An Image widget showing an album, Immich

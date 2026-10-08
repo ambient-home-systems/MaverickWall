@@ -254,7 +254,7 @@ describe('on a wall', () => {
     const h = await harness();
     await h.add();
     const id = folderId(h);
-    expect(readAlbumSlides(h.db).find((album) => album.id === id)).toEqual({ id, name: 'Holidays (folder)', photos: handles(h) });
+    expect(readAlbumSlides(h.db).find((album) => album.id === id)).toEqual({ id, name: 'Holidays (folder)', photos: handles(h), portraits: [] });
     const stamp = Date.now();
     h.db
       .prepare(

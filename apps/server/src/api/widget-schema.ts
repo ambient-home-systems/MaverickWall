@@ -502,6 +502,8 @@ const widgetConfigFields = z
     // How one photo gives way to the next (plan item M3.6): a cut (the
     // absence), a crossfade, or a crossfade with a slow zoom.
     slideMotion: z.enum(['cut', 'fade', 'zoom']).optional(),
+    // Two portrait photos side by side in a wide box (plan item M3.7).
+    pairPortraits: z.boolean().optional(),
     // How a picture sits in its box (plan item M3.5): fill (the absence), whole, or whole over a blur.
     fit: z.enum(['cover', 'contain', 'blur']).optional(),
     // While this media player plays, its album art instead (plan item M3.4).

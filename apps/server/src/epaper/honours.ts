@@ -482,6 +482,12 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
     why: 'a panel draws no photographs, and an e-paper panel never moves.',
   },
   {
+    key: 'pairPortraits',
+    types: ['image'],
+    label: 'Portrait photos',
+    why: 'a panel draws no photographs.',
+  },
+  {
     key: 'rotateSeconds',
     types: ['news'],
     label: 'Each headline shows for',

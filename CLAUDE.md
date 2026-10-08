@@ -4977,6 +4977,75 @@ server tests and one file, so the rest came with what was merged. That is
 recorded as read rather than explained. **Still unproven where it counts:**
 nobody has watched a fade on a kitchen tablet.
 
+**Two portrait photos can share a wide box (plan item M3.7).** *Portrait
+photos* sits under an album's Between photos: One at a time (the absence) or
+Two side by side. A pair is a *frame*, which is what the box shows at once,
+and `slideshow.ts` groups an album into frames one round at a time, in that
+round's order. A landscape, or a photo whose shape is not known yet, is a
+frame on its own. A portrait takes the next portrait after it, which then does
+not show again that round. **The number of frames in a round does not depend on
+the order**: every landscape is one, and every two portraits are one. So
+`slideAt`'s step-to-round arithmetic still holds, shuffled or not, and every
+wall with a wide box agrees on which pair is up. With no portraits it is
+`slideAt` exactly, a test says so frame for frame, and a pair is one box, so a
+crossfade fades it and a slow zoom grows it as one picture.
+
+**Whether the box is wide is the box's own reading.** `renderFreeform` draws
+the album a photo at a time, then measures the box once the canvas has laid
+out. If it is at least `PAIR_MIN_ASPECT` (1.2) wide, it draws the album again
+paired. That is the same seam the tier passes use, it reads the arrangement and
+never a photo, and so it gives the same answer on every tick. A tall box that
+asked for pairing shows one at a time, and so does a wide box that did not
+ask. The manifest sends `portraits` only to a widget that pairs, and only when
+there are any, so no hanging wall's document moves at the upgrade.
+
+**A photo's shape comes from its own header, because that is what the browser
+draws.** `image-size.ts` reads PNG, GIF, WebP and JPEG. A JPEG's EXIF
+orientation is applied, because a camera writes a portrait as a landscape
+raster with a tag saying "turn me", and Chromium honours the tag.
+`photo_shapes` (migration `0070`, one generated `CREATE TABLE`, read) holds the
+shape by handle, and `measured` says where it came from: a header, or a guess.
+Immich's own `width` and `height`, read at sync, are the guess, so an Immich
+album pairs before its previews have been fetched. A measurement replaces a
+guess, and a guess never replaces a measurement. Measuring happens from what
+this box keeps:
+- an album upload, from the bytes in hand;
+- after each Immich and folder sync has fetched ahead, from the cached copies;
+- once at boot, for every photo uploaded before this existed. A fault there
+  is logged and never stops the boot.
+
+A photo not fetched yet shows alone, and a large folder pairs fully as the
+fetch-ahead catches up, 40 photos a half-hour. The editor says so beside the
+control. `pairPortraits` is in `PANEL_IGNORES`.
+
+**Measured.** `browser-photo-pairing.test.ts` (2, real Chromium) has two
+halves:
+- **The header reader against Chromium's own encoders and decoder.** It
+  covers JPEG, WebP and PNG, and a JPEG given an EXIF block for orientations
+  6, 8, 3 and 2. Chromium is the authority for each, and the turned JPEG is
+  read as Chromium reads it.
+- **A real wall with an album uploaded through the Photos screen.** Two
+  portraits and a landscape go in, and their shapes are measured on upload.
+  The two portraits sit side by side in a wide box, each the box's full
+  height, the same width, in its own half, inside a crossfade's lower layer.
+  The landscape waits clear above, and is fetched ahead. A tall box and an
+  unasked box show the photo `slideAt` would. Only pairing widgets are sent
+  `portraits`. Over the hour, the wide box turns to the landscape alone.
+
+`photo-shapes.test.ts` covers the precedence, measuring all three caches and
+the manifest's rule. `immich.test.ts` covers a guess, then a measurement that
+corrects a wrong guess. The two `readAlbumSlides` assertions that pinned the
+shape exactly now carry `portraits: []`.
+
+Seventeen mutations were checked and all seventeen are red. Two failed to
+build on the first pass and were not counted until re-aimed. **5511 tests
+passing and 1 skipped, over 397 files**: calendar 153 over 10 · core 314 over 9
+· display 998 over 60 · server 4046 over 318, measured with `pnpm test` and a
+real Chromium. Against M3.6's 5500 over 395 that is +11 and +2, which is this
+change's own count. **Still unproven where it counts:** nobody has looked at a
+pair of real portrait photos on a kitchen television, and no real Immich has
+been asked whether its `width` and `height` are the right way up.
+
 
 
 
