@@ -389,7 +389,11 @@ a screen sees: the wall has no pointer and redraws every 15s, so motion confirms
 nothing and reads as a flicker in a room, and `draw()` rebuilds the whole wall on
 every tick, so a naive animation restarts four times a minute. The owner decided
 weather and countdown styles may move, and confetti may fall on a countdown's
-day. The reasons survive as the conditions (plan item P4.3):
+day; an Image widget's slideshow may fade and slowly zoom between photos (plan
+item M3.6), a one-shot scheduled on the wall clock by `lockAt` — the one lock
+with a positive delay, waiting for its moment — and the one `scale()` the
+stylesheet carries, on a photo layer that holds no words. The reasons survive
+as the conditions (plan item P4.3):
 
 - a looping effect takes a negative `animation-delay` from the corrected wall
   clock, so a rebuilt element resumes where the old one was;

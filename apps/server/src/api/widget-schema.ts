@@ -499,6 +499,9 @@ const widgetConfigFields = z
     album: z.string().regex(/^[0-9a-f]{16}$/, 'That is not an album.').optional(),
     slideSeconds: z.union([z.literal(60), z.literal(300), z.literal(900), z.literal(3600)]).optional(),
     slideOrder: z.enum(['in-order', 'shuffle']).optional(),
+    // How one photo gives way to the next (plan item M3.6): a cut (the
+    // absence), a crossfade, or a crossfade with a slow zoom.
+    slideMotion: z.enum(['cut', 'fade', 'zoom']).optional(),
     // How a picture sits in its box (plan item M3.5): fill (the absence), whole, or whole over a blur.
     fit: z.enum(['cover', 'contain', 'blur']).optional(),
     // While this media player plays, its album art instead (plan item M3.4).

@@ -268,8 +268,14 @@ export function lockLoop(node: HTMLElement, durationMs: number, wallNowMs: numbe
 /** What `lockLoop` marks a loop with, so `advanceLocks` can find it. It names no keyframes. */
 const LOOP_CLASS = 'fx-loop';
 
-/** Every element `lockLoop` or `lockOnce` has locked. */
-const LOCKED = `.${LOOP_CLASS}, .fx-playing`;
+/**
+ * What `lockAt` marks a scheduled one-shot with (plan item M3.6). It names no
+ * keyframes either.
+ */
+const SCHEDULED_CLASS = 'fx-scheduled';
+
+/** Every element `lockLoop`, `lockOnce` or `lockAt` has locked. */
+const LOCKED = `.${LOOP_CLASS}, .fx-playing, .${SCHEDULED_CLASS}`;
 
 /**
  * Move one lock on by `byMs`: round its cycle for a loop, straight on for a
@@ -279,6 +285,12 @@ function shiftLock(node: HTMLElement, byMs: number): void {
   const duration = parseFloat(node.style.animationDuration);
   const into = -parseFloat(node.style.animationDelay);
   if (!(duration > 0) || !Number.isFinite(into) || !Number.isFinite(byMs)) return;
+  if (node.classList.contains(SCHEDULED_CLASS)) {
+    // Either side of its start, a scheduled one-shot moves on by exactly the
+    // lag, the delay passing through zero rather than stopping at it.
+    node.style.animationDelay = scheduledDelay(-(into + byMs));
+    return;
+  }
   if (node.classList.contains(LOOP_CLASS)) {
     node.style.animationDelay = phaseDelay(duration, into + byMs);
     return;
@@ -383,4 +395,31 @@ export function lockOnce(node: HTMLElement, durationMs: number, phase: OneShotPh
   node.style.animationDelay = phase.delay;
   node.classList.add('fx-playing');
   return true;
+}
+
+/** A delay of `ms`, either sign, as CSS reads it. */
+function scheduledDelay(ms: number): string {
+  const rounded = Math.round(ms);
+  return rounded === 0 ? '0ms' : `${rounded}ms`;
+}
+
+/**
+ * Lock a one-shot to a moment on the wall clock, past or still to come (plan
+ * item M3.6): a photo's crossfade, which starts two seconds before its swap,
+ * and its slow zoom.
+ *
+ * The one place in this module a delay may be **positive**, and on purpose. A
+ * crossfade is scheduled rather than fired: the next photo sits on top at the
+ * fade's first frame — the scoped block fills both ways — until the clock
+ * reaches its start. Every rebuild computes the same start from the same clock,
+ * so a redraw before the fade, in the middle of it or after it lands on the
+ * same frame; and `advanceLocks` and `settleLocks` move it on by the draw's lag
+ * exactly as they move a loop, through zero rather than clamping at it, which
+ * would start every crossfade the moment it was drawn.
+ */
+export function lockAt(node: HTMLElement, durationMs: number, startAtMs: number, wallNowMs: number): void {
+  if (!Number.isFinite(durationMs) || durationMs <= 0 || !Number.isFinite(startAtMs) || !Number.isFinite(wallNowMs)) return;
+  node.style.animationDuration = `${durationMs}ms`;
+  node.style.animationDelay = scheduledDelay(startAtMs - wallNowMs);
+  node.classList.add(SCHEDULED_CLASS);
 }

@@ -16,6 +16,14 @@
 
 ## Unreleased
 
+**Photos can fade into each other.** An Image widget showing an album, Immich
+or a NAS folder has a new **Between photos** setting: a cut (as before), a
+two-second fade into the next photo, or a fade with a slow zoom while each
+photo is on show. Every wall fades at the same moment, because the timing comes
+from the wall's clock. It only moves while the wall's Motion switch is on, and
+never on a device set to reduce motion; there it is still a cut. Rotating
+wallpapers still change with a cut.
+
 ## 0.96.0
 
 **Pictures that fit.** An Image widget's new **Fit** setting chooses how a
