@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.98.0
+
 **Two portrait photos side by side.** An Image widget showing an album,
 Immich or a NAS folder has a new **Portrait photos** setting. Choose **Two
 side by side**, and in a box wider than it is tall, two portrait photos share
