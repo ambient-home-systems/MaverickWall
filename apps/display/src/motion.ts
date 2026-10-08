@@ -32,7 +32,9 @@
  *
  * This is the **only** module in the wall's import graph that says "animation",
  * and it writes exactly two properties: `animation-duration` and
- * `animation-delay`, inline, on the element it is handed. Neither of those
+ * `animation-delay`, inline, on the element it is handed. The one thing it
+ * reads back is when the browser started each animation (`settleLocks`), which
+ * moves nothing either. Neither of those
  * moves anything on its own. What moves an element is an `animation-name`, and
  * that is declared only in `display.css`, inside
  * `@media (prefers-reduced-motion: no-preference)` and under
@@ -266,41 +268,105 @@ export function lockLoop(node: HTMLElement, durationMs: number, wallNowMs: numbe
 /** What `lockLoop` marks a loop with, so `advanceLocks` can find it. It names no keyframes. */
 const LOOP_CLASS = 'fx-loop';
 
+/** Every element `lockLoop` or `lockOnce` has locked. */
+const LOCKED = `.${LOOP_CLASS}, .fx-playing`;
+
+/**
+ * Move one lock on by `byMs`: round its cycle for a loop, straight on for a
+ * one-shot, which is never handed a positive delay (that would hold it still).
+ */
+function shiftLock(node: HTMLElement, byMs: number): void {
+  const duration = parseFloat(node.style.animationDuration);
+  const into = -parseFloat(node.style.animationDelay);
+  if (!(duration > 0) || !Number.isFinite(into) || !Number.isFinite(byMs)) return;
+  if (node.classList.contains(LOOP_CLASS)) {
+    node.style.animationDelay = phaseDelay(duration, into + byMs);
+    return;
+  }
+  const elapsed = Math.max(0, Math.round(into + byMs));
+  node.style.animationDelay = elapsed === 0 ? '0ms' : `-${elapsed}ms`;
+}
+
 /**
  * Move every lock under `root` on by the time the draw itself took.
  *
  * A lock is taken from the clock the draw read **when it started**, and the
- * browser starts the animation on the first frame **after the draw ends**, so
- * the element lands that far behind where the clock says it is. That gap is the
- * draw's own duration, and the trouble is that it is not the same twice:
- * measured on a real wall (the Classic seed with a `today` forecast), it was
- * 15–25ms idle, about 60ms at 6x CPU throttling and about 250ms at 20x — and
- * on a loaded machine one draw can be cheap and the next dear. Two draws that
- * lag differently put the rebuilt element that much away from the one it
+ * browser starts the animation only once the draw has ended, so the element
+ * lands that far behind where the clock says it is. That gap is the draw's own
+ * duration, and the trouble is that it is not the same twice: measured on a
+ * real wall (the Classic seed with a `today` forecast), it was 15–25ms idle,
+ * about 60ms at 6x CPU throttling and about 250ms at 20x — and on a loaded
+ * machine one draw can be cheap and the next dear. Two draws that lag
+ * differently put the rebuilt element that much away from the one it
  * replaced, which is a jump on the glass, and on a CI runner it measured past
  * 300ms (`browser-weather-today`'s glow, the flake that found this).
  *
  * So `draw()` calls this last, with how long it has been since it read the
  * clock, and every loop and every playing one-shot is moved on by exactly that.
- * What is left is the gap from the end of the draw to the frame that starts the
- * animation, which measured within 20ms of the draw's end even at 20x. A lock
- * is re-written rather than taken late in the first place because the renderer
- * decides *what* to draw from the same reading — taking the clock twice in one
- * draw is how a wall comes to draw one minute and phase another.
+ * A lock is re-written rather than taken late in the first place because the
+ * renderer decides *what* to draw from the same reading — taking the clock
+ * twice in one draw is how a wall comes to draw one minute and phase another.
  *
- * Re-writing the delay of an element whose animation already exists is a
- * timing update to that animation, not a restart: the browser keeps its start
- * time and reads the new delay against it.
+ * **This is the half that needs no help from the browser, and it is not the
+ * whole gap.** What it cannot see is the rendering update after the draw — the
+ * style, layout and paint of the wall it has just rebuilt — which is where the
+ * browser actually starts the animation. That is `settleLocks`' to pay back.
  */
 export function advanceLocks(root: ParentNode, elapsedMs: number): void {
   if (!Number.isFinite(elapsedMs) || elapsedMs <= 0) return;
-  for (const node of [...root.querySelectorAll<HTMLElement>(`.${LOOP_CLASS}, .fx-playing`)]) {
-    const duration = parseFloat(node.style.animationDuration);
-    const into = -parseFloat(node.style.animationDelay);
-    if (!(duration > 0) || !Number.isFinite(into)) continue;
-    node.style.animationDelay = node.classList.contains(LOOP_CLASS)
-      ? phaseDelay(duration, into + elapsedMs)
-      : `-${Math.round(into + elapsedMs)}ms`;
+  for (const node of [...root.querySelectorAll<HTMLElement>(LOCKED)]) shiftLock(node, elapsedMs);
+}
+
+/**
+ * Once the browser has started each lock's animation, move the lock on by
+ * however long after `lockedAtMs` that turned out to be.
+ *
+ * `advanceLocks` pays back the draw's script and leaves the rendering update
+ * after it, and the rendering update is not small on a slow device: it lays
+ * out and paints the whole rebuilt wall. Measured on this wall with a CPU hog
+ * on every core, from the end of the draw to the glow's own start time: 36ms
+ * at 40x CPU throttling, 173ms at 120x and 312ms at 200x — about a tenth of
+ * the draw itself, at every rate, and nothing else in the gap moved (the
+ * clock's offset was identical across both draws). A loaded CI runner is
+ * slower than that laptop, so at its 40x the same gap read 360–440ms, which
+ * is `browser-weather-today`'s flake after `advanceLocks` had landed.
+ *
+ * So the time is read off the animation rather than predicted: its `ready`
+ * resolves once the browser has given it a start time, and the wall clock at
+ * that instant is the corrected clock now less how long ago the start was on
+ * the page's own clock (`pageNow`, the clock the document timeline counts
+ * from). The lock is moved on by the difference, which is a timing update to
+ * the running animation rather than a restart: the start time stays and the
+ * new delay is read against it. It costs the frame or two the element is
+ * drawn at the uncorrected phase, which is this gap and no more.
+ *
+ * A browser that cannot list an element's animations — an old kiosk WebView —
+ * keeps `advanceLocks`' half and loses this one, which is the side to be wrong
+ * on: a draw must never be the thing that fails, and a node rebuilt before its
+ * animation started is simply left alone.
+ */
+export function settleLocks(
+  root: ParentNode,
+  lockedAtMs: number,
+  wallNow: () => number,
+  pageNow: () => number,
+): void {
+  if (!Number.isFinite(lockedAtMs)) return;
+  for (const node of [...root.querySelectorAll<HTMLElement>(LOCKED)]) {
+    if (typeof node.getAnimations !== 'function') return;
+    // One inline delay times every animation on the node, so the first says when.
+    const first = node.getAnimations()[0];
+    if (first === undefined) continue;
+    first.ready.then(
+      (started) => {
+        const at = started.startTime;
+        if (typeof at !== 'number' || !node.isConnected) return;
+        shiftLock(node, wallNow() - (pageNow() - at) - lockedAtMs);
+      },
+      // Cancelled before it started: the node was rebuilt or stilled, and
+      // there is nothing left to correct.
+      () => undefined,
+    );
   }
 }
 

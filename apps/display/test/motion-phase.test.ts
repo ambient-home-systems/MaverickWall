@@ -10,6 +10,7 @@ import {
   lockOnce,
   oneShotPhase,
   phaseDelay,
+  settleLocks,
 } from '../src/motion.js';
 
 /**
@@ -243,5 +244,73 @@ describe('paying back the time a draw took', () => {
     expect(one.style['animationDelay']).toBe('-3000ms');
     advanceLocks(rootOf(one, done), 100);
     expect(done.style).toEqual({});
+  });
+});
+
+/**
+ * A marked node the browser has started, `startedAt` on the page's own clock —
+ * or one whose start never came (`startedAt: 'cancelled'`), or a browser that
+ * cannot list a node's animations at all (`startedAt: undefined`).
+ */
+function startedNode(startedAt: number | 'cancelled' | undefined, connected = true) {
+  const one = markedNode();
+  const node = one.node as unknown as Record<string, unknown>;
+  node['isConnected'] = connected;
+  if (startedAt !== undefined) {
+    const ready = startedAt === 'cancelled'
+      ? Promise.reject(new Error('AbortError'))
+      : Promise.resolve({ startTime: startedAt });
+    node['getAnimations'] = () => [{ ready }];
+  }
+  return one;
+}
+
+/** Let every `ready` the module waits on resolve. */
+const settled = (): Promise<void> => new Promise((done) => setTimeout(done, 0));
+
+describe('paying back the rendering after a draw, once the browser has started the animation', () => {
+  /*
+   * The page's clock reads 10,000 when the module settles, and the corrected
+   * wall clock reads 1,000,000 at that instant; a start at page time 9,860 was
+   * therefore at wall 999,860. A lock taken for wall 999,700 started 160ms
+   * after it, and is moved on by exactly that.
+   */
+  const wallNow = (): number => 1_000_000;
+  const pageNow = (): number => 10_000;
+
+  it('moves a loop on by how long after its lock the browser started it', async () => {
+    const one = startedNode(9_860);
+    lockLoop(one.node, 6_000, 999_700);
+    settleLocks(rootOf(one), 999_700, wallNow, pageNow);
+    await settled();
+    expect(one.style['animationDelay']).toBe(phaseDelay(6_000, 999_860));
+  });
+
+  it('moves a playing one-shot on by it too, straight on rather than round a cycle', async () => {
+    const once = startedNode(9_860);
+    lockOnce(once.node, 2_400, { playing: true, delay: '-900ms' });
+    settleLocks(rootOf(once), 999_700, wallNow, pageNow);
+    await settled();
+    expect(once.style['animationDelay']).toBe('-1060ms');
+  });
+
+  it('never gives a one-shot a positive delay, which would hold it still', async () => {
+    const once = startedNode(9_000);
+    lockOnce(once.node, 2_400, { playing: true, delay: '-100ms' });
+    settleLocks(rootOf(once), 999_700, wallNow, pageNow);
+    await settled();
+    expect(once.style['animationDelay']).toBe('0ms');
+  });
+
+  it('leaves a lock alone when the browser cannot say, the node is gone, or it never started', async () => {
+    const old = startedNode(undefined);
+    const gone = startedNode(9_860, false);
+    const cancelled = startedNode('cancelled');
+    for (const one of [old, gone, cancelled]) lockLoop(one.node, 6_000, 999_700);
+    settleLocks(rootOf(old), 999_700, wallNow, pageNow);
+    settleLocks(rootOf(gone), 999_700, wallNow, pageNow);
+    settleLocks(rootOf(cancelled), 999_700, wallNow, pageNow);
+    await settled();
+    for (const one of [old, gone, cancelled]) expect(one.style['animationDelay']).toBe(phaseDelay(6_000, 999_700));
   });
 });

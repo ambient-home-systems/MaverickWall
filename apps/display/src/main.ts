@@ -29,7 +29,7 @@ import {
 import { announcement, buildModel, localTime } from './viewmodel.js';
 import { createManifestStore } from './store.js';
 import { createCustomCssSheet, customCssBlocks } from './custom-css.js';
-import { advanceLocks, createOneShotMemory } from './motion.js';
+import { advanceLocks, createOneShotMemory, settleLocks } from './motion.js';
 import { assess, DEFAULT_LIMITS } from './watchdog.js';
 
 /**
@@ -477,10 +477,13 @@ function start(): void {
     /*
      * Last, so it covers everything above: whatever moves was locked to `now`,
      * which this draw read before spending its own time building the wall, and
-     * the browser starts it on the frame after. `advanceLocks` says why that
-     * gap has to be paid back rather than tolerated.
+     * the browser starts it only after laying out and painting what was built.
+     * `advanceLocks` pays back the draw and `settleLocks` the rendering after
+     * it; each says why its gap has to be paid back rather than tolerated.
      */
-    advanceLocks(root, clock.now() - now);
+    const lockedAt = clock.now();
+    advanceLocks(root, lockedAt - now);
+    settleLocks(root, lockedAt, () => clock.now(), () => performance.now());
     // What is drawn, said. No-op unless the sentence itself changed.
     announce(announcement(model));
     lastDrawAt = Date.now();
