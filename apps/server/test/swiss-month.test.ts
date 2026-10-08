@@ -5,6 +5,7 @@ import { widgetConfigBody } from '../src/api/widget-schema.js';
 import type { Framebuffer } from '../src/epaper/framebuffer.js';
 import { renderFreeformEpaper, type PlacedEpaperWidget } from '../src/epaper/widgets.js';
 import { buildEpaperModel } from '../src/epaper/viewmodel.js';
+import { bitString } from './epaper-frame.js';
 
 /**
  * The Swiss month mode, at the two boundaries a display change has to cross.
@@ -72,11 +73,7 @@ const MODEL = buildEpaperModel(M);
 function frame(config: Record<string, unknown>): string {
   const widget: PlacedEpaperWidget = { type: 'calendar', x: 0, y: 0, w: 1, h: 1, z: 0, config };
   const fb: Framebuffer = renderFreeformEpaper(MODEL, M, [widget], PANEL);
-  let bits = '';
-  for (let y = 0; y < PANEL.height; y++) {
-    for (let x = 0; x < PANEL.width; x++) bits += fb.get(x, y) ? '1' : '0';
-  }
-  return bits;
+  return bitString(fb, PANEL.width, PANEL.height);
 }
 
 describe('the swiss cellEvents value', () => {

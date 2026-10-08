@@ -6,6 +6,7 @@ import type { Manifest, ManifestDay } from '../src/api/manifest.js';
 import { EPAPER_RENDERER_VERSION } from '../src/epaper/frame.js';
 import { renderFreeformEpaper, type PlacedEpaperWidget } from '../src/epaper/widgets.js';
 import { buildEpaperModel } from '../src/epaper/viewmodel.js';
+import { bitString } from './epaper-frame.js';
 
 /**
  * The clock's three variants on one bit (RFC 014 §4.2), decoded.
@@ -71,11 +72,7 @@ const PLAIN_CONFIGS: Readonly<Record<string, Record<string, unknown>>> = {
 function frame(config: Record<string, unknown>, which: Case): string {
   const widget: PlacedEpaperWidget = { type: 'clock', ...which.box, z: 0, config };
   const fb = renderFreeformEpaper(MODEL, M, [widget], which.panel);
-  let bits = '';
-  for (let y = 0; y < which.panel.height; y++) {
-    for (let x = 0; x < which.panel.width; x++) bits += fb.get(x, y) ? '1' : '0';
-  }
-  return bits;
+  return bitString(fb, which.panel.width, which.panel.height);
 }
 
 const sha = (bits: string): string => createHash('sha256').update(bits).digest('hex');

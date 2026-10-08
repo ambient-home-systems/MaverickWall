@@ -6,6 +6,7 @@ import type { Manifest, ManifestDay } from '../src/api/manifest.js';
 import { renderFreeformEpaper, type PlacedEpaperWidget } from '../src/epaper/widgets.js';
 import { buildEpaperModel } from '../src/epaper/viewmodel.js';
 import type { Framebuffer } from '../src/epaper/framebuffer.js';
+import { bitString } from './epaper-frame.js';
 
 /**
  * A countdown on one bit, in the looks a panel draws (plan item P5.2), decoded.
@@ -93,11 +94,7 @@ function render(config: Record<string, unknown>, which: Case): Framebuffer {
 }
 
 function bits(fb: Framebuffer, which: Case): string {
-  let out = '';
-  for (let y = 0; y < which.panel.height; y++) {
-    for (let x = 0; x < which.panel.width; x++) out += fb.get(x, y) ? '1' : '0';
-  }
-  return out;
+  return bitString(fb, which.panel.width, which.panel.height);
 }
 
 const frame = (config: Record<string, unknown>, which: Case): string => bits(render(config, which), which);

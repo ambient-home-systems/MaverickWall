@@ -7,6 +7,7 @@ import type { Framebuffer } from '../src/epaper/framebuffer.js';
 import { EPAPER_RENDERER_VERSION } from '../src/epaper/frame.js';
 import { buildEpaperModel } from '../src/epaper/viewmodel.js';
 import { renderFreeformEpaper, type PlacedEpaperWidget } from '../src/epaper/widgets.js';
+import { bitString } from './epaper-frame.js';
 
 /**
  * The To-do widget on a panel, drawing a Home Assistant list (RFC 012 §6.3).
@@ -62,9 +63,7 @@ function frame(config: Record<string, unknown>, size: readonly [number, number],
     width: size[0],
     height: size[1],
   });
-  let bits = '';
-  for (let y = 0; y < size[1]; y++) for (let x = 0; x < size[0]; x++) bits += fb.get(x, y) ? '1' : '0';
-  return bits;
+  return bitString(fb, size[0], size[1]);
 }
 
 /** The same render, from a manifest the caller built — for the `canTick` pair. */
@@ -78,9 +77,7 @@ function frameFrom(
     width: size[0],
     height: size[1],
   });
-  let bits = '';
-  for (let y = 0; y < size[1]; y++) for (let x = 0; x < size[0]; x++) bits += fb.get(x, y) ? '1' : '0';
-  return bits;
+  return bitString(fb, size[0], size[1]);
 }
 
 /** The fixture with the list's own affordance flipped, and nothing else moved. */
