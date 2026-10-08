@@ -188,3 +188,28 @@ export function isWidgetGround(value: unknown): value is WidgetGround {
 export function themeTone(bg: string): WallpaperTone {
   return isLight(bg) ? 'light' : 'dark';
 }
+
+/**
+ * The bundled picture a slideshow box draws when it has no photo to show
+ * (plan item M3.8): a photo the wall could not fetch, or an Immich or folder
+ * source with nothing in it. A quiet gradient of the wall's own tone — Dusk on
+ * a dark theme, Mist on a light one — so a box that has lost its photos reads
+ * as a picture frame resting rather than as a hole, and its contrast promise
+ * is the one every wallpaper of the tone already keeps.
+ */
+export const PHOTO_FALLBACK: Readonly<Record<WallpaperTone, string>> = { dark: 'dusk', light: 'mist' };
+
+/** What follows the reason a photo could not be fetched, on the Photos screen (plan item M3.8). */
+export const PHOTO_UNFETCHED = 'Until it can be fetched, a wall shows a bundled picture in its place.';
+
+export interface PhotoFallback {
+  readonly small: string;
+  readonly large: string;
+  readonly focal?: { readonly x: number; readonly y: number };
+}
+
+export function photoFallback(tone: WallpaperTone): PhotoFallback | undefined {
+  const picture = wallpaperById(PHOTO_FALLBACK[tone]);
+  if (picture === undefined) return undefined;
+  return { small: picture.small, large: picture.large, ...(picture.focal === undefined ? {} : { focal: picture.focal }) };
+}

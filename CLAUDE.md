@@ -5046,6 +5046,74 @@ change's own count. **Still unproven where it counts:** nobody has looked at a
 pair of real portrait photos on a kitchen television, and no real Immich has
 been asked whether its `width` and `height` are the right way up.
 
+**A slideshow box never goes black (plan item M3.8).** Magic Frame's background
+goes black when its photo source is down at load, and here the same failure
+left an Image widget's box the theme's ground: a black rectangle on a dark
+wall. The last good list was already kept when a sync fails. What was missing
+was a picture for the box when a photo cannot be fetched, and a reason on the
+screen a household reads.
+
+**Every album widget carries a bundled stand-in for its wall's tone.**
+`PHOTO_FALLBACK` names Dusk for a dark theme and Mist for a light one, chosen
+by `themeTone` of the wall's own `--bg`. They are quiet gradients that already
+keep every wallpaper's contrast promise. It travels in the album's config as
+`fallback`, two file names and a focal point, and that changes every album
+widget's manifest once, at the upgrade; a wall must have the stand-in before
+it is offline, which is when it is needed. `photo-fallback.ts` reads it only
+as two `WALLPAPER_FILE` names.
+
+**A photo that cannot be fetched turns its own box into the stand-in.** A
+background image cannot say it failed, so each photo is drawn with a hidden
+probe image beside it. On error, the box clears and takes the stand-in where
+it stands, and the failure is remembered in this browser for five minutes.
+The fifteen-second rebuild therefore draws the stand-in at once and does not
+ask for the photo again; after five minutes it tries again, because a source
+that was down comes back.
+
+**An Immich source or folder with nothing in it draws the stand-in, not an
+instruction.** `readAlbumSlides` marks those `remote`, and the manifest sends
+an empty one no name. A wall reads "no name, a stand-in" as "draw the
+picture". It reads an album with a name as "ask for photos", and an album
+with neither as "gone". An empty album of the household's own still asks,
+because that one is theirs to fill.
+
+**The Photos screen says why.** A photo fetch that fails for Immich or a
+folder sets the source's error to the fetcher's own sentence, followed by
+`PHOTO_UNFETCHED`. That is shown under Problem with "The photos it had are
+still shown", and the next sync that works clears it. A source with nothing
+in it and no error says so, in words that fit it: "Immich has no memories for
+today" for memories.
+
+**Measured.** `browser-photo-fallback.test.ts` (1, real Chromium) works on a
+real paired wall on Panels. An album leads with a photo this box never stored,
+which gets a 404 as a source that is down does:
+- an init-script MutationObserver sees that box turn into the stand-in in
+  place;
+- its computed background is Dusk's file, and that file loads;
+- it has no words;
+- the rebuild draws the stand-in with no probe and makes **no request** for
+  the missing photo;
+- an empty Immich source draws the stand-in, and an empty album of the
+  household's own still says "Add photos to Garden";
+- over the hour, the photo this box does have draws with its probe and no
+  stand-in.
+
+Unit tests cover the failure memory and the stand-in reader, the manifest's
+three readings, and the Immich and folder reasons, including the sync that
+clears them. The two pinned `readAlbumSlides` assertions now carry
+`remote: true`.
+
+Fourteen mutations were checked and all fourteen are red. Two failed to build
+on the first pass and were re-aimed. One — dropping the memory's mark — stayed
+green until the test counted requests, because a rebuilt box failing again
+within milliseconds reads exactly like one drawn from memory.
+
+**5525 tests passing and 1 skipped, over 400 files**: calendar 153 over 10 ·
+core 314 over 9 · display 1003 over 61 · server 4055 over 320, measured with
+`pnpm test` and a real Chromium. Against M3.7's 5511 over 397 that is +14 and
++3, which is this change's own count. **Still unproven where it counts:**
+nobody has seen a real Immich go down under a kitchen wall.
+
 
 
 

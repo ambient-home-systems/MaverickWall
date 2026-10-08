@@ -175,6 +175,10 @@ export function folderSection(db: AdminDeps['db']): string {
               ) +
                 (folder.lastError === null ? '' : errorBlock(folder.lastError, 'The photos it had are still shown.')) +
                 (skipped === undefined ? '' : `<p class="hint">${escapeHtml(skipped)}</p>`) +
+                // Nothing in it is not a fault, and a wall does not go blank over it (plan item M3.8).
+                (folder.count === 0 && folder.lastError === null
+                  ? `<p class="hint">No photos this wall can show are in it right now. A wall showing it draws a bundled picture until there are.</p>`
+                  : '') +
                 `<form method="post" action="admin/photos/folders/${escapeHtml(folder.id)}/remove">` +
                 `<button class="secondary" type="submit" aria-label="Remove ${escapeHtml(folder.name)}">Remove</button></form>`,
               folder.lastError === null ? {} : { tone: 'danger' },

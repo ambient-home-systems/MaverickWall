@@ -17,6 +17,7 @@ import { immichBase } from '../src/modules/immich/client.js';
 import { immichHandle } from '../src/modules/immich/store.js';
 import { readAlbumSlides } from '../src/api/photo-albums.js';
 import { fakeImmich, uuid, type FakeImmich } from './fake-immich.js';
+import { PHOTO_UNFETCHED } from '../src/wallpapers.js';
 
 /**
  * Immich as a photo source (plan item M3.2), against the real app, a real
@@ -284,7 +285,7 @@ describe('on a wall', () => {
 
   it('is an album like any other to the slideshow, by handle, and the manifest names nothing of Immich', async () => {
     const { h, id, handles } = await wallWithSummer();
-    expect(readAlbumSlides(h.db).find((album) => album.id === id)).toEqual({ id, name: 'Summer 2026 (Immich)', photos: handles, portraits: [] });
+    expect(readAlbumSlides(h.db).find((album) => album.id === id)).toEqual({ id, name: 'Summer 2026 (Immich)', photos: handles, portraits: [], remote: true });
     const manifest = await (await h.wall('/d/manifest')).text();
     expect(manifest).toContain(handles[0]);
     expect(manifest).not.toContain(h.fake.base);
@@ -308,6 +309,42 @@ describe('on a wall', () => {
     expect(again.status).toBe(200);
     // One that was never fetched cannot be served while Immich is down: a 404, never a stranger's bytes.
     expect((await h.wall(`/d/media/${handles[1]}`)).status).toBe(404);
+  });
+
+  it('says on the Photos screen why a photo could not be fetched, and a sync that works clears it (plan item M3.8)', async () => {
+    const { h, id, handles } = await wallWithSummer();
+    h.fake.failWith = 503;
+    expect((await h.wall(`/d/media/${handles[1]}`)).status).toBe(404);
+    const said = (h.db.prepare('SELECT last_error AS error FROM immich_sources WHERE id = ?').get(id) as { error: string | null }).error;
+    expect(said).toContain('503');
+    expect(said).toContain(PHOTO_UNFETCHED);
+    const page = await (await h.get('/admin/photos')).text();
+    expect(page).toContain('a wall shows a bundled picture in its place');
+    h.fake.failWith = undefined;
+    const job = createImmichSyncHandler({ db: h.db, keyring: h.keyring, fetcher: createFetcher(), dataDir: h.dataDir, timezone: () => 'Europe/London' });
+    expect(await job({ key: 'immich-sync', kind: 'immich-sync', nextRunAt: 0, consecutiveFailures: 0 })).toEqual({ status: 'ok' });
+    expect(h.db.prepare('SELECT last_error AS error FROM immich_sources WHERE id = ?').get(id)).toEqual({ error: null });
+  });
+
+  it('sends a source with nothing in it no name, and the stand-in, and says so on the Photos screen (plan item M3.8)', async () => {
+    const h = await harness();
+    h.fake.memories = [];
+    await h.connect();
+    await h.add('memories');
+    const id = (h.db.prepare("SELECT id FROM immich_sources WHERE kind = 'memories'").get() as { id: string }).id;
+    const stamp = Date.now();
+    h.db
+      .prepare(
+        `INSERT INTO layout_widgets (id, screen_id, orientation, type, x, y, w, h, z, config, created_at, updated_at)
+         VALUES ('w-show', 'wall', 'portrait', 'image', 0, 0, 1, 1, 0, ?, ?, ?)`,
+      )
+      .run(JSON.stringify({ album: id }), stamp, stamp);
+    const manifest = (await (await h.wall('/d/manifest')).json()) as { layout: { portrait: { widgets: { id: string; config: Record<string, unknown> }[] } } };
+    const config = manifest.layout.portrait.widgets.find((one) => one.id === 'w-show')?.config;
+    expect(config?.['slides']).toEqual([]);
+    expect(config?.['albumName']).toBeUndefined();
+    expect(String((config?.['fallback'] as { small?: string } | undefined)?.small)).toMatch(/^dusk-1600\./);
+    expect(await (await h.get('/admin/photos')).text()).toContain('Immich has no memories for today. A wall showing them draws a bundled picture until there are.');
   });
 
   it('serves nothing for a handle no source names', async () => {

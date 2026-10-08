@@ -4358,6 +4358,8 @@ img.wxi { display: block; object-fit: contain; }
 .fw-art { background-size: contain; background-color: var(--panel); }
 /* An album slideshow's next photo, fetched ahead of the swap and never shown. */
 .fw-image-next { display: none; }
+/* Whether a slideshow photo loaded, which a background cannot say (plan item M3.8). */
+.fw-image-probe { display: none; }
 
 /* Notes: free text, kept as written. */
 .nt { display: flex; flex-direction: column; min-width: 0; }

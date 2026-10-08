@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, it } from 'vitest';
+import { PHOTO_UNFETCHED } from '../src/wallpapers.js';
 import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -254,7 +255,7 @@ describe('on a wall', () => {
     const h = await harness();
     await h.add();
     const id = folderId(h);
-    expect(readAlbumSlides(h.db).find((album) => album.id === id)).toEqual({ id, name: 'Holidays (folder)', photos: handles(h), portraits: [] });
+    expect(readAlbumSlides(h.db).find((album) => album.id === id)).toEqual({ id, name: 'Holidays (folder)', photos: handles(h), portraits: [], remote: true });
     const stamp = Date.now();
     h.db
       .prepare(
@@ -283,6 +284,17 @@ describe('on a wall', () => {
     h.nas.failWith = 503;
     expect((await h.wall(`/d/media/${first}`)).status).toBe(200);
     expect((await h.wall(`/d/media/${second}`)).status).toBe(404);
+  });
+
+  it('says on the Photos screen why a photo could not be fetched (plan item M3.8)', async () => {
+    const h = await harness();
+    await h.add();
+    const [, second] = handles(h);
+    h.nas.failWith = 503;
+    expect((await h.wall(`/d/media/${second}`)).status).toBe(404);
+    const said = (h.db.prepare('SELECT last_error AS error FROM photo_folders').get() as { error: string | null }).error;
+    expect(said).toContain(PHOTO_UNFETCHED);
+    expect(await (await h.get('/admin/photos')).text()).toContain('a wall shows a bundled picture in its place');
   });
 
   it('gives a changed photo a new handle, so a kept copy is never the old picture', async () => {

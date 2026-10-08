@@ -33,6 +33,7 @@ import { variantOf } from './variants.js';
 import { monthLookClasses, monthLooks, treatmentLooks, type MonthLooks } from './calendar-looks.js';
 import { boxRect, gutterStepFor } from './gutter.js';
 import { WALLPAPER_BASE, wallpaperFile, wallpaperPosition, widgetGroundFor, type WidgetGround } from './wallpaper.js';
+import { createFailedPhotos, standIn, standInFile, type StandIn } from './photo-fallback.js';
 import { childCells, groupChildren, topLevelWidgets } from './group-cells.js';
 import { applyStyleTokens, styleTokensOf } from './widget-style.js';
 import { encodeQr } from './qr.js';
@@ -2569,6 +2570,8 @@ export function renderWidget(
    * every other arm and every caller that has no box to name is unchanged.
    */
   widgetId = '',
+  /** Where bundled pictures are served from: a slideshow's stand-in is one (plan item M3.8). */
+  wallpaperBase: string = WALLPAPER_BASE,
 ): HTMLElement | undefined {
   switch (type) {
     case 'clock':
@@ -2600,7 +2603,7 @@ export function renderWidget(
     case 'chores':
       return renderChoresWidget(model, config);
     case 'image':
-      return renderImageWidget(config, mediaBase, model.now);
+      return renderImageWidget(config, mediaBase, model.now, false, wallpaperBase);
     case 'qr':
       return renderQrWidget(config);
     case 'heading':
@@ -2894,6 +2897,7 @@ function renderImageWidget(
    * again with this set. Off, the album shows one photo at a time.
    */
   wide = false,
+  wallpaperBase: string = WALLPAPER_BASE,
 ): HTMLElement {
   const c = widgetConfig(config);
   /*
@@ -2914,12 +2918,18 @@ function renderImageWidget(
     const photos = slides.filter((one): one is string => typeof one === 'string' && STORED_IMAGE_NAME.test(one));
     const name = typeof c['albumName'] === 'string' ? c['albumName'] : undefined;
     const show = slideConfig(c);
+    // The bundled picture this box draws when it has no photo to show (plan item M3.8).
+    const stand = standIn(c['fallback']);
+    const draw = (photo: string): HTMLElement => photoBox(photo, mediaBase, fit, stand, now, wallpaperBase);
     const portraits = new Set(
       wide && c['pairPortraits'] === true && Array.isArray(c['portraits'])
         ? c['portraits'].filter((one): one is string => typeof one === 'string' && STORED_IMAGE_NAME.test(one))
         : [],
     );
     const shown = frameAt(photos, portraits, now, show);
+    // An Immich source or a folder with nothing in it: the bundled picture,
+    // and the Photos screen says why (the server sends it no name).
+    if (shown === undefined && stand !== undefined && name === undefined) return standInBox(el('div', 'fw-image'), stand, wallpaperBase);
     if (shown === undefined) {
       // Said in words, never a hole: the album is empty, or it has gone.
       return el(
@@ -2932,8 +2942,8 @@ function renderImageWidget(
     }
     const box =
       show.motion === 'cut' || sameFrame(shown.next, shown.current)
-        ? frameBox(shown.current, mediaBase, fit)
-        : crossfadeBox(shown.current, shown.next, mediaBase, fit, show.motion === 'zoom', now, show.seconds);
+        ? frameBox(shown.current, draw)
+        : crossfadeBox(shown.current, shown.next, draw, show.motion === 'zoom', now, show.seconds);
     for (const photo of shown.next) {
       if (shown.current.includes(photo)) continue;
       // An `<img>`, because a hidden element's background is never fetched and
@@ -3014,8 +3024,7 @@ function pictureBox(url: string, fit: PictureFit): HTMLElement {
 function crossfadeBox(
   current: SlideFrame,
   next: SlideFrame,
-  mediaBase: string,
-  fit: PictureFit,
+  draw: (photo: string) => HTMLElement,
   zoom: boolean,
   now: number,
   seconds: number,
@@ -3024,7 +3033,7 @@ function crossfadeBox(
   const box = el('div', 'fw-image fw-slides');
   const layer = (frame: SlideFrame, top: boolean): HTMLElement => {
     const photo = el('div', top ? 'fw-photo fw-photo-next' : 'fw-photo');
-    const picture = frameBox(frame, mediaBase, fit);
+    const picture = frameBox(frame, draw);
     if (zoom) {
       picture.classList.add('fw-zoom');
       // From the start of this photo's own fade to the end of the next one.
@@ -3044,11 +3053,54 @@ function crossfadeBox(
  * side by side, each fitted to its own half as the household chose. A pair is
  * one box, so a crossfade fades it and a slow zoom grows it as one picture.
  */
-function frameBox(frame: SlideFrame, mediaBase: string, fit: PictureFit): HTMLElement {
-  if (frame.length === 1) return pictureBox(`url("${mediaBase}${frame[0]}")`, fit);
+function frameBox(frame: SlideFrame, draw: (photo: string) => HTMLElement): HTMLElement {
+  if (frame.length === 1) return draw(frame[0]);
   const pair = el('div', 'fw-image fw-pair');
-  for (const photo of frame) pair.appendChild(pictureBox(`url("${mediaBase}${photo}")`, fit));
+  for (const photo of frame) pair.appendChild(draw(photo));
   return pair;
+}
+
+/** The photos this browser could not fetch lately, so a rebuild draws the stand-in at once (plan item M3.8). */
+const failedPhotos = createFailedPhotos();
+
+/**
+ * One slideshow photo, or the bundled picture in its place (plan item M3.8).
+ *
+ * A photo that failed in the last few minutes is drawn as the stand-in
+ * outright. Otherwise the photo is drawn, with a hidden image beside it to say
+ * whether it loaded — a background cannot — and if it does not, the box turns
+ * into the stand-in where it stands and the failure is remembered. With no
+ * stand-in sent (a server older than this) it is the photo alone, as before.
+ */
+function photoBox(photo: string, mediaBase: string, fit: PictureFit, stand: StandIn | undefined, now: number, wallpaperBase: string): HTMLElement {
+  const url = `${mediaBase}${photo}`;
+  if (stand !== undefined && failedPhotos.failed(url, now)) return standInBox(el('div', 'fw-image'), stand, wallpaperBase);
+  const box = pictureBox(`url("${url}")`, fit);
+  if (stand === undefined) return box;
+  const probe = document.createElement('img');
+  probe.className = 'fw-image-probe';
+  probe.alt = '';
+  probe.setAttribute('aria-hidden', 'true');
+  probe.addEventListener('error', () => {
+    failedPhotos.mark(url, now);
+    standInBox(box, stand, wallpaperBase);
+  });
+  probe.src = url;
+  box.appendChild(probe);
+  return box;
+}
+
+/** Turn a picture box into the bundled stand-in: its own children go, and the wallpaper fills it. */
+function standInBox(box: HTMLElement, stand: StandIn, wallpaperBase: string): HTMLElement {
+  const screen = typeof window === 'undefined' ? { width: 0, height: 0 } : { width: window.innerWidth, height: window.innerHeight };
+  const ratio = typeof window === 'undefined' ? 1 : window.devicePixelRatio;
+  box.textContent = '';
+  box.classList.add('fw-standin');
+  box.style.backgroundImage = `url("${wallpaperBase}${standInFile(stand, screen, ratio)}")`;
+  box.style.backgroundSize = 'cover';
+  box.style.backgroundPosition = stand.position;
+  box.style.backgroundRepeat = 'no-repeat';
+  return box;
 }
 
 /** Whether an Image widget's album pairs its portrait photos and has any to pair. */
@@ -5628,7 +5680,7 @@ export function renderFreeform(
 
   /** Draw a widget's body into its box and enrol it for the passes below. */
   const fillBox = (box: HTMLElement, widget: ManifestWidget): void => {
-    const body = renderWidget(widget.type, model, widget.config, mediaBase, widget.id);
+    const body = renderWidget(widget.type, model, widget.config, mediaBase, widget.id, options.wallpaperBase ?? WALLPAPER_BASE);
     if (body === undefined) {
       // A box the household placed but that has no data yet says so, rather
       // than being an empty rectangle nobody can explain from the kitchen.
@@ -5789,7 +5841,7 @@ export function renderFreeform(
   for (const { box, widget, body } of pairing) {
     const height = body.clientHeight;
     if (height <= 0 || body.clientWidth / height < PAIR_MIN_ASPECT) continue;
-    box.replaceChild(renderImageWidget(widget.config, mediaBase, model.now, true), body);
+    box.replaceChild(renderImageWidget(widget.config, mediaBase, model.now, true, options.wallpaperBase ?? WALLPAPER_BASE), body);
   }
 
   /*

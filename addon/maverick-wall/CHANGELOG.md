@@ -16,6 +16,14 @@
 
 ## Unreleased
 
+**A photo frame that never goes black.** If a slideshow photo can't be
+fetched — Immich down before the wall had kept a copy, a NAS asleep — the
+box now shows a calm bundled picture instead of an empty rectangle: Dusk on a
+dark theme, Mist on a light one. It tries the photo again after a few
+minutes. An Immich source or NAS folder with nothing in it right now (no
+memories for today, say) shows the same picture rather than an instruction.
+The Photos screen says why each time.
+
 ## 0.98.0
 
 **Two portrait photos side by side.** An Image widget showing an album,

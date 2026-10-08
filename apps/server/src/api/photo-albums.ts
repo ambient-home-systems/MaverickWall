@@ -83,6 +83,12 @@ export interface AlbumSlides {
   readonly photos: readonly string[];
   /** Which of `photos` are portrait, where their shape is known (plan item M3.7). */
   readonly portraits?: readonly string[];
+  /**
+   * An Immich source or a NAS folder rather than an album of the household's
+   * own (plan item M3.8): when it has nothing in it, the household has nothing
+   * to add, so a wall draws a bundled picture rather than an instruction.
+   */
+  readonly remote?: true;
 }
 
 export function readAlbumSlides(db: SqliteDatabase): AlbumSlides[] {
@@ -101,9 +107,9 @@ export function readAlbumSlides(db: SqliteDatabase): AlbumSlides[] {
     })),
     // And what the household chose from Immich (plan item M3.2): each source
     // is one more album to the slideshow, its photos by handle.
-    ...readImmichSlides(db),
+    ...readImmichSlides(db).map((source) => ({ ...source, remote: true as const })),
     // And the household's NAS folders (plan item M3.3).
-    ...readFolderSlides(db),
+    ...readFolderSlides(db).map((folder) => ({ ...folder, remote: true as const })),
   ].map((album) => ({ ...album, portraits: album.photos.filter((photo) => portrait.has(photo)) }));
 }
 
