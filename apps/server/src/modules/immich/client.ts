@@ -197,7 +197,15 @@ export async function listPeople(fetcher: Fetcher, endpoint: ImmichEndpoint): Pr
   return { ok: true, value: out };
 }
 
-const asset = z.object({ id: UUID, type: z.string().max(20).optional().catch(undefined) });
+const side = z.number().int().positive().max(65_535).nullish().catch(undefined);
+const asset = z.object({ id: UUID, type: z.string().max(20).optional().catch(undefined), width: side, height: side });
+
+/**
+ * Immich's own idea of each photo's size, by asset id, collected as a list is
+ * read (plan item M3.7): a first guess at which photos are portrait, replaced
+ * by the preview's own header once it has been fetched.
+ */
+export type ImmichShapes = Map<string, { readonly width: number; readonly height: number }>;
 const searchPage = z.object({
   assets: z.object({
     items: z.array(z.unknown()).catch([]),
@@ -207,11 +215,14 @@ const searchPage = z.object({
 });
 
 /** Photo ids out of a list of assets; a video, or anything that is not one, is left out. */
-function photoIds(items: readonly unknown[]): string[] {
+function photoIds(items: readonly unknown[], shapes?: ImmichShapes): string[] {
   const out: string[] = [];
   for (const raw of items) {
     const one = asset.safeParse(raw);
-    if (one.success && (one.data.type === undefined || one.data.type === 'IMAGE')) out.push(one.data.id);
+    if (!one.success || (one.data.type !== undefined && one.data.type !== 'IMAGE')) continue;
+    out.push(one.data.id);
+    const { width, height } = one.data;
+    if (shapes !== undefined && typeof width === 'number' && typeof height === 'number') shapes.set(one.data.id, { width, height });
   }
   return out;
 }
@@ -222,7 +233,12 @@ export type ImmichFilter =
   | { readonly isFavorite: true };
 
 /** The photos a filter finds, newest first as Immich orders them, up to `MAX_PHOTOS`. */
-export async function searchPhotos(fetcher: Fetcher, endpoint: ImmichEndpoint, filter: ImmichFilter): Promise<ImmichResult<string[]>> {
+export async function searchPhotos(
+  fetcher: Fetcher,
+  endpoint: ImmichEndpoint,
+  filter: ImmichFilter,
+  shapes?: ImmichShapes,
+): Promise<ImmichResult<string[]>> {
   const out: string[] = [];
   let next: { page?: number; cursor?: string } = { page: 1 };
   for (let round = 0; round < MAX_PAGES && out.length < MAX_PHOTOS; round++) {
@@ -230,7 +246,7 @@ export async function searchPhotos(fetcher: Fetcher, endpoint: ImmichEndpoint, f
     if (!read.ok) return read;
     const shaped = searchPage.safeParse(read.value);
     if (!shaped.success) return { ok: false, message: 'Immich answered the search with something this cannot read.' };
-    for (const id of photoIds(shaped.data.assets.items)) if (!out.includes(id)) out.push(id);
+    for (const id of photoIds(shaped.data.assets.items, shapes)) if (!out.includes(id)) out.push(id);
     const cursor = shaped.data.assets.nextCursor;
     const page = shaped.data.assets.nextPage;
     if (typeof cursor === 'string' && cursor !== '') next = { cursor };
@@ -243,7 +259,12 @@ export async function searchPhotos(fetcher: Fetcher, endpoint: ImmichEndpoint, f
 const memory = z.object({ assets: z.array(z.unknown()).catch([]) });
 
 /** The photos in the memories Immich has for a day — "on this day", years ago. */
-export async function memoryPhotos(fetcher: Fetcher, endpoint: ImmichEndpoint, day: string): Promise<ImmichResult<string[]>> {
+export async function memoryPhotos(
+  fetcher: Fetcher,
+  endpoint: ImmichEndpoint,
+  day: string,
+  shapes?: ImmichShapes,
+): Promise<ImmichResult<string[]>> {
   const read = await getJson(fetcher, endpoint, `/api/memories?for=${encodeURIComponent(day)}`);
   if (!read.ok) {
     return read.status === 404
@@ -255,7 +276,7 @@ export async function memoryPhotos(fetcher: Fetcher, endpoint: ImmichEndpoint, d
   for (const raw of read.value) {
     const one = memory.safeParse(raw);
     if (!one.success) continue;
-    for (const id of photoIds(one.data.assets)) if (!out.includes(id)) out.push(id);
+    for (const id of photoIds(one.data.assets, shapes)) if (!out.includes(id)) out.push(id);
   }
   return { ok: true, value: out.slice(0, MAX_PHOTOS) };
 }

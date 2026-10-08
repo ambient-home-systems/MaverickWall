@@ -395,7 +395,19 @@ export function displayConfig(
   if (type === 'image' && typeof out['album'] === 'string') {
     const { album: id, ...rest } = out;
     const album = albums.find((one) => one.id === id);
-    return album === undefined ? { ...rest, slides: [] } : { ...rest, slides: [...album.photos], albumName: album.name };
+    if (album === undefined) return { ...rest, slides: [] };
+    /*
+     * Which photos are portrait (plan item M3.7), only for a widget that pairs
+     * them and only when there are any: every other slideshow sends what it
+     * always sent, so no hanging wall's manifest moves at the upgrade.
+     */
+    const portraits = rest['pairPortraits'] === true ? (album.portraits ?? []) : [];
+    return {
+      ...rest,
+      slides: [...album.photos],
+      albumName: album.name,
+      ...(portraits.length === 0 ? {} : { portraits: [...portraits] }),
+    };
   }
   if (type !== 'todo') return out;
   const list = out['list'];

@@ -26,6 +26,11 @@ export interface FakeAsset {
   readonly albums: readonly string[];
   readonly people: readonly string[];
   readonly favourite: boolean;
+  /** What Immich says the photo measures; 4032x3024 when not said. */
+  readonly width?: number | null;
+  readonly height?: number | null;
+  /** The preview's own size, when the test needs a particular shape. */
+  readonly preview?: { readonly width: number; readonly height: number };
 }
 
 export interface FakeImmich {
@@ -85,8 +90,8 @@ export async function fakeImmich(key = 'immich-test-key-0123456789abcdefghij'): 
     fileCreatedAt: '2026-07-01T10:00:00.000Z',
     fileModifiedAt: '2026-07-01T10:00:00.000Z',
     hasMetadata: true,
-    height: 3024,
-    width: 4032,
+    height: asset.height === undefined ? 3024 : asset.height,
+    width: asset.width === undefined ? 4032 : asset.width,
     isArchived: false,
     isEdited: false,
     isFavorite: asset.favourite,
@@ -234,7 +239,13 @@ export async function fakeImmich(key = 'immich-test-key-0123456789abcdefghij'): 
           return;
         }
         response.writeHead(200, { 'content-type': 'application/octet-stream' });
-        response.end(picture(index));
+        const shape = state.assets[index]?.preview;
+        if (shape === undefined) response.end(picture(index));
+        else {
+          const fb = new Framebuffer(shape.width, shape.height);
+          fb.set(0, 0);
+          response.end(Buffer.from(encodePng1bit(fb)));
+        }
         return;
       }
       send(response, 404, { message: `Cannot ${request.method} ${url.pathname}`, statusCode: 404 });

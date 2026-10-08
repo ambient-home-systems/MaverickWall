@@ -15,6 +15,7 @@ import { createPhotoFoldersSyncHandler } from './jobs/photo-folders-sync.js';
 import { createAlertJobHandler } from './modules/weather/alert-job.js';
 import { seedDefaultRules } from './api/rules.js';
 import { backfillClassic, reseedClassicForSetUp, retireDefaultWall } from './api/templates.js';
+import { measureKeptShapes } from './api/photo-shapes.js';
 import { householdSetUp } from './modules/index.js';
 import { createApp, MODULES } from './http/app.js';
 import { defaultDisplayDir, defaultMeteoconsDir, defaultWallpapersDir } from './http/static.js';
@@ -259,6 +260,19 @@ async function main(): Promise<void> {
    * seed properly a moment later. Guarded by its own column and runs once.
    */
   retireDefaultWall(db, setUp);
+
+  /*
+   * Which slideshow photos are portrait (plan item M3.7), for every photo this
+   * box already keeps a copy of and has not measured — every photo uploaded
+   * before this existed, on its first boot. Headers only, and once each.
+   */
+  // A fault here costs pairing until the next sync measures again, never the boot.
+  try {
+    const shapes = measureKeptShapes(db, resolved, Date.now());
+    if (shapes > 0) console.log(`[photos] measured ${shapes} photo${shapes === 1 ? '' : 's'} for pairing`);
+  } catch (error) {
+    console.warn(`[photos] could not measure photos for pairing: ${error instanceof Error ? error.message : String(error)}`);
+  }
 
   const fetcher = createFetcher();
   const household = readHousehold(db);

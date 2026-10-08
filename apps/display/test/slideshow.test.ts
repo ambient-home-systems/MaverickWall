@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SLIDE_SECONDS, FADE_MS, roundOrder, slideAt, slideConfig, slideTiming } from '../src/slideshow.js';
+import { DEFAULT_SLIDE_SECONDS, FADE_MS, frameAt, pairFrames, roundOrder, sameFrame, slideAt, slideConfig, slideTiming } from '../src/slideshow.js';
 
 /** Which photo an album shows, from the wall clock alone (plan item M5.12). */
 
@@ -68,5 +68,53 @@ describe('slideAt', () => {
       next: PHOTOS[0],
     });
     expect(slideAt([], 123_456_789, { seconds: 60, order: 'in-order', motion: 'cut' })).toBeUndefined();
+  });
+});
+
+describe('pairFrames (plan item M3.7)', () => {
+  const [a, b, c, d, e] = PHOTOS as [string, string, string, string, string];
+  it('puts a portrait with the next portrait after it, and leaves a landscape, an unknown and an odd one out alone', () => {
+    // a and c portrait, b landscape: c leaves its place to join a.
+    expect(pairFrames([a, b, c], new Set([a, c]))).toEqual([[a, c], [b]]);
+    // Three portraits: the third has nobody to pair with.
+    expect(pairFrames([a, b, c, d], new Set([a, b, d]))).toEqual([[a, b], [c], [d]]);
+    // Nothing known: one at a time, exactly as before.
+    expect(pairFrames([a, b, c], new Set())).toEqual([[a], [b], [c]]);
+    // A portrait set naming a photo not in the album changes nothing.
+    expect(pairFrames([a, b], new Set([e]))).toEqual([[a], [b]]);
+  });
+});
+
+describe('frameAt (plan item M3.7)', () => {
+  const config = { seconds: 60, order: 'in-order', motion: 'cut' } as const;
+  const base = 1_000_000 * MIN;
+  it('is slideAt a photo at a time when no portrait is known', () => {
+    for (let k = 0; k < 20; k++) {
+      const plain = slideAt(PHOTOS, base + k * MIN, config);
+      const framed = frameAt(PHOTOS, new Set(), base + k * MIN, config);
+      expect(framed).toEqual({ current: [plain?.current], next: [plain?.next] });
+    }
+    expect(frameAt([], new Set(), base, config)).toBeUndefined();
+  });
+
+  it('shows every photo exactly once a round, shuffled or not, and says the next frame', () => {
+    const portraits = new Set([PHOTOS[0], PHOTOS[2], PHOTOS[3], PHOTOS[6], PHOTOS[7]] as string[]);
+    // Eight photos, five portraits: three landscapes and two pairs and one alone is six frames.
+    const frames = 8 - Math.floor(5 / 2);
+    for (const order of ['in-order', 'shuffle'] as const) {
+      const shuffled = { seconds: 60, order, motion: 'cut' } as const;
+      for (let round = 0; round < 4; round++) {
+        const seen: string[] = [];
+        for (let k = 0; k < frames; k++) {
+          const at = frameAt(PHOTOS, portraits, (round * frames + k) * MIN, shuffled);
+          seen.push(...(at?.current ?? []));
+          const after = frameAt(PHOTOS, portraits, (round * frames + k + 1) * MIN, shuffled);
+          expect(sameFrame(at?.next ?? [''], after?.current ?? [''])).toBe(true);
+          // A pair is two portraits, never a landscape.
+          if (at?.current.length === 2) expect(at.current.every((one) => portraits.has(one))).toBe(true);
+        }
+        expect([...seen].sort()).toEqual([...PHOTOS].sort());
+      }
+    }
   });
 });

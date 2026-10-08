@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { portraitHandles } from './photo-shapes.js';
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -80,6 +81,8 @@ export interface AlbumSlides {
   readonly id: string;
   readonly name: string;
   readonly photos: readonly string[];
+  /** Which of `photos` are portrait, where their shape is known (plan item M3.7). */
+  readonly portraits?: readonly string[];
 }
 
 export function readAlbumSlides(db: SqliteDatabase): AlbumSlides[] {
@@ -90,6 +93,7 @@ export function readAlbumSlides(db: SqliteDatabase): AlbumSlides[] {
   const items = db
     .prepare('SELECT album_id AS albumId, media_name AS name FROM photo_album_items ORDER BY position')
     .all() as { albumId: string; name: string }[];
+  const portrait = portraitHandles(db);
   return [
     ...albums.map((album) => ({
       ...album,
@@ -100,7 +104,7 @@ export function readAlbumSlides(db: SqliteDatabase): AlbumSlides[] {
     ...readImmichSlides(db),
     // And the household's NAS folders (plan item M3.3).
     ...readFolderSlides(db),
-  ];
+  ].map((album) => ({ ...album, portraits: album.photos.filter((photo) => portrait.has(photo)) }));
 }
 
 export type AlbumResult = { readonly ok: true; readonly id: string } | { readonly ok: false; readonly message: string };

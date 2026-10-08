@@ -4350,6 +4350,10 @@ img.wxi { display: block; object-fit: contain; }
 .fw-photo { position: absolute; inset: 0; }
 .fw-photo > .fw-image { width: 100%; height: 100%; }
 .fw-photo-next { opacity: 0; }
+/* Two portrait photos side by side (plan item M3.7), each fitted to its own
+   half; one box, so a crossfade and a slow zoom treat the pair as a picture. */
+.fw-pair { display: flex; gap: var(--s1); }
+.fw-pair > .fw-image { flex: 1 1 0; min-width: 0; width: auto; }
 /* Album art, whole on the theme's ground rather than cropped (plan item M3.4). */
 .fw-art { background-size: contain; background-color: var(--panel); }
 /* An album slideshow's next photo, fetched ahead of the swap and never shown. */

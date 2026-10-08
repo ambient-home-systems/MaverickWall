@@ -284,7 +284,7 @@ describe('on a wall', () => {
 
   it('is an album like any other to the slideshow, by handle, and the manifest names nothing of Immich', async () => {
     const { h, id, handles } = await wallWithSummer();
-    expect(readAlbumSlides(h.db).find((album) => album.id === id)).toEqual({ id, name: 'Summer 2026 (Immich)', photos: handles });
+    expect(readAlbumSlides(h.db).find((album) => album.id === id)).toEqual({ id, name: 'Summer 2026 (Immich)', photos: handles, portraits: [] });
     const manifest = await (await h.wall('/d/manifest')).text();
     expect(manifest).toContain(handles[0]);
     expect(manifest).not.toContain(h.fake.base);
@@ -344,6 +344,40 @@ describe('keeping up', () => {
     expect(existsSync(join(h.dataDir, 'immich-cache'))).toBe(false);
     expect(await run(job(h))).toEqual({ status: 'ok' });
     expect(readdirSync(join(h.dataDir, 'immich-cache')).sort()).toEqual([...handlesOf(h)].sort());
+  });
+
+  it('guesses each photo’s shape from Immich, and measures its preview over the guess once it is fetched (plan item M3.7)', async () => {
+    const h = await harness();
+    h.fake.assets.length = 0;
+    // Immich says portrait, and it is.
+    h.fake.assets.push({ id: uuid(300), type: 'IMAGE', albums: [SUMMER], people: [], favourite: false, width: 3024, height: 4032, preview: { width: 20, height: 40 } });
+    // Immich says landscape, and the preview is portrait: the camera's tag, applied.
+    h.fake.assets.push({ id: uuid(301), type: 'IMAGE', albums: [SUMMER], people: [], favourite: false, width: 4032, height: 3024, preview: { width: 20, height: 40 } });
+    // Immich says nothing; the preview is landscape.
+    h.fake.assets.push({ id: uuid(302), type: 'IMAGE', albums: [SUMMER], people: [], favourite: false, width: null, height: null, preview: { width: 40, height: 20 } });
+    await h.connect();
+    await h.add(`album:${SUMMER}`);
+    const [portrait, turned, unknown] = [uuid(300), uuid(301), uuid(302)].map(immichHandle) as [string, string, string];
+    const shapes = (): unknown =>
+      h.db.prepare('SELECT handle, width, height, measured FROM photo_shapes ORDER BY handle').all();
+    const portraits = (): readonly string[] | undefined =>
+      readAlbumSlides(h.db).find((one) => one.name === 'Summer 2026 (Immich)')?.portraits;
+    expect(portraits()).toEqual([portrait]);
+    expect((shapes() as { handle: string }[]).map((row) => row.handle)).not.toContain(unknown);
+
+    // The sync fetches ahead, and what it fetched is measured over the guesses.
+    expect(await run(job(h))).toEqual({ status: 'ok' });
+    expect(portraits()).toEqual([portrait, turned]);
+    expect(shapes()).toEqual(
+      [
+        { handle: portrait, width: 20, height: 40, measured: 1 },
+        { handle: turned, width: 20, height: 40, measured: 1 },
+        { handle: unknown, width: 40, height: 20, measured: 1 },
+      ].sort((a, b) => a.handle.localeCompare(b.handle)),
+    );
+    // A later sync's guess does not undo a measurement.
+    expect(await run(job(h))).toEqual({ status: 'ok' });
+    expect(portraits()).toEqual([portrait, turned]);
   });
 
   it('forgets everything on disconnect: the key, the sources, the handles and every kept copy', async () => {

@@ -184,6 +184,8 @@ describe('an album in the editor', () => {
         // Between photos (plan item M3.6), with the sentence saying when it moves.
         await editor.click('.le-cfg-field:has-text("Between photos") .seg button:has-text("Fade and zoom")');
         expect(await editor.textContent('.le-cfg-field:has-text("Between photos")')).toContain('Motion switch is on');
+        // Portrait photos (plan item M3.7).
+        await editor.click('.le-cfg-field:has-text("Portrait photos") .seg button:has-text("Two side by side")');
         // The preview draws one of the album's photos, from the media the admin
         // serves — the one on show, which with a crossfade is the lower layer.
         await expect
@@ -201,7 +203,7 @@ describe('an album in the editor', () => {
         expect(holidays.photos.some((name) => drawn.includes(name))).toBe(true);
         await Promise.all([editor.waitForNavigation({ timeout: 20_000 }), editor.click('[data-action="save"]')]);
         const stored = home.db.prepare(`SELECT config FROM layout_widgets WHERE id = 'w-pic'`).get() as { config: string };
-        expect(JSON.parse(stored.config)).toEqual({ album: holidays.id, slideSeconds: 900, slideOrder: 'shuffle', slideMotion: 'zoom' });
+        expect(JSON.parse(stored.config)).toEqual({ album: holidays.id, slideSeconds: 900, slideOrder: 'shuffle', slideMotion: 'zoom', pairPortraits: true });
       } finally {
         await context.close();
       }

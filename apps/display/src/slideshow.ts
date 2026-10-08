@@ -104,3 +104,72 @@ export function slideAt(
   };
   return { current: at(step), next: at(step + 1) };
 }
+
+/**
+ * Portrait pairing (plan item M3.7): in a wide box, two portrait photos share
+ * it side by side rather than each one sitting in the middle of a landscape
+ * box with the sides wasted.
+ *
+ * A *frame* is what the box shows at once: one photo, or two portraits. The
+ * album is grouped into frames one round at a time, in that round's order: a
+ * landscape photo — or one whose shape the server does not know yet — is a
+ * frame on its own, and a portrait takes the next portrait after it as its
+ * partner, which then does not show again that round. An odd portrait out
+ * shows alone.
+ *
+ * The number of frames in a round does not depend on the order — every
+ * landscape is one and every two portraits are one — so the step-to-round
+ * arithmetic `slideAt` does still works, and every wall with a wide box agrees
+ * which pair is up.
+ */
+export type SlideFrame = readonly [string] | readonly [string, string];
+
+/** The narrowest box, width over height, that two portraits share: below it each would be a sliver. */
+export const PAIR_MIN_ASPECT = 1.2;
+
+export function pairFrames(photos: readonly string[], portraits: ReadonlySet<string>): SlideFrame[] {
+  const frames: SlideFrame[] = [];
+  const taken = new Set<number>();
+  photos.forEach((photo, index) => {
+    if (taken.has(index)) return;
+    if (!portraits.has(photo)) {
+      frames.push([photo]);
+      return;
+    }
+    const partner = photos.findIndex((other, at) => at > index && !taken.has(at) && portraits.has(other));
+    if (partner === -1) {
+      frames.push([photo]);
+      return;
+    }
+    taken.add(partner);
+    frames.push([photo, photos[partner] ?? photo]);
+  });
+  return frames;
+}
+
+/**
+ * The frame on show at `nowMs`, and the one after it: `slideAt`, a frame at a
+ * time. With no portraits it is exactly `slideAt`, one photo a frame.
+ */
+export function frameAt(
+  photos: readonly string[],
+  portraits: ReadonlySet<string>,
+  nowMs: number,
+  config: SlideConfig,
+): { readonly current: SlideFrame; readonly next: SlideFrame } | undefined {
+  if (photos.length === 0) return undefined;
+  const known = photos.filter((photo) => portraits.has(photo)).length;
+  const count = photos.length - Math.floor(known / 2);
+  const step = Math.floor(nowMs / (config.seconds * 1000));
+  const at = (k: number): SlideFrame => {
+    const round = Math.floor(k / count);
+    const frames = pairFrames(roundOrder(photos, config.order, round), portraits);
+    return frames[k - round * count] ?? frames[0] ?? [photos[0] ?? ''];
+  };
+  return { current: at(step), next: at(step + 1) };
+}
+
+/** Whether two frames show the same photos, side for side. */
+export function sameFrame(a: SlideFrame, b: SlideFrame): boolean {
+  return a.length === b.length && a.every((photo, index) => photo === b[index]);
+}

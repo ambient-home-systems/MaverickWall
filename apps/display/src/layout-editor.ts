@@ -5316,6 +5316,7 @@ function boot(): void {
             setConfig(widget, 'slideSeconds', undefined);
             setConfig(widget, 'slideOrder', undefined);
             setConfig(widget, 'slideMotion', undefined);
+            setConfig(widget, 'pairPortraits', undefined);
           }
           renderConfigPanel();
         },
@@ -5401,6 +5402,26 @@ function boot(): void {
       'Fading and zooming happen only while this wall’s Motion switch is on, and never on a device set to reduce motion. Otherwise the photos change with a cut.';
     between.appendChild(moves);
     configPanel.appendChild(between);
+    /*
+     * Two portrait photos side by side in a wide box (plan item M3.7). One at a
+     * time is the absence, so a slideshow already hanging is unchanged.
+     */
+    const pairs = segControl(
+      'Portrait photos',
+      [
+        ['single', 'One at a time'],
+        ['pair', 'Two side by side'],
+      ],
+      cfg['pairPortraits'] === true ? 'pair' : 'single',
+      (value) => setConfig(widget, 'pairPortraits', value === 'pair' ? true : undefined),
+      'pairPortraits',
+    );
+    const pairNote = document.createElement('p');
+    pairNote.className = 'hint';
+    pairNote.textContent =
+      'In a box wider than it is tall, two portrait photos share it. Photos from Immich or a NAS folder pair once they have been fetched, which can take until the next sync.';
+    pairs.appendChild(pairNote);
+    configPanel.appendChild(pairs);
     fitField(widget, cfg);
     nowPlayingField(widget, cfg);
   }
