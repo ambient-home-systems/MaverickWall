@@ -16,6 +16,12 @@
 
 ## Unreleased
 
+**Pictures that fit.** An Image widget's new **Fit** setting chooses how a
+photo sits in its box: fill it (as before), show the whole photo, or show the
+whole photo over a soft blur of itself — the way a tall phone photo looks good
+on a wide wall without black bars beside it. It works for a single picture,
+an album, Immich and NAS folders alike.
+
 ## 0.95.0
 
 **Album art while music plays.** An Image widget can now show the cover of

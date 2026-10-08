@@ -40,4 +40,11 @@ describe('the schema', () => {
     expect(ok({ slideSeconds: '300' })).toBe(false);
     expect(ok({ slideOrder: 'random' })).toBe(false);
   });
+
+  it('takes the three fits and refuses any other (plan item M3.5)', () => {
+    const ok = (config: unknown): boolean => widgetConfigBody.safeParse(config).success;
+    for (const fit of ['cover', 'contain', 'blur']) expect(ok({ fit })).toBe(true);
+    expect(ok({ fit: 'stretch' })).toBe(false);
+    expect(ok({ fit: '' })).toBe(false);
+  });
 });

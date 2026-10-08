@@ -499,6 +499,8 @@ const widgetConfigFields = z
     album: z.string().regex(/^[0-9a-f]{16}$/, 'That is not an album.').optional(),
     slideSeconds: z.union([z.literal(60), z.literal(300), z.literal(900), z.literal(3600)]).optional(),
     slideOrder: z.enum(['in-order', 'shuffle']).optional(),
+    // How a picture sits in its box (plan item M3.5): fill (the absence), whole, or whole over a blur.
+    fit: z.enum(['cover', 'contain', 'blur']).optional(),
     // While this media player plays, its album art instead (plan item M3.4).
     // An entity id, which leaves the manifest as a handle (`displayConfig`).
     nowPlaying: z.string().regex(/^media_player\.[a-z0-9_]{1,200}$/, 'That is not a media player.').optional(),
