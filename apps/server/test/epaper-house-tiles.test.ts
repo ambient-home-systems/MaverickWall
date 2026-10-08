@@ -5,6 +5,7 @@ import type { Manifest } from '../src/api/manifest.js';
 import type { Framebuffer } from '../src/epaper/framebuffer.js';
 import { panelInput, renderFreeformEpaper } from '../src/epaper/widgets.js';
 import { buildEpaperModel } from '../src/epaper/viewmodel.js';
+import { bitString } from './epaper-frame.js';
 
 /**
  * Home Assistant's `tile` look on a one-bit panel (plan item P5.3, decision D4).
@@ -75,11 +76,7 @@ function frameOf(manifest: Manifest, config: Record<string, unknown>, size: Size
 }
 
 function bitsOf(fb: Framebuffer, size: Size = { width: 800, height: 480 }): string {
-  let bits = '';
-  for (let y = 0; y < size.height; y++) {
-    for (let x = 0; x < size.width; x++) bits += fb.get(x, y) ? '1' : '0';
-  }
-  return bits;
+  return bitString(fb, size.width, size.height);
 }
 
 const hashOf = (bits: string): string => createHash('sha256').update(bits).digest('hex').slice(0, 16);

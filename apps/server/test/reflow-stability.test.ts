@@ -98,6 +98,7 @@ import {
 import { typeTierFor } from '../src/epaper/type-tiers.js';
 import { buildEpaperModel } from '../src/epaper/viewmodel.js';
 import { renderFreeformEpaper, type PlacedEpaperWidget } from '../src/epaper/widgets.js';
+import { bitString } from './epaper-frame.js';
 
 process.env['TZ'] = 'UTC';
 
@@ -585,11 +586,7 @@ describe('the same panel frame drawn with different events', () => {
   }
 
   const key = (r: DrawnRegion): string => `${r.name} @ ${r.x},${r.y} ${r.w}x${r.h}`;
-  const inkOf = (fb: Framebuffer): string => {
-    let out = '';
-    for (let y = 0; y < fb.height; y++) for (let x = 0; x < fb.width; x++) out += fb.get(x, y) ? '1' : '0';
-    return out;
-  };
+  const inkOf = (fb: Framebuffer): string => bitString(fb);
 
   const a = frameOf(PANEL_WORDS_A);
   const b = frameOf(PANEL_WORDS_B);

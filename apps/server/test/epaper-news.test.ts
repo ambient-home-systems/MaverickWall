@@ -5,6 +5,7 @@ import type { Framebuffer } from '../src/epaper/framebuffer.js';
 import { panelInput, renderFreeformEpaper, type PlacedEpaperWidget } from '../src/epaper/widgets.js';
 import { buildEpaperModel } from '../src/epaper/viewmodel.js';
 import { decodePixels } from './qr-decode.js';
+import { bitString } from './epaper-frame.js';
 
 /**
  * A News widget on one bit (plan item M5.5), read off the frame.
@@ -63,11 +64,7 @@ describe('news on a panel', () => {
 
   it('never turns: the same frame whatever the clock says and whatever the turning is set to', () => {
     const later = { ...manifest(), generatedAt: AT + 10 * 60_000 } as Manifest;
-    const bits = (fb: Framebuffer): string => {
-      let out = '';
-      for (let y = 0; y < PANEL.height; y++) for (let x = 0; x < PANEL.width; x++) out += fb.get(x, y) ? '1' : '0';
-      return out;
-    };
+    const bits = (fb: Framebuffer): string => bitString(fb, PANEL.width, PANEL.height);
     const first = bits(render({ mode: 'one' }));
     expect(bits(render({ mode: 'one' }, later))).toBe(first);
     expect(bits(render({ mode: 'one', rotateSeconds: 30 }))).toBe(first);

@@ -6,6 +6,7 @@ import type { RegionLog } from '../src/epaper/render.js';
 import { renderFreeformEpaper, type PlacedEpaperWidget } from '../src/epaper/widgets.js';
 import { buildEpaperModel } from '../src/epaper/viewmodel.js';
 import { panelMetrics } from '../src/epaper/metrics.js';
+import { bitString } from './epaper-frame.js';
 
 /**
  * The rota on a panel's calendar widget, in one bit (plan item P5.4).
@@ -87,11 +88,7 @@ function draw(config: Record<string, unknown>, m: Manifest = manifest(), w = 1):
   return { fb, regions };
 }
 
-const bits = (fb: Framebuffer): string => {
-  let out = '';
-  for (let y = 0; y < PANEL.height; y++) for (let x = 0; x < PANEL.width; x++) out += fb.get(x, y) ? '1' : '0';
-  return out;
-};
+const bits = (fb: Framebuffer): string => bitString(fb, PANEL.width, PANEL.height);
 
 /** Lit pixels inside a logged rectangle. */
 function inkIn(fb: Framebuffer, region: { x: number; y: number; w: number; h: number }): number {

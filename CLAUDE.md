@@ -10044,11 +10044,26 @@ takes it to 0.45s, and under a CPU hog on every core to 0.83s; no body is now
 over 60ms. Five mutations were checked and all five are red: `count` or
 `cellEvents` dropped from the calendar's honours, `style.--ink` claimed
 honoured, the memo keyed on the type alone (139 red), and a frame that
-compares nothing (26 red). Eleven other e-paper test files build frames the
-same way. They draw far fewer and are not slow, so they are left as they are. **5484 tests
+compares nothing (26 red). Eleven other e-paper test files built frames the
+same way, and ten of them now share one helper (below); `epaper-font` keeps
+its 'X'/'.' rows, which are glyphs drawn to be read. **5484 tests
 passing and 1 skipped, over 392 files**: calendar 153 over 10 · core 314 over
 9 · display 990 over 60 · server 4027 over 313, measured with `pnpm test` and
 a real Chromium, every file green.
+
+**The other ten build the same string through `test/epaper-frame.ts`.**
+`bitString` gives exactly the string the per-pixel loop gave, read off the
+framebuffer a byte at a time through a 256-entry table, rather than raw bytes
+as `epaper-ink` compares. Identical rather than equivalent because these files
+do more than compare it: they index it by `y * width + x`, look for a '1' in a
+row, and hash it against values pinned on a clean `main`. Writing the table's
+bits in the wrong order fails 63 of their 134 tests, which is how much rides
+on it. `epaper-frame.test.ts` holds the helper to the old loop at widths on
+and off a byte boundary, over windows larger and smaller than the frame, and
+with a frame filled with ink, whose padding bits it must not show; three
+mutations of it are red. The nine files' tests took 4.7s and take 1.2s, every
+pinned hash unchanged; `reflow-stability`'s panel half reads its frames the
+same way.
 
 **4779 tests passing and 1 skipped, over 332 files**: calendar 153 over 10 ·
 core 314 over 9 · display 873 over 49 · server 3439 over 264. Measured with

@@ -4,6 +4,7 @@ import type { Manifest, ManifestDay } from '../src/api/manifest.js';
 import type { Framebuffer } from '../src/epaper/framebuffer.js';
 import { renderFreeformEpaper, type PlacedEpaperWidget } from '../src/epaper/widgets.js';
 import { buildEpaperModel } from '../src/epaper/viewmodel.js';
+import { bitString } from './epaper-frame.js';
 
 /**
  * A panel's month grid honours the widget's "Which calendars" (plan item P5.4,
@@ -81,9 +82,7 @@ function manifest(keep: (event: Ev) => boolean = () => true): Manifest {
 }
 
 function bits(fb: Framebuffer): string {
-  let out = '';
-  for (let y = 0; y < PANEL.height; y++) for (let x = 0; x < PANEL.width; x++) out += fb.get(x, y) ? '1' : '0';
-  return out;
+  return bitString(fb, PANEL.width, PANEL.height);
 }
 
 function frame(config: Record<string, unknown>, m: Manifest = manifest()): string {

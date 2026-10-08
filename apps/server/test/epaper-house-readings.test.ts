@@ -4,6 +4,7 @@ import { haReadingHandle, type Manifest } from '../src/api/manifest.js';
 import type { Framebuffer } from '../src/epaper/framebuffer.js';
 import { buildEpaperModel } from '../src/epaper/viewmodel.js';
 import { renderFreeformEpaper, type PlacedEpaperWidget } from '../src/epaper/widgets.js';
+import { bitString } from './epaper-frame.js';
 
 /**
  * A panel picks a Home Assistant widget's readings the way the wall does (P1.3).
@@ -63,9 +64,7 @@ function frame(config: Record<string, unknown>): string {
   const m = manifest();
   const widget: PlacedEpaperWidget = { type: 'homeassistant', x: 0.05, y: 0.05, w: 0.6, h: 0.5, z: 0, config };
   const fb: Framebuffer = renderFreeformEpaper(buildEpaperModel(m), m, [widget], { width: 800, height: 480 });
-  let bits = '';
-  for (let y = 0; y < 480; y++) for (let x = 0; x < 800; x++) bits += fb.get(x, y) ? '1' : '0';
-  return bits;
+  return bitString(fb, 800, 480);
 }
 
 describe('a Home Assistant widget on a panel', () => {
