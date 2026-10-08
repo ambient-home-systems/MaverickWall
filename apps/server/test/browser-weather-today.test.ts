@@ -380,26 +380,51 @@ const RAIN_MS = 1_200;
 /**
  * How far a rebuilt element may land from continuity (`browser-motion`'s figure).
  *
- * **What it absorbs is the draw's own duration, and that is now paid back
- * rather than absorbed.** A lock is taken from the clock the draw read when it
- * started and the animation starts on the frame after the draw ends, so each
- * rebuilt glow lands the draw's duration behind the clock — and two draws are
- * not the same length. This assertion read 305ms and 328ms on CI, and it was
- * not measurement noise: the two phases are read off one document timeline, so
- * the difference is what the glass did. Measured on this wall at 20x CPU
- * throttling, a tick's draw put the glow 215–270ms behind the clock against
- * the first draw's 35, a jump of 236ms; the clock's own offset moved by under
- * 30ms per poll. `advanceLocks` moves every lock on by the draw's duration and
- * the same measurement reads 23–29ms behind and a jump under 25.
+ * **What it absorbs is the time from reading the clock to the browser starting
+ * the animation, and that is now paid back in two halves rather than
+ * absorbed.** A lock is taken from the clock the draw read when it started, and
+ * each rebuilt glow lands however long the browser took to start it behind the
+ * clock — and two draws are not the same length. This assertion read 305ms and
+ * 328ms on CI, and it was not measurement noise: the two phases are read off
+ * one document timeline, so the difference is what the glass did.
+ *
+ * The first half was the draw's own script. Measured on this wall at 20x CPU
+ * throttling, a tick's draw put the glow 215–270ms behind the clock against the
+ * first draw's 35, a jump of 236ms; the clock's own offset moved by under 30ms
+ * per poll. `advanceLocks` moves every lock on by the draw's duration and the
+ * same measurement reads 23–29ms behind and a jump under 25.
+ *
+ * The second half was the rendering after it, and it is what kept this red on
+ * CI at 359ms, 387ms and 439ms with `advanceLocks` in place. The browser starts
+ * an animation only after laying out and painting the wall the draw rebuilt,
+ * and that work is slowed by throttling like the script is. Measured with a CPU
+ * hog on every core, from the draw's end to the glow's own start time: 36ms at
+ * 40x, 173ms at 120x and 312ms at 200x, about a tenth of the draw each time.
+ * The clock's offset was identical across both draws, and no poll fell
+ * between them. A runner is slower than this laptop, so its 40x is this
+ * laptop's 120–200x. `settleLocks` reads each animation's start time once the
+ * browser has set it and moves the lock on by that too. With it, five loaded
+ * runs of both continuity cases read 0.02–19ms. At 200x, three runs read
+ * 0.05–1.0ms with it and 356, 374 and 363ms without it, which is CI's figure
+ * reproduced and red.
+ *
+ * The tolerance stays at 300ms, deliberately. The fault it guards against is
+ * now 300ms or more only on a machine as slow as a runner (36ms here at 40x),
+ * so this file catches a revert on CI and not on a laptop. A tighter bound
+ * would also catch it here, but 19ms was one of the five loaded runs with the
+ * fix, too close to the laptop's fault to tell them apart.
  */
 const TOLERANCE_MS = 300;
 /**
  * How much slower the device is for the redraw that has to resume.
  *
  * Chosen so the fault is far past the tolerance and the fix far inside it, on
- * a laptop and on a loaded runner alike. Measured at 40x: 26-40ms with
- * `advanceLocks`, five runs with a CPU hog on every core, and 504-521ms
- * without it, idle — a slower machine only widens the second.
+ * a loaded runner. Measured at 40x before `settleLocks`: 26-40ms here with
+ * `advanceLocks`, and 504-521ms without it, idle; on CI 359-439ms with it.
+ * After: 0.02-9.3ms over five runs with a CPU hog on every core. Raising it
+ * would make the laptop see the second fault too, at the cost of a draw that
+ * takes three and a half seconds here and longer on a runner, inside a wait
+ * of twenty-five.
  */
 const THROTTLE = 40;
 
@@ -423,8 +448,17 @@ async function readPhase(page: Page, selector: string, mark = false): Promise<Ph
     async ({ selector, mark }) => {
       const node = document.querySelector<HTMLElement>(selector);
       if (node === null) throw new Error(`nothing on the wall matches ${selector}`);
+      await Promise.all(node.getAnimations().map((one) => one.ready));
+      /*
+       * Two frames on, and the list asked for again. The wall corrects each
+       * lock once the browser has started it (`settleLocks` in motion.ts),
+       * from the same `ready` this waited on, and a timing read in that same
+       * turn is the uncorrected one: the new delay is inline style the
+       * browser has not folded into the animation yet. Read there, a fix that
+       * works reads exactly like no fix. Asking again flushes it.
+       */
+      await new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done())));
       const animations = node.getAnimations();
-      await Promise.all(animations.map((one) => one.ready));
       const first = animations[0];
       const timing = first?.effect?.getComputedTiming();
       const local = typeof timing?.localTime === 'number' ? timing.localTime : undefined;
@@ -570,11 +604,17 @@ describe('the sky moves, within its scope', () => {
           id,
         );
         const phases: number[] = [];
+        let first: number | undefined;
         for (let i = 1; i <= drops; i++) {
           const one = await readPhase(wet.page, `#wall .canvas .fw[data-widget-id="${id}"] .wt-fx-drop:nth-child(${i})`);
           expect(one.name).toBe('wt-rain');
           expect(one.running).toBe(1);
-          phases.push(((one.phase as number) % RAIN_MS + RAIN_MS) % RAIN_MS);
+          // Each read is a couple of frames after the last, so every phase is
+          // taken back to the instant of the first: drops compared at
+          // different moments differ by the time between the reads.
+          first ??= one.at;
+          const at = (one.phase as number) - (one.at - first);
+          phases.push((at % RAIN_MS + RAIN_MS) % RAIN_MS);
         }
         // Staggered, not in step: no two drops at one point of the fall.
         const sorted = [...phases].sort((a, b) => a - b);

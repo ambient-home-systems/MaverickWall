@@ -408,7 +408,11 @@ describe("the wall's own modules move nothing except through motion.ts", () => {
   it('motion.ts writes a duration and a delay, and nothing that could move anything alone', () => {
     const source = stripComments(readFileSync(join(SRC, `${DOOR}.ts`), 'utf8'));
     const written = new Set([...source.matchAll(/animation[\w-]*/gi)].map((m) => m[0]));
-    expect([...written].sort()).toEqual(['animationDelay', 'animationDuration']);
+    // `Animations` is `getAnimations()`, read by `settleLocks` for each
+    // animation's start time and nothing else; it moves nothing, and it is
+    // held to that one spelling so a second use of the API has to be argued.
+    expect([...written].sort()).toEqual(['Animations', 'animationDelay', 'animationDuration']);
+    expect(source.match(/Animations/g)?.length).toBe(source.match(/\.getAnimations\b/g)?.length);
     expect(/transition|keyframes/i.test(source), 'motion.ts reaches for a transition or keyframes').toBe(false);
     expect(/\.animate\s*\(/.test(source), 'motion.ts calls .animate()').toBe(false);
     // No stylesheet of its own either: what moves is declared in display.css,
