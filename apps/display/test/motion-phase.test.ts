@@ -6,6 +6,7 @@ import {
   ONE_SHOT_MAX,
   createOneShotMemory,
   advanceLocks,
+  lockAt,
   lockLoop,
   lockOnce,
   oneShotPhase,
@@ -196,9 +197,10 @@ describe('the two writers', () => {
 function rootOf(...nodes: { node: HTMLElement; classes: string[] }[]): ParentNode {
   return {
     querySelectorAll: (selector: string) => {
-      expect(selector).toBe('.fx-loop, .fx-playing');
+      // A scheduled one-shot is a lock too (plan item M3.6), so it is asked for.
+      expect(selector).toBe('.fx-loop, .fx-playing, .fx-scheduled');
       return nodes
-        .filter((one) => one.classes.includes('fx-loop') || one.classes.includes('fx-playing'))
+        .filter((one) => one.classes.some((name) => name === 'fx-loop' || name === 'fx-playing' || name === 'fx-scheduled'))
         .map((one) => one.node);
     },
   } as unknown as ParentNode;
@@ -312,5 +314,46 @@ describe('paying back the rendering after a draw, once the browser has started t
     settleLocks(rootOf(cancelled), 999_700, wallNow, pageNow);
     await settled();
     for (const one of [old, gone, cancelled]) expect(one.style['animationDelay']).toBe(phaseDelay(6_000, 999_700));
+  });
+});
+
+describe('a one-shot scheduled on the wall clock (a slideshow crossfade, plan item M3.6)', () => {
+  it('waits with a positive delay before its start, and resumes with a negative one after it', () => {
+    const ahead = markedNode();
+    lockAt(ahead.node, 2_000, 10_000, 7_000);
+    expect(ahead.style).toEqual({ animationDuration: '2000ms', animationDelay: '3000ms' });
+    expect(ahead.classes).toEqual(['fx-scheduled']);
+    const inside = markedNode();
+    lockAt(inside.node, 2_000, 10_000, 10_500);
+    expect(inside.style['animationDelay']).toBe('-500ms');
+    const at = markedNode();
+    lockAt(at.node, 2_000, 10_000, 10_000);
+    expect(at.style['animationDelay']).toBe('0ms');
+  });
+
+  it('locks nothing it cannot time', () => {
+    for (const [duration, start, now] of [[0, 1, 1], [Number.NaN, 1, 1], [1, Number.NaN, 1], [1, 1, Number.POSITIVE_INFINITY]]) {
+      const one = markedNode();
+      lockAt(one.node, duration as number, start as number, now as number);
+      expect(one.style).toEqual({});
+      expect(one.classes).toEqual([]);
+    }
+  });
+
+  it('moves on by a draw through zero rather than stopping at it, unlike a fired one-shot', () => {
+    const ahead = markedNode();
+    lockAt(ahead.node, 2_000, 10_000, 9_900);
+    advanceLocks(rootOf(ahead), 250);
+    // Locked 100ms early and drawn 250ms late: it is 150ms into the fade.
+    expect(ahead.style['animationDelay']).toBe('-150ms');
+    const waiting = markedNode();
+    lockAt(waiting.node, 2_000, 10_000, 9_000);
+    advanceLocks(rootOf(waiting), 250);
+    expect(waiting.style['animationDelay']).toBe('750ms');
+    // Past its end it is not wrapped round as a loop would be: it stays done.
+    const done = markedNode();
+    lockAt(done.node, 2_000, 10_000, 11_900);
+    advanceLocks(rootOf(done), 250);
+    expect(done.style['animationDelay']).toBe('-2150ms');
   });
 });

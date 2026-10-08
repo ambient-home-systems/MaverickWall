@@ -413,7 +413,22 @@ describe('nothing in this bundle scales a laid-out section', () => {
   });
 
   it('declares no scale transform in the stylesheet', () => {
-    const css = withoutComments(readFileSync(join(SRC, 'display.css'), 'utf8'));
+    const css = withoutPhotoZoom(withoutComments(readFileSync(join(SRC, 'display.css'), 'utf8')));
     expect([...css.matchAll(/transform:[^;}]*scale\(/g)].map((match) => match[0])).toEqual([]);
   });
 });
+
+/**
+ * The stylesheet less the one scale it may carry: a slideshow photo's slow zoom
+ * (plan item M3.6). A photo layer holds no words, so scaling it costs no row
+ * and moves no rectangle — it grows inside a box that clips it. Exempted by
+ * name, and held to the one rule that may bind it, so the exemption cannot
+ * quietly reach a section.
+ */
+function withoutPhotoZoom(css: string): string {
+  const zoom = /@keyframes mw-photo-zoom\s*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/;
+  expect(css, 'the photo zoom is where the exemption expects it').toMatch(zoom);
+  const bound = [...css.matchAll(/([^{}]+)\{[^{}]*animation-name:\s*mw-photo-zoom\b/g)].map((match) => (match[1] ?? '').trim());
+  expect(bound, 'the photo zoom binds to a picture layer and nothing else').toEqual(['.canvas[data-motion="on"] .fw-zoom.fx-scheduled']);
+  return css.replace(zoom, '');
+}

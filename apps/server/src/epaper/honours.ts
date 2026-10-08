@@ -476,6 +476,12 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
     why: 'a panel draws no photographs.',
   },
   {
+    key: 'slideMotion',
+    types: ['image'],
+    label: 'Between photos',
+    why: 'a panel draws no photographs, and an e-paper panel never moves.',
+  },
+  {
     key: 'rotateSeconds',
     types: ['news'],
     label: 'Each headline shows for',

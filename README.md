@@ -84,7 +84,8 @@ configure first, no account to create anywhere else, no key to paste.
   from your own Immich; or a folder your NAS shares over WebDAV. While a Home
   Assistant speaker plays, the same widget can show the record's cover. A
   picture fills its box, sits whole, or sits whole over a soft blur of itself. Shown as a slideshow in an Image widget that turns on
-  the wall's clock, so every wall shows the same photo.
+  the wall's clock, so every wall shows the same photo, with a cut, a fade, or
+  a fade and a slow zoom between photos.
 - **Weather alerts.** National Weather Service, United States only. A banner
   for an advisory, the whole screen for a severe warning, and for an Extreme
   warning it can light a screen that has gone dark.

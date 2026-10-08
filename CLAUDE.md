@@ -4924,6 +4924,59 @@ another session; it passed alone and on the rerun. Against M3.4's 5479 over 392
 that is +3 and +1. **Still unproven where it counts:** nobody has looked at a
 blurred portrait on a real kitchen television.
 
+**A slideshow can fade between photos, and fade and slowly zoom (plan item
+M3.6).** *Between photos* sits under an album's Order: Cut (the absence, so
+every album drawn before this keeps its swap), Fade, or Fade and zoom. It is the
+Image widget's alone; wallpaper rotation (M4.10) keeps its plain swap, because
+a background crossfade needs the persistent layer MQ8 describes and the canvas
+has none.
+
+**It is scheduled rather than fired, and that is what MQ8 needed.** The box
+holds two layers: the photo on show, and the next one, clear, above it.
+`lockAt` in `motion.ts` locks the top layer's fade to start two seconds before
+the swap `slideTiming` names, as a delay from the corrected wall clock that may
+be **positive** — the one lock that waits — and the scoped block fills it both
+ways, so it sits clear until its moment and stays full after its end until the
+next draw puts the new photo underneath. A rebuilt layer computes the same
+moment from the same clock, so a redraw before, during or after the fade lands
+on the same frame, and `advanceLocks` and `settleLocks` move it on by the draw's
+lag through zero rather than clamping at it. MQ8 decided a persistent layer
+outside the rebuilt root; for a widget's layers, scheduling meets the same need
+without one, and the browser test samples every frame across the swap and the
+redraw after it to show the old photo never comes back. The zoom is 1 to 1.08
+on each photo's own box from its own fade-in, an interval long plus the fade.
+
+**It is the one `scale()` in the stylesheet, and both scans say so by name.**
+`reflow-stability.test.ts` and `widget-tiers.test.ts` exempt `@keyframes
+mw-photo-zoom` and nothing else, and hold its only binding to
+`.canvas[data-motion="on"] .fw-zoom.fx-scheduled`: a photo layer holds no
+words, grows inside a box that clips it, and moves no rectangle. Without motion
+— reduced motion, or the Motion switch off — nothing is animated and the next
+layer stays clear, so the swap is the next draw's cut, as before. A panel draws
+no photographs and `slideMotion` is in `PANEL_IGNORES`. The next photo is
+decoded (`decode()`) minutes before the swap, so the fade's first frame is not
+the decode.
+
+**Measured.** `browser-slide-crossfade.test.ts` (3, real Chromium) reads the
+Web Animations API rather than any class: the fade's start on the page's
+timeline against the server's clock, the same start on the layer a redraw
+rebuilt, every frame from the fade to the redraw after the swap (the photo a
+household sees changes once, through frames part-way, and never back), the
+zoom's computed matrix above 1 and at most 1.08 in a box that clips, both layers
+the widget's own rectangle, and nothing animated under reduced motion or with
+the switch off. Thirteen mutations were checked and all thirteen are red. Three
+missed their anchor on the first pass and two failed to build, and none of
+those was counted until re-aimed. One — dropping the scheduled class from what
+`advanceLocks` pays back — reddens only the unit test's pinned selector: on the
+browser test's idle machine the draw lags well inside its 300ms tolerance.
+**5500 tests passing and 1 skipped, over 395 files**: calendar 153 over 10 ·
+core 314 over 9 · display 995 over 60 · server 4038 over 316, measured with
+`pnpm test` and a real Chromium after merging `main` at #351. Against M3.5's
+5482 over 393 that is +18 and +2. This change adds five display tests, five
+server tests and one file, so the rest came with what was merged. That is
+recorded as read rather than explained. **Still unproven where it counts:**
+nobody has watched a fade on a kitchen tablet.
+
 
 
 

@@ -23,18 +23,44 @@ export const DEFAULT_SLIDE_SECONDS: SlideSeconds = 300;
 
 export type SlideOrder = 'in-order' | 'shuffle';
 
+/**
+ * What happens between two photos (plan item M3.6): a cut, a crossfade, or a
+ * crossfade with each photo slowly zooming while it shows. `cut` is the
+ * absence, so a slideshow that was hanging before this changes nothing until
+ * somebody asks; and a wall with motion off — its own switch, or a device
+ * asking for less — cuts whatever is stored.
+ */
+export type SlideMotion = 'cut' | 'fade' | 'zoom';
+
 export interface SlideConfig {
   readonly seconds: SlideSeconds;
   readonly order: SlideOrder;
+  readonly motion: SlideMotion;
 }
 
-/** The interval and order a widget stored, read defensively: anything else is the default. */
+/** The interval, order and motion a widget stored, read defensively: anything else is the default. */
 export function slideConfig(config: Record<string, unknown>): SlideConfig {
   const seconds = config['slideSeconds'];
+  const motion = config['slideMotion'];
   return {
     seconds: (SLIDE_SECONDS as readonly unknown[]).includes(seconds) ? (seconds as SlideSeconds) : DEFAULT_SLIDE_SECONDS,
     order: config['slideOrder'] === 'shuffle' ? 'shuffle' : 'in-order',
+    motion: motion === 'fade' || motion === 'zoom' ? motion : 'cut',
   };
+}
+
+/** How long the next photo takes to fade in, ending exactly at the swap. */
+export const FADE_MS = 2_000;
+
+/**
+ * When the current photo's swap is, on the wall clock: the end of the step it
+ * belongs to. The fade starts `FADE_MS` before it, and each photo's zoom runs
+ * from the start of its own fade to the end of the next one — so the photo
+ * drawn underneath after a redraw is at exactly the scale it was on top before.
+ */
+export function slideTiming(nowMs: number, seconds: number): { readonly swapAtMs: number; readonly intervalMs: number } {
+  const intervalMs = seconds * 1000;
+  return { swapAtMs: (Math.floor(nowMs / intervalMs) + 1) * intervalMs, intervalMs };
 }
 
 /** FNV-1a over a string: small, stable everywhere, and plenty for ordering photos. */

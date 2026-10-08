@@ -4343,6 +4343,13 @@ img.wxi { display: block; object-fit: contain; }
   background-size: cover; background-repeat: no-repeat; filter: blur(var(--fit-blur)) brightness(0.8); }
 .fw-fit-front { position: absolute; inset: 0; background-position: center; background-size: contain;
   background-repeat: no-repeat; }
+/* A slideshow's crossfade (plan item M3.6): two photos stacked, the next one
+   clear until the scoped motion block below fades it in. With motion off it
+   stays clear, and the swap is the next draw's cut. */
+.fw-slides { position: relative; overflow: hidden; }
+.fw-photo { position: absolute; inset: 0; }
+.fw-photo > .fw-image { width: 100%; height: 100%; }
+.fw-photo-next { opacity: 0; }
 /* Album art, whole on the theme's ground rather than cropped (plan item M3.4). */
 .fw-art { background-size: contain; background-color: var(--panel); }
 /* An album slideshow's next photo, fetched ahead of the swap and never shown. */
@@ -4860,6 +4867,33 @@ img.wxi { display: block; object-fit: contain; }
     animation-name: wxi-sway;
     animation-timing-function: ease-in-out;
     animation-iteration-count: infinite;
+  }
+  /*
+   * A slideshow's crossfade and slow zoom (plan item M3.6). The next photo's
+   * layer fades in over the two seconds before its swap, and with zoom each
+   * photo's own box grows by an eighth of a tenth while it shows — scheduled
+   * on the wall clock by `lockAt`, filled both ways so the layer waits clear
+   * before its start and stays full after its end until the next draw puts
+   * the new photo underneath. A scale on a photo layer, which holds no words:
+   * `reflow-stability.test.ts` allows `mw-photo-zoom` and nothing else.
+   */
+  @keyframes mw-photo-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes mw-photo-zoom {
+    from { transform: scale(1); }
+    to { transform: scale(1.08); }
+  }
+  .canvas[data-motion="on"] .fw-photo-next.fx-scheduled {
+    animation-name: mw-photo-in;
+    animation-timing-function: ease-in-out;
+    animation-fill-mode: both;
+  }
+  .canvas[data-motion="on"] .fw-zoom.fx-scheduled {
+    animation-name: mw-photo-zoom;
+    animation-timing-function: linear;
+    animation-fill-mode: both;
   }
 }
 

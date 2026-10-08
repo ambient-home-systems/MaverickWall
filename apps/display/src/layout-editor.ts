@@ -5315,6 +5315,7 @@ function boot(): void {
             setConfig(widget, 'album', undefined);
             setConfig(widget, 'slideSeconds', undefined);
             setConfig(widget, 'slideOrder', undefined);
+            setConfig(widget, 'slideMotion', undefined);
           }
           renderConfigPanel();
         },
@@ -5379,6 +5380,27 @@ function boot(): void {
         'slideOrder',
       ),
     );
+    /*
+     * How one photo gives way to the next (plan item M3.6). A cut is the
+     * absence, so an album nobody has opened since keeps the swap it had.
+     */
+    const between = segControl(
+      'Between photos',
+      [
+        ['cut', 'Cut'],
+        ['fade', 'Fade'],
+        ['zoom', 'Fade and zoom'],
+      ],
+      slides.motion,
+      (value) => setConfig(widget, 'slideMotion', value === 'fade' || value === 'zoom' ? value : undefined),
+      'slideMotion',
+    );
+    const moves = document.createElement('p');
+    moves.className = 'hint';
+    moves.textContent =
+      'Fading and zooming happen only while this wall’s Motion switch is on, and never on a device set to reduce motion. Otherwise the photos change with a cut.';
+    between.appendChild(moves);
+    configPanel.appendChild(between);
     fitField(widget, cfg);
     nowPlayingField(widget, cfg);
   }

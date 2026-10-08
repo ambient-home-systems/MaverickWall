@@ -47,4 +47,16 @@ describe('the schema', () => {
     expect(ok({ fit: 'stretch' })).toBe(false);
     expect(ok({ fit: '' })).toBe(false);
   });
+
+  it('takes a cut, a crossfade and a slow zoom between photos, and refuses any other (plan item M3.6)', () => {
+    const ok = (config: unknown): boolean => widgetConfigBody.safeParse(config).success;
+    for (const slideMotion of ['cut', 'fade', 'zoom']) expect(ok({ slideMotion })).toBe(true);
+    expect(ok({ slideMotion: 'dissolve' })).toBe(false);
+    expect(ok({ slideMotion: true })).toBe(false);
+  });
+
+  it('carries the choice to the wall untouched, beside the album’s photos', () => {
+    const shown = displayConfig('image', { album: '0123456789abcdef', slideMotion: 'zoom' }, [], ALBUMS);
+    expect(shown).toEqual({ slideMotion: 'zoom', slides: PHOTOS, albumName: 'Holidays' });
+  });
 });

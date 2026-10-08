@@ -181,23 +181,27 @@ describe('an album in the editor', () => {
         await editor.click('.seg button:has-text("An album")');
         await editor.click('.le-cfg-field:has-text("Each photo shows for") .seg button:has-text("15 minutes")');
         await editor.click('.le-cfg-field:has-text("Order") .seg button:has-text("Shuffled")');
-        // The preview draws one of the album's photos, from the media the admin serves.
+        // Between photos (plan item M3.6), with the sentence saying when it moves.
+        await editor.click('.le-cfg-field:has-text("Between photos") .seg button:has-text("Fade and zoom")');
+        expect(await editor.textContent('.le-cfg-field:has-text("Between photos")')).toContain('Motion switch is on');
+        // The preview draws one of the album's photos, from the media the admin
+        // serves — the one on show, which with a crossfade is the lower layer.
         await expect
           .poll(() =>
             editor.evaluate(
               () =>
-                (document.querySelector('.le-preview')?.shadowRoot?.querySelector<HTMLElement>('[data-widget-id="w-pic"] > .fw-image')?.style
+                (document.querySelector('.le-preview')?.shadowRoot?.querySelector<HTMLElement>('[data-widget-id="w-pic"] .fw-image[style*="background-image"]')?.style
                   .backgroundImage ?? ''),
             ),
           )
           .toMatch(/admin\/media\/[0-9a-f]{64}\.png/);
         const drawn = await editor.evaluate(
-          () => document.querySelector('.le-preview')?.shadowRoot?.querySelector<HTMLElement>('[data-widget-id="w-pic"] > .fw-image')?.style.backgroundImage ?? '',
+          () => document.querySelector('.le-preview')?.shadowRoot?.querySelector<HTMLElement>('[data-widget-id="w-pic"] .fw-image[style*="background-image"]')?.style.backgroundImage ?? '',
         );
         expect(holidays.photos.some((name) => drawn.includes(name))).toBe(true);
         await Promise.all([editor.waitForNavigation({ timeout: 20_000 }), editor.click('[data-action="save"]')]);
         const stored = home.db.prepare(`SELECT config FROM layout_widgets WHERE id = 'w-pic'`).get() as { config: string };
-        expect(JSON.parse(stored.config)).toEqual({ album: holidays.id, slideSeconds: 900, slideOrder: 'shuffle' });
+        expect(JSON.parse(stored.config)).toEqual({ album: holidays.id, slideSeconds: 900, slideOrder: 'shuffle', slideMotion: 'zoom' });
       } finally {
         await context.close();
       }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SLIDE_SECONDS, roundOrder, slideAt, slideConfig } from '../src/slideshow.js';
+import { DEFAULT_SLIDE_SECONDS, FADE_MS, roundOrder, slideAt, slideConfig, slideTiming } from '../src/slideshow.js';
 
 /** Which photo an album shows, from the wall clock alone (plan item M5.12). */
 
@@ -8,16 +8,36 @@ const MIN = 60_000;
 
 describe('slideConfig', () => {
   it('reads five minutes in order when the widget has not said, and refuses what it does not offer', () => {
-    expect(slideConfig({})).toEqual({ seconds: DEFAULT_SLIDE_SECONDS, order: 'in-order' });
+    expect(slideConfig({})).toEqual({ seconds: DEFAULT_SLIDE_SECONDS, order: 'in-order', motion: 'cut' });
     expect(DEFAULT_SLIDE_SECONDS).toBe(300);
-    expect(slideConfig({ slideSeconds: 3600, slideOrder: 'shuffle' })).toEqual({ seconds: 3600, order: 'shuffle' });
-    expect(slideConfig({ slideSeconds: 7, slideOrder: 'random' })).toEqual({ seconds: 300, order: 'in-order' });
+    expect(slideConfig({ slideSeconds: 3600, slideOrder: 'shuffle' })).toEqual({ seconds: 3600, order: 'shuffle', motion: 'cut' });
+    expect(slideConfig({ slideSeconds: 7, slideOrder: 'random' })).toEqual({ seconds: 300, order: 'in-order', motion: 'cut' });
+  });
+
+  it('reads a crossfade and a slow zoom, and anything else as the cut every album drew before (plan item M3.6)', () => {
+    expect(slideConfig({ slideMotion: 'fade' }).motion).toBe('fade');
+    expect(slideConfig({ slideMotion: 'zoom' }).motion).toBe('zoom');
+    for (const other of ['cut', 'dissolve', 1, null]) expect(slideConfig({ slideMotion: other }).motion).toBe('cut');
+  });
+});
+
+describe('slideTiming', () => {
+  it('names the next swap on the clock, the same from anywhere inside the interval', () => {
+    const base = 1_000_000 * MIN;
+    expect(slideTiming(base, 60)).toEqual({ swapAtMs: base + MIN, intervalMs: MIN });
+    expect(slideTiming(base + MIN - 1, 60).swapAtMs).toBe(base + MIN);
+    expect(slideTiming(base + MIN, 60).swapAtMs).toBe(base + 2 * MIN);
+    // The swap slideTiming names is the one slideAt turns on.
+    const { swapAtMs } = slideTiming(base + 30_000, 60);
+    expect(slideAt(PHOTOS, swapAtMs - 1, { seconds: 60, order: 'in-order', motion: 'fade' })?.current).toBe(PHOTOS[0]);
+    expect(slideAt(PHOTOS, swapAtMs, { seconds: 60, order: 'in-order', motion: 'fade' })?.current).toBe(PHOTOS[1]);
+    expect(FADE_MS).toBe(2_000);
   });
 });
 
 describe('slideAt', () => {
   it('turns at the interval on the clock, in the album’s order, and says what comes next', () => {
-    const config = { seconds: 60, order: 'in-order' } as const;
+    const config = { seconds: 60, order: 'in-order', motion: 'cut' } as const;
     const base = 1_000_000 * MIN; // a whole minute
     expect(slideAt(PHOTOS, base, config)).toEqual({ current: PHOTOS[0], next: PHOTOS[1] });
     expect(slideAt(PHOTOS, base + MIN - 1, config)?.current).toBe(PHOTOS[0]);
@@ -26,14 +46,14 @@ describe('slideAt', () => {
   });
 
   it('is the same photo on every wall and every redraw inside one interval', () => {
-    const config = { seconds: 300, order: 'shuffle' } as const;
+    const config = { seconds: 300, order: 'shuffle', motion: 'cut' } as const;
     const at = 1_791_388_800_000;
     const seen = new Set([0, 15_000, 30_000, 299_999].map((offset) => slideAt(PHOTOS, at + offset, config)?.current));
     expect(seen.size).toBe(1);
   });
 
   it('shows every photo once a round when shuffled, in an order that changes from round to round', () => {
-    const config = { seconds: 60, order: 'shuffle' } as const;
+    const config = { seconds: 60, order: 'shuffle', motion: 'cut' } as const;
     const round = (r: number): (string | undefined)[] =>
       PHOTOS.map((_, i) => slideAt(PHOTOS, (r * PHOTOS.length + i) * MIN, config)?.current);
     for (const r of [0, 1, 2, 500]) expect([...round(r)].sort()).toEqual([...PHOTOS].sort());
@@ -43,10 +63,10 @@ describe('slideAt', () => {
   });
 
   it('shows the one photo of an album of one, and nothing of an empty album', () => {
-    expect(slideAt([PHOTOS[0] ?? ''], 123_456_789, { seconds: 60, order: 'shuffle' })).toEqual({
+    expect(slideAt([PHOTOS[0] ?? ''], 123_456_789, { seconds: 60, order: 'shuffle', motion: 'cut' })).toEqual({
       current: PHOTOS[0],
       next: PHOTOS[0],
     });
-    expect(slideAt([], 123_456_789, { seconds: 60, order: 'in-order' })).toBeUndefined();
+    expect(slideAt([], 123_456_789, { seconds: 60, order: 'in-order', motion: 'cut' })).toBeUndefined();
   });
 });

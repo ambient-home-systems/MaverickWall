@@ -24,7 +24,7 @@ import type { NewsModel, PanelData, PanelReading } from './viewmodel.js';
 import type { ManifestWidget, CanvasBackground } from './manifest.js';
 import { glyphNode, glyphPartsNode, isGlyphKey } from './glyphs.js';
 import { emojiNode } from './emoji.js';
-import { lockLoop, lockOnce, oneShotPhase } from './motion.js';
+import { lockAt, lockLoop, lockOnce, oneShotPhase } from './motion.js';
 import { ICON_MOTION_MS, iconMotion, iconSetOf, meteoconNode, type WeatherIconSet } from './weather-icons.js';
 import { clockWeatherLine, clockWeatherOf } from './clock-weather.js';
 import { MOTION_FIXTURE_TYPE, renderMotionFixture } from './motion-fixture.js';
@@ -105,7 +105,7 @@ import {
   type WidgetTier,
 } from './widget-tiers.js';
 import { adviceLine, type Advice } from './weather-advice.js';
-import { slideAt, slideConfig } from './slideshow.js';
+import { FADE_MS, slideAt, slideConfig, slideTiming } from './slideshow.js';
 import {
   TILE_KEEP,
   barKeepsEveryTile,
@@ -2881,7 +2881,8 @@ function renderQrWidget(config: unknown): HTMLElement {
  * picture is — and `slideshow.ts` says which is on show, so every wall agrees
  * and a redraw never moves it. The next photo is drawn too, hidden, so the
  * browser has it before the swap rather than drawing a blank box while it
- * loads. A plain swap: a crossfade is M3.6's, with the wall's motion rules.
+ * loads. With `slideMotion` set the swap is a crossfade, and with zoom a slow
+ * zoom too (plan item M3.6), scheduled on the wall clock by `crossfadeBox`.
  */
 function renderImageWidget(config: unknown, mediaBase: string, now: number): HTMLElement {
   const c = widgetConfig(config);
@@ -2902,7 +2903,8 @@ function renderImageWidget(config: unknown, mediaBase: string, now: number): HTM
   if (Array.isArray(slides)) {
     const photos = slides.filter((one): one is string => typeof one === 'string' && STORED_IMAGE_NAME.test(one));
     const name = typeof c['albumName'] === 'string' ? c['albumName'] : undefined;
-    const shown = slideAt(photos, now, slideConfig(c));
+    const show = slideConfig(c);
+    const shown = slideAt(photos, now, show);
     if (shown === undefined) {
       // Said in words, never a hole: the album is empty, or it has gone.
       return el(
@@ -2913,7 +2915,10 @@ function renderImageWidget(config: unknown, mediaBase: string, now: number): HTM
           : `Add photos to ${name} on the Photos screen.`,
       );
     }
-    const box = pictureBox(`url("${mediaBase}${shown.current}")`, fit);
+    const box =
+      show.motion === 'cut' || shown.next === shown.current
+        ? pictureBox(`url("${mediaBase}${shown.current}")`, fit)
+        : crossfadeBox(`url("${mediaBase}${shown.current}")`, `url("${mediaBase}${shown.next}")`, fit, show.motion === 'zoom', now, show.seconds);
     if (shown.next !== shown.current) {
       // An `<img>`, because a hidden element's background is never fetched and
       // a hidden image is: this is what puts the next photo in the cache.
@@ -2922,6 +2927,9 @@ function renderImageWidget(config: unknown, mediaBase: string, now: number): HTM
       next.alt = '';
       next.setAttribute('aria-hidden', 'true');
       next.src = `${mediaBase}${shown.next}`;
+      // Decoded now, minutes before the swap, so the crossfade's first frame
+      // is not the frame the browser spends decoding it (plan item M3.6).
+      if (typeof next.decode === 'function') next.decode().catch(() => undefined);
       box.appendChild(next);
     }
     return box;
@@ -2972,6 +2980,38 @@ function pictureBox(url: string, fit: PictureFit): HTMLElement {
   const front = el('div', 'fw-fit-front');
   front.style.backgroundImage = url;
   box.append(back, front);
+  return box;
+}
+
+/**
+ * Two photos, the next over the current, for a crossfade (plan item M3.6).
+ *
+ * The next photo's layer fades in over the `FADE_MS` before the swap, and with
+ * `zoom` each photo's own box scales slowly from the start of its fade to the
+ * end of the next one. All of it is scheduled on the wall clock by `lockAt`,
+ * so the fifteen-second rebuild lands on the same frame wherever it falls, and
+ * after the swap — before the next draw puts the new photo underneath — the
+ * top layer is held at full by the scoped block's fill, so nothing flashes
+ * back. Where motion is off the stylesheet moves nothing and the top layer
+ * stays clear: a cut at the next draw, which is what `cut` draws anyway.
+ */
+function crossfadeBox(current: string, next: string, fit: PictureFit, zoom: boolean, now: number, seconds: number): HTMLElement {
+  const { swapAtMs, intervalMs } = slideTiming(now, seconds);
+  const box = el('div', 'fw-image fw-slides');
+  const layer = (url: string, top: boolean): HTMLElement => {
+    const photo = el('div', top ? 'fw-photo fw-photo-next' : 'fw-photo');
+    const picture = pictureBox(url, fit);
+    if (zoom) {
+      picture.classList.add('fw-zoom');
+      // From the start of this photo's own fade to the end of the next one.
+      const fadeIn = (top ? swapAtMs : swapAtMs - intervalMs) - FADE_MS;
+      lockAt(picture, intervalMs + FADE_MS, fadeIn, now);
+    }
+    photo.appendChild(picture);
+    if (top) lockAt(photo, FADE_MS, swapAtMs - FADE_MS, now);
+    return photo;
+  };
+  box.append(layer(current, false), layer(next, true));
   return box;
 }
 
