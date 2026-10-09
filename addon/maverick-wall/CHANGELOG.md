@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 0.99.0
+
 **A photo frame that never goes black.** If a slideshow photo can't be
 fetched — Immich down before the wall had kept a copy, a NAS asleep — the
 box now shows a calm bundled picture instead of an empty rectangle: Dusk on a
