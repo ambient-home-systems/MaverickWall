@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { install, type Installation } from './browser-harness.js';
+import { WALLPAPER_GLASS } from '../src/wallpaper-glass.js';
 
 /**
  * A wall's Widget ground (plan item P6.3), from the settings form to the
@@ -129,5 +130,22 @@ describe('Glass, with the prototype on (plan item M4.1)', () => {
     expect((glassy.db.prepare('SELECT widget_ground AS g FROM screens WHERE id = ?').get(id) as { g: string }).g).toBe('glass');
     const sent = JSON.parse(await (await glassy.call(`/admin/layout/preview.json?screen=${encodeURIComponent(id)}`)).text());
     expect(sent.screen.widgetGround).toBe('glass');
+  });
+
+  it('sends each wallpaper what it shows through Glass to a wall on Glass, and to no other wall (plan item M4.2)', async () => {
+    const preview = async (): Promise<{ screen: { widgetGround?: string }; layout: { portrait: { background?: Record<string, unknown> } } }> =>
+      JSON.parse(await (await glassy.call(`/admin/layout/preview.json?screen=${encodeURIComponent(id)}`)).text());
+    glassy.db.prepare(`UPDATE screens SET layout_background = '{"type":"wallpaper","id":"dusk"}', widget_ground = 'glass' WHERE id = ?`).run(id);
+    expect((await preview()).layout.portrait.background?.['glass']).toEqual({ light: WALLPAPER_GLASS['dusk']?.light, dark: WALLPAPER_GLASS['dusk']?.dark });
+    // A rotation carries it on every picture.
+    glassy.db
+      .prepare(`UPDATE screens SET layout_background = '{"type":"rotation","collection":"gradient","tone":"dark","every":60}' WHERE id = ?`)
+      .run(id);
+    const pictures = (await preview()).layout.portrait.background?.['pictures'] as { id: string; glass?: unknown }[];
+    expect(pictures.length).toBeGreaterThan(1);
+    for (const one of pictures) expect(one.glass).toEqual({ light: WALLPAPER_GLASS[one.id]?.light, dark: WALLPAPER_GLASS[one.id]?.dark });
+    // Soft: the wallpaper as it always was, with no Glass on it.
+    glassy.db.prepare(`UPDATE screens SET layout_background = '{"type":"wallpaper","id":"dusk"}', widget_ground = 'soft' WHERE id = ?`).run(id);
+    expect(JSON.stringify((await preview()).layout.portrait.background)).not.toContain('glass');
   });
 });

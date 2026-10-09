@@ -6,7 +6,8 @@
  * What is read is the glass itself, never a class:
  *
  *  - the layer under the widget computes `backdrop-filter: blur(…) saturate(1.4)`
- *    and a fill of the theme's card colour at 0.4;
+ *    and a fill of the theme's card colour at the opacity the wall measured
+ *    and solved for this picture (plan item M4.2), under Soft's 0.86;
  *  - on the glass the stripes are gone: a patch of the widget varies far less
  *    than the same patch on Soft, which in turn varies less than on None —
  *    blurred rather than merely tinted, read off the pixels a household sees;
@@ -21,6 +22,7 @@ import type { Page } from 'playwright-core';
 import { Framebuffer } from '../src/epaper/framebuffer.js';
 import { encodePng1bit } from '../src/epaper/png.js';
 import { TEARDOWN, browser, install, loadWallSettled, shutDownBrowser, type Installation } from './browser-harness.js';
+import { WALLPAPER_GLASS } from '../src/wallpaper-glass.js';
 
 const SLOW = 180_000;
 const installations: Installation[] = [];
@@ -99,6 +101,19 @@ describe('Glass over a striped picture', () => {
           // Let the picture decode and paint before reading pixels off it.
           await page.waitForFunction(() => document.querySelector<HTMLElement>('#wall .canvas')?.style.backgroundImage !== '', undefined, { timeout: 10_000 });
           await page.waitForTimeout(400);
+          if (ground === 'glass') {
+            // The wall measures a household's own picture once and rewrites the
+            // fill in place (plan item M4.2): until then it is at Soft's 0.86.
+            await page.waitForFunction(
+              () => {
+                const node = document.querySelector<HTMLElement>('#wall [data-widget-id="w-note"]');
+                const fill = node === null ? '' : getComputedStyle(node, '::before').backgroundColor;
+                return /rgba\(\d+, \d+, \d+, ([\d.]+)\)/.exec(fill)?.[1] !== '0.86';
+              },
+              undefined,
+              { timeout: 10_000 },
+            );
+          }
           const box = await page.evaluate(() => {
             const node = document.querySelector<HTMLElement>('#wall [data-widget-id="w-note"]') as HTMLElement;
             const r = node.getBoundingClientRect();
@@ -136,24 +151,102 @@ describe('Glass over a striped picture', () => {
       // The layer: blurred and saturated, the card colour at 0.4, fully opaque itself.
       expect(glass.layer.backdrop).toMatch(/^blur\([\d.]+px\) saturate\(1\.4\)$/);
       expect(Number(/blur\(([\d.]+)px\)/.exec(glass.layer.backdrop)?.[1])).toBeGreaterThan(6);
-      expect(glass.layer.background).toMatch(/^rgba\(\d+, \d+, \d+, 0\.4\)$/);
+      // The card colour at the opacity this wall solved for this picture, once measured.
+      const alpha = Number(/^rgba\(\d+, \d+, \d+, ([\d.]+)\)$/.exec(glass.layer.background)?.[1]);
+      expect(alpha).toBeGreaterThan(0);
+      expect(alpha).toBeLessThan(0.86);
       expect(glass.layer.opacity).toBe('1');
       expect(soft.layer.backdrop === '' || soft.layer.backdrop === 'none').toBe(true);
 
       /*
        * On None the stripes show in full and on Soft faintly. Glass lets more
-       * of the picture through than Soft does — 0.6 of it, where Soft lets
-       * 0.14 — so what says it is *blurred* rather than thinly tinted is that
-       * it varies far less than 0.6 of None would: the stripes are gone, and
-       * what comes through is their average.
+       * of the picture through than Soft does — 1 - alpha of it, where Soft
+       * lets 0.14 — so what says it is *blurred* rather than thinly tinted is
+       * that it varies far less than that share of None would: the stripes
+       * are gone, and what comes through is their average.
        */
       expect(none.patch.spread).toBeGreaterThan(60);
       expect(soft.patch.spread).toBeLessThan(none.patch.spread / 3);
-      expect(glass.patch.spread).toBeLessThan(none.patch.spread * 0.6 * 0.25);
+      expect(glass.patch.spread).toBeLessThan(none.patch.spread * (1 - alpha) * 0.25);
       // The picture is half black and half white, so a blur of it alone is mid-grey;
-      // the card colour at 0.4 pulls the glass towards Panels' dark card.
+      // the card colour pulls the glass towards Panels' dark card, less than Soft does.
       expect(glass.patch.mean).toBeLessThan(110);
       expect(glass.patch.mean).toBeGreaterThan(soft.patch.mean);
+      process.stdout.write(`[glass] measured opacity over the stripes: ${alpha}\n`);
+    },
+    SLOW,
+  );
+});
+
+describe('Glass over a bundled wallpaper (plan item M4.2)', () => {
+  it(
+    'is drawn at exactly the opacity solved from the catalogue for the theme on screen',
+    async () => {
+      const home = await install({ glassPrototype: true });
+      installations.push(home);
+      const link = await home.pairLink('Hall');
+      const screen = (home.db.prepare('SELECT id FROM screens ORDER BY created_at DESC LIMIT 1').get() as { id: string }).id;
+      home.db
+        .prepare(
+          `UPDATE screens SET layout_background = '{"type":"wallpaper","id":"dusk"}',
+             layout_landscape_background = '{"type":"wallpaper","id":"dusk"}', widget_ground = 'glass' WHERE id = ?`,
+        )
+        .run(screen);
+      // Landscape, where Glass blurs least and the catalogue was measured for.
+      const opened = await loadWallSettled(link, { width: 1920, height: 1080 });
+      try {
+        const page = opened.page;
+        await page.waitForSelector('#wall .canvas[data-ground="glass"] .fw.has-ground', { timeout: 25_000 });
+        const read = await page.evaluate(() => {
+          const canvas = document.querySelector('#wall .canvas') as HTMLElement;
+          const style = getComputedStyle(canvas);
+          const box = canvas.querySelector('.fw.has-ground') as HTMLElement;
+          return {
+            panel: style.getPropertyValue('--panel').trim(),
+            ink: style.getPropertyValue('--ink').trim(),
+            scaffold: style.getPropertyValue('--ink-scaffold').trim(),
+            fill: getComputedStyle(box, '::before').backgroundColor,
+          };
+        });
+        // The test's own solve, written out: the patches pushed apart by three
+        // levels, the lowest hundredth at which both inks keep 4.5:1.
+        type Rgb = readonly [number, number, number];
+        const hex = (h: string): Rgb => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+        const lin = (v: number): number => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+        const lum = ([r, g, b]: Rgb): number => 0.2126 * lin(r / 255) + 0.7152 * lin(g / 255) + 0.0722 * lin(b / 255);
+        const ratio = (a: Rgb, b: Rgb): number => (Math.max(lum(a), lum(b)) + 0.05) / (Math.min(lum(a), lum(b)) + 0.05);
+        const backdrop = WALLPAPER_GLASS['dusk'];
+        const light = hex(backdrop?.light ?? '#000000').map((v) => Math.min(255, v + 3)) as unknown as Rgb;
+        const dark = hex(backdrop?.dark ?? '#000000').map((v) => Math.max(0, v - 3)) as unknown as Rgb;
+        const panel = hex(read.panel);
+        let expected = 1;
+        for (let step = 0; step <= 100; step++) {
+          const a = step / 100;
+          const mix = (p: Rgb): Rgb => [0, 1, 2].map((i) => Math.round(a * (panel[i] ?? 0) + (1 - a) * (p[i] ?? 0))) as unknown as Rgb;
+          if ([light, dark].every((p) => [read.ink, read.scaffold].every((ink) => ratio(hex(ink), mix(p)) >= 4.5))) {
+            expected = a;
+            break;
+          }
+        }
+        expect(read.fill).toBe(`rgba(${panel[0]}, ${panel[1]}, ${panel[2]}, ${expected})`);
+        expect(expected).toBeLessThan(0.86);
+        process.stdout.write(`[glass] Dusk on Panels: ${expected}\n`);
+      } finally {
+        await opened.close();
+      }
+      // With nothing behind the widgets the canvas paints the card colour itself,
+      // so Glass needs next to none of it: only the margin's few levels' worth.
+      home.db.prepare('UPDATE screens SET layout_background = NULL, layout_landscape_background = NULL WHERE id = ?').run(screen);
+      const bare = await loadWallSettled(link, { width: 1920, height: 1080 });
+      try {
+        await bare.page.waitForSelector('#wall .canvas[data-ground="glass"] .fw.has-ground', { timeout: 25_000 });
+        const fill = await bare.page.evaluate(
+          () => getComputedStyle(document.querySelector('#wall .canvas .fw.has-ground') as HTMLElement, '::before').backgroundColor,
+        );
+        expect(Number(/rgba?\([\d, ]+?, ([\d.]+)\)$/.exec(fill)?.[1] ?? '1')).toBeLessThanOrEqual(0.05);
+      } finally {
+        await bare.close();
+      }
     },
     SLOW,
   );

@@ -362,7 +362,10 @@ renders". Two of the three are reversed and one stands:
   blur() saturate()` under the card colour at 0.4. Without the flag it is never
   offered or sent, a wall left on it is sent Soft, an e-ink-sized wall draws
   Soft, and a browser that cannot blur a backdrop draws Soft. Q4 flips only if
-  the prototype passes MQ1.
+  the prototype passes MQ1. Its opacity is not chosen but solved (M4.2): the
+  lowest that keeps `--ink` and `--ink-scaffold` at 4.5:1 over the picture's
+  lightest and darkest patch as Glass shows it, from the catalogue for a bundled
+  wallpaper and measured once on the wall for a household's own picture.
 - **One blur is in, and it is not that one (plan item M3.5).** An Image
   widget's "Whole, over a blur" fit draws a photo whole over a blurred, dimmed
   copy of itself — a `filter: blur()` on a copy *inside* the box, the way a

@@ -47,6 +47,8 @@
  * on a dark one. `test/theme.test.ts` holds every theme to the same bar.
  */
 
+import { GLASS_UNMEASURED_ALPHA } from './glass-alpha.js';
+
 export type ThemeName = 'household' | 'blueprint' | 'panels' | 'almanac' | 'swiss';
 
 export type ThemeTokens = Readonly<Record<string, string>>;
@@ -719,8 +721,12 @@ export function glassTokens(panel: string | undefined): Readonly<Record<string, 
   };
 }
 
-/** How much of the card colour Glass lays over the blurred picture, until each picture's own is measured (M4.2). */
-export const GLASS_FILL_ALPHA = 0.4;
+/**
+ * How much of the card colour Glass lays over the blurred picture before the
+ * canvas has solved its own (plan item M4.2): Soft's, so text is never put on
+ * a thinner ground than Soft before anything has been measured (MQ10).
+ */
+export const GLASS_FILL_ALPHA = GLASS_UNMEASURED_ALPHA;
 
 function writeGlass(element: Themeable, panel: string | undefined): void {
   const glass = glassTokens(panel);

@@ -19,6 +19,8 @@
 **Nothing changes on your walls from this.** A frosted-glass look for widgets
 over a picture is being tried out behind a switch only a developer can turn
 on. It is not offered anywhere, and a wall can't end up using it by accident.
+It now works out, for each picture and each theme, how much tint keeps text
+readable through it.
 
 ## 0.99.0
 

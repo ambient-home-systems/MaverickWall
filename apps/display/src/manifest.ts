@@ -37,6 +37,8 @@ export type CanvasBackground =
        * defensively in `wallpaper.ts`: a stored copy may carry any shape.
        */
       readonly focal?: { readonly x: number; readonly y: number };
+      /** What the picture shows through Glass (plan item M4.2); only a wall on Glass is sent it. */
+      readonly glass?: { readonly light: string; readonly dark: string };
     }
   | {
       /**
@@ -53,6 +55,7 @@ export type CanvasBackground =
         readonly small: string;
         readonly large: string;
         readonly focal?: { readonly x: number; readonly y: number };
+        readonly glass?: { readonly light: string; readonly dark: string };
       }[];
     };
 

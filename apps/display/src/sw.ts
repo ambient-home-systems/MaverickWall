@@ -84,6 +84,7 @@ const SHELL = [
   '/assets/shift-style.js',
   '/assets/slideshow.js',
   '/assets/photo-fallback.js',
+  '/assets/glass-alpha.js',
   '/assets/calendar-filter.js',
   '/assets/calendar-looks.js',
   '/assets/store.js',
