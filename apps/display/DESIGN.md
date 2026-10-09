@@ -356,7 +356,13 @@ renders". Two of the three are reversed and one stands:
 - **Blur stays out (Q4).** `backdrop-filter` behind a widget on a wallpaper is
   still excluded; a widget over a picture sits on a flat ground (plan item
   P6.3), because nothing measures text over a blur and an old tablet pays for
-  one on every frame.
+  one on every frame. **Glass is being tried behind a flag, and the rule
+  stands until it passes (plan items M4.1–M4.3).** A server started with
+  `MW_GLASS_PROTOTYPE=1` offers a fourth ground, Glass: `backdrop-filter:
+  blur() saturate()` under the card colour at 0.4. Without the flag it is never
+  offered or sent, a wall left on it is sent Soft, an e-ink-sized wall draws
+  Soft, and a browser that cannot blur a backdrop draws Soft. Q4 flips only if
+  the prototype passes MQ1.
 - **One blur is in, and it is not that one (plan item M3.5).** An Image
   widget's "Whole, over a blur" fit draws a photo whole over a blurred, dimmed
   copy of itself — a `filter: blur()` on a copy *inside* the box, the way a

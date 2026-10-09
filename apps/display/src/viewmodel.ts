@@ -2159,8 +2159,10 @@ export function buildModel(options: BuildOptions): DisplayModel {
     // Straight off the document: `gutterValue` is the one place a step becomes
     // a length, and it refuses anything this bundle does not know.
     layoutGutter: manifest.screen?.layoutGutter,
-    // As sent; `widgetGroundFor` refuses anything it does not know.
-    widgetGround: manifest.screen?.widgetGround,
+    // As sent; `widgetGroundFor` refuses anything it does not know. Glass on an
+    // e-ink-sized wall is Soft (plan item M4.1): a blur is grey, and grey on
+    // e-ink is dither that bands, the shadow token's reason one ground along.
+    widgetGround: manifest.screen?.widgetGround === 'glass' && manifest.screen.eink === true ? 'soft' : manifest.screen?.widgetGround,
     // Read through `styleTokensOf`, which keeps only what a lane can carry.
     layoutStyle: styleTokensOf(manifest.screen?.layoutStyleTokens),
     layoutDaytimeStyle: styleTokensOf(manifest.screen?.layoutDaytimeStyleTokens),

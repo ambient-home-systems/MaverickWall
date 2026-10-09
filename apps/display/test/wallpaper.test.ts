@@ -78,6 +78,11 @@ describe('widgetGroundFor', () => {
     expect(widgetGroundFor('opaque', DUSK)).toBe('soft');
     expect(widgetGroundFor(3, undefined)).toBe('none');
   });
+
+  it('honours Glass, which only a server with the prototype on sends (plan item M4.1)', () => {
+    expect(widgetGroundFor('glass', DUSK)).toBe('glass');
+    expect(widgetGroundFor('glass', undefined)).toBe('glass');
+  });
 });
 
 describe('wallpaperPosition', () => {

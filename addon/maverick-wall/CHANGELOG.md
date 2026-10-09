@@ -16,6 +16,10 @@
 
 ## Unreleased
 
+**Nothing changes on your walls from this.** A frosted-glass look for widgets
+over a picture is being tried out behind a switch only a developer can turn
+on. It is not offered anywhere, and a wall can't end up using it by accident.
+
 ## 0.99.0
 
 **A photo frame that never goes black.** If a slideshow photo can't be

@@ -46,7 +46,7 @@ async function manifestText(): Promise<string> {
 /** Which segment the Layout settings draw checked, and what they say they drew. */
 async function drawn(): Promise<{ checked: string | undefined; shown: string | undefined }> {
   const html = await (await wall.call(`/admin/walls/${screenId}`)).text();
-  const checked = /<input type="radio" name="widget_ground" value="(none|soft|solid)" checked>/.exec(html)?.[1];
+  const checked = /<input type="radio" name="widget_ground" value="(none|soft|solid|glass)" checked>/.exec(html)?.[1];
   return { checked, shown: /name="widget_ground_shown" value="([a-z]+)"/.exec(html)?.[1] };
 }
 
@@ -90,9 +90,44 @@ describe("a wall's Widget ground, through the settings form", () => {
     expect(JSON.parse(await manifestText()).screen.widgetGround).toBe('none');
   });
 
+  it('refuses Glass while the prototype is off, offers no such choice, and sends a stored one as Soft (plan item M4.1)', async () => {
+    const refused = await wall.post(`/admin/screens/${screenId}`, form({ widget_ground: 'glass', widget_ground_shown: 'none' }));
+    expect(refused.status).toBe(400);
+    expect(await (await wall.call(`/admin/walls/${screenId}`)).text()).not.toContain('value="glass"');
+    // Left on Glass by a server that had it on: sent, and drawn checked, as the Soft it falls back to.
+    wall.db.prepare("UPDATE screens SET widget_ground = 'glass' WHERE id = ?").run(screenId);
+    expect(JSON.parse(await manifestText()).screen.widgetGround).toBe('soft');
+    expect((await drawn()).checked).toBe('soft');
+    wall.db.prepare("UPDATE screens SET widget_ground = 'none' WHERE id = ?").run(screenId);
+  });
+
   it('refuses a ground that is not one of the three (rule five)', async () => {
     const refused = await wall.post(`/admin/screens/${screenId}`, form({ widget_ground: 'opaque', widget_ground_shown: 'none' }));
     expect(refused.status).toBe(400);
     expect(stored()).toBe('none');
+  });
+});
+
+describe('Glass, with the prototype on (plan item M4.1)', () => {
+  let glassy: Installation;
+  let id: string;
+  beforeAll(async () => {
+    glassy = await install({ glassPrototype: true });
+    id = await glassy.pairWall('Hall');
+  }, 60_000);
+  afterAll(async () => {
+    await glassy.dispose();
+  });
+
+  it('is offered as a fourth ground, says it is a prototype, and is stored and sent', async () => {
+    const page = await (await glassy.call(`/admin/walls/${id}`)).text();
+    expect(page).toContain('value="glass"');
+    expect(page).toContain('Glass (prototype)');
+    expect(page).toContain('MW_GLASS_PROTOTYPE=1');
+    const saved = await glassy.post(`/admin/screens/${id}`, form({ widget_ground: 'glass', widget_ground_shown: 'none' }));
+    expect(saved.status).toBe(302);
+    expect((glassy.db.prepare('SELECT widget_ground AS g FROM screens WHERE id = ?').get(id) as { g: string }).g).toBe('glass');
+    const sent = JSON.parse(await (await glassy.call(`/admin/layout/preview.json?screen=${encodeURIComponent(id)}`)).text());
+    expect(sent.screen.widgetGround).toBe('glass');
   });
 });

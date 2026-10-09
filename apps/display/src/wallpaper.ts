@@ -74,7 +74,7 @@ export function wallpaperFile(
  * What each widget draws behind itself (P6.3): nothing, the theme's `--panel`
  * at a high opacity, or `--panel` opaque.
  */
-export type WidgetGround = 'none' | 'soft' | 'solid';
+export type WidgetGround = 'none' | 'soft' | 'solid' | 'glass';
 
 export const WIDGET_GROUNDS: readonly WidgetGround[] = ['none', 'soft', 'solid'];
 
@@ -94,7 +94,8 @@ export const WIDGET_GROUNDS: readonly WidgetGround[] = ['none', 'soft', 'solid']
  * An answer this bundle does not know is "never chosen" rather than a guess.
  */
 export function widgetGroundFor(stored: unknown, background: CanvasBackground | undefined): WidgetGround {
-  if (stored === 'none' || stored === 'soft' || stored === 'solid') return stored;
+  // Glass is the server's prototype (plan item M4.1): sent only while its flag is on.
+  if (stored === 'none' || stored === 'soft' || stored === 'solid' || stored === 'glass') return stored;
   return background?.type === 'wallpaper' ? 'soft' : 'none';
 }
 
