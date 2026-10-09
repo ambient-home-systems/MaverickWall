@@ -26,6 +26,8 @@ import {
   notForOled,
   themeTone,
   wallpaperById,
+  groundToSend,
+  isGroundAllowed,
 } from '../src/wallpapers.js';
 
 /**
@@ -312,5 +314,19 @@ describe('the manifest', () => {
     expect((await h.manifest()).screen['widgetGround']).toBe('solid');
     h.db.prepare(`UPDATE screens SET widget_ground = 'opaque' WHERE id = 's1'`).run();
     expect((await h.manifest()).screen).not.toHaveProperty('widgetGround');
+  });
+});
+
+describe('Glass, the prototype ground (plan item M4.1)', () => {
+  it('is allowed and sent only with the prototype on, and sent as Soft without it', () => {
+    expect(isGroundAllowed('glass', true)).toBe(true);
+    expect(isGroundAllowed('glass', false)).toBe(false);
+    expect(isGroundAllowed('soft', false)).toBe(true);
+    expect(isGroundAllowed('frosted', true)).toBe(false);
+    expect(groundToSend('glass', true)).toBe('glass');
+    expect(groundToSend('glass', false)).toBe('soft');
+    expect(groundToSend('solid', false)).toBe('solid');
+    expect(groundToSend(null, true)).toBeUndefined();
+    expect(groundToSend('frosted', true)).toBeUndefined();
   });
 });

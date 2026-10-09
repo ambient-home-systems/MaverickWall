@@ -1294,3 +1294,13 @@ describe('todoFrom — the to-do panel, read defensively (RFC 012)', () => {
     expect(lists?.[0]?.open).toBe(1);
   });
 });
+
+describe('Glass on an e-ink-sized wall (plan item M4.1)', () => {
+  it('is Soft there, and Glass anywhere else', () => {
+    const screen = (eink: boolean): Manifest['screen'] => ({ widgetGround: 'glass', ...(eink ? { eink: true } : {}) }) as Manifest['screen'];
+    expect(model([], { screen: screen(false) }).widgetGround).toBe('glass');
+    expect(model([], { screen: screen(true) }).widgetGround).toBe('soft');
+    // Every other ground is left as sent on an e-ink wall too.
+    expect(model([], { screen: { widgetGround: 'solid', eink: true } as Manifest['screen'] }).widgetGround).toBe('solid');
+  });
+});

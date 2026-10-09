@@ -23,7 +23,7 @@ import { isEinkWall, physicalWall } from '../wall-sizes.js';
 import { wallMotion } from '../wall-motion.js';
 import {
   ROTATION_COLLECTIONS,
-  isWidgetGround,
+  groundToSend,
   photoFallback,
   rotationPictures,
   themeTone,
@@ -1446,7 +1446,7 @@ export interface Manifest {
      * a fact about the screen. Spread for the `motion` reason above: a wall
      * nobody touched sends the document it always did.
      */
-    readonly widgetGround?: WidgetGround;
+    readonly widgetGround?: WidgetGround | 'glass';
   };
   readonly days: readonly ManifestDay[];
   /** Everyone the wall knows about, so a legend can be drawn. */
@@ -1733,6 +1733,8 @@ export interface BuildManifestInput {
     /** What each widget draws behind itself, as stored; null is "never chosen" (P6.3). */
     readonly widgetGround?: string | null;
   };
+  /** Whether Glass, the prototype ground, may reach a wall (plan item M4.1). Absent is off. */
+  readonly glassPrototype?: boolean;
   /**
    * Resolve a theme reference to its shape and (for a custom theme) its tokens.
    * Injected so assembly stays free of a database read — the caller closes over
@@ -2267,7 +2269,10 @@ export function buildManifest(input: BuildManifestInput): Manifest {
         : {}),
       // The widget ground (P6.3), said only once chosen, and only as a value
       // this server writes: anything else in the column is "never chosen".
-      ...(isWidgetGround(input.screen?.widgetGround) ? { widgetGround: input.screen.widgetGround } : {}),
+      ...((): { widgetGround?: WidgetGround | 'glass' } => {
+        const ground = groundToSend(input.screen?.widgetGround, input.glassPrototype === true);
+        return ground === undefined ? {} : { widgetGround: ground };
+      })(),
     },
     display: {
       todayEvents: clamp(input.household.displayTodayEvents, 1, 20, 8),

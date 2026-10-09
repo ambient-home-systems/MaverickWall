@@ -680,6 +680,7 @@ function applyThemeTokens(
       const value = tokens[key];
       if (value !== undefined) element.style.setProperty(key, value);
     }
+    writeGlass(element, tokens['--panel']);
     element.setAttribute('data-theme', shape ?? 'board');
     return;
   }
@@ -692,5 +693,39 @@ function applyThemeTokens(
     const value = resolved[key];
     if (value !== undefined) element.style.setProperty(key, value);
   }
+  writeGlass(element, resolved['--panel']);
   element.setAttribute('data-theme', resolveName(name));
+}
+
+/**
+ * Glass, the prototype widget ground (plan item M4.1): the theme's card colour
+ * at 0.4, and a hairline edge that reads on either ground.
+ *
+ * Derived from `--panel` rather than written into each theme, so every theme —
+ * a custom one included — has it the moment it has a card colour; pre-mixed as
+ * an `rgba()` because an alpha cannot be put on a variable and `color-mix()` is
+ * out under rule two. The blur and the saturation are the stylesheet's, on
+ * `:root`. 0.4 is a starting point and not a promise: what keeps text at 4.5:1
+ * over a given picture is that picture's measured opacity (M4.2), which is why
+ * Glass is a prototype behind a flag until then.
+ */
+export function glassTokens(panel: string | undefined): Readonly<Record<string, string>> {
+  const rgb = panel === undefined ? undefined : parseHex(panel);
+  if (rgb === undefined || panel === undefined) return {};
+  const light = relativeLuminance(panel) > 0.5;
+  return {
+    '--glass-fill': `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${GLASS_FILL_ALPHA})`,
+    '--glass-edge': light ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.1)',
+  };
+}
+
+/** How much of the card colour Glass lays over the blurred picture, until each picture's own is measured (M4.2). */
+export const GLASS_FILL_ALPHA = 0.4;
+
+function writeGlass(element: Themeable, panel: string | undefined): void {
+  const glass = glassTokens(panel);
+  for (const key of Object.keys(glass)) {
+    const value = glass[key];
+    if (value !== undefined) element.style.setProperty(key, value);
+  }
 }

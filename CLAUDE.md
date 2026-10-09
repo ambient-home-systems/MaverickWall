@@ -5114,6 +5114,57 @@ core 314 over 9 · display 1003 over 61 · server 4055 over 320, measured with
 +3, which is this change's own count. **Still unproven where it counts:**
 nobody has seen a real Immich go down under a kitchen wall.
 
+**Glass is built as a prototype, behind a flag, and Q4 still stands (plan item
+M4.1, decision MD4).** Glass is a fourth widget ground: the picture behind
+each widget blurred and a little more saturated (`backdrop-filter: blur()
+saturate()`), under the theme's card colour at 0.4, with a hairline edge.
+
+**It reaches a wall only while the server runs with
+`MW_GLASS_PROTOTYPE=1`.** `isGroundAllowed` and `groundToSend` in
+`wallpapers.ts` are the whole gate:
+- without the flag, Wall settings offers three grounds, a posted `glass` is a
+  400, and a wall left on Glass is sent Soft — what Glass falls back to anyway,
+  so switching the experiment off can never leave text straight on a picture;
+- the editor's wallpaper picker offers Glass exactly when Wall settings'
+  radios do.
+
+**The fallbacks are layer for layer.** An e-ink-sized wall is sent Soft by
+the view model, since a blur is grey and grey on e-ink is dither that bands.
+A browser that cannot blur a backdrop draws Soft, because the glass rule sits
+in `@supports` with its `-webkit-` form and the base layer is Soft's.
+
+**The tokens:**
+- `--glass-fill` and `--glass-edge` are derived from `--panel` in `theme.ts`
+  (`glassTokens`) for every theme, a custom one included, pre-mixed as
+  `rgba()` because `color-mix()` is out under rule two;
+- `--glass-blur` (0.6rem) and `--glass-saturate` (1.4) are on `:root`.
+
+0.4 is a starting point and not a promise. What keeps text at 4.5:1 over a
+given picture is that picture's measured opacity, which is M4.2, and Q4 flips
+only if M4.3 finds the prototype passes MQ1. The display's DESIGN.md says so
+beside the Q4 line. The flag itself is read once at boot and is not tested
+end to end. Every test drives the app with `glassPrototype` set, as the
+harness's `install` now can.
+
+**Measured.** `browser-glass.test.ts` (2, real Chromium) puts a widget over
+black and white stripes four pixels apart, drawn near 1:1. It reads the
+computed layer — `blur(11.52px) saturate(1.4)` and an `rgba(…, 0.4)` fill —
+and the pixels of a patch inside the widget. The patch varies by 115.8 on
+None, 16.4 on Soft and **3.7 on Glass**, where the same 0.4 wash without the
+blur would leave about 69. So the stripes are blurred away, not thinly
+tinted. Its second test checks the editor's picker offers Glass only with the
+flag on, previews it at once, and writes Wall settings' radio. Unit tests
+cover the tokens, the gate, the e-ink fallback and the route's refusal.
+
+Thirteen mutations were checked and all thirteen are red. Two failed to build
+on the first pass and were re-aimed. **5534 tests passing and 1 skipped, over
+402 files**: calendar 153 over 10 · core 314 over 9 · display 1007 over 62 ·
+server 4060 over 321, measured with `pnpm test` and a real Chromium. Against
+M3.8's 5525 over 400 that is +9 and +2, which is this change's own count.
+**Not measured yet, and the reason this is a prototype:** what Glass costs a
+tick against Soft at 6x throttling, and whether any shipped picture keeps
+4.5:1 under it. Those are M4.3 and M4.2.
+
 
 
 

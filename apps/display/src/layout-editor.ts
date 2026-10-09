@@ -4970,7 +4970,7 @@ function boot(): void {
   }
 
   function isWidgetGround(value: string): value is WidgetGround {
-    return value === 'none' || value === 'soft' || value === 'solid';
+    return value === 'none' || value === 'soft' || value === 'solid' || value === 'glass';
   }
 
   /** Wall settings' Widget ground radios, on this page — none on a panel's page. */
@@ -5017,7 +5017,10 @@ function boot(): void {
       group.className = 'seg le-seg';
       group.setAttribute('role', 'group');
       group.setAttribute('aria-label', 'Widget ground');
-      for (const [value, text] of [['none', 'None'], ['soft', 'Soft'], ['solid', 'Solid']] as const) {
+      // Glass only where Wall settings offers it: the server's prototype flag (plan item M4.1).
+      const offered: [WidgetGround, string][] = [['none', 'None'], ['soft', 'Soft'], ['solid', 'Solid']];
+      if (groundRadios().some((radio) => radio.value === 'glass')) offered.push(['glass', 'Glass']);
+      for (const [value, text] of offered) {
         const button = document.createElement('button');
         button.type = 'button';
         button.textContent = text;
@@ -5048,6 +5051,9 @@ function boot(): void {
     }
     if (ground === 'solid') {
       return `Each widget sits on ${theme} card colour, so the picture shows only between widgets.`;
+    }
+    if (ground === 'glass') {
+      return `A prototype: each widget sits on frosted glass, so the picture behind it blurs under a light wash of ${theme} card colour.`;
     }
     return 'The picture shows in full behind every widget. Text over a busy part of it may be harder to read.';
   }

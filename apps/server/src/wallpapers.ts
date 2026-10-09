@@ -178,6 +178,32 @@ export function isWidgetGround(value: unknown): value is WidgetGround {
 }
 
 /**
+ * Glass, the prototype ground (plan item M4.1, decision MD4): each widget over
+ * a frosted, blurred view of the picture behind it, rather than over Soft's
+ * near-opaque wash.
+ *
+ * **Behind a flag, and only behind it.** Q4 still says blur stays out, and it
+ * flips only if the prototype passes MQ1 — tick cost within a fifth of Soft's,
+ * no new long task, and every shipped picture holding 4.5:1 under its measured
+ * opacity (M4.2–M4.3). So Glass is offered, stored and sent only while the
+ * server runs with `MW_GLASS_PROTOTYPE=1`. A wall left on Glass when the flag
+ * comes off is sent Soft, which is what Glass falls back to anyway, so turning
+ * the experiment off can never leave a wall with text straight on a picture.
+ */
+export const GLASS_GROUND = 'glass';
+
+/** Whether a posted or stored ground is one this server takes, with the prototype on or off. */
+export function isGroundAllowed(value: unknown, glass: boolean): value is WidgetGround | typeof GLASS_GROUND {
+  return isWidgetGround(value) || (glass && value === GLASS_GROUND);
+}
+
+/** The ground a wall is sent: as stored, with Glass sent as Soft while the prototype is off. */
+export function groundToSend(stored: unknown, glass: boolean): WidgetGround | typeof GLASS_GROUND | undefined {
+  if (stored === GLASS_GROUND) return glass ? GLASS_GROUND : 'soft';
+  return isWidgetGround(stored) ? stored : undefined;
+}
+
+/**
  * Whether a theme is dark or light, from its own `--bg` (P6.3) — by
  * `isLight`, the reading `withTints` already takes of a theme's ground to
  * choose its tint strength, so "is this a light theme" has one answer on this

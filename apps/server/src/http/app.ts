@@ -150,6 +150,11 @@ export interface AppDeps {
   readonly bootNotices: readonly ManifestNotice[];
   readonly now?: () => number;
   /**
+   * Glass, the prototype widget ground (plan item M4.1): offered, stored and
+   * sent only while this is on, from `MW_GLASS_PROTOTYPE=1`. Absent is off.
+   */
+  readonly glassPrototype?: boolean;
+  /**
    * Better Auth configuration.
    *
    * `baseUrl` is fixed for the process lifetime. Home Assistant ingress serves
@@ -1299,6 +1304,7 @@ export function createApp(deps: AppDeps): Hono {
     })();
 
     return buildManifest({
+      glassPrototype: deps.glassPrototype === true,
       household: effective,
       // Resolve a theme reference to its tokens (custom) or just its shape
       // (built-in). The closure over the db keeps the read out of assembly.
@@ -2041,6 +2047,7 @@ export function createApp(deps: AppDeps): Hono {
   protectPrefix(app, '/admin', gateDeps);
 
   registerAdminRoutes(app, {
+    ...(deps.glassPrototype === true ? { glassPrototype: true } : {}),
     ...(deps.todoist === undefined ? {} : { todoist: deps.todoist }),
     ...(deps.oauth === undefined ? {} : { oauth: deps.oauth }),
     db: deps.db,

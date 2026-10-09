@@ -1,6 +1,6 @@
 # Plan: parity with Magic Frame
 
-**Status: in progress.** RFC 018 (M6.0) is built, and so are the companion token, its Home Assistant to-do add, timers and messages, and refreshing walls and showing one wall's layout on the others (M1.1–M1.5, M2.1, M2.2, M2.3, M3.1–M3.8, M4.10 for wallpapers, M5.1–M5.12); everything else is planned. On 2026-10-05 the owner asked for a
+**Status: in progress.** RFC 018 (M6.0) is built, and so are the companion token, its Home Assistant to-do add, timers and messages, and refreshing walls and showing one wall's layout on the others (M1.1–M1.5, M2.1, M2.2, M2.3, M3.1–M3.8, M4.1, M4.10 for wallpapers, M5.1–M5.12); everything else is planned. On 2026-10-05 the owner asked for a
 competitive review of [Magic Frame](https://github.com/jeremiaa/magic-frame)
 against Maverick Wall, then a deeper look at its custom widgets and its
 backgrounds. This document is that review, the decisions taken on it, and the
@@ -319,7 +319,7 @@ An e-paper panel ignores photos (MQ11).
 
 | ID | Item | Size | What it must respect |
 | --- | --- | --- | --- |
-| M4.1 | **Glass prototype**, behind a flag (MD4). | M | New theme tokens `--glass-fill` (pre-mixed rgba, since `color-mix()` is out under rule 2), `--glass-blur`, `--glass-saturate`, `--glass-edge`. Wrapped in `@supports (backdrop-filter: blur(1px))` with the `-webkit-` form, falling back to Soft. Off on e-ink presets; never on a panel. |
+| M4.1 | **Glass prototype**, behind a flag (MD4). **Built**: a fourth widget ground, Glass, offered, stored and sent only while the server runs with `MW_GLASS_PROTOTYPE=1`; a wall left on Glass is sent Soft when the flag is off, and an e-ink-sized wall draws Soft. `--glass-fill` is the theme's card colour at 0.4, pre-mixed in `theme.ts` for every theme a custom one included, with `--glass-edge`; `--glass-blur` (0.6rem) and `--glass-saturate` (1.4) are on `:root`. The blur sits in `@supports` with its `-webkit-` form, and a browser without it draws Soft layer for layer. Measured over 4px stripes: a patch varies by 115.8 on None, 16.4 on Soft and 3.7 on Glass, where the same wash unblurred would leave about 69. | M | New theme tokens `--glass-fill` (pre-mixed rgba, since `color-mix()` is out under rule 2), `--glass-blur`, `--glass-saturate`, `--glass-edge`. Wrapped in `@supports (backdrop-filter: blur(1px))` with the `-webkit-` form, falling back to Soft. Off on e-ink presets; never on a panel. |
 | M4.2 | **Measured glass opacity per picture** (`glassAlpha`). | M | Blur each raster at the glass radius, then solve for the lowest opacity that keeps `--ink` and `--ink-scaffold` at 4.5:1 against its brightest and darkest blocks. Stored in the catalogue, held by the browser contrast test. Household photos are measured on the wall at load: MQ10. |
 | M4.3 | **Glass decision gate.** | S | Measure tick cost against Soft at 6× CPU throttling, as S22 did; flip Q4 in `CLAUDE.md` and `apps/display/DESIGN.md` in its own PR only if it passes MQ1. |
 | M4.4 | **Vivid gradients**: regenerate our gradient category as iOS-style mesh gradients. | M | Only after M4.3 passes, because their contrast is carried by `glassAlpha` rather than by dimming. |
