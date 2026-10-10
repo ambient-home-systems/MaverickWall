@@ -257,8 +257,6 @@ export interface InstallOptions {
    * way lands on the same date twice a year.
    */
   readonly dayShift?: number;
-  /** Start the server with Glass, the prototype widget ground, on (plan item M4.1). */
-  readonly glassPrototype?: boolean;
   /**
    * Extra calendars, each served on its own loopback port and added through the
    * admin form the way a household adds one.
@@ -456,7 +454,6 @@ export async function install(options: InstallOptions = {}): Promise<Installatio
   let push: PushWiring | undefined;
   let buildScreenManifest: ((screen: ScreenRow) => Manifest) | undefined;
   const app = createApp({
-    ...(options.glassPrototype === true ? { glassPrototype: true } : {}),
     onWrite: () => push?.nudge(),
     onManifestBuilder: (build) => {
       buildScreenManifest = build;

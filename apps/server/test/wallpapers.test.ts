@@ -26,8 +26,7 @@ import {
   notForOled,
   themeTone,
   wallpaperById,
-  groundToSend,
-  isGroundAllowed,
+  WIDGET_GROUNDS,
 } from '../src/wallpapers.js';
 
 /**
@@ -215,7 +214,7 @@ describe('the tone a theme asks for', () => {
   });
 
   it('knows the three grounds and nothing else', () => {
-    for (const ok of ['none', 'soft', 'solid']) expect(isWidgetGround(ok)).toBe(true);
+    for (const ok of ['none', 'soft', 'solid', 'glass']) expect(isWidgetGround(ok)).toBe(true);
     for (const bad of ['', 'Soft', 'opaque', null, 1]) expect(isWidgetGround(bad)).toBe(false);
   });
 });
@@ -317,16 +316,10 @@ describe('the manifest', () => {
   });
 });
 
-describe('Glass, the prototype ground (plan item M4.1)', () => {
-  it('is allowed and sent only with the prototype on, and sent as Soft without it', () => {
-    expect(isGroundAllowed('glass', true)).toBe(true);
-    expect(isGroundAllowed('glass', false)).toBe(false);
-    expect(isGroundAllowed('soft', false)).toBe(true);
-    expect(isGroundAllowed('frosted', true)).toBe(false);
-    expect(groundToSend('glass', true)).toBe('glass');
-    expect(groundToSend('glass', false)).toBe('soft');
-    expect(groundToSend('solid', false)).toBe('solid');
-    expect(groundToSend(null, true)).toBeUndefined();
-    expect(groundToSend('frosted', true)).toBeUndefined();
+describe('Glass, the fourth ground (plan items M4.1–M4.3)', () => {
+  it('is a ground like the other three, now it has passed MQ1, and nothing else is', () => {
+    expect([...WIDGET_GROUNDS]).toEqual(['none', 'soft', 'solid', 'glass']);
+    expect(isWidgetGround('glass')).toBe(true);
+    expect(isWidgetGround('frosted')).toBe(false);
   });
 });

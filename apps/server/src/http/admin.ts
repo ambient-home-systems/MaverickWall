@@ -151,9 +151,7 @@ import type { SqliteDatabase } from '../db/open.js';
 import { ago, presence, presenceDot } from './presence.js';
 import { canvasGutterStep, GUTTER_DEFAULT_STEP, GUTTER_LABELS } from '../gutter.js';
 import {
-  GLASS_GROUND,
-  groundToSend,
-  isGroundAllowed,
+  isWidgetGround,
   themeTone,
   WALLPAPER_CATEGORY_NAMES,
   WALLPAPERS,
@@ -381,27 +379,22 @@ function wallThemeName(db: SqliteDatabase, ref: string): string {
  * the household moved from one it left alone, and the default goes on
  * following the background until somebody chooses.
  */
-function widgetGroundControl(
-  screen: {
-    readonly widgetGround: string | null;
-    readonly layoutBackground: string | null;
-    readonly layoutLandscapeBackground: string | null;
-  },
-  glass: boolean,
-): string {
+function widgetGroundControl(screen: {
+  readonly widgetGround: string | null;
+  readonly layoutBackground: string | null;
+  readonly layoutLandscapeBackground: string | null;
+}): string {
   const wallpapered = [screen.layoutBackground, screen.layoutLandscapeBackground].some(
     (raw) => parseBackground(raw)?.type === 'wallpaper',
   );
-  // A wall left on Glass with the prototype off shows the Soft it is sent.
-  const stored = groundToSend(screen.widgetGround, glass);
-  const shown = stored ?? (wallpapered ? 'soft' : 'none');
+  const shown = isWidgetGround(screen.widgetGround) ? screen.widgetGround : wallpapered ? 'soft' : 'none';
   const labels: Readonly<Record<(typeof WIDGET_GROUNDS)[number], string>> = {
     none: 'None',
     soft: 'Soft',
     solid: 'Solid',
+    glass: 'Glass',
   };
-  const options = WIDGET_GROUNDS.map((value) => ({ value, label: labels[value] }) as { value: string; label: string });
-  if (glass) options.push({ value: GLASS_GROUND, label: 'Glass (prototype)' });
+  const options = WIDGET_GROUNDS.map((value) => ({ value, label: labels[value] }));
   return (
     segControl({
       label: 'Widget ground',
@@ -409,15 +402,13 @@ function widgetGroundControl(
       hint:
         'What each widget sits on over a picture, in the theme’s card colour. Soft tints the ' +
         'picture behind each widget and lets it show faintly; Solid hides it behind the card colour; ' +
-        'None puts the text straight on the picture. Until you choose, a wall with a wallpaper uses ' +
-        'Soft and any other wall uses None. The wallpaper picker offers the same choice.',
+        'Glass blurs the picture behind each widget, with just enough card colour for the text to stay ' +
+        'easy to read; None puts the text straight on the picture. Until you choose, a wall with a ' +
+        'wallpaper uses Soft and any other wall uses None. On an e-paper panel, or a browser that cannot ' +
+        'blur, Glass shows as Soft. The wallpaper picker offers the same choice.',
       selected: shown,
       options,
-    }) +
-    (glass
-      ? `<p class="hint">Glass is a prototype, on because this server was started with MW_GLASS_PROTOTYPE=1. It blurs the picture behind each widget; text over a busy picture may be hard to read until each picture's opacity is measured.</p>`
-      : '') +
-    `<input type="hidden" name="widget_ground_shown" value="${shown}">`
+    }) + `<input type="hidden" name="widget_ground_shown" value="${shown}">`
   );
 }
 
@@ -750,8 +741,6 @@ import { isUnitedStatesZone } from '../timezone.js';
  */
 
 export interface AdminDeps {
-  /** Glass, the prototype widget ground (plan item M4.1): offered only while on. */
-  readonly glassPrototype?: boolean;
   /** Where Todoist is — set only by a test, to a stand-in; the product always uses the real one (plan item M5.7). */
   readonly todoist?: TodoistEndpoint;
   /** Where Google and Microsoft are — set only by a test, to a stand-in (plan item M5.11). */
@@ -3254,7 +3243,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     let widgetGround: string | null = stored?.widgetGround ?? null;
     const groundSaid = (shaped.value.widget_ground ?? '').trim();
     if (groundSaid !== '') {
-      if (!isGroundAllowed(groundSaid, deps.glassPrototype === true)) {
+      if (!isWidgetGround(groundSaid)) {
         return c.html(displayDetailPage(id, 'Choose what goes behind each widget.', c), 400);
       }
       if (groundSaid !== (shaped.value.widget_ground_shown ?? '').trim()) widgetGround = groundSaid;
@@ -5362,7 +5351,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
        */
       wsetGroup('Wall widget defaults',
         `<p class="hint">What every widget on this wall starts from. A widget’s own Style tab can still change it.</p>` +
-        widgetGroundControl(screen, deps.glassPrototype === true) +
+        widgetGroundControl(screen) +
         styleLaneFields(screen));
     const themeLook = wsetGroup(
         'Theme',

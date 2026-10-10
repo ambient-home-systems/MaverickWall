@@ -1,6 +1,6 @@
 /**
- * Glass, the prototype widget ground (plan item M4.1), on a real paired wall
- * in a real Chromium, with the server's `MW_GLASS_PROTOTYPE` flag on.
+ * Glass, the fourth widget ground (plan items M4.1–M4.3), on a real paired
+ * wall in a real Chromium.
  *
  * A widget sits over a picture of black and white stripes four pixels apart.
  * What is read is the glass itself, never a class:
@@ -14,8 +14,7 @@
  *  - and the card colour shows through: the glass patch is not the picture's
  *    own grey but leans to the card colour.
  *
- * The flag being off, and a wall sized as an e-ink panel, are the server's and
- * the view model's tests: both send Soft.
+ * A wall sized as an e-ink panel is the view model's test: it is sent Soft.
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import type { Page } from 'playwright-core';
@@ -73,7 +72,7 @@ describe('Glass over a striped picture', () => {
   it(
     'blurs the picture behind a widget, under the card colour at 0.4, where Soft only tints it',
     async () => {
-      const home = await install({ glassPrototype: true });
+      const home = await install({});
       installations.push(home);
       const body = new FormData();
       body.append('image', new File([new Uint8Array(stripes())], 'stripes.png'));
@@ -182,7 +181,7 @@ describe('Glass over a bundled wallpaper (plan item M4.2)', () => {
   it(
     'is drawn at exactly the opacity solved from the catalogue for the theme on screen',
     async () => {
-      const home = await install({ glassPrototype: true });
+      const home = await install({});
       installations.push(home);
       const link = await home.pairLink('Hall');
       const screen = (home.db.prepare('SELECT id FROM screens ORDER BY created_at DESC LIMIT 1').get() as { id: string }).id;
@@ -254,10 +253,10 @@ describe('Glass over a bundled wallpaper (plan item M4.2)', () => {
 
 describe('Glass in the editor', () => {
   it(
-    'is offered in the wallpaper picker only where Wall settings offers it, and previews at once',
+    'is offered in the wallpaper picker as Wall settings offers it, and previews at once',
     async () => {
-      for (const glassPrototype of [true, false]) {
-        const home = await install({ glassPrototype });
+      {
+        const home = await install({});
         installations.push(home);
         const screen = await home.pairWall('Hall');
         home.db.prepare(`UPDATE screens SET layout_background = '{"type":"wallpaper","id":"dusk"}' WHERE id = ?`).run(screen);
@@ -270,10 +269,6 @@ describe('Glass in the editor', () => {
           await page.click('.le-background-btn');
           await page.waitForSelector('.le-wp-ground [data-ground="soft"]', { timeout: 10_000 });
           const offered = await page.$$eval('.le-wp-ground [data-ground]', (n) => n.map((b) => (b as HTMLElement).dataset['ground'] ?? ''));
-          if (!glassPrototype) {
-            expect(offered).toEqual(['none', 'soft', 'solid']);
-            continue;
-          }
           expect(offered).toEqual(['none', 'soft', 'solid', 'glass']);
           await page.click('.le-wp-ground [data-ground="glass"]');
           expect(await page.locator('.le-wp-ground-hint').textContent()).toContain('frosted glass');

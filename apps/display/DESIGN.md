@@ -353,19 +353,18 @@ renders". Two of the three are reversed and one stands:
   background — a weather style's sky palette is tokens (plan item P4.5), so a
   custom theme can restyle it.
 - **Shadows are allowed, through one theme token (D8).** See the rule below.
-- **Blur stays out (Q4).** `backdrop-filter` behind a widget on a wallpaper is
-  still excluded; a widget over a picture sits on a flat ground (plan item
-  P6.3), because nothing measures text over a blur and an old tablet pays for
-  one on every frame. **Glass is being tried behind a flag, and the rule
-  stands until it passes (plan items M4.1–M4.3).** A server started with
-  `MW_GLASS_PROTOTYPE=1` offers a fourth ground, Glass: `backdrop-filter:
-  blur() saturate()` under the card colour at 0.4. Without the flag it is never
-  offered or sent, a wall left on it is sent Soft, an e-ink-sized wall draws
-  Soft, and a browser that cannot blur a backdrop draws Soft. Q4 flips only if
-  the prototype passes MQ1. Its opacity is not chosen but solved (M4.2): the
-  lowest that keeps `--ink` and `--ink-scaffold` at 4.5:1 over the picture's
-  lightest and darkest patch as Glass shows it, from the catalogue for a bundled
-  wallpaper and measured once on the wall for a household's own picture.
+- **One backdrop blur is in: the Glass ground (Q4, flipped 2026-10-10 by plan
+  item M4.3).** Glass draws `backdrop-filter: blur() saturate()` under the card
+  colour, and passed MQ1 before it shipped. Its opacity is not chosen but solved
+  (M4.2): the lowest that keeps `--ink` and `--ink-scaffold` at 4.5:1 over the
+  picture's lightest and darkest patch as Glass shows it. That patch comes from
+  the catalogue for a bundled wallpaper, and is measured once on the wall for a
+  household's own picture. It is a choice and never the default: never chosen
+  is Soft over a wallpaper, an e-ink-sized wall draws Soft, and a browser that
+  cannot blur a backdrop draws Soft. **Every other backdrop blur is still
+  out.** A widget over a picture otherwise sits on a flat ground (P6.3),
+  because nothing else measures text over a blur. The blur's GPU cost on a real
+  tablet is unmeasured and recorded as the open risk.
 - **One blur is in, and it is not that one (plan item M3.5).** An Image
   widget's "Whole, over a blur" fit draws a photo whole over a blurred, dimmed
   copy of itself — a `filter: blur()` on a copy *inside* the box, the way a
@@ -495,7 +494,7 @@ default.
 
 ### Don't:
 - **Don't** build a dashboard: no rows of stat tiles, no KPI cards. This is a calendar. One large reading in a designed style is allowed only under a cap against the event role, the clock's way (D1).
-- **Don't** write a literal `box-shadow` on a display surface, or animate anything outside the phase-locked, reduced-motion, Motion-switch scope — and never add a shadow, a gradient, blur or motion to anything an e-paper panel draws. Blur (`backdrop-filter`) stays out on every surface (Q4).
+- **Don't** write a literal `box-shadow` on a display surface, or animate anything outside the phase-locked, reduced-motion, Motion-switch scope — and never add a shadow, a gradient, blur or motion to anything an e-paper panel draws. Blur (`backdrop-filter`) stays out on every surface except the Glass ground (Q4, M4.3), and never on e-paper.
 - **Don't** set an emoji as *text* in anything the wall designs — the image ships no emoji font, so a code point is a third-party asset resolved by the device. A designed style draws the bundled artwork; only a household's own typed text (a countdown title) keeps the device's font (Q9). An e-paper panel draws no emoji at all.
 - **Don't** use `transform: scale()` to fit a laid-out section, or a hardcoded px legibility floor as anything but a fallback.
 - **Don't** let an overflow "+N" cost a name, repeat a multi-day event per cell, or let anything that annotates an event (a bar, a badge, a rule) take a row in flow.

@@ -234,7 +234,7 @@ body {
      whose household has not said how large it is or how far away they stand.
      See the block above for why it was 22 and why it cannot be a constant. */
   --t-floor: 22px;
-  /* Glass, the prototype ground (plan item M4.1): how far the picture behind a
+  /* Glass (plan items M4.1–M4.3): how far the picture behind a
      widget is blurred, in rem so it follows the canvas, and how much more
      saturated it is drawn. `--glass-fill` and `--glass-edge` come from the
      theme's card colour in `theme.ts`. */
@@ -3433,13 +3433,13 @@ img.wxi { display: block; object-fit: contain; }
 }
 
 /*
- * Glass, the prototype ground (plan item M4.1, decision MD4): the picture
- * behind each widget blurred and a little more saturated, under the theme's
- * card colour at 0.4 (`--glass-fill`, derived in `theme.ts`) with a hairline
- * edge. Q4 keeps blur out of the product until this passes MQ1, so the server
- * sends `glass` only while `MW_GLASS_PROTOTYPE=1` is set, and a wall sized as
- * an e-ink panel is sent Soft. Where a browser cannot blur a backdrop, the
- * rule above is all there is: Glass falls back to Soft, layer for layer.
+ * Glass (plan items M4.1–M4.3): the picture behind each widget blurred and a
+ * little more saturated, under the theme's card colour at the opacity the
+ * canvas solved for the picture (`--glass-fill`, written by `render.ts`) with a
+ * hairline edge. The one backdrop blur on the wall, permitted once it passed
+ * MQ1 (Q4). A wall sized as an e-ink panel is sent Soft. Where a browser cannot
+ * blur a backdrop, the rule above is all there is: Glass falls back to Soft,
+ * layer for layer.
  */
 @supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
   .canvas[data-ground="glass"] .fw.has-ground::before {

@@ -23,7 +23,7 @@ import { isEinkWall, physicalWall } from '../wall-sizes.js';
 import { wallMotion } from '../wall-motion.js';
 import {
   ROTATION_COLLECTIONS,
-  groundToSend,
+  isWidgetGround,
   photoFallback,
   rotationPictures,
   themeTone,
@@ -1487,7 +1487,7 @@ export interface Manifest {
      * a fact about the screen. Spread for the `motion` reason above: a wall
      * nobody touched sends the document it always did.
      */
-    readonly widgetGround?: WidgetGround | 'glass';
+    readonly widgetGround?: WidgetGround;
   };
   readonly days: readonly ManifestDay[];
   /** Everyone the wall knows about, so a legend can be drawn. */
@@ -1774,8 +1774,6 @@ export interface BuildManifestInput {
     /** What each widget draws behind itself, as stored; null is "never chosen" (P6.3). */
     readonly widgetGround?: string | null;
   };
-  /** Whether Glass, the prototype ground, may reach a wall (plan item M4.1). Absent is off. */
-  readonly glassPrototype?: boolean;
   /**
    * Resolve a theme reference to its shape and (for a custom theme) its tokens.
    * Injected so assembly stays free of a database read — the caller closes over
@@ -1942,7 +1940,7 @@ function runFor(
 export function buildManifest(input: BuildManifestInput): Manifest {
   // The widget ground this wall is sent, and whether that is Glass, which is
   // what decides whether its wallpapers carry their Glass backdrops (M4.2).
-  const sentGround = groundToSend(input.screen?.widgetGround, input.glassPrototype === true);
+  const sentGround = isWidgetGround(input.screen?.widgetGround) ? input.screen.widgetGround : undefined;
   const onGlass = sentGround === 'glass';
   const from = addDays(input.today, -input.daysBefore);
   const to = addDays(input.today, input.daysAfter);
