@@ -7,12 +7,12 @@
  * when a picture has been redrawn and this has not.
  */
 export const WALLPAPER_GLASS: Readonly<Record<string, { readonly file: string; readonly light: string; readonly dark: string }>> = {
-  'dusk': { file: 'dusk-1600.8cdf4d0b6d.jpg', light: '#4B355B', dark: '#121A35' },
-  'midnight': { file: 'midnight-1600.52f7fc420c.jpg', light: '#192855', dark: '#0C1025' },
-  'ember': { file: 'ember-1600.3e98f48925.jpg', light: '#5F2B15', dark: '#201412' },
-  'deep-sea': { file: 'deep-sea-1600.864dd2837d.jpg', light: '#084A58', dark: '#051F29' },
-  'dawn-haze': { file: 'dawn-haze-1600.7ddca122f5.jpg', light: '#F4E6E3', dark: '#F0DED0' },
-  'mist': { file: 'mist-1600.b165d6b60b.jpg', light: '#EAEFF2', dark: '#D9E0E6' },
+  'dusk': { file: 'dusk-1600.1fb6019ff3.jpg', light: '#FF6110', dark: '#151036' },
+  'midnight': { file: 'midnight-1600.087621749b.jpg', light: '#00A6D4', dark: '#050C28' },
+  'ember': { file: 'ember-1600.0cc948b2d1.jpg', light: '#FF8313', dark: '#220608' },
+  'deep-sea': { file: 'deep-sea-1600.77de008ea3.jpg', light: '#00BE8D', dark: '#001B28' },
+  'dawn-haze': { file: 'dawn-haze-1600.4e001cd0b0.jpg', light: '#FFE8DF', dark: '#FFBAD3' },
+  'mist': { file: 'mist-1600.3599094480.jpg', light: '#D3F7FF', dark: '#CAD4FF' },
   'paper': { file: 'paper-1600.4c3416b353.jpg', light: '#F6F0E3', dark: '#EBE3D1' },
   'linen': { file: 'linen-1600.85ca5caa4d.jpg', light: '#EEE5D7', dark: '#E3DBC7' },
   'watercolour': { file: 'watercolour-1600.6eefc7970f.jpg', light: '#F5EEE2', dark: '#D2D1C3' },

@@ -25,9 +25,11 @@
  * ends up sitting on. `browser-wallpaper-contrast.test.ts` decodes every
  * shipped file, finds those regions and holds the matching themes' `--ink`
  * and `--ink-scaffold` to 4.5:1 through the Soft ground; a wallpaper that
- * fails does not ship. The drawings here keep their highlights to a mid tone
- * for that reason, and the fine grain over each is what makes the files cost
- * what a picture costs to decode rather than what a gradient does.
+ * fails does not ship. Most drawings here keep their highlights to a mid tone
+ * for that reason; the gradient category (M4.4) is drawn vivid instead, and
+ * `meshGradient` says how it still passes. The fine grain over every picture
+ * is what makes the files cost what a picture costs to decode rather than
+ * what a gradient does.
  *
  * Three files per wallpaper: 320px for the picker, and long edges of 1600 and
  * 2880 for the wall, which picks by its own pixel size. Names are
@@ -136,6 +138,50 @@ function gradientSky(r, base, glows, seed, grainAt = 0.35) {
   return `<defs>${defs}</defs>${body}${grain(seed, grainAt)}`;
 }
 
+/**
+ * A vivid mesh gradient (plan item M4.4), the way iOS draws one: a few large
+ * pools of saturated colour, blurred into one another over a deep (or pale)
+ * ground and pushed about by low-frequency noise so they flow rather than sit
+ * as circles. The pools reach past the edges, so `cover` crops colour rather
+ * than a fade to the ground.
+ *
+ * **Vivid, and still inside the Soft gate.** The old gradients were drawn far
+ * darker than the gate needs: under a dark theme's panel at 0.86 a fully
+ * saturated pink, red, violet or blue keeps the scaffold ink at 4.5:1, and
+ * only the high-green hues — yellow, lime, bright cyan — do not. So the dark
+ * pools are full-strength hues with their green channel held down, the light
+ * ones pastels with every channel high, and the contrast gate still decides.
+ * Soft has to hold, because it is what Glass falls back to on a browser
+ * without `backdrop-filter` and on an e-ink-sized wall; Glass then shows the
+ * colour at the opacity `glassAlpha` solves, which is where the vividness is
+ * actually seen.
+ */
+function meshGradient(ground, pools, seed, grainAt = 0.22) {
+  // Each pool is a radial gradient stretched and turned by the seed, so the
+  // field flows rather than sitting as round spots, and its falloff is eased
+  // so neighbouring pools melt into each other. Gradients rather than blurred
+  // shapes: Chromium approximates a blur this wide by drawing it smaller and
+  // scaling up, which leaves faint contours at a shape's old edge; a gradient
+  // has no edge to leave. And no `feDisplacementMap`, which shears a smooth
+  // field along the noise's 8-bit steps.
+  const r = rng(seed * 7919);
+  let defs = '';
+  let body = '';
+  pools.forEach((p, i) => {
+    const stretch = r.between(1.15, 1.6);
+    const turn = r.between(-60, 60);
+    defs +=
+      `<radialGradient id="pool${i}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1" ` +
+      `gradientTransform="translate(${p.x} ${p.y}) rotate(${f(turn)}) scale(${f(p.r * 1.7 * stretch)} ${f((p.r * 1.7) / stretch)})">` +
+      [[0, 0.95], [0.25, 0.85], [0.5, 0.55], [0.75, 0.2], [1, 0]]
+        .map(([at, o]) => `<stop offset="${at}" stop-color="${p.color}" stop-opacity="${o}"/>`)
+        .join('') +
+      `</radialGradient>`;
+    body += full(`url(#pool${i})`);
+  });
+  return `<defs>${defs}</defs>` + full(ground) + body + grain(seed, grainAt);
+}
+
 /** Concentric loops pushed about by noise: a contour map. */
 function contours(r, ground, line, opacity, seed, count = 18, width = 1.6) {
   const cx = r.between(420, 580);
@@ -186,68 +232,66 @@ const DARK_THEMES = ['panels', 'swiss'];
 const LIGHT_THEMES = ['household', 'almanac', 'blueprint'];
 
 export const WALLPAPERS = [
-  // --- Soft gradients: four dark, two light ---
+  // --- Vivid gradients (M4.4): four dark, two light ---
   {
     id: 'dusk', name: 'Dusk', category: 'gradient', tone: 'dark', themes: DARK_THEMES, seed: 7,
     draw: (r, s) =>
-      gradientSky(
-        r,
-        [[0, '#12172A'], [0.55, '#1F2440'], [1, '#332A44']],
-        [{ color: '#5A3F55', opacity: 0.5, cx: 0.5, cy: 0.82, r: 0.55 }],
-        s,
-      ),
+      meshGradient('#140F2A', [
+        { color: '#6A2BD9', x: 250, y: 300, r: 360 },
+        { color: '#2B3BD9', x: 850, y: 180, r: 280 },
+        { color: '#D62B8A', x: 720, y: 620, r: 320 },
+        { color: '#FF6A2A', x: 500, y: 920, r: 240 },
+      ], s),
   },
   {
     id: 'midnight', name: 'Midnight', category: 'gradient', tone: 'dark', themes: DARK_THEMES, seed: 19,
     draw: (r, s) =>
-      gradientSky(
-        r,
-        [[0, '#0B0F1C'], [1, '#141A2C']],
-        [{ color: '#24345C', opacity: 0.55, cx: 0.5, cy: 0.45, r: 0.5 }],
-        s,
-      ),
+      meshGradient('#070B1E', [
+        { color: '#1F3BFF', x: 300, y: 360, r: 360 },
+        { color: '#6C2BFF', x: 790, y: 290, r: 300 },
+        { color: '#00A3C4', x: 620, y: 830, r: 280 },
+        { color: '#0A1450', x: 120, y: 900, r: 260 },
+      ], s),
   },
   {
     id: 'ember', name: 'Ember', category: 'gradient', tone: 'dark', themes: DARK_THEMES, seed: 31,
     draw: (r, s) =>
-      gradientSky(
-        r,
-        [[0, '#1A1212'], [0.6, '#2A1A16'], [1, '#3A2418']],
-        [{ color: '#7A3E22', opacity: 0.45, cx: 0.5, cy: 0.6, r: 0.5 }],
-        s,
-      ),
+      meshGradient('#1A0708', [
+        { color: '#E0303A', x: 340, y: 420, r: 340 },
+        { color: '#9A1F6A', x: 820, y: 200, r: 280 },
+        { color: '#FF6A2A', x: 700, y: 720, r: 300 },
+        { color: '#FF8C3A', x: 230, y: 880, r: 200 },
+      ], s),
   },
   {
     id: 'deep-sea', name: 'Deep sea', category: 'gradient', tone: 'dark', themes: DARK_THEMES, seed: 47,
     draw: (r, s) =>
-      gradientSky(
-        r,
-        [[0, '#0A1A22'], [0.5, '#0F2A33'], [1, '#0B1E26']],
-        [{ color: '#1E5C66', opacity: 0.5, cx: 0.5, cy: 0.35, r: 0.55 }],
-        s,
-      ),
+      meshGradient('#031820', [
+        { color: '#008C9E', x: 290, y: 300, r: 360 },
+        { color: '#1E5BFF', x: 760, y: 440, r: 320 },
+        { color: '#00B38A', x: 440, y: 830, r: 280 },
+        { color: '#0A2E6E', x: 880, y: 880, r: 240 },
+      ], s),
   },
   {
     id: 'dawn-haze', name: 'Dawn haze', category: 'gradient', tone: 'light', themes: LIGHT_THEMES, seed: 53,
     draw: (r, s) =>
-      gradientSky(
-        r,
-        [[0, '#E6E2EC'], [0.5, '#F0E6E2'], [1, '#EADDD2']],
-        [{ color: '#F3D9C6', opacity: 0.7, cx: 0.5, cy: 0.6, r: 0.5 }],
-        s,
-        0.3,
-      ),
+      meshGradient('#FBE9E4', [
+        { color: '#FFB8C8', x: 300, y: 320, r: 380 },
+        { color: '#D8C4FF', x: 810, y: 240, r: 300 },
+        { color: '#FFD2A8', x: 690, y: 710, r: 340 },
+        { color: '#FFC2D8', x: 200, y: 860, r: 240 },
+      ], s, 0.2),
   },
   {
     id: 'mist', name: 'Mist', category: 'gradient', tone: 'light', themes: LIGHT_THEMES, seed: 61,
     draw: (r, s) =>
-      gradientSky(
-        r,
-        [[0, '#E4E8EA'], [1, '#D8DEE2']],
-        [{ color: '#EEF1F2', opacity: 0.8, cx: 0.5, cy: 0.5, r: 0.5 }],
-        s,
-        0.3,
-      ),
+      meshGradient('#E6F2F6', [
+        { color: '#A8D8FF', x: 290, y: 350, r: 380 },
+        { color: '#C8D0FF', x: 800, y: 220, r: 300 },
+        { color: '#B8F0E0', x: 720, y: 660, r: 340 },
+        { color: '#D8F4FF', x: 180, y: 880, r: 240 },
+      ], s, 0.2),
   },
 
   // --- Paper, linen and watercolour textures: four, all light ---

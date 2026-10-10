@@ -10669,6 +10669,34 @@ light wall. Two mutations turn it red: the note put back into the light
 tiles' names reddens both walls, and the sentence put back into the lead
 reddens the dark one.
 
+**The six gradient wallpapers are vivid now (plan item M4.4), and they still
+pass the Soft gate.** The plan expected their contrast to be "carried by
+`glassAlpha` rather than by dimming". That is only half right. Soft is what
+Glass falls back to, on a browser without `backdrop-filter` and on an
+e-ink-sized wall, so the Soft gate binds every picture whatever ground a
+household chooses. What changed is how much room the gate leaves, which had
+never been measured. Under a dark theme's panel at 0.86, a full-strength pink,
+red, violet or blue keeps Panels' scaffold ink at 4.8–5.4:1. Only the
+high-green hues (yellow, lime, bright cyan) fall under 4.5. The old gradients
+were drawn far darker than that. `meshGradient` in `generate.mjs` draws each
+one as eased radial pools of saturated colour, stretched and turned by the
+seed, over a deep or pale ground. The ids, names and categories are unchanged,
+so Dusk and Mist are still the photo stand-ins (M3.8). Two drawings were tried
+and dropped, and both faults showed only by looking: a blurred shape leaves
+faint contours where its edge was, and `feDisplacementMap` over a smooth field
+shears it into seams. The Glass table is regenerated, and on Panels the
+opacity now reaches 0.86, Soft's own value, for the brightest pool.
+
+Two mutations were checked. A yellow pool in Ember turns
+`browser-wallpaper-contrast` red at 4.36:1, and redrawing it after restoring
+the colour gives byte-identical files. The old Glass table turns
+`browser-wallpaper-glass` red as stale. In this container
+`browser-glass.test.ts`'s striped-picture case is red on a clean `main` as well
+(7.4 against 5.5). It is a property of the provisioned Chromium, which is not
+the revision `playwright-core` expects, and this change does not cause it.
+**Still unproven where it counts:** nobody has seen the new gradients on a
+kitchen wall, behind Glass or otherwise.
+
 ---
 
 ## Open decisions

@@ -16,11 +16,11 @@ export const WALLPAPER_CATALOGUE = /* catalogue */ [
       "panels",
       "swiss"
     ],
-    "color": "#2A2842",
-    "luminance": 0.026,
-    "thumb": "dusk-320.96e141ee69.jpg",
-    "small": "dusk-1600.8cdf4d0b6d.jpg",
-    "large": "dusk-2880.3c3cb90dbb.jpg"
+    "color": "#732F7F",
+    "luminance": 0.092,
+    "thumb": "dusk-320.05f8518e1f.jpg",
+    "small": "dusk-1600.1fb6019ff3.jpg",
+    "large": "dusk-2880.c1f93d3633.jpg"
   },
   {
     "id": "midnight",
@@ -31,11 +31,11 @@ export const WALLPAPER_CATALOGUE = /* catalogue */ [
       "panels",
       "swiss"
     ],
-    "color": "#151B30",
-    "luminance": 0.012,
-    "thumb": "midnight-320.3ebc0b9585.jpg",
-    "small": "midnight-1600.52f7fc420c.jpg",
-    "large": "midnight-2880.e6495d4cda.jpg"
+    "color": "#2039A1",
+    "luminance": 0.075,
+    "thumb": "midnight-320.0d07268306.jpg",
+    "small": "midnight-1600.087621749b.jpg",
+    "large": "midnight-2880.5e1b03d101.jpg"
   },
   {
     "id": "ember",
@@ -46,11 +46,11 @@ export const WALLPAPER_CATALOGUE = /* catalogue */ [
       "panels",
       "swiss"
     ],
-    "color": "#362119",
-    "luminance": 0.02,
-    "thumb": "ember-320.814dbf35f7.jpg",
-    "small": "ember-1600.3e98f48925.jpg",
-    "large": "ember-2880.c04d2c4045.jpg"
+    "color": "#A33930",
+    "luminance": 0.128,
+    "thumb": "ember-320.b3cd0f1888.jpg",
+    "small": "ember-1600.0cc948b2d1.jpg",
+    "large": "ember-2880.3efc06f4c3.jpg"
   },
   {
     "id": "deep-sea",
@@ -61,11 +61,11 @@ export const WALLPAPER_CATALOGUE = /* catalogue */ [
       "panels",
       "swiss"
     ],
-    "color": "#112F39",
-    "luminance": 0.026,
-    "thumb": "deep-sea-320.84cb9f011f.jpg",
-    "small": "deep-sea-1600.864dd2837d.jpg",
-    "large": "deep-sea-2880.4dddb5f975.jpg"
+    "color": "#096086",
+    "luminance": 0.118,
+    "thumb": "deep-sea-320.d18a84e2b2.jpg",
+    "small": "deep-sea-1600.77de008ea3.jpg",
+    "large": "deep-sea-2880.9c27da3e21.jpg"
   },
   {
     "id": "dawn-haze",
@@ -77,11 +77,11 @@ export const WALLPAPER_CATALOGUE = /* catalogue */ [
       "almanac",
       "blueprint"
     ],
-    "color": "#EEE3DE",
-    "luminance": 0.783,
-    "thumb": "dawn-haze-320.1f4ec05006.jpg",
-    "small": "dawn-haze-1600.7ddca122f5.jpg",
-    "large": "dawn-haze-2880.5424369fd6.jpg"
+    "color": "#F8D0D5",
+    "luminance": 0.699,
+    "thumb": "dawn-haze-320.7c2c910eda.jpg",
+    "small": "dawn-haze-1600.4e001cd0b0.jpg",
+    "large": "dawn-haze-2880.add617c872.jpg"
   },
   {
     "id": "mist",
@@ -93,11 +93,11 @@ export const WALLPAPER_CATALOGUE = /* catalogue */ [
       "almanac",
       "blueprint"
     ],
-    "color": "#E3E7EB",
-    "luminance": 0.797,
-    "thumb": "mist-320.39ae803c61.jpg",
-    "small": "mist-1600.b165d6b60b.jpg",
-    "large": "mist-2880.5f29795238.jpg"
+    "color": "#C9E9F4",
+    "luminance": 0.772,
+    "thumb": "mist-320.35d893f1cc.jpg",
+    "small": "mist-1600.3599094480.jpg",
+    "large": "mist-2880.ce9598b4e0.jpg"
   },
   {
     "id": "paper",
