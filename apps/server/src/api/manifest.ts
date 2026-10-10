@@ -31,6 +31,7 @@ import {
   type PhotoFallback,
   type RotationCollection,
   type WidgetGround,
+  type Wallpaper,
 } from '../wallpapers.js';
 import { ROTATION_EVERY } from './picture-rotation.js';
 import { builtinThemeTokens } from './builtin-themes.js';
@@ -836,8 +837,19 @@ export type CanvasBackground =
       readonly large: string;
       /** Where the picture's interest is, in percent; absent is the centre (P6.2). */
       readonly focal?: { readonly x: number; readonly y: number };
+      /**
+       * Where it is on a portrait wall, for a picture that is not square
+       * (plan item M4.5); absent is `focal`.
+       */
+      readonly portraitFocal?: { readonly x: number; readonly y: number };
       /** What the picture shows through Glass (plan item M4.2), sent only to a wall on Glass. */
       readonly glass?: GlassBackdrop;
+      /**
+       * Its lightest and darkest patch unblurred, for a picture Soft's fixed
+       * 0.86 does not hold (plan item M4.5): the wall solves Soft's opacity
+       * from them, never below 0.86. Absent for every drawn wallpaper.
+       */
+      readonly soft?: GlassBackdrop;
     }
   | {
       /**
@@ -856,7 +868,9 @@ export type CanvasBackground =
         readonly small: string;
         readonly large: string;
         readonly focal?: { readonly x: number; readonly y: number };
+        readonly portraitFocal?: { readonly x: number; readonly y: number };
         readonly glass?: GlassBackdrop;
+        readonly soft?: GlassBackdrop;
       }[];
     };
 
@@ -957,6 +971,7 @@ export function parseBackground(raw: string | null | undefined): CanvasBackgroun
       small: one.small,
       large: one.large,
       ...(one.focal === undefined ? {} : { focal: { x: one.focal.x, y: one.focal.y } }),
+      ...pictureExtras(one),
     }));
     if (pictures.length >= 2) {
       return {
@@ -981,10 +996,26 @@ export function parseBackground(raw: string | null | undefined): CanvasBackgroun
         // Spread, never `focal: undefined`: a wallpaper with no focal point sends
         // the document it always sent, so no stored ETag churns.
         ...(wallpaper.focal === undefined ? {} : { focal: { x: wallpaper.focal.x, y: wallpaper.focal.y } }),
+        ...pictureExtras(wallpaper),
       };
     }
   }
   return undefined;
+}
+
+/**
+ * What a photograph carries beyond a drawn wallpaper (plan item M4.5): its
+ * portrait focal point and its Soft patches. Spread, so a drawn wallpaper —
+ * which has neither — sends the document it always sent.
+ */
+function pictureExtras(one: Wallpaper): {
+  portraitFocal?: { x: number; y: number };
+  soft?: GlassBackdrop;
+} {
+  return {
+    ...(one.portraitFocal === undefined ? {} : { portraitFocal: { x: one.portraitFocal.x, y: one.portraitFocal.y } }),
+    ...(one.soft === undefined ? {} : { soft: { light: one.soft.light, dark: one.soft.dark } }),
+  };
 }
 
 /**

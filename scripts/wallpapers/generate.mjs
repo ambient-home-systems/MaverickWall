@@ -659,9 +659,14 @@ for (const wallpaper of WALLPAPERS) {
 await browser.close();
 
 // Every generated JPEG the catalogue no longer names is removed, and only
-// those: the licence file stays.
+// those: the licence file stays, and so do the photographs and paintings,
+// which are `photos.mjs`'s to keep or remove (plan item M4.5).
 const named = new Set(entries.flatMap((e) => [e.thumb, e.small, e.large]));
-for (const name of readdirSync(OUT)) if (name.endsWith('.jpg') && !named.has(name)) rmSync(join(OUT, name));
+const drawn = new Set(WALLPAPERS.map((w) => w.id));
+for (const name of readdirSync(OUT)) {
+  const id = /^([a-z0-9-]+)-[0-9]{2,4}\.[0-9a-f]+\.jpg$/.exec(name)?.[1];
+  if (id !== undefined && drawn.has(id) && !named.has(name)) rmSync(join(OUT, name));
+}
 
 writeFileSync(
   CATALOGUE,

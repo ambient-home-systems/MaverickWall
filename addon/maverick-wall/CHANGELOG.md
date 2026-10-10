@@ -16,6 +16,16 @@
 
 ## Unreleased
 
+**Paintings and pictures from space.** The wallpaper picker has two new
+groups. **Paintings** has thirteen public-domain landscapes from the National
+Gallery of Art in Washington, by Monet, Turner, Church, Bierstadt, Seurat,
+Pissarro and others. **From space** has three photographs taken from the
+International Space Station: a sunset, an aurora and a city at night. They
+work in rotations like any other wallpaper. Each painting is framed for
+portrait and landscape walls separately. Over a painting the Soft ground
+behind your widgets is a little more solid where the picture needs it, so the
+text stays easy to read.
+
 **Brighter gradient wallpapers.** The six wallpapers under Gradients —
 Dusk, Midnight, Ember, Deep sea, Dawn haze and Mist — are redrawn as soft
 blends of strong colour, in the style of a phone's lock screen, where they

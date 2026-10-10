@@ -3428,7 +3428,11 @@ img.wxi { display: block; object-fit: contain; }
   left: 0;
   z-index: -1;
   background: var(--panel, #1B212A);
-  opacity: 0.86;
+  /*
+   * 0.86 over every drawn wallpaper; over a photograph, the opacity the canvas
+   * solved from the picture's own patches, never lower (plan item M4.5).
+   */
+  opacity: var(--soft-alpha, 0.86);
   pointer-events: none;
 }
 

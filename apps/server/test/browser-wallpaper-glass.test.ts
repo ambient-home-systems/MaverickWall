@@ -88,7 +88,9 @@ async function measure(page: Page, file: string): Promise<{ light: Rgb; dark: Rg
       canvas.width = img.naturalWidth;
       canvas.height = img.naturalHeight;
       const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
-      ctx.filter = `blur(${share * img.naturalWidth}px) saturate(${saturate})`;
+      // A picture narrower than 16:9 is scaled to the wall's width and one
+      // wider to its height, as `glass.mjs` measures it (plan item M4.5).
+      ctx.filter = `blur(${Math.min(share * img.naturalWidth, share * (16 / 9) * img.naturalHeight)}px) saturate(${saturate})`;
       ctx.drawImage(img, 0, 0);
       const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const lin = (v: number): number => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);

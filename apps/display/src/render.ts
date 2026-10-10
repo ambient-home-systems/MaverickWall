@@ -4903,7 +4903,9 @@ function applyWallpaper(
   canvas.dataset['wallpaper'] = background.id;
   canvas.style.backgroundImage = `url("${base}${file}")`;
   canvas.style.backgroundSize = 'cover';
-  canvas.style.backgroundPosition = wallpaperPosition(background);
+  // A photograph names a focal point for each orientation (plan item M4.5),
+  // and which one applies is the canvas's own shape.
+  canvas.style.backgroundPosition = wallpaperPosition(background, rect.height > rect.width);
   canvas.style.backgroundRepeat = 'no-repeat';
 }
 
@@ -4947,6 +4949,24 @@ function applyGlassFill(canvas: HTMLElement, background: CanvasBackground | unde
     return;
   }
   write(undefined);
+}
+
+/**
+ * Soft's opacity over a bundled photograph (plan item M4.5): the lowest that
+ * keeps both inks at 4.5:1 over the picture's own lightest and darkest patch,
+ * solved like Glass's for the theme on the canvas, and never below the 0.86
+ * every drawn wallpaper is held at. A drawn wallpaper carries no patches and
+ * the property is never written, so its widgets draw exactly what they drew.
+ */
+function applySoftAlpha(canvas: HTMLElement, background: CanvasBackground | undefined): void {
+  if (background?.type !== 'wallpaper') return;
+  const patches = readBackdrop(background.soft);
+  if (patches === undefined) return;
+  const style = getComputedStyle(canvas);
+  const panel = style.getPropertyValue('--panel').trim();
+  const inks = [style.getPropertyValue('--ink').trim(), style.getPropertyValue('--ink-scaffold').trim()];
+  const alpha = Math.max(GLASS_UNMEASURED_ALPHA, solveGlassAlpha(panel, inks, patches));
+  canvas.style.setProperty('--soft-alpha', String(alpha));
 }
 
 /** A household's own pictures, measured once each in this browser (MQ10). */
@@ -5924,6 +5944,9 @@ export function renderFreeform(
   // Glass's opacity for what is behind these widgets, now the canvas has its
   // theme's colours to read (plan item M4.2).
   if (ground === 'glass') applyGlassFill(canvas, layout.background, mediaBase);
+  // Soft's opacity over a photograph (plan item M4.5). Glass falls back to
+  // Soft where a browser cannot blur, so a canvas on Glass carries it too.
+  if (ground === 'soft' || ground === 'glass') applySoftAlpha(canvas, layout.background);
 
   /*
    * A slideshow that pairs portrait photos reads its own box (plan item M3.7):

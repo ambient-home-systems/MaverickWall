@@ -401,6 +401,9 @@ function boot(): void {
     /** The built-in themes it is drawn for, as the server names them. */
     readonly themes: readonly string[];
     readonly focal?: { readonly x: number; readonly y: number };
+    /** A photograph's focal point on a portrait wall, and the patches Soft is solved from (plan item M4.5). */
+    readonly portraitFocal?: { readonly x: number; readonly y: number };
+    readonly soft?: { readonly light: string; readonly dark: string };
   }
   let wallpapers: readonly WallpaperChoice[] = [];
   /**
@@ -3411,6 +3414,8 @@ function boot(): void {
         small: one.small,
         large: one.large,
         ...(one.focal ? { focal: one.focal } : {}),
+        ...(one.portraitFocal ? { portraitFocal: one.portraitFocal } : {}),
+        ...(one.soft ? { soft: one.soft } : {}),
       }));
       return currentPicture({ ...bg, pictures }, Date.now(), manifest?.timezone ?? 'UTC', undefined);
     }
@@ -3418,7 +3423,15 @@ function boot(): void {
     const found = wallpapers.find((one) => one.id === bg.id);
     return found === undefined
       ? undefined
-      : { type: 'wallpaper', id: found.id, small: found.small, large: found.large, ...(found.focal ? { focal: found.focal } : {}) };
+      : {
+          type: 'wallpaper',
+          id: found.id,
+          small: found.small,
+          large: found.large,
+          ...(found.focal ? { focal: found.focal } : {}),
+          ...(found.portraitFocal ? { portraitFocal: found.portraitFocal } : {}),
+          ...(found.soft ? { soft: found.soft } : {}),
+        };
   }
 
   /**
@@ -4779,7 +4792,7 @@ function boot(): void {
     picture.setAttribute('aria-hidden', 'true');
     picture.style.backgroundColor = one.color;
     picture.style.backgroundImage = `url("${ADMIN_WALLPAPER_BASE}${one.thumb}")`;
-    picture.style.backgroundPosition = wallpaperPosition(one);
+    picture.style.backgroundPosition = wallpaperPosition(one, state.orientation === 'portrait');
     const name = document.createElement('span');
     name.className = 'le-wp-name';
     name.textContent = one.name;
@@ -4923,7 +4936,7 @@ function boot(): void {
       picture.setAttribute('aria-hidden', 'true');
       picture.style.backgroundColor = one.color;
       picture.style.backgroundImage = `url("${ADMIN_WALLPAPER_BASE}${one.thumb}")`;
-      picture.style.backgroundPosition = wallpaperPosition(one);
+      picture.style.backgroundPosition = wallpaperPosition(one, state.orientation === 'portrait');
       const name = document.createElement('span');
       name.className = 'le-wp-name';
       name.textContent = one.name;

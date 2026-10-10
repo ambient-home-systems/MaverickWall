@@ -37,8 +37,12 @@ export type CanvasBackground =
        * defensively in `wallpaper.ts`: a stored copy may carry any shape.
        */
       readonly focal?: { readonly x: number; readonly y: number };
+      /** Where it is on a portrait wall, for a photograph (plan item M4.5); absent is `focal`. */
+      readonly portraitFocal?: { readonly x: number; readonly y: number };
       /** What the picture shows through Glass (plan item M4.2); only a wall on Glass is sent it. */
       readonly glass?: { readonly light: string; readonly dark: string };
+      /** A photograph's lightest and darkest patch, unblurred, that Soft's opacity is solved from (plan item M4.5). */
+      readonly soft?: { readonly light: string; readonly dark: string };
     }
   | {
       /**
@@ -55,7 +59,9 @@ export type CanvasBackground =
         readonly small: string;
         readonly large: string;
         readonly focal?: { readonly x: number; readonly y: number };
+        readonly portraitFocal?: { readonly x: number; readonly y: number };
         readonly glass?: { readonly light: string; readonly dark: string };
+        readonly soft?: { readonly light: string; readonly dark: string };
       }[];
     };
 

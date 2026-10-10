@@ -19,7 +19,10 @@
  * **The set is generated, and so is this list.** `scripts/wallpapers/generate.mjs`
  * draws twenty-six parametric SVGs from seeds, rasterises them with the
  * bundled Chromium, and writes `wallpaper-catalogue.ts` with each picture's
- * mean colour and luminance measured off the raster. An id that list stops
+ * mean colour and luminance measured off the raster. Beside them,
+ * `scripts/wallpapers/photos.mjs` fetches sixteen public-domain paintings and
+ * photographs from sources on the plan's allowlist (M4.5) and writes
+ * `wallpaper-photos.ts`, each with its credit and licence. An id that list stops
  * naming is not an error: `parseBackground` drops it and the canvas falls back
  * to its theme's ground (rules five and nine).
  */
@@ -27,6 +30,7 @@
 import { isLight } from './api/themes.js';
 import { WALLPAPER_CATALOGUE } from './wallpaper-catalogue.js';
 import { WALLPAPER_GLASS } from './wallpaper-glass.js';
+import { PHOTO_LICENCES, WALLPAPER_PHOTOS } from './wallpaper-photos.js';
 
 /**
  * Whether a wallpaper is drawn for a dark theme or a light one.
@@ -52,6 +56,8 @@ export const WALLPAPER_CATEGORIES = [
   'landscape',
   'seasonal',
   'fun',
+  'painting',
+  'space',
 ] as const;
 export type WallpaperCategory = (typeof WALLPAPER_CATEGORIES)[number];
 
@@ -63,7 +69,43 @@ export const WALLPAPER_CATEGORY_NAMES: Readonly<Record<WallpaperCategory, string
   landscape: 'Landscapes',
   seasonal: 'Seasons',
   fun: 'Fun',
+  painting: 'Paintings',
+  space: 'From space',
 };
+
+/**
+ * The categories drawn by `scripts/wallpapers/generate.mjs` (Q10), as against
+ * the photographs and paintings fetched by `photos.mjs` (plan item M4.5).
+ */
+export const DRAWN_CATEGORIES: readonly WallpaperCategory[] = [
+  'gradient',
+  'texture',
+  'contour',
+  'geometric',
+  'landscape',
+  'seasonal',
+  'fun',
+];
+
+/** A licence a bundled photograph may carry: the MD5 allowlist, one row per source. */
+export type PhotoLicence = keyof typeof PHOTO_LICENCES;
+export { PHOTO_LICENCES };
+
+/**
+ * Where a bundled photograph came from (plan item M4.5): the work, its author
+ * and date, the page it was found on, the address its bytes were fetched from,
+ * the licence, the day it was fetched and the sha256 of what was fetched.
+ */
+export interface PhotoCredit {
+  readonly title: string;
+  readonly author: string;
+  readonly date: string;
+  readonly source: string;
+  readonly image: string;
+  readonly licence: PhotoLicence;
+  readonly retrieved: string;
+  readonly sha256: string;
+}
 
 export interface Wallpaper {
   /** The catalogue id a stored background names. Never a file name. */
@@ -81,12 +123,20 @@ export interface Wallpaper {
   readonly themes: readonly string[];
   /**
    * Where the picture's interest is, as a percentage of the master, for the
-   * canvas's `background-position`. Absent is the centre. Every master is
-   * composed with nothing near its edges, so `cover` crops one square to
+   * canvas's `background-position`. Absent is the centre. Every drawn master
+   * is composed with nothing near its edges, so `cover` crops one square to
    * portrait and to landscape; a focal point only nudges which band of it a
-   * wall looks at.
+   * wall looks at. A photograph is not square, so this is its point on a
+   * landscape wall, and `portraitFocal` its point on a portrait one.
    */
   readonly focal?: { readonly x: number; readonly y: number };
+  /**
+   * Where the picture's interest is on a portrait wall (plan item M4.5). A
+   * photograph is not square, so `cover` crops a landscape picture to a narrow
+   * vertical slice on a portrait wall, and which slice is a separate choice
+   * from where a landscape wall's band sits. Absent is `focal`.
+   */
+  readonly portraitFocal?: { readonly x: number; readonly y: number };
   /**
    * The picture's mean colour, measured, for the picker's tile while its
    * thumbnail loads. Deliberately *not* the canvas's colour while the
@@ -100,7 +150,7 @@ export interface Wallpaper {
    * screen.
    */
   readonly luminance: number;
-  /** About 320px square: the picker's thumbnail. */
+  /** About 320px on the long edge: the picker's thumbnail. */
   readonly thumb: string;
   /** A long edge of about 1600px: tablets, monitors, the editor's preview. */
   readonly small: string;
@@ -112,9 +162,20 @@ export interface Wallpaper {
    * A wall solves its Glass opacity from these for the theme it is wearing.
    */
   readonly glass?: { readonly light: string; readonly dark: string };
+  /**
+   * The lightest and darkest of the shipped 1600px file's 40x40 blocks,
+   * unblurred (plan item M4.5): what a widget's Soft ground sits over. Only a
+   * photograph carries it. A drawn wallpaper is drawn to keep 4.5:1 at Soft's
+   * fixed 0.86; a painting has a bright sky and a dark wood at once and keeps
+   * it at almost no single opacity, so the wall solves Soft's from these for
+   * its own inks, never below 0.86.
+   */
+  readonly soft?: { readonly light: string; readonly dark: string };
+  /** Where a photograph came from, and under which licence (plan item M4.5). Absent for a drawn wallpaper. */
+  readonly credit?: PhotoCredit;
 }
 
-export const WALLPAPERS: readonly Wallpaper[] = WALLPAPER_CATALOGUE.map((one) => {
+export const WALLPAPERS: readonly Wallpaper[] = [...WALLPAPER_CATALOGUE, ...WALLPAPER_PHOTOS].map((one) => {
   const glass = WALLPAPER_GLASS[one.id];
   return glass === undefined ? one : { ...one, glass: { light: glass.light, dark: glass.dark } };
 });
