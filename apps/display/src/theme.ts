@@ -700,16 +700,17 @@ function applyThemeTokens(
 }
 
 /**
- * Glass, the prototype widget ground (plan item M4.1): the theme's card colour
- * at 0.4, and a hairline edge that reads on either ground.
+ * Glass's widget ground (plan items M4.1–M4.3): the theme's card colour at
+ * Soft's opacity, until a canvas solves its own, and a hairline edge that reads
+ * on either ground.
  *
  * Derived from `--panel` rather than written into each theme, so every theme —
  * a custom one included — has it the moment it has a card colour; pre-mixed as
  * an `rgba()` because an alpha cannot be put on a variable and `color-mix()` is
  * out under rule two. The blur and the saturation are the stylesheet's, on
- * `:root`. 0.4 is a starting point and not a promise: what keeps text at 4.5:1
- * over a given picture is that picture's measured opacity (M4.2), which is why
- * Glass is a prototype behind a flag until then.
+ * `:root`. What keeps text at 4.5:1 over a given picture is that picture's
+ * measured opacity (M4.2), which `render.ts` writes on each canvas; this is the
+ * fill before it has.
  */
 export function glassTokens(panel: string | undefined): Readonly<Record<string, string>> {
   const rgb = panel === undefined ? undefined : parseHex(panel);

@@ -179,39 +179,19 @@ export function rotationPictures(collection: RotationCollection, tone: Wallpaper
  * as Soft over a wallpaper and nothing otherwise (`widgetGroundFor` in the
  * display's `wallpaper.ts`), so every wall that existed before this draws what
  * it drew.
+ *
+ * **Glass** is the fourth (plan items M4.1–M4.3): the picture behind each widget
+ * blurred and saturated under the card colour at the opacity the wall solves
+ * for the picture and its theme. It shipped once it passed MQ1, and only as a
+ * choice: never chosen is still Soft over a wallpaper.
  */
-export const WIDGET_GROUNDS = ['none', 'soft', 'solid'] as const;
+export const WIDGET_GROUNDS = ['none', 'soft', 'solid', 'glass'] as const;
 export type WidgetGround = (typeof WIDGET_GROUNDS)[number];
 
 export function isWidgetGround(value: unknown): value is WidgetGround {
   return typeof value === 'string' && (WIDGET_GROUNDS as readonly string[]).includes(value);
 }
 
-/**
- * Glass, the prototype ground (plan item M4.1, decision MD4): each widget over
- * a frosted, blurred view of the picture behind it, rather than over Soft's
- * near-opaque wash.
- *
- * **Behind a flag, and only behind it.** Q4 still says blur stays out, and it
- * flips only if the prototype passes MQ1 — tick cost within a fifth of Soft's,
- * no new long task, and every shipped picture holding 4.5:1 under its measured
- * opacity (M4.2–M4.3). So Glass is offered, stored and sent only while the
- * server runs with `MW_GLASS_PROTOTYPE=1`. A wall left on Glass when the flag
- * comes off is sent Soft, which is what Glass falls back to anyway, so turning
- * the experiment off can never leave a wall with text straight on a picture.
- */
-export const GLASS_GROUND = 'glass';
-
-/** Whether a posted or stored ground is one this server takes, with the prototype on or off. */
-export function isGroundAllowed(value: unknown, glass: boolean): value is WidgetGround | typeof GLASS_GROUND {
-  return isWidgetGround(value) || (glass && value === GLASS_GROUND);
-}
-
-/** The ground a wall is sent: as stored, with Glass sent as Soft while the prototype is off. */
-export function groundToSend(stored: unknown, glass: boolean): WidgetGround | typeof GLASS_GROUND | undefined {
-  if (stored === GLASS_GROUND) return glass ? GLASS_GROUND : 'soft';
-  return isWidgetGround(stored) ? stored : undefined;
-}
 
 /**
  * Whether a theme is dark or light, from its own `--bg` (P6.3) — by

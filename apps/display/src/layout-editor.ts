@@ -5017,7 +5017,7 @@ function boot(): void {
       group.className = 'seg le-seg';
       group.setAttribute('role', 'group');
       group.setAttribute('aria-label', 'Widget ground');
-      // Glass only where Wall settings offers it: the server's prototype flag (plan item M4.1).
+      // Glass where Wall settings offers it (plan items M4.1–M4.3), so the two cannot disagree.
       const offered: [WidgetGround, string][] = [['none', 'None'], ['soft', 'Soft'], ['solid', 'Solid']];
       if (groundRadios().some((radio) => radio.value === 'glass')) offered.push(['glass', 'Glass']);
       for (const [value, text] of offered) {
@@ -5053,7 +5053,7 @@ function boot(): void {
       return `Each widget sits on ${theme} card colour, so the picture shows only between widgets.`;
     }
     if (ground === 'glass') {
-      return `A prototype: each widget sits on frosted glass, so the picture behind it blurs under a light wash of ${theme} card colour.`;
+      return `Each widget sits on frosted glass, so the picture behind it blurs under just enough of ${theme} card colour to keep the text easy to read.`;
     }
     return 'The picture shows in full behind every widget. Text over a busy part of it may be harder to read.';
   }

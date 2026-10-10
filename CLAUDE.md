@@ -478,7 +478,8 @@ were rewritten before any code depended on the change.
   A row of stat tiles is still out.
 - **D2** — gradients are allowed on screen. Twelve templates already shipped
   canvas gradients, so the old sentence was false before it was reversed. Blur
-  stays out (Q4).
+  stays out (Q4), with one ground excepted: Glass, which passed MQ1 and shipped
+  on 2026-10-10 (M4.3, below).
 - **D3** — the closed icon set is opened for occasion motifs. On a browser wall
   those are bundled emoji artwork; drawn one-bit motifs for e-paper are deferred.
   The drawn keys — thirty-four since P5.3 added five for the read-only Home
@@ -537,10 +538,10 @@ knowing before reading either rule as settled or as obsolete:
   below); and a media player's transport and volume from the panel. Every
   wall phase is built, and `todo.add_item` runs from the companion API ("A
   phone adds to a to-do list" below).
-- **Q4 (no blur behind widgets) — still a proposal.** A Glass ground is to be
-  prototyped behind a flag, with its opacity measured per picture, and Q4 flips
-  only if the prototype passes the plan's MQ1 measurement. Until then
-  `DESIGN.md`'s "Blur stays out" stands.
+- **Q4 (no blur behind widgets) — flipped for one ground on 2026-10-10.** The
+  Glass prototype passed MQ1 (plan item M4.3, below), and the owner chose to
+  ship it as an option households can pick. Soft stays the default over a
+  wallpaper, and every other `backdrop-filter` is still out.
 
 Hard Rule 3 is unchanged on purpose: custom widgets stay data only (MD3), and
 the sandbox that RFC 017 describes runs on the server and produces only data.
@@ -5249,6 +5250,67 @@ each and a worker that failed to start, so the machine had stalled. The eight
 files passed on their own and the whole suite passed on a second run, which is
 the figure here. **Still not measured:** what Glass costs a tick against Soft
 on an old tablet, which is M4.3 and the rest of MQ1.
+
+**Glass passed its gate, and Q4 is flipped for it (plan item M4.3).** MQ1 set
+three conditions, and all three hold:
+- at 6× CPU throttling, a tick's main-thread time on Glass is within a fifth of
+  Soft's;
+- Glass adds no long task over 50ms;
+- every shipped picture keeps 4.5:1 under its opacity.
+
+The third is `browser-wallpaper-glass.test.ts`, on every run. The first two are
+`browser-glass-cost.test.ts`, opt-in with `MW_MEASURE_GLASS=1`, because a cost
+taken on whatever machine runs the suite is a fact about that machine. It uses
+the shipped Classic wall at 1920×1080 on Dusk, whose 2880px file is the
+largest, and 20 real fifteen-second ticks per ground in alternating rounds.
+Each tick is traced, and the main thread's tasks are summed from just before
+the redraw to after its paint. Two readings on an Apple M5:
+
+| Reading | Soft median (range) | Glass median (range) | Glass ÷ Soft | Long tasks over 50ms |
+|---|---|---|---|---|
+| 1 | 31ms (19–56) | 33ms (21–60) | 1.054 | none on either |
+| 2 | 32ms (22–51) | 35ms (21–52) | 1.105 | none on either |
+
+**The owner chose to ship it as an option**, so the `MW_GLASS_PROTOTYPE` flag
+is gone. Glass is a fourth ground on Wall settings and in the wallpaper
+picker, beside None, Soft and Solid. Never chosen is still Soft over a
+wallpaper, an e-ink-sized wall is still sent Soft, and a browser that cannot
+blur a backdrop still draws Soft.
+
+**What MQ1 does not measure is the open risk, and it is written down rather
+than argued away.** The blur is the compositor's work, not the main thread's.
+In headless Chromium that is the GPU process doing it in software, and there
+Glass cost about 75% more: 220→369ms and 210→372ms of CPU over the same 20
+ticks. On a real tablet it is that device's GPU, which nothing here has
+measured. If a household reports a Glass wall stuttering, this is the number
+to look at first, and Soft is one tap away.
+
+**How it was measured is worth more than the figure.** Three methods were
+tried and two were wrong:
+- Playwright's installed clock fires the tick inside a DevTools command, where
+  the draw's own script mostly goes unattributed (1.4ms of script against 17ms
+  on a real tick).
+- `Performance`'s `TaskDuration` is thread time, which CPU throttling does not
+  stretch, so it read the same at 6× as at 1×.
+- A trace of real ticks is wall time on the main thread, which is what
+  throttling slows. Its first version asked for too few trace categories,
+  caught no thread names, read 0ms on both grounds, and **passed**, because 0
+  is within a fifth of 0. The test now refuses an empty reading and asserts
+  that every tick really redrew the wall.
+
+Two facts about the machine are recorded beside the figure. Throttling at 6×
+slowed a fixed loop by about 3.5× there, not 6×. And these ticks are far
+cheaper than S22's 645–750ms, on a different machine with a different method,
+so the two are not a comparison.
+
+**5546 tests passing and 2 skipped, over 405 files**: calendar 153 (1 skipped)
+over 10 · core 314 over 9 · display 1016 over 63 · server 4063 (1 skipped)
+over 323, measured with `pnpm test` and a real Chromium. The second skip is the
+opt-in cost measurement. Against M4.2's 5546 over 404 the passing count is
+unchanged: the test that a posted `glass` is refused without the flag became
+the test that it is taken. Four mutations of the flag's removal were checked:
+three are red, and the fourth — Glass dropped from the list of grounds — is
+refused by the compiler, because the label table names every ground.
 
 
 

@@ -94,7 +94,7 @@ export const WIDGET_GROUNDS: readonly WidgetGround[] = ['none', 'soft', 'solid']
  * An answer this bundle does not know is "never chosen" rather than a guess.
  */
 export function widgetGroundFor(stored: unknown, background: CanvasBackground | undefined): WidgetGround {
-  // Glass is the server's prototype (plan item M4.1): sent only while its flag is on.
+  // Glass is the fourth ground (plan items M4.1–M4.3).
   if (stored === 'none' || stored === 'soft' || stored === 'solid' || stored === 'glass') return stored;
   return background?.type === 'wallpaper' ? 'soft' : 'none';
 }

@@ -115,6 +115,9 @@ configure first, no account to create anywhere else, no key to paste.
   with how old it is. A power cut is a few seconds, not a blank rectangle.
 - **Five built-in themes** and custom themes, chosen per browser wall. You can
   schedule a different theme for daytime hours.
+- **Widgets over a picture** sit on a soft tint, a solid card, frosted glass
+  that blurs the picture behind them, or nothing at all. Glass works out how
+  much tint keeps the text readable for each picture and theme.
 
 ## Install
 

@@ -1,6 +1,6 @@
 # Plan: parity with Magic Frame
 
-**Status: in progress.** RFC 018 (M6.0) is built, and so are the companion token, its Home Assistant to-do add, timers and messages, and refreshing walls and showing one wall's layout on the others (M1.1–M1.5, M2.1, M2.2, M2.3, M3.1–M3.8, M4.1–M4.2, M4.10 for wallpapers, M5.1–M5.12); everything else is planned. On 2026-10-05 the owner asked for a
+**Status: in progress.** RFC 018 (M6.0) is built, and so are the companion token, its Home Assistant to-do add, timers and messages, and refreshing walls and showing one wall's layout on the others (M1.1–M1.5, M2.1, M2.2, M2.3, M3.1–M3.8, M4.1–M4.3, M4.10 for wallpapers, M5.1–M5.12); everything else is planned. On 2026-10-05 the owner asked for a
 competitive review of [Magic Frame](https://github.com/jeremiaa/magic-frame)
 against Maverick Wall, then a deeper look at its custom widgets and its
 backgrounds. This document is that review, the decisions taken on it, and the
@@ -70,7 +70,7 @@ planned: RFC 018, accepted on 2026-10-05 (MD13).
 | MD1 | Where the plan lives | This file is the source of truth; the Claude Doc is the shareable copy. |
 | MD2 | Wall control vs Hard Rule 12 | Propose a **narrow amendment** ([RFC 018](rfc-018-wall-control.md)): toggles, dimming/colour/position, scene and script buttons, webhook buttons. Locks, alarms and garage, gate, door and window covers stay excluded. Accepted on 2026-10-05 (MD13). |
 | MD3 | Custom widgets vs Hard Rule 3 | **Data only.** A much richer data contract now; a server-side sandbox whose output is still data is designed now (RFC 017) and built later. No code runs on the wall. |
-| MD4 | Glass (Q4) | **Prototype, then decide.** Glass is built behind a flag with measured per-picture opacity; Q4 flips only if the prototype passes MQ1. |
+| MD4 | Glass (Q4) | **Prototype, then decide.** Glass is built behind a flag with measured per-picture opacity; Q4 flips only if the prototype passes MQ1. **Decided 2026-10-10:** it passed, and the owner chose to ship it as an option households pick. |
 | MD5 | Bundled images | Allowlist: museum CC0 art, US government public domain, CC BY 4.0 with credit, the owner's own photos. **No Unsplash, Pexels, Pixabay or AI-generated images.** |
 | MD6 | Wallpaper size budget | Raise the size test's cap from 15 MB to about 25 MB, recorded as a decision. |
 | MD7 | Timers and messages on the wall | A wall may dismiss them behind its own per-wall switch, off by default, with the server as the authority. |
@@ -321,7 +321,7 @@ An e-paper panel ignores photos (MQ11).
 | --- | --- | --- | --- |
 | M4.1 | **Glass prototype**, behind a flag (MD4). **Built**: a fourth widget ground, Glass, offered, stored and sent only while the server runs with `MW_GLASS_PROTOTYPE=1`; a wall left on Glass is sent Soft when the flag is off, and an e-ink-sized wall draws Soft. `--glass-fill` is the theme's card colour at 0.4, pre-mixed in `theme.ts` for every theme a custom one included, with `--glass-edge`; `--glass-blur` (0.6rem) and `--glass-saturate` (1.4) are on `:root`. The blur sits in `@supports` with its `-webkit-` form, and a browser without it draws Soft layer for layer. Measured over 4px stripes: a patch varies by 115.8 on None, 16.4 on Soft and 3.7 on Glass, where the same wash unblurred would leave about 69. | M | New theme tokens `--glass-fill` (pre-mixed rgba, since `color-mix()` is out under rule 2), `--glass-blur`, `--glass-saturate`, `--glass-edge`. Wrapped in `@supports (backdrop-filter: blur(1px))` with the `-webkit-` form, falling back to Soft. Off on e-ink presets; never on a panel. |
 | M4.2 | **Measured glass opacity per picture** (`glassAlpha`). **Built**, as the picture's backdrop rather than one number: the catalogue stores each wallpaper's lightest and darkest patch, blurred at Glass's radius on a landscape wall and saturated, and the wall solves the opacity for the theme it is wearing (`glass-alpha.ts`), so a household's own theme is solved for its own inks. The patches are pushed three levels apart first, because the same file blurs a few levels differently in two Chromium builds. A household photo is measured once on the wall, drawn at 160px (MQ10), at Soft's 0.86 until then; a colour or gradient is its colours saturated; nothing behind is the card colour itself. Sent only to a wall on Glass, so no other wall's manifest moves. Solved opacities over the shipped set: Panels 0–0.82 (median 0.40), Swiss 0–0.66 (0.14), Household 0.44–0.71 (0.56), Blueprint 0.47–0.72 (0.58), Almanac 0.73–0.86 (0.79). | M | Blur each raster at the glass radius, then solve for the lowest opacity that keeps `--ink` and `--ink-scaffold` at 4.5:1 against its brightest and darkest blocks. Stored in the catalogue, held by the browser contrast test. Household photos are measured on the wall at load: MQ10. |
-| M4.3 | **Glass decision gate.** | S | Measure tick cost against Soft at 6× CPU throttling, as S22 did; flip Q4 in `CLAUDE.md` and `apps/display/DESIGN.md` in its own PR only if it passes MQ1. |
+| M4.3 | **Glass decision gate.** **Passed 2026-10-10, and Glass shipped as an option.** Measured with `browser-glass-cost.test.ts` (opt-in, `MW_MEASURE_GLASS=1`): the Classic wall at 1920×1080 on Dusk, 20 real ticks a ground in alternating rounds, each traced. The main thread's median per tick on Soft against Glass was 31ms against 33ms (1.054) and 32ms against 35ms (1.105), with no long task over 50ms on either; every picture keeps 4.5:1 (M4.2's gate). The owner chose to ship it, so the flag is gone, and Q4 is flipped for this ground in `CLAUDE.md` and `apps/display/DESIGN.md`. Open risk: the GPU process did about 75% more work on Glass, which MQ1 does not measure. | S | Measure tick cost against Soft at 6× CPU throttling, as S22 did; flip Q4 in `CLAUDE.md` and `apps/display/DESIGN.md` in its own PR only if it passes MQ1. |
 | M4.4 | **Vivid gradients**: regenerate our gradient category as iOS-style mesh gradients. | M | Only after M4.3 passes, because their contrast is carried by `glassAlpha` rather than by dimming. |
 | M4.5 | **A bundled photo set**: 16–20 photos and paintings. | L | From the MD5 allowlist only. Each catalogue entry records source URL, author, licence, retrieval date and sha256; `LICENSES.md` and `NOTICE` are generated from it; a test fails on a file with no entry or a licence off the allowlist. A focal point per orientation. |
 | M4.6 | **Raise the size budget to about 25 MB** (MD6). | S | A recorded change to `wallpapers.test.ts`; three sizes kept (320/1600/2880). |
@@ -370,8 +370,8 @@ feature benefits from them (MD8). Two gates hold work back.
    the companion token and its endpoints.
 3. **M3 and M4 — Photos and glass**: photo sources and presentation, the Glass
    prototype, the bundled photo set.
-   - **Gate: Q4 flips only if the Glass prototype passes MQ1.** M4.4 (vivid
-     gradients) and Glass as a shipped ground wait on it.
+   - **Gate passed on 2026-10-10 (M4.3):** Glass passed MQ1 and ships as an
+     option, and Q4 is flipped for it. M4.4 (vivid gradients) can start.
 4. **M5 — New widgets and data sources.**
 5. **M6 — Home Assistant depth.** The read-only items start without waiting.
    - **Gate passed: RFC 018 was accepted on 2026-10-05 (MD13).** The † items

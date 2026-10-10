@@ -496,14 +496,7 @@ async function main(): Promise<void> {
   // has nobody to tell, and the walls' own poll covers it.
   let push: PushWiring | undefined;
 
-  /*
-   * Glass, the prototype widget ground (plan item M4.1), only when asked for:
-   * Q4 still keeps blur out until the prototype passes MQ1.
-   */
-  const glassPrototype = env('MW_GLASS_PROTOTYPE', '') === '1';
-  if (glassPrototype) console.log('[boot] Glass prototype widget ground is on (MW_GLASS_PROTOTYPE=1)');
   const app = createApp({
-    glassPrototype,
     db,
     appVersion: APP_VERSION,
     bootNotices: notices,

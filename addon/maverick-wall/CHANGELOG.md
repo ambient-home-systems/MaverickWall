@@ -16,11 +16,12 @@
 
 ## Unreleased
 
-**Nothing changes on your walls from this.** A frosted-glass look for widgets
-over a picture is being tried out behind a switch only a developer can turn
-on. It is not offered anywhere, and a wall can't end up using it by accident.
-It now works out, for each picture and each theme, how much tint keeps text
-readable through it.
+**Frosted glass behind your widgets.** Over a wallpaper or a photo, Widget
+ground has a fourth choice, **Glass**. The picture behind each widget is
+blurred, with just enough of your theme's card colour for the text to stay
+easy to read. How much colour is worked out for each picture and each theme.
+Soft is still the default. On an e-paper panel, or a browser that can't blur,
+Glass shows as Soft.
 
 ## 0.99.0
 
