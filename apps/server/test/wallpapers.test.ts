@@ -17,6 +17,7 @@ import { templateSchema } from '../src/api/templates.js';
 import { CLASSIC_TEMPLATE } from '../src/templates/index.js';
 import { BUILTIN_THEME_TOKENS } from '../src/api/builtin-themes.js';
 import {
+  DRAWN_CATEGORIES,
   OLED_LUMINANCE,
   WALLPAPERS,
   WALLPAPER_CATEGORIES,
@@ -65,7 +66,8 @@ describe('the wallpaper catalogue', () => {
    * twenty-six. Fourteen dark and twelve light: "lean dark" (P6.3).
    */
   it('is the twenty-six of Q10, in its seven categories', () => {
-    expect(WALLPAPERS).toHaveLength(26);
+    const drawn = WALLPAPERS.filter((w) => DRAWN_CATEGORIES.includes(w.category));
+    expect(drawn).toHaveLength(26);
     const count = (category: string, tone?: string): number =>
       WALLPAPERS.filter((w) => w.category === category && (tone === undefined || w.tone === tone)).length;
     expect(count('gradient', 'dark')).toBe(4);
@@ -78,7 +80,15 @@ describe('the wallpaper catalogue', () => {
     expect(count('landscape')).toBe(4);
     expect(count('seasonal')).toBe(4);
     expect(count('fun')).toBe(2);
-    expect(WALLPAPERS.filter((w) => w.tone === 'dark').length).toBeGreaterThan(WALLPAPERS.length / 2);
+    expect(drawn.filter((w) => w.tone === 'dark').length).toBeGreaterThan(drawn.length / 2);
+    // And beside them the sixteen photographs and paintings of plan item M4.5,
+    // eight of each tone.
+    expect(count('painting')).toBe(13);
+    expect(count('space', 'dark')).toBe(3);
+    expect(WALLPAPERS.filter((w) => !DRAWN_CATEGORIES.includes(w.category))).toHaveLength(16);
+    for (const tone of ['dark', 'light']) {
+      expect(WALLPAPERS.filter((w) => !DRAWN_CATEGORIES.includes(w.category) && w.tone === tone)).toHaveLength(8);
+    }
     for (const w of WALLPAPERS) {
       expect(WALLPAPER_CATEGORIES).toContain(w.category);
       expect(WALLPAPER_CATEGORY_NAMES[w.category]).toBeTruthy();
@@ -94,6 +104,21 @@ describe('the wallpaper catalogue', () => {
     for (const w of WALLPAPERS) {
       expect(w.themes.length, `${w.id} suggests a theme`).toBeGreaterThan(0);
       for (const theme of w.themes) expect(tones[theme], `${w.id} suggests ${theme}, which is not a ${w.tone} built-in`).toBe(w.tone);
+      expect(w.luminance).toBeGreaterThanOrEqual(0);
+      expect(w.luminance).toBeLessThanOrEqual(1);
+      if (!DRAWN_CATEGORIES.includes(w.category)) {
+        // A photograph is not square, so it names a focal point for each
+        // orientation (M4.5), anywhere in the picture: a horizon or a city's
+        // lights can sit near an edge a square master would keep clear of.
+        for (const focal of [w.focal, w.portraitFocal]) {
+          expect(focal, `${w.id} names a focal point for each orientation`).toBeDefined();
+          for (const v of [focal?.x, focal?.y]) {
+            expect(v).toBeGreaterThanOrEqual(0);
+            expect(v).toBeLessThanOrEqual(100);
+          }
+        }
+        continue;
+      }
       if (w.focal !== undefined) {
         // Inside the middle of the master, never at an edge `cover` would crop.
         expect(w.focal.x).toBeGreaterThanOrEqual(30);
@@ -101,10 +126,11 @@ describe('the wallpaper catalogue', () => {
         expect(w.focal.y).toBeGreaterThanOrEqual(30);
         expect(w.focal.y).toBeLessThanOrEqual(70);
       }
-      expect(w.luminance).toBeGreaterThanOrEqual(0);
-      expect(w.luminance).toBeLessThanOrEqual(1);
-      // A light wallpaper is bright enough to warn about and a dark one is
-      // not, with the threshold nowhere near either half.
+      expect(w.portraitFocal, `${w.id} is square and needs one focal point`).toBeUndefined();
+      // A light drawn wallpaper is bright enough to warn about and a dark one
+      // is not, with the threshold nowhere near either half. A photograph's
+      // tone is which theme it is paired with, chosen picture by picture, and
+      // a light painting can be darker than this line.
       expect(notForOled(w), `${w.id} is ${w.tone} at luminance ${w.luminance}`).toBe(w.tone === 'light');
       expect(Math.abs(w.luminance - OLED_LUMINANCE)).toBeGreaterThan(0.25);
     }
@@ -117,7 +143,7 @@ describe('the wallpaper catalogue', () => {
     // Every id the generator draws is one the catalogue names, and no other.
     const generator = readFileSync(join(HERE, '..', '..', '..', 'scripts', 'wallpapers', 'generate.mjs'), 'utf8');
     const drawn = [...generator.matchAll(/^\s+id: '([a-z0-9-]+)', name:/gm)].map((m) => m[1]);
-    expect(drawn).toEqual(WALLPAPERS.map((w) => w.id));
+    expect(drawn).toEqual(WALLPAPERS.filter((w) => DRAWN_CATEGORIES.includes(w.category)).map((w) => w.id));
   });
 
   it('holds every file name to the bytes it names — the route caches for a year', () => {
@@ -143,9 +169,12 @@ describe('the wallpaper catalogue', () => {
   });
 
   /*
-   * The size budget (P6.2): about 10–15 MB was the plan's estimate for the
-   * set on a 437 MB image, and the set measures about 7.3 MB, so the pin is
-   * the plan's ceiling. Growth has to move it deliberately rather than drift
+   * The size budget (P6.2, raised by plan item M4.6 and decision MD6): about
+   * 10–15 MB was the plan's estimate for the drawn set on a 437 MB image, and
+   * it measures about 7.5 MB. The sixteen photographs and paintings of M4.5
+   * add about 15 MB, because a painting's brushwork is detail a JPEG has to
+   * keep, so the pin is MD6's 25 MB. Three sizes a picture are kept
+   * (320/1600/2880): the wall's choice of file depends on them. Growth has to move it deliberately rather than drift
    * past it, so a twenty-seventh wallpaper — or a grain that costs more — is a
    * decision about the image and not a surprise in it. The floor is what
    * says the files are pictures: a set that compressed to under a megabyte
@@ -154,7 +183,7 @@ describe('the wallpaper catalogue', () => {
    */
   it('stays inside its size budget', () => {
     const total = readdirSync(DIR).reduce((sum, name) => sum + statSync(join(DIR, name)).size, 0);
-    expect(total).toBeLessThan(15 * 1024 * 1024);
+    expect(total).toBeLessThan(25 * 1024 * 1024);
     expect(total).toBeGreaterThan(5 * 1024 * 1024);
   });
 });

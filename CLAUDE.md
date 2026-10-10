@@ -10697,6 +10697,71 @@ the revision `playwright-core` expects, and this change does not cause it.
 **Still unproven where it counts:** nobody has seen the new gradients on a
 kitchen wall, behind Glass or otherwise.
 
+**Sixteen photographs and paintings ship beside the drawn wallpapers (plan
+items M4.5 and M4.6).** There are thirteen paintings from the National Gallery
+of Art's open access (van der Neer, Inness, Church, Bierstadt, Turner, Monet,
+Sisley, Seurat, Pissarro, Constable and Kensett) and three photographs from
+the International Space Station (NASA). Those are two of the nine sources on
+MD5's allowlist. They are the only two this environment's network policy let
+through: the Art Institute, the Rijksmuseum, the Smithsonian, ESA/Hubble,
+Wikimedia and Openverse were all refused at the proxy. They sit in two new
+categories, **Paintings** and **From space**, eight dark and eight light, and
+rotate like any other collection. `scripts/wallpapers/photos.mjs` is the
+record:
+
+- It fetches each source once into a git-ignored cache and refuses to go on
+  if a source's sha256 differs from the one already recorded.
+- It resizes in Chromium to the same 320, 1600 and 2880 edges as the drawn
+  set.
+- It writes `wallpaper-photos.ts` with a credit per picture (title, author,
+  date, source page, image address, licence, retrieval date and sha256).
+- It writes the marked photo sections of `LICENSES.md` and `NOTICE`.
+
+`wallpaper-photos.test.ts` fails on a picture with no credit, a licence off
+the allowlist, a host that licence does not cover, or a credit the two files
+do not carry. The budget is 25 MB (M4.6), and the directory is 23 MB.
+
+**Two things a drawn wallpaper never needed:**
+
+- **A focal point per orientation.** A painting is not square, so `cover`
+  takes a narrow slice of it on a portrait wall. `portraitFocal` names that
+  slice, and `wallpaperPosition` reads it when the canvas is taller than it is
+  wide.
+- **A Soft ground solved for the picture.** A drawn wallpaper was drawn to
+  keep 4.5:1 under `--panel` at 0.86. A painting has real highlights and
+  shadows and nobody chose them, and at 0.86 several fail. So each photo
+  carries its unblurred lightest and darkest patch, and the wall sets
+  `--soft-alpha` to `max(0.86, solveGlassAlpha(panel, inks, patches))` from
+  the inks the canvas computes. Across the set that solves to 0.86–0.97.
+
+A drawn wallpaper carries no patches. Its manifest is unchanged, and its ground
+stays at the stylesheet's 0.86, which the browser test asserts.
+`browser-wallpaper-contrast` holds the shipped files to that solved opacity at
+both sizes. `browser-wallpaper-photos` reads `--soft-alpha` and the ground's
+computed opacity back off a real wall on Panels and on Household, using the
+photograph that needs the most and the one that needs the least. It also reads
+each orientation's `background-position`. Glass's backdrops are measured with
+the blur radius a non-square picture actually gets. Four mutations were
+checked on a rebuilt bundle, and all four are red:
+
+- `--soft-alpha` never written (the first try at this one failed to build and
+  was re-aimed);
+- the stylesheet's fixed 0.86;
+- the 0.86 floor removed;
+- the portrait point ignored.
+
+`browser-wallpaper-rotation` pins the picker's collections exactly, so it went
+red on the new ones, correctly, and now names them.
+
+**5578 tests passing, 1 red and 2 skipped, over 407 files**: calendar 153 (1
+skipped) over 10 · core 314 over 9 · display 1018 over 63 · server 4093 (1
+skipped) over 325. That count is a `pnpm test` with a real Chromium
+(`MW_BROWSER_EXECUTABLE`), plus the rotation file re-run after its fix. The
+one red is `browser-glass`'s striped-picture case, which is red on a clean
+`main` in this container too: the provisioned Chromium is not the revision
+`playwright-core` expects. **Still unproven where it counts:** nobody has
+looked at a painting on a kitchen wall.
+
 ---
 
 ## Open decisions

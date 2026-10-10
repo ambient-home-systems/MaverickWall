@@ -18,6 +18,10 @@ import { WALLPAPERS, themeTone, type Wallpaper } from '../src/wallpapers.js';
  * back on a known ground is the Soft widget ground — the theme's `--panel` at
  * 0.86 over the picture — and what a date numeral actually sits on is
  * therefore 86% panel and 14% whatever the picture is doing under that box.
+ * A drawn wallpaper is held at 0.86 exactly. A photograph or painting (plan
+ * item M4.5) was not drawn for this, so the wall solves its opacity from the
+ * catalogue's patches, never below 0.86, and that solved opacity is what is
+ * held here — `browser-wallpaper-photos.test.ts` reads it back off a wall.
  * So each shipped file is decoded, cut into blocks about the size of a
  * numeral, and its lightest and darkest blocks found; the Soft ground is
  * composited over each in sRGB, as the browser composites it; and the
@@ -56,11 +60,31 @@ const contrast = (a: Rgb, b: Rgb): number => {
   const [x, y] = [luminance(a), luminance(b)];
   return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
 };
-/** The Soft ground over a picture block, as the browser composites it: in sRGB. */
-const soft = (panel: Rgb, picture: Rgb): Rgb => {
-  const mix = (i: 0 | 1 | 2): number => SOFT * panel[i] + (1 - SOFT) * picture[i];
+/** The Soft ground at `alpha` over a picture block, as the browser composites it: in sRGB. */
+const soft = (panel: Rgb, picture: Rgb, alpha = SOFT): Rgb => {
+  const mix = (i: 0 | 1 | 2): number => alpha * panel[i] + (1 - alpha) * picture[i];
   return [mix(0), mix(1), mix(2)];
 };
+
+/**
+ * Soft's opacity over a photograph (plan item M4.5): solved from the
+ * catalogue's patches the way the wall solves it (`glass-alpha.ts`), never
+ * below 0.86. Written out rather than imported, for the reason the Glass test
+ * gives: a server test cannot import the display bundle, and an expectation
+ * computed by the code under test agrees with it whatever it does.
+ */
+const MARGIN = 3;
+function softAlpha(panel: Rgb, inks: readonly Rgb[], patches: { readonly light: string; readonly dark: string }): number {
+  const light = hex(patches.light).map((v) => Math.min(255, v + MARGIN)) as unknown as Rgb;
+  const dark = hex(patches.dark).map((v) => Math.max(0, v - MARGIN)) as unknown as Rgb;
+  const over = (alpha: number, patch: Rgb): Rgb =>
+    [0, 1, 2].map((i) => Math.round(alpha * (panel[i] ?? 0) + (1 - alpha) * (patch[i] ?? 0))) as unknown as Rgb;
+  for (let step = 0; step <= 100; step++) {
+    const alpha = step / 100;
+    if ([light, dark].every((patch) => inks.every((ink) => contrast(ink, over(alpha, patch)) >= 4.5))) return Math.max(SOFT, alpha);
+  }
+  return 1;
+}
 
 /**
  * The scaffold ink of each built-in, as `theme.ts` declares it. The server's
@@ -179,6 +203,14 @@ const themesOf = (tone: Wallpaper['tone']): string[] =>
 
 describe('every wallpaper, decoded from the bytes it ships', () => {
   const scaffold = scaffoldInks();
+  /** Soft's opacity by theme over every picture, printed once the set has run. */
+  const alphas: Record<string, number[]> = {};
+  afterAll(() => {
+    const line = Object.entries(alphas)
+      .map(([name, list]) => `${name} ${Math.min(...list)}–${Math.max(...list)} (${list.filter((a) => a > SOFT).length}/${list.length} above 0.86)`)
+      .join('; ');
+    process.stdout.write(`[soft] opacity by theme: ${line}\n`);
+  });
 
   it.each(WALLPAPERS.map((w) => [w.id, w] as const))(
     '%s keeps --ink and --ink-scaffold at 4.5:1 through the Soft ground, on every theme of its tone',
@@ -190,8 +222,11 @@ describe('every wallpaper, decoded from the bytes it ships', () => {
         // The file is the size its name says, square, and the catalogue's
         // measured colour and luminance are this file's: within the JPEG's own
         // rounding of a mean, so a regenerated picture cannot keep old numbers.
+        // A drawn wallpaper is square; a photograph keeps its own shape, at the
+        // same long edge (plan item M4.5).
         const edge = size === 'large' ? 2880 : 1600;
-        expect([decoded.width, decoded.height], file).toEqual([edge, edge]);
+        if (wallpaper.credit === undefined) expect([decoded.width, decoded.height], file).toEqual([edge, edge]);
+        else expect(Math.max(decoded.width, decoded.height), file).toBe(edge);
         expect(Math.abs(decoded.meanLuminance - wallpaper.luminance), `${file} luminance`).toBeLessThan(0.02);
         const catalogued = hex(wallpaper.color);
         for (let i = 0; i < 3; i += 1) expect(Math.abs((decoded.mean[i] as number) - (catalogued[i] as number)), `${file} colour`).toBeLessThan(6);
@@ -199,13 +234,18 @@ describe('every wallpaper, decoded from the bytes it ships', () => {
           const tokens = BUILTIN_THEME_TOKENS[theme as keyof typeof BUILTIN_THEME_TOKENS];
           const panel = hex(tokens['--panel']);
           const inks = { '--ink': hex(tokens['--ink']), '--ink-scaffold': hex(scaffold[theme] as string) };
+          // A drawn wallpaper is held at Soft's fixed 0.86; a photograph at the
+          // opacity the wall solves from its catalogue patches, against what
+          // each file actually shows.
+          const alpha = wallpaper.soft === undefined ? SOFT : softAlpha(panel, Object.values(inks), wallpaper.soft);
+          if (size === 'small') (alphas[theme] ??= []).push(alpha);
           for (const [role, ink] of Object.entries(inks)) {
             for (const [where, block] of [['darkest', decoded.darkest], ['lightest', decoded.lightest]] as const) {
-              const ground = soft(panel, block);
+              const ground = soft(panel, block, alpha);
               const ratio = contrast(ink, ground);
               expect(
                 ratio,
-                `${wallpaper.id} (${size}): ${theme}'s ${role} over its Soft ground on the picture's ${where} block ` +
+                `${wallpaper.id} (${size}): ${theme}'s ${role} over its Soft ground at ${alpha} on the picture's ${where} block ` +
                   `rgb(${block.map(Math.round).join(', ')}) reads ${ratio.toFixed(2)}:1`,
               ).toBeGreaterThanOrEqual(4.5);
             }

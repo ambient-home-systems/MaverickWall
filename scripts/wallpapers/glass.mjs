@@ -47,7 +47,12 @@ export const GLASS_SATURATE = 1.4;
 export const BLOCKS = 40;
 
 const source = readFileSync(CATALOGUE, 'utf8');
-const catalogue = JSON.parse(source.slice(source.indexOf('['), source.lastIndexOf(']') + 1));
+const photoSource = readFileSync(join(root, 'apps', 'server', 'src', 'wallpaper-photos.ts'), 'utf8');
+const catalogue = [
+  ...JSON.parse(source.slice(source.indexOf('['), source.lastIndexOf(']') + 1)),
+  // The photographs and paintings too (plan item M4.5), from their own list.
+  ...JSON.parse(/\/\* photos \*\/ (\[[\s\S]*?\]) as const;/.exec(photoSource)[1]),
+];
 
 const executablePath = process.env.MW_BROWSER_EXECUTABLE || undefined;
 const browser = await chromium.launch(executablePath ? { executablePath } : {});
@@ -65,7 +70,10 @@ for (const wallpaper of catalogue) {
       canvas.width = img.naturalWidth;
       canvas.height = img.naturalHeight;
       const ctx = canvas.getContext('2d');
-      ctx.filter = `blur(${share * img.naturalWidth}px) saturate(${saturate})`;
+      // A square or a picture narrower than 16:9 is scaled to the wall's
+      // width; a wider one to its height, which blurs it more in its own pixels.
+      const radius = Math.min(share * img.naturalWidth, share * (16 / 9) * img.naturalHeight);
+      ctx.filter = `blur(${radius}px) saturate(${saturate})`;
       ctx.drawImage(img, 0, 0);
       const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const lin = (v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);

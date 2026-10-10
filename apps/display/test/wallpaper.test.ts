@@ -94,6 +94,18 @@ describe('wallpaperPosition', () => {
       expect(wallpaperPosition({ focal: bad }), JSON.stringify(bad)).toBe('center');
     }
   });
+
+  it('reads a photograph\'s portrait focal point on a portrait canvas, and `focal` everywhere else (plan item M4.5)', () => {
+    const photo = { focal: { x: 50, y: 85 }, portraitFocal: { x: 64, y: 50 } };
+    expect(wallpaperPosition(photo)).toBe('50% 85%');
+    expect(wallpaperPosition(photo, false)).toBe('50% 85%');
+    expect(wallpaperPosition(photo, true)).toBe('64% 50%');
+    // A square drawn wallpaper names one point, which a portrait canvas reads too.
+    expect(wallpaperPosition({ focal: { x: 50, y: 58 } }, true)).toBe('50% 58%');
+    // A portrait point that is not one falls back to `focal`, then the centre.
+    expect(wallpaperPosition({ focal: { x: 50, y: 58 }, portraitFocal: { x: 120, y: 0 } }, true)).toBe('50% 58%');
+    expect(wallpaperPosition({ portraitFocal: 'left' }, true)).toBe('center');
+  });
 });
 
 describe('currentPicture (plan items M4.10, M1.4)', () => {
@@ -135,5 +147,15 @@ describe('currentPicture (plan items M4.10, M1.4)', () => {
     const solid = { type: 'solid' as const, color: '#112233' };
     expect(currentPicture(solid, at, 'UTC', undefined)).toBe(solid);
     expect(currentPicture(undefined, at, 'UTC', undefined)).toBeUndefined();
+  });
+
+  it('carries a photograph\'s portrait focal point and Soft patches with it (plan item M4.5)', () => {
+    const extras = {
+      focal: { x: 50, y: 85 },
+      portraitFocal: { x: 64, y: 50 },
+      soft: { light: '#F0E2B1', dark: '#1B1A10' },
+    };
+    const photos = { ...rotation, collection: 'painting', pictures: rotation.pictures.map((one) => ({ ...one, ...extras })) };
+    expect(currentPicture(photos, at, 'UTC', undefined)).toMatchObject({ type: 'wallpaper', ...extras });
   });
 });

@@ -75,7 +75,7 @@ describe('rotating wallpapers', () => {
         const offered = await page.$$eval('[data-rotation-collection] option', (options) =>
           options.map((o) => (o as HTMLOptionElement).value),
         );
-        expect(offered).toEqual(['dark:all', 'dark:gradient', 'dark:contour', 'dark:geometric', 'dark:landscape', 'dark:seasonal', 'dark:fun']);
+        expect(offered).toEqual(['dark:all', 'dark:gradient', 'dark:contour', 'dark:geometric', 'dark:landscape', 'dark:seasonal', 'dark:fun', 'dark:painting', 'dark:space']);
         await page.selectOption('[data-rotation-collection]', 'dark:gradient');
         await page.selectOption('[data-rotation-every]', '15');
         const strip = await page.$$eval('.le-rotation [role="listitem"] .le-wp-name', (names) => names.map((n) => n.textContent));
@@ -109,7 +109,7 @@ describe('rotating wallpapers', () => {
           const light = await page.$$eval('[data-rotation-collection] option', (options) =>
             options.map((o) => (o as HTMLOptionElement).value),
           );
-          expect(light).toEqual(['light:all', 'light:gradient', 'light:texture', 'light:landscape', 'light:seasonal']);
+          expect(light).toEqual(['light:all', 'light:gradient', 'light:texture', 'light:landscape', 'light:seasonal', 'light:painting']);
         } finally {
           wall.db.prepare(`UPDATE screens SET theme = 'panels' WHERE id = ?`).run(screenId);
         }

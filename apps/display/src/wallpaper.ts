@@ -109,12 +109,21 @@ export function widgetGroundFor(stored: unknown, background: CanvasBackground | 
  * Read defensively, because a stored copy of the manifest may carry any
  * shape: anything but two finite numbers inside 0..100 is the centre.
  */
-export function wallpaperPosition(background: { readonly focal?: unknown }): string {
-  const focal = background.focal;
-  if (typeof focal !== 'object' || focal === null) return 'center';
+export function wallpaperPosition(
+  background: { readonly focal?: unknown; readonly portraitFocal?: unknown },
+  portrait = false,
+): string {
+  // A photograph names where a portrait wall's slice of it should sit
+  // (plan item M4.5); a portrait wall reads that first, and a picture without
+  // one — every drawn wallpaper — reads `focal` on either.
+  return (portrait ? focalPosition(background.portraitFocal) : undefined) ?? focalPosition(background.focal) ?? 'center';
+}
+
+function focalPosition(focal: unknown): string | undefined {
+  if (typeof focal !== 'object' || focal === null) return undefined;
   const { x, y } = focal as { x?: unknown; y?: unknown };
   const ok = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100;
-  return ok(x) && ok(y) ? `${x}% ${y}%` : 'center';
+  return ok(x) && ok(y) ? `${x}% ${y}%` : undefined;
 }
 
 /**
@@ -153,7 +162,10 @@ export function currentPicture(
     small: picture.small,
     large: picture.large,
     ...(picture.focal === undefined ? {} : { focal: picture.focal }),
-    // What it shows through Glass travels with it (plan item M4.2).
+    ...(picture.portraitFocal === undefined ? {} : { portraitFocal: picture.portraitFocal }),
+    // What it shows through Glass travels with it (plan item M4.2), and what
+    // Soft's opacity is solved from (plan item M4.5).
     ...(picture.glass === undefined ? {} : { glass: picture.glass }),
+    ...(picture.soft === undefined ? {} : { soft: picture.soft }),
   };
 }
