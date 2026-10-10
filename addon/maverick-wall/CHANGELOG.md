@@ -16,6 +16,13 @@
 
 ## Unreleased
 
+**Brighter gradient wallpapers.** The six wallpapers under Gradients —
+Dusk, Midnight, Ember, Deep sea, Dawn haze and Mist — are redrawn as soft
+blends of strong colour, in the style of a phone's lock screen, where they
+used to be dark and muted. A wall that already uses one keeps it, and it
+looks brighter after the update. Your widgets' text stays as easy to read as
+before. Behind Glass, the colour shows through most.
+
 ## 1.0.0
 
 **Frosted glass behind your widgets.** Over a wallpaper or a photo, Widget
