@@ -26,6 +26,7 @@
 
 import { isLight } from './api/themes.js';
 import { WALLPAPER_CATALOGUE } from './wallpaper-catalogue.js';
+import { WALLPAPER_GLASS } from './wallpaper-glass.js';
 
 /**
  * Whether a wallpaper is drawn for a dark theme or a light one.
@@ -105,9 +106,18 @@ export interface Wallpaper {
   readonly small: string;
   /** A long edge of about 2880px: a television, or a tablet at 2x. */
   readonly large: string;
+  /**
+   * The lightest and darkest patch the picture shows through Glass, blurred
+   * and saturated as Glass draws it (plan item M4.2), from `wallpaper-glass.ts`.
+   * A wall solves its Glass opacity from these for the theme it is wearing.
+   */
+  readonly glass?: { readonly light: string; readonly dark: string };
 }
 
-export const WALLPAPERS: readonly Wallpaper[] = WALLPAPER_CATALOGUE;
+export const WALLPAPERS: readonly Wallpaper[] = WALLPAPER_CATALOGUE.map((one) => {
+  const glass = WALLPAPER_GLASS[one.id];
+  return glass === undefined ? one : { ...one, glass: { light: glass.light, dark: glass.dark } };
+});
 
 /**
  * The mean luminance above which a wallpaper is bright enough to burn into an

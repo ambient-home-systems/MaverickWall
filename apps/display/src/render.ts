@@ -34,6 +34,16 @@ import { monthLookClasses, monthLooks, treatmentLooks, type MonthLooks } from '.
 import { boxRect, gutterStepFor } from './gutter.js';
 import { WALLPAPER_BASE, wallpaperFile, wallpaperPosition, widgetGroundFor, type WidgetGround } from './wallpaper.js';
 import { createFailedPhotos, standIn, standInFile, type StandIn } from './photo-fallback.js';
+import {
+  GLASS_SATURATE,
+  GLASS_UNMEASURED_ALPHA,
+  backdropOfPixels,
+  colourBackdrop,
+  glassFill,
+  readBackdrop,
+  solveGlassAlpha,
+  type Backdrop,
+} from './glass-alpha.js';
 import { childCells, groupChildren, topLevelWidgets } from './group-cells.js';
 import { applyStyleTokens, styleTokensOf } from './widget-style.js';
 import { encodeQr } from './qr.js';
@@ -4899,6 +4909,85 @@ function applyWallpaper(
 
 
 /**
+ * Glass's fill for this canvas (plan item M4.2): the theme's card colour at
+ * the lowest opacity that keeps both inks at 4.5:1 over what is behind it.
+ *
+ * The colours are read off the canvas, where the theme — and the daylight
+ * theme, when it is the one on — has already put them, so a household's own
+ * theme is solved for its own inks. The backdrop is the picture's: a bundled
+ * wallpaper carries it, a colour or a gradient is its colours, and nothing at
+ * all is the canvas's own card colour. A household's own picture is measured
+ * once in this browser (MQ10); until then the fill is at Soft's opacity, and
+ * the measurement rewrites it in place when it lands.
+ */
+function applyGlassFill(canvas: HTMLElement, background: CanvasBackground | undefined, mediaBase: string): void {
+  const style = getComputedStyle(canvas);
+  const panel = style.getPropertyValue('--panel').trim();
+  const inks = [style.getPropertyValue('--ink').trim(), style.getPropertyValue('--ink-scaffold').trim()];
+  const write = (backdrop: Backdrop | undefined): void => {
+    const alpha = backdrop === undefined ? GLASS_UNMEASURED_ALPHA : solveGlassAlpha(panel, inks, backdrop);
+    const fill = glassFill(panel, alpha);
+    if (fill !== undefined) canvas.style.setProperty('--glass-fill', fill);
+  };
+  if (background === undefined) return write(colourBackdrop(panel));
+  if (background.type === 'wallpaper') return write(readBackdrop(background.glass));
+  if (background.type === 'solid') return write(colourBackdrop(background.color));
+  if (background.type === 'gradient') return write(colourBackdrop(background.from, background.to));
+  if (background.type === 'image' && background.image !== '') {
+    const url = `${mediaBase}${background.image}`;
+    const known = photoBackdrops.get(url);
+    write(typeof known === 'object' ? known : undefined);
+    if (known === undefined) {
+      photoBackdrops.set(url, 'measuring');
+      measurePhotoBackdrop(url, (measured) => {
+        photoBackdrops.set(url, measured ?? 'unreadable');
+        if (measured !== undefined && canvas.isConnected) write(measured);
+      });
+    }
+    return;
+  }
+  write(undefined);
+}
+
+/** A household's own pictures, measured once each in this browser (MQ10). */
+const photoBackdrops = new Map<string, Backdrop | 'measuring' | 'unreadable'>();
+
+/**
+ * Measure a picture as Glass shows it: drawn small and saturated, then cut
+ * into 40x40 blocks for the lightest and darkest. Small, because the blocks are
+ * the reading and a 160px drawing has as many of them as the original.
+ *
+ * **No blur, and that is measured rather than skipped.** Glass's blur at this
+ * size is about half a pixel against a 4px block, so a block's average is the
+ * same with it or without it — a mutation removing it changed no reading — and
+ * the downscale itself has already averaged anything finer. The catalogue blurs
+ * because it measures the full 1600px file.
+ */
+function measurePhotoBackdrop(url: string, done: (backdrop: Backdrop | undefined) => void): void {
+  const image = new Image();
+  image.onload = (): void => {
+    const long = 160;
+    const scale = long / Math.max(image.naturalWidth, image.naturalHeight, 1);
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const surface = document.createElement('canvas');
+    surface.width = width;
+    surface.height = height;
+    const context = surface.getContext('2d');
+    if (context === null) return done(undefined);
+    context.filter = `saturate(${GLASS_SATURATE})`;
+    context.drawImage(image, 0, 0, width, height);
+    try {
+      done(backdropOfPixels(context.getImageData(0, 0, width, height).data, width, height, 40));
+    } catch {
+      done(undefined);
+    }
+  };
+  image.onerror = (): void => done(undefined);
+  image.src = url;
+}
+
+/**
  * A section's own type metrics, in the units the tier table is stated in.
  *
  * Both terms are read **untransformed** — `offsetWidth` and the cascade's
@@ -5831,6 +5920,10 @@ export function renderFreeform(
   if (layout.background?.type === 'wallpaper') {
     applyWallpaper(canvas, layout.background, options.wallpaperBase ?? WALLPAPER_BASE);
   }
+
+  // Glass's opacity for what is behind these widgets, now the canvas has its
+  // theme's colours to read (plan item M4.2).
+  if (ground === 'glass') applyGlassFill(canvas, layout.background, mediaBase);
 
   /*
    * A slideshow that pairs portrait photos reads its own box (plan item M3.7):

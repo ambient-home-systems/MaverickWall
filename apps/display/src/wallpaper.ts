@@ -153,5 +153,7 @@ export function currentPicture(
     small: picture.small,
     large: picture.large,
     ...(picture.focal === undefined ? {} : { focal: picture.focal }),
+    // What it shows through Glass travels with it (plan item M4.2).
+    ...(picture.glass === undefined ? {} : { glass: picture.glass }),
   };
 }

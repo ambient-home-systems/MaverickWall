@@ -836,6 +836,8 @@ export type CanvasBackground =
       readonly large: string;
       /** Where the picture's interest is, in percent; absent is the centre (P6.2). */
       readonly focal?: { readonly x: number; readonly y: number };
+      /** What the picture shows through Glass (plan item M4.2), sent only to a wall on Glass. */
+      readonly glass?: GlassBackdrop;
     }
   | {
       /**
@@ -854,8 +856,47 @@ export type CanvasBackground =
         readonly small: string;
         readonly large: string;
         readonly focal?: { readonly x: number; readonly y: number };
+        readonly glass?: GlassBackdrop;
       }[];
     };
+
+/** A picture's lightest and darkest patch through Glass (plan item M4.2). */
+export interface GlassBackdrop {
+  readonly light: string;
+  readonly dark: string;
+}
+
+/**
+ * A background with what each bundled picture shows through Glass attached
+ * (plan item M4.2) — only for a wall that is on Glass, so every other wall's
+ * document, and its ETag, is the one it always was.
+ */
+function withGlassBackdrop(background: CanvasBackground | undefined): CanvasBackground | undefined {
+  if (background?.type === 'wallpaper') {
+    const glass = wallpaperById(background.id)?.glass;
+    return glass === undefined ? background : { ...background, glass };
+  }
+  if (background?.type === 'rotation') {
+    return {
+      ...background,
+      pictures: background.pictures.map((one) => {
+        const glass = wallpaperById(one.id)?.glass;
+        return glass === undefined ? one : { ...one, glass };
+      }),
+    };
+  }
+  return background;
+}
+
+/** The same layout, with every wallpaper's Glass backdrop on it when the wall is on Glass. */
+function glassLayout(layout: Manifest['layout'], glass: boolean): Manifest['layout'] {
+  if (!glass) return layout;
+  const side = <T extends { readonly background?: CanvasBackground }>(canvas: T): T => {
+    const background = withGlassBackdrop(canvas.background);
+    return background === undefined ? canvas : { ...canvas, background };
+  };
+  return { ...layout, portrait: side(layout.portrait), landscape: side(layout.landscape) };
+}
 
 const HEX6 = /^#[0-9a-fA-F]{6}$/;
 const STORED_IMAGE = /^[a-f0-9]{64}\.(png|jpg|gif|webp)$/;
@@ -1899,6 +1940,10 @@ function runFor(
 }
 
 export function buildManifest(input: BuildManifestInput): Manifest {
+  // The widget ground this wall is sent, and whether that is Glass, which is
+  // what decides whether its wallpapers carry their Glass backdrops (M4.2).
+  const sentGround = groundToSend(input.screen?.widgetGround, input.glassPrototype === true);
+  const onGlass = sentGround === 'glass';
   const from = addDays(input.today, -input.daysBefore);
   const to = addDays(input.today, input.daysAfter);
   const dates = eachDate(from, to);
@@ -2269,10 +2314,7 @@ export function buildManifest(input: BuildManifestInput): Manifest {
         : {}),
       // The widget ground (P6.3), said only once chosen, and only as a value
       // this server writes: anything else in the column is "never chosen".
-      ...((): { widgetGround?: WidgetGround | 'glass' } => {
-        const ground = groundToSend(input.screen?.widgetGround, input.glassPrototype === true);
-        return ground === undefined ? {} : { widgetGround: ground };
-      })(),
+      ...(sentGround === undefined ? {} : { widgetGround: sentGround }),
     },
     display: {
       todayEvents: clamp(input.household.displayTodayEvents, 1, 20, 8),
@@ -2285,7 +2327,7 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       // including a database from before the column existed.
       weekStart: input.household.weekStart === 'monday' ? 'monday' : 'sunday',
     },
-    layout: buildLayout(
+    layout: glassLayout(buildLayout(
       input.household,
       input.layoutWidgetsPortrait ?? [],
       input.layoutWidgetsLandscape ?? [],
@@ -2300,7 +2342,7 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       readingIndexOf(input.panels?.['home']),
       input.albums ?? [],
       input.playing ?? {},
-    ),
+    ), onGlass),
     ...(input.layoutOverride === undefined
       ? {}
       : {
@@ -2310,7 +2352,7 @@ export function buildManifest(input: BuildManifestInput): Manifest {
             // The same assembly as this wall's own, against the lending wall's
             // canvases and their settings, so a borrowed widget is omitted or
             // rewritten exactly as it would be on the wall it came from.
-            layout: buildLayout(
+            layout: glassLayout(buildLayout(
               input.layoutOverride.household,
               input.layoutOverride.portrait,
               input.layoutOverride.landscape,
@@ -2322,7 +2364,7 @@ export function buildManifest(input: BuildManifestInput): Manifest {
               readingIndexOf(input.panels?.['home']),
               input.albums ?? [],
               input.playing ?? {},
-            ),
+            ), onGlass),
           },
         }),
     days,
