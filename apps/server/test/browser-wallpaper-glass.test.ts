@@ -49,7 +49,7 @@ const contrast = (a: Rgb, b: Rgb): number => {
   return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
 };
 const over = (panel: Rgb, alpha: number, patch: Rgb): Rgb =>
-  [0, 1, 2].map((i) => Math.round(alpha * (panel[i] ?? 0) + (1 - alpha) * (patch[i] ?? 0))) as unknown as Rgb;
+  [0, 1, 2].map((i) => alpha * (panel[i] ?? 0) + (1 - alpha) * (patch[i] ?? 0)) as unknown as Rgb;
 const holds = (panel: Rgb, inks: readonly Rgb[], alpha: number, patches: readonly Rgb[]): boolean =>
   patches.every((patch) => inks.every((ink) => contrast(ink, over(panel, alpha, patch)) >= 4.5));
 /** `GLASS_MARGIN` in `glass-alpha.ts`: the patches pushed apart by three levels before solving. */

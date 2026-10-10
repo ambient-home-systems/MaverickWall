@@ -26,6 +26,36 @@ export const PHOTO_LICENCES = {
       "images-assets.nasa.gov",
       "images.nasa.gov"
     ]
+  },
+  "rijksmuseum": {
+    "name": "Public domain, Rijksmuseum",
+    "terms": "https://data.rijksmuseum.nl/policy",
+    "statement": "Images of works in the public domain, marked with the Public Domain Mark or CC0, free to use for any purpose.",
+    "hosts": [
+      "data.rijksmuseum.nl",
+      "www.rijksmuseum.nl",
+      "iiif.micr.io"
+    ]
+  },
+  "esa-hubble": {
+    "name": "CC BY 4.0, ESA/Hubble",
+    "terms": "https://esahubble.org/copyright/",
+    "statement": "Released under the Creative Commons Attribution 4.0 International licence; the credit listed with each image must be shown with it.",
+    "attribution": true,
+    "hosts": [
+      "esahubble.org",
+      "cdn.esahubble.org"
+    ]
+  },
+  "esa-webb": {
+    "name": "CC BY 4.0, ESA/Webb",
+    "terms": "https://esawebb.org/copyright/",
+    "statement": "Released under the Creative Commons Attribution 4.0 International licence; the credit listed with each image must be shown with it.",
+    "attribution": true,
+    "hosts": [
+      "esawebb.org",
+      "cdn.esawebb.org"
+    ]
   }
 } as const;
 
@@ -520,6 +550,232 @@ export const WALLPAPER_PHOTOS = /* photos */ [
     }
   },
   {
+    "id": "wijk-windmill",
+    "name": "Windmill at Wijk",
+    "category": "painting",
+    "tone": "dark",
+    "themes": [
+      "panels",
+      "swiss"
+    ],
+    "focal": {
+      "x": 50,
+      "y": 45
+    },
+    "portraitFocal": {
+      "x": 70,
+      "y": 50
+    },
+    "color": "#646459",
+    "luminance": 0.148,
+    "thumb": "wijk-windmill-320.43fda4208a.jpg",
+    "small": "wijk-windmill-1600.d255ee74ac.jpg",
+    "large": "wijk-windmill-2880.f46640aaf0.jpg",
+    "soft": {
+      "light": "#C3B495",
+      "dark": "#231B11"
+    },
+    "credit": {
+      "title": "The Windmill at Wijk bij Duurstede",
+      "author": "Jacob Isaacksz van Ruisdael",
+      "date": "c. 1668-1670",
+      "source": "https://www.rijksmuseum.nl/en/collection/SK-C-211",
+      "image": "https://iiif.micr.io/XWEFp/pct:2,3,96,94/!3200,3200/0/default.jpg",
+      "licence": "rijksmuseum",
+      "retrieved": "2026-10-10",
+      "sha256": "f7b7d3b657102bf2a5039fc41baf590d875306b787c23264cee8ac96a5b8d93e"
+    }
+  },
+  {
+    "id": "river-riders",
+    "name": "River with riders",
+    "category": "painting",
+    "tone": "dark",
+    "themes": [
+      "panels",
+      "swiss"
+    ],
+    "focal": {
+      "x": 50,
+      "y": 50
+    },
+    "portraitFocal": {
+      "x": 58,
+      "y": 50
+    },
+    "color": "#8B836B",
+    "luminance": 0.273,
+    "thumb": "river-riders-320.cc1d888af8.jpg",
+    "small": "river-riders-1600.1cdf8cd631.jpg",
+    "large": "river-riders-2880.159a8d4dd9.jpg",
+    "soft": {
+      "light": "#F4E8CA",
+      "dark": "#211D18"
+    },
+    "credit": {
+      "title": "River Landscape with Riders",
+      "author": "Aelbert Cuyp",
+      "date": "c. 1653-1657",
+      "source": "https://www.rijksmuseum.nl/en/collection/SK-A-4118",
+      "image": "https://iiif.micr.io/uMHxo/full/!3200,3200/0/default.jpg",
+      "licence": "rijksmuseum",
+      "retrieved": "2026-10-10",
+      "sha256": "93a38029940f6ccead303e63128d8539656dafd3b3bfed1a24067888d9b96a10"
+    }
+  },
+  {
+    "id": "winter-skaters",
+    "name": "Winter skaters",
+    "category": "painting",
+    "tone": "light",
+    "themes": [
+      "household",
+      "almanac",
+      "blueprint"
+    ],
+    "focal": {
+      "x": 50,
+      "y": 55
+    },
+    "portraitFocal": {
+      "x": 45,
+      "y": 50
+    },
+    "color": "#A1967A",
+    "luminance": 0.359,
+    "thumb": "winter-skaters-320.09162cd7a4.jpg",
+    "small": "winter-skaters-1600.596ff47583.jpg",
+    "large": "winter-skaters-2880.054eb682de.jpg",
+    "soft": {
+      "light": "#F2ECD8",
+      "dark": "#1C1B16"
+    },
+    "credit": {
+      "title": "Winter Landscape with Ice Skaters",
+      "author": "Hendrick Avercamp",
+      "date": "c. 1608",
+      "source": "https://www.rijksmuseum.nl/en/collection/SK-A-1718",
+      "image": "https://iiif.micr.io/aXnzA/full/!3200,3200/0/default.jpg",
+      "licence": "rijksmuseum",
+      "retrieved": "2026-10-10",
+      "sha256": "84245dcecbfe4177a8d6e24bc9e945184496c12420fc3a00f48829375d6b898a"
+    }
+  },
+  {
+    "id": "merwede",
+    "name": "The Merwede",
+    "category": "painting",
+    "tone": "light",
+    "themes": [
+      "household",
+      "almanac",
+      "blueprint"
+    ],
+    "focal": {
+      "x": 50,
+      "y": 50
+    },
+    "portraitFocal": {
+      "x": 55,
+      "y": 50
+    },
+    "color": "#A1957F",
+    "luminance": 0.329,
+    "thumb": "merwede-320.6cec0a905f.jpg",
+    "small": "merwede-1600.c442faca41.jpg",
+    "large": "merwede-2880.4efed3b548.jpg",
+    "soft": {
+      "light": "#E6CAA0",
+      "dark": "#2F2921"
+    },
+    "credit": {
+      "title": "View of the Merwede off Dordrecht",
+      "author": "attributed to Jeronymus van Diest (II)",
+      "date": "c. 1660",
+      "source": "https://www.rijksmuseum.nl/en/collection/SK-A-121",
+      "image": "https://iiif.micr.io/CepGg/full/!3200,3200/0/default.jpg",
+      "licence": "rijksmuseum",
+      "retrieved": "2026-10-10",
+      "sha256": "c0057de826778465a7f52c5d24f1e90a65547fc1f70884a07e287702b30104bc"
+    }
+  },
+  {
+    "id": "july-windmill",
+    "name": "In the month of July",
+    "category": "painting",
+    "tone": "light",
+    "themes": [
+      "household",
+      "almanac",
+      "blueprint"
+    ],
+    "focal": {
+      "x": 50,
+      "y": 50
+    },
+    "portraitFocal": {
+      "x": 50,
+      "y": 50
+    },
+    "color": "#858D76",
+    "luminance": 0.28,
+    "thumb": "july-windmill-320.7f35f312cc.jpg",
+    "small": "july-windmill-1600.ec2d2aafc2.jpg",
+    "large": "july-windmill-2880.a34ccc9fc7.jpg",
+    "soft": {
+      "light": "#E4D7BB",
+      "dark": "#39332D"
+    },
+    "credit": {
+      "title": "A Windmill on a Polder Waterway, Known as 'In the Month of July'",
+      "author": "Paul Joseph Constantin Gabriël",
+      "date": "c. 1889",
+      "source": "https://www.rijksmuseum.nl/en/collection/SK-A-1505",
+      "image": "https://iiif.micr.io/HNwWx/full/!3200,3200/0/default.jpg",
+      "licence": "rijksmuseum",
+      "retrieved": "2026-10-10",
+      "sha256": "eebfcf2e4bb189dbc9694b36c1b4f2027a250ea528185b0363775162cd2c0571"
+    }
+  },
+  {
+    "id": "zwijndrecht-winter",
+    "name": "Zwijndrecht in winter",
+    "category": "painting",
+    "tone": "light",
+    "themes": [
+      "household",
+      "almanac",
+      "blueprint"
+    ],
+    "focal": {
+      "x": 50,
+      "y": 45
+    },
+    "portraitFocal": {
+      "x": 55,
+      "y": 50
+    },
+    "color": "#ADA598",
+    "luminance": 0.391,
+    "thumb": "zwijndrecht-winter-320.fddb62e299.jpg",
+    "small": "zwijndrecht-winter-1600.7504fb1b20.jpg",
+    "large": "zwijndrecht-winter-2880.5f33f50090.jpg",
+    "soft": {
+      "light": "#D8CEB6",
+      "dark": "#5B5853"
+    },
+    "credit": {
+      "title": "Zwijndrecht in the Winter",
+      "author": "Siebe Johannes ten Cate",
+      "date": "1892",
+      "source": "https://www.rijksmuseum.nl/en/collection/SK-A-2299",
+      "image": "https://iiif.micr.io/cJXML/full/!3200,3200/0/default.jpg",
+      "licence": "rijksmuseum",
+      "retrieved": "2026-10-10",
+      "sha256": "a71524bd28754dc7672dd38b1cc71d7d2a01a351dab2e30a41473f81127e2cc6"
+    }
+  },
+  {
     "id": "orbital-sunset",
     "name": "Sunset from orbit",
     "category": "space",
@@ -628,6 +884,234 @@ export const WALLPAPER_PHOTOS = /* photos */ [
       "licence": "nasa-media",
       "retrieved": "2026-10-10",
       "sha256": "287ec766c4efdc00d72eb8c80070358ebb95d6903659086814200ff854a8bca5"
+    }
+  },
+  {
+    "id": "westerlund",
+    "name": "Westerlund 2",
+    "category": "space",
+    "tone": "dark",
+    "themes": [
+      "panels",
+      "swiss"
+    ],
+    "focal": {
+      "x": 50,
+      "y": 50
+    },
+    "portraitFocal": {
+      "x": 50,
+      "y": 50
+    },
+    "color": "#4D3C40",
+    "luminance": 0.096,
+    "thumb": "westerlund-320.f2a7dfa8ab.jpg",
+    "small": "westerlund-1600.ef295145f5.jpg",
+    "large": "westerlund-2880.b9c656871d.jpg",
+    "soft": {
+      "light": "#E6D4CF",
+      "dark": "#050B0D"
+    },
+    "credit": {
+      "title": "Westerlund 2 — Hubble's 25th anniversary image (heic1509a)",
+      "author": "NASA, ESA, the Hubble Heritage Team (STScI/AURA), A. Nota (ESA/STScI), and the Westerlund 2 Science Team",
+      "date": "23 April 2015",
+      "source": "https://esahubble.org/images/heic1509a/",
+      "image": "https://cdn.esahubble.org/archives/images/large/heic1509a.jpg",
+      "licence": "esa-hubble",
+      "attribution": "NASA, ESA, the Hubble Heritage Team (STScI/AURA), A. Nota (ESA/STScI), and the Westerlund 2 Science Team",
+      "retrieved": "2026-10-10",
+      "sha256": "7c0ee37824edcad0173ece168f0e8c305d0b1fc09db46c9e5a58c44a301b77bc"
+    }
+  },
+  {
+    "id": "bubble-nebula",
+    "name": "The Bubble Nebula",
+    "category": "space",
+    "tone": "dark",
+    "themes": [
+      "panels",
+      "swiss"
+    ],
+    "focal": {
+      "x": 55,
+      "y": 55
+    },
+    "portraitFocal": {
+      "x": 55,
+      "y": 50
+    },
+    "color": "#333945",
+    "luminance": 0.062,
+    "thumb": "bubble-nebula-320.d9b3b2f927.jpg",
+    "small": "bubble-nebula-1600.c26b4b00bf.jpg",
+    "large": "bubble-nebula-2880.6d3f760398.jpg",
+    "soft": {
+      "light": "#C0C0DC",
+      "dark": "#1C0A19"
+    },
+    "credit": {
+      "title": "The Bubble Nebula (heic1608a)",
+      "author": "NASA, ESA, Hubble Heritage Team",
+      "date": "21 April 2016",
+      "source": "https://esahubble.org/images/heic1608a/",
+      "image": "https://cdn.esahubble.org/archives/images/large/heic1608a.jpg",
+      "licence": "esa-hubble",
+      "attribution": "NASA, ESA, Hubble Heritage Team",
+      "retrieved": "2026-10-10",
+      "sha256": "919fea4e4572f137fa262fc54d840b5768f8cb08099061fa8a04c29df559b20e"
+    }
+  },
+  {
+    "id": "butterfly-nebula",
+    "name": "Butterfly Nebula",
+    "category": "space",
+    "tone": "dark",
+    "themes": [
+      "panels",
+      "swiss"
+    ],
+    "focal": {
+      "x": 50,
+      "y": 50
+    },
+    "portraitFocal": {
+      "x": 48,
+      "y": 50
+    },
+    "color": "#2C211C",
+    "luminance": 0.049,
+    "thumb": "butterfly-nebula-320.ecc1d29a3f.jpg",
+    "small": "butterfly-nebula-1600.c513ebead7.jpg",
+    "large": "butterfly-nebula-2880.6a71cd604b.jpg",
+    "soft": {
+      "light": "#D8CAE0",
+      "dark": "#030303"
+    },
+    "credit": {
+      "title": "Butterfly emerges from stellar demise in planetary nebula NGC 6302 (heic0910h)",
+      "author": "NASA, ESA and the Hubble SM4 ERO Team",
+      "date": "9 September 2009",
+      "source": "https://esahubble.org/images/heic0910h/",
+      "image": "https://cdn.esahubble.org/archives/images/large/heic0910h.jpg",
+      "licence": "esa-hubble",
+      "attribution": "NASA, ESA and the Hubble SM4 ERO Team",
+      "retrieved": "2026-10-10",
+      "sha256": "dce5b810d020173292729d895cf08738945c13d8a816c3c071ae9d15aace8867"
+    }
+  },
+  {
+    "id": "cosmic-cliffs",
+    "name": "Cosmic Cliffs",
+    "category": "space",
+    "tone": "dark",
+    "themes": [
+      "panels",
+      "swiss"
+    ],
+    "focal": {
+      "x": 50,
+      "y": 55
+    },
+    "portraitFocal": {
+      "x": 45,
+      "y": 50
+    },
+    "color": "#5A474F",
+    "luminance": 0.105,
+    "thumb": "cosmic-cliffs-320.082bc35b15.jpg",
+    "small": "cosmic-cliffs-1600.9e4cd877df.jpg",
+    "large": "cosmic-cliffs-2880.8bdca8cbc4.jpg",
+    "soft": {
+      "light": "#CEB6AE",
+      "dark": "#11131A"
+    },
+    "credit": {
+      "title": "NIRCam Image of the \"Cosmic Cliffs\" in Carina (weic2205a)",
+      "author": "NASA, ESA, CSA, and STScI",
+      "date": "12 July 2022",
+      "source": "https://esawebb.org/images/weic2205a/",
+      "image": "https://cdn.esawebb.org/archives/images/large/weic2205a.jpg",
+      "licence": "esa-webb",
+      "attribution": "NASA, ESA, CSA, and STScI",
+      "retrieved": "2026-10-10",
+      "sha256": "99771479d4d83f439c95792b54069e7fd368f416c021346b1aa85058b3ca4d79"
+    }
+  },
+  {
+    "id": "pillars-webb",
+    "name": "Pillars of Creation",
+    "category": "space",
+    "tone": "dark",
+    "themes": [
+      "panels",
+      "swiss"
+    ],
+    "focal": {
+      "x": 50,
+      "y": 50
+    },
+    "portraitFocal": {
+      "x": 50,
+      "y": 50
+    },
+    "color": "#515056",
+    "luminance": 0.098,
+    "thumb": "pillars-webb-320.f5ab464d1a.jpg",
+    "small": "pillars-webb-1600.e44c1a4f88.jpg",
+    "large": "pillars-webb-2880.88ee425784.jpg",
+    "soft": {
+      "light": "#C4C39E",
+      "dark": "#1B0204"
+    },
+    "credit": {
+      "title": "Webb Takes a Stunning, Star-Filled Portrait of the Pillars of Creation (weic2216a)",
+      "author": "NASA, ESA, CSA, STScI; J. DePasquale, A. Koekemoer, A. Pagan (STScI)",
+      "date": "19 October 2022",
+      "source": "https://esawebb.org/images/weic2216a/",
+      "image": "https://cdn.esawebb.org/archives/images/publicationjpg/weic2216a.jpg",
+      "licence": "esa-webb",
+      "attribution": "NASA, ESA, CSA, STScI; J. DePasquale, A. Koekemoer, A. Pagan (STScI)",
+      "retrieved": "2026-10-10",
+      "sha256": "d65709455d8751b4e2114db81746364a921446772b82b8da08f741d649d91418"
+    }
+  },
+  {
+    "id": "rho-ophiuchi",
+    "name": "Rho Ophiuchi",
+    "category": "space",
+    "tone": "dark",
+    "themes": [
+      "panels",
+      "swiss"
+    ],
+    "focal": {
+      "x": 50,
+      "y": 45
+    },
+    "portraitFocal": {
+      "x": 55,
+      "y": 50
+    },
+    "color": "#463B3D",
+    "luminance": 0.086,
+    "thumb": "rho-ophiuchi-320.086bb6d378.jpg",
+    "small": "rho-ophiuchi-1600.941dd32585.jpg",
+    "large": "rho-ophiuchi-2880.c21b422a2f.jpg",
+    "soft": {
+      "light": "#F3F4DE",
+      "dark": "#090A09"
+    },
+    "credit": {
+      "title": "Rho Ophiuchi cloud complex (weic2316a)",
+      "author": "NASA, ESA, CSA, STScI, K. Pontoppidan (STScI), A. Pagan (STScI)",
+      "date": "12 July 2023",
+      "source": "https://esawebb.org/images/weic2316a/",
+      "image": "https://cdn.esawebb.org/archives/images/large/weic2316a.jpg",
+      "licence": "esa-webb",
+      "attribution": "NASA, ESA, CSA, STScI, K. Pontoppidan (STScI), A. Pagan (STScI)",
+      "retrieved": "2026-10-10",
+      "sha256": "4b1bc7a9cf821ba0716bbfdd0ce7aaffd43f6d3d8cb7204506d63e1731b09cb9"
     }
   }
 ] as const;

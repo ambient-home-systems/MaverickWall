@@ -103,6 +103,12 @@ export interface PhotoCredit {
   readonly source: string;
   readonly image: string;
   readonly licence: PhotoLicence;
+  /**
+   * The credit line a CC BY licence asks to be shown with the picture, as the
+   * source wrote it. Present exactly when the licence asks for one; the
+   * wallpaper picker draws it on the picture's tile.
+   */
+  readonly attribution?: string;
   readonly retrieved: string;
   readonly sha256: string;
 }

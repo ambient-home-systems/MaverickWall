@@ -221,7 +221,7 @@ describe('Glass over a bundled wallpaper (plan item M4.2)', () => {
         let expected = 1;
         for (let step = 0; step <= 100; step++) {
           const a = step / 100;
-          const mix = (p: Rgb): Rgb => [0, 1, 2].map((i) => Math.round(a * (panel[i] ?? 0) + (1 - a) * (p[i] ?? 0))) as unknown as Rgb;
+          const mix = (p: Rgb): Rgb => [0, 1, 2].map((i) => a * (panel[i] ?? 0) + (1 - a) * (p[i] ?? 0)) as unknown as Rgb;
           if ([light, dark].every((p) => [read.ink, read.scaffold].every((ink) => ratio(hex(ink), mix(p)) >= 4.5))) {
             expected = a;
             break;

@@ -28,11 +28,16 @@ const PHOTOS = WALLPAPERS.filter((w) => !DRAWN_CATEGORIES.includes(w.category));
 const ALLOWLIST: Record<string, readonly string[]> = {
   'nga-open-access': ['api.nga.gov', 'www.nga.gov'],
   'nasa-media': ['images-assets.nasa.gov', 'images.nasa.gov'],
+  rijksmuseum: ['data.rijksmuseum.nl', 'www.rijksmuseum.nl', 'iiif.micr.io'],
+  'esa-hubble': ['esahubble.org', 'cdn.esahubble.org'],
+  'esa-webb': ['esawebb.org', 'cdn.esawebb.org'],
 };
+/** The licences that ask for a credit shown with the picture: CC BY. */
+const ATTRIBUTION = new Set(['esa-hubble', 'esa-webb']);
 
 describe('a bundled photograph or painting', () => {
-  it('exists: sixteen of them, beside the drawn set', () => {
-    expect(PHOTOS).toHaveLength(16);
+  it('exists: twenty-eight of them, beside the drawn set', () => {
+    expect(PHOTOS).toHaveLength(28);
   });
 
   it('carries a credit, under a licence on the allowlist, from a host that licence covers', () => {
@@ -50,6 +55,17 @@ describe('a bundled photograph or painting', () => {
       }
       expect(credit.retrieved).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(credit.sha256, `${w.id} records the sha256 of what was fetched`).toMatch(/^[0-9a-f]{64}$/);
+    }
+  });
+
+  it('carries the credit its licence asks to be shown, exactly when it asks', () => {
+    for (const [key, licence] of Object.entries(PHOTO_LICENCES)) {
+      expect('attribution' in licence && licence.attribution === true, key).toBe(ATTRIBUTION.has(key));
+    }
+    for (const w of PHOTOS) {
+      const attribution = w.credit?.attribution;
+      if (ATTRIBUTION.has(w.credit!.licence)) expect(attribution?.trim(), `${w.id} names no credit line`).toBeTruthy();
+      else expect(attribution, `${w.id} carries a credit line its licence does not ask for`).toBeUndefined();
     }
   });
 
@@ -128,7 +144,7 @@ describe('a photograph on its way to a wall', () => {
     const resolved = parseBackground(JSON.stringify({ type: 'rotation', collection: 'painting', tone: 'light', every: 60 }));
     expect(resolved?.type).toBe('rotation');
     const pictures = resolved?.type === 'rotation' ? resolved.pictures : [];
-    expect(pictures.length).toBe(8);
+    expect(pictures.length).toBe(12);
     for (const one of pictures) {
       expect(one.soft, one.id).toBeDefined();
       expect(one.portraitFocal, one.id).toBeDefined();

@@ -4,6 +4,7 @@ import type { Page } from 'playwright-core';
 import {
   HOUSEHOLD_CALENDARS,
   TEARDOWN,
+  browser,
   equipHousehold,
   install,
   loadWallSettled,
@@ -29,7 +30,8 @@ import { DRAWN_CATEGORIES, WALLPAPERS, type Wallpaper } from '../src/wallpapers.
  *    to a portrait wall loses its sides and a landscape one its top and bottom.
  *
  * And a drawn wallpaper is held to what it drew before: no `--soft-alpha`, the
- * ground at 0.86.
+ * ground at 0.86. Last, the picker: a picture under CC BY shows the credit its
+ * licence asks for on its tile, where a household chooses it.
  */
 
 process.env['TZ'] = 'UTC';
@@ -49,7 +51,7 @@ const contrast = (a: Rgb, b: Rgb): number => {
   return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
 };
 const over = (panel: Rgb, alpha: number, patch: Rgb): Rgb =>
-  [0, 1, 2].map((i) => Math.round(alpha * (panel[i] ?? 0) + (1 - alpha) * (patch[i] ?? 0))) as unknown as Rgb;
+  [0, 1, 2].map((i) => alpha * (panel[i] ?? 0) + (1 - alpha) * (patch[i] ?? 0)) as unknown as Rgb;
 
 /** `max(0.86, the lowest hundredth at which both inks keep 4.5:1 over both widened patches)`. */
 function expectedSoft(panel: string, inks: readonly string[], soft: { light: string; dark: string }): number {
@@ -210,6 +212,60 @@ describe('a photograph’s focal point', () => {
         } finally {
           await close();
         }
+      }
+    },
+    SLOW,
+  );
+});
+
+describe('a photograph in the picker', () => {
+  it(
+    'shows its credit under its name: the CC BY line where the licence asks for one, the painter otherwise',
+    async () => {
+      wear('panels', 'dusk');
+      const context = await (await browser()).newContext({ viewport: { width: 1440, height: 1000 } });
+      try {
+        const page = await context.newPage();
+        await wall.signIn(page);
+        await page.goto(`${wall.base}/admin/walls/${encodeURIComponent(screenId)}`, { waitUntil: 'load' });
+        await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
+        await page.click('.le-background-btn');
+        await page.selectOption('.le-bg select', 'wallpaper');
+        const lines = await page.$$eval('.le-wallpapers [data-wallpaper]', (tiles) =>
+          tiles.map((tile) => {
+            const credit = tile.querySelector<HTMLElement>('.le-wp-credit');
+            const box = credit?.getBoundingClientRect();
+            const outer = tile.getBoundingClientRect();
+            return {
+              id: (tile as HTMLElement).dataset['wallpaper'] ?? '',
+              text: credit?.textContent ?? null,
+              // Drawn, and inside its tile: a credit clipped by the tile is not shown.
+              shown:
+                box !== undefined && box.height > 0 && box.width > 0 && box.bottom <= outer.bottom + 0.5 && box.top >= outer.top,
+            };
+          }),
+        );
+        const byId = new Map(lines.map((l) => [l.id, l]));
+        const dark = WALLPAPERS.filter((w) => w.tone === 'dark');
+        let ccBy = 0;
+        for (const w of dark) {
+          const line = byId.get(w.id);
+          expect(line, `${w.id} has no tile`).toBeDefined();
+          if (w.credit === undefined) {
+            expect(line?.text, `${w.id} is drawn and credits nobody`).toBeNull();
+          } else if (w.credit.attribution !== undefined) {
+            ccBy++;
+            expect(line?.text).toBe(`Credit: ${w.credit.attribution} (CC BY 4.0)`);
+            expect(line?.shown, `${w.id}'s credit is not visible on its tile`).toBe(true);
+          } else {
+            expect(line?.text).toBe(w.credit.author);
+            expect(line?.shown, `${w.id}'s painter is not visible on its tile`).toBe(true);
+          }
+        }
+        // The premise: the dark set really has pictures whose licence asks for a credit.
+        expect(ccBy).toBeGreaterThan(0);
+      } finally {
+        await context.close();
       }
     },
     SLOW,

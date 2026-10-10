@@ -1878,6 +1878,11 @@ pre.code{background:var(--mw-surface-2);
 .le-wallpapers[data-orientation="landscape"] .le-wp-pic{aspect-ratio:5/4}
 .le-wp-name{display:block;padding:var(--mw-s-1) var(--mw-s-2) 0;font-size:var(--mw-t-label-sm-size);
   line-height:1.25;overflow-wrap:break-word}
+/* A photograph's credit under its name (plan item M4.5): its painter or,
+ * for a picture under CC BY, the credit line that licence asks to be shown
+ * with it. Smaller and quieter than the name, and never truncated. */
+.le-wp-credit{display:block;padding:0 var(--mw-s-2);font-size:var(--mw-t-label-xs-size);
+  line-height:1.3;color:var(--muted);overflow-wrap:break-word}
 /* The widget ground, at the head of the picker: what every widget sits on
  * over the picture, and the sentence saying what that does to it. */
 .le-wp-ground{display:flex;flex-direction:column;gap:var(--mw-s-2);padding-bottom:var(--mw-s-3);

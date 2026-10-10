@@ -78,7 +78,7 @@ function softAlpha(panel: Rgb, inks: readonly Rgb[], patches: { readonly light: 
   const light = hex(patches.light).map((v) => Math.min(255, v + MARGIN)) as unknown as Rgb;
   const dark = hex(patches.dark).map((v) => Math.max(0, v - MARGIN)) as unknown as Rgb;
   const over = (alpha: number, patch: Rgb): Rgb =>
-    [0, 1, 2].map((i) => Math.round(alpha * (panel[i] ?? 0) + (1 - alpha) * (patch[i] ?? 0))) as unknown as Rgb;
+    [0, 1, 2].map((i) => alpha * (panel[i] ?? 0) + (1 - alpha) * (patch[i] ?? 0)) as unknown as Rgb;
   for (let step = 0; step <= 100; step++) {
     const alpha = step / 100;
     if ([light, dark].every((patch) => inks.every((ink) => contrast(ink, over(alpha, patch)) >= 4.5))) return Math.max(SOFT, alpha);

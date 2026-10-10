@@ -81,13 +81,13 @@ describe('the wallpaper catalogue', () => {
     expect(count('seasonal')).toBe(4);
     expect(count('fun')).toBe(2);
     expect(drawn.filter((w) => w.tone === 'dark').length).toBeGreaterThan(drawn.length / 2);
-    // And beside them the sixteen photographs and paintings of plan item M4.5,
-    // eight of each tone.
-    expect(count('painting')).toBe(13);
-    expect(count('space', 'dark')).toBe(3);
-    expect(WALLPAPERS.filter((w) => !DRAWN_CATEGORIES.includes(w.category))).toHaveLength(16);
-    for (const tone of ['dark', 'light']) {
-      expect(WALLPAPERS.filter((w) => !DRAWN_CATEGORIES.includes(w.category) && w.tone === tone)).toHaveLength(8);
+    // And beside them the twenty-eight photographs and paintings of plan item
+    // M4.5, sixteen dark and twelve light: space is all dark.
+    expect(count('painting')).toBe(19);
+    expect(count('space', 'dark')).toBe(9);
+    expect(WALLPAPERS.filter((w) => !DRAWN_CATEGORIES.includes(w.category))).toHaveLength(28);
+    for (const [tone, n] of [['dark', 16], ['light', 12]] as const) {
+      expect(WALLPAPERS.filter((w) => !DRAWN_CATEGORIES.includes(w.category) && w.tone === tone)).toHaveLength(n);
     }
     for (const w of WALLPAPERS) {
       expect(WALLPAPER_CATEGORIES).toContain(w.category);
@@ -171,9 +171,10 @@ describe('the wallpaper catalogue', () => {
   /*
    * The size budget (P6.2, raised by plan item M4.6 and decision MD6): about
    * 10–15 MB was the plan's estimate for the drawn set on a 437 MB image, and
-   * it measures about 7.5 MB. The sixteen photographs and paintings of M4.5
-   * add about 15 MB, because a painting's brushwork is detail a JPEG has to
-   * keep, so the pin is MD6's 25 MB. Three sizes a picture are kept
+   * it measures about 7.5 MB. The twenty-eight photographs and paintings of
+   * M4.5 add about 24 MB, because a painting's brushwork and a nebula's stars
+   * are detail a JPEG has to keep. MD6's 25 MB held the first sixteen; the
+   * owner chose to raise it to 40 MB for the twelve that followed. Three sizes a picture are kept
    * (320/1600/2880): the wall's choice of file depends on them. Growth has to move it deliberately rather than drift
    * past it, so a twenty-seventh wallpaper — or a grain that costs more — is a
    * decision about the image and not a surprise in it. The floor is what
@@ -183,7 +184,7 @@ describe('the wallpaper catalogue', () => {
    */
   it('stays inside its size budget', () => {
     const total = readdirSync(DIR).reduce((sum, name) => sum + statSync(join(DIR, name)).size, 0);
-    expect(total).toBeLessThan(25 * 1024 * 1024);
+    expect(total).toBeLessThan(40 * 1024 * 1024);
     expect(total).toBeGreaterThan(5 * 1024 * 1024);
   });
 });
