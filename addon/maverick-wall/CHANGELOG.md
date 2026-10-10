@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 1.0.0
+
 **Frosted glass behind your widgets.** Over a wallpaper or a photo, Widget
 ground has a fourth choice, **Glass**. The picture behind each widget is
 blurred, with just enough of your theme's card colour for the text to stay
