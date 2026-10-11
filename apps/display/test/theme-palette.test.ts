@@ -216,8 +216,15 @@ describe('applyTheme on a wall sized as an e-ink panel', () => {
     const eink = fake();
     applyTheme(eink, 'panels', undefined, undefined, true);
     expect(eink.props['--shadow-card']).toBe('none');
-    // Only the shadow: every other token is the theme's own.
-    expect({ ...eink.props, '--shadow-card': '' }).toEqual({ ...plain.props, '--shadow-card': '' });
+    // The words' halo goes with it (M4.8): it is a blur, which bands on e-ink.
+    expect(plain.props['--shadow-text']).not.toBe('none');
+    expect(eink.props['--shadow-text']).toBe('none');
+    // Only the two shadows: every other token is the theme's own.
+    expect({ ...eink.props, '--shadow-card': '', '--shadow-text': '' }).toEqual({
+      ...plain.props,
+      '--shadow-card': '',
+      '--shadow-text': '',
+    });
 
     const custom = fake();
     applyTheme(custom, 'custom:x', customTokens({ '--bg': '#000000', '--ink': '#ffffff' }), 'board', true);
