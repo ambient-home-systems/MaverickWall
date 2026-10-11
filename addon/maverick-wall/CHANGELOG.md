@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 1.1.0
+
 **Paintings and pictures from space.** The wallpaper picker has two new
 groups. **Paintings** has nineteen public-domain landscapes from the National
 Gallery of Art in Washington and the Rijksmuseum in Amsterdam, by Monet,
