@@ -5068,7 +5068,7 @@ function boot(): void {
     }
     field.appendChild(group);
     const say = document.createElement('p');
-    say.className = 'hint le-wp-ground-hint';
+    say.className = 'hint le-wp-wash-hint';
     say.textContent = washSentence(current, state.background?.type === 'image' ? 'image' : wallpaperGround());
     field.appendChild(say);
     return field;
