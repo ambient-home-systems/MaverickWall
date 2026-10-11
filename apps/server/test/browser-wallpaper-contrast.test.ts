@@ -74,14 +74,19 @@ const soft = (panel: Rgb, picture: Rgb, alpha = SOFT): Rgb => {
  * computed by the code under test agrees with it whatever it does.
  */
 const MARGIN = 3;
-function softAlpha(panel: Rgb, inks: readonly Rgb[], patches: { readonly light: string; readonly dark: string }): number {
+function softAlpha(
+  panel: Rgb,
+  inks: readonly Rgb[],
+  patches: { readonly light: string; readonly dark: string },
+  floor = SOFT,
+): number {
   const light = hex(patches.light).map((v) => Math.min(255, v + MARGIN)) as unknown as Rgb;
   const dark = hex(patches.dark).map((v) => Math.max(0, v - MARGIN)) as unknown as Rgb;
   const over = (alpha: number, patch: Rgb): Rgb =>
     [0, 1, 2].map((i) => alpha * (panel[i] ?? 0) + (1 - alpha) * (patch[i] ?? 0)) as unknown as Rgb;
   for (let step = 0; step <= 100; step++) {
     const alpha = step / 100;
-    if ([light, dark].every((patch) => inks.every((ink) => contrast(ink, over(alpha, patch)) >= 4.5))) return Math.max(SOFT, alpha);
+    if ([light, dark].every((patch) => inks.every((ink) => contrast(ink, over(alpha, patch)) >= 4.5))) return Math.max(floor, alpha);
   }
   return 1;
 }
@@ -183,6 +188,13 @@ async function decode(page: Page, file: string): Promise<Decoded> {
   );
 }
 
+/**
+ * A Strong wash's thinnest point, its centre (plan item M4.7): `wash.ts`'s
+ * preset, raised to what the picture's unblurred patches need where words sit
+ * on the wash with no widget ground under them. Written out, as `softAlpha` is.
+ */
+const STRONG_CENTRE = 0.5;
+
 let page: Page;
 
 beforeAll(async () => {
@@ -205,7 +217,14 @@ describe('every wallpaper, decoded from the bytes it ships', () => {
   const scaffold = scaffoldInks();
   /** Soft's opacity by theme over every picture, printed once the set has run. */
   const alphas: Record<string, number[]> = {};
+  /** A Strong wash's centre by theme over every picture (M4.7). */
+  const washes: Record<string, number[]> = {};
   afterAll(() => {
+    process.stdout.write(
+      `[wash] Strong's centre by theme: ${Object.entries(washes)
+        .map(([name, list]) => `${name} ${Math.min(...list)}–${Math.max(...list)}`)
+        .join('; ')}\n`,
+    );
     const line = Object.entries(alphas)
       .map(([name, list]) => `${name} ${Math.min(...list)}–${Math.max(...list)} (${list.filter((a) => a > SOFT).length}/${list.length} above 0.86)`)
       .join('; ');
@@ -247,6 +266,26 @@ describe('every wallpaper, decoded from the bytes it ships', () => {
                 ratio,
                 `${wallpaper.id} (${size}): ${theme}'s ${role} over its Soft ground at ${alpha} on the picture's ${where} block ` +
                   `rgb(${block.map(Math.round).join(', ')}) reads ${ratio.toFixed(2)}:1`,
+              ).toBeGreaterThanOrEqual(4.5);
+            }
+          }
+          /*
+           * And with no widget ground at all, under a Strong wash (plan item
+           * M4.7): the words sit on the wash itself, whose thinnest point is
+           * its centre, so that centre — solved from the picture's unblurred
+           * patches, never below the preset — is what has to hold over what
+           * each file actually shows. The text shadow (M4.8) is not counted.
+           */
+          expect(wallpaper.bare, `${wallpaper.id} carries no unblurred patches to solve a wash from`).toBeDefined();
+          const centre = softAlpha(panel, Object.values(inks), wallpaper.bare!, STRONG_CENTRE);
+          if (size === 'small') (washes[theme] ??= []).push(centre);
+          for (const [role, ink] of Object.entries(inks)) {
+            for (const [where, block] of [['darkest', decoded.darkest], ['lightest', decoded.lightest]] as const) {
+              const ratio = contrast(ink, soft(panel, block, centre));
+              expect(
+                ratio,
+                `${wallpaper.id} (${size}): ${theme}'s ${role} on a Strong wash at ${centre} with no ground, over the ` +
+                  `picture's ${where} block rgb(${block.map(Math.round).join(', ')}), reads ${ratio.toFixed(2)}:1`,
               ).toBeGreaterThanOrEqual(4.5);
             }
           }

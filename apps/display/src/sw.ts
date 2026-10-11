@@ -95,6 +95,7 @@ const SHELL = [
   '/assets/viewmodel.js',
   '/assets/wall-commands.js',
   '/assets/wallpaper.js',
+  '/assets/wash.js',
   '/assets/watchdog.js',
   '/assets/weather-advice.js',
   '/assets/weather-icons.js',

@@ -34,14 +34,17 @@ import { MIN_SIZE } from './placement.js';
 export type CanvasBackground =
   | { type: 'solid'; color: string }
   | { type: 'gradient'; from: string; to: string; angle: number }
-  | { type: 'image'; image: string }
-  | { type: 'wallpaper'; id: string }
+  | { type: 'image'; image: string; wash?: PictureWash }
+  | { type: 'wallpaper'; id: string; wash?: PictureWash }
   /**
    * Bundled wallpapers, rotating (plan item M4.10): the collection, its tone
    * and the minutes between pictures — never the pictures, which the server
    * resolves and its schema would refuse in a posted body.
    */
-  | { type: 'rotation'; collection: string; tone: 'light' | 'dark'; every: number };
+  | { type: 'rotation'; collection: string; tone: 'light' | 'dark'; every: number; wash?: PictureWash };
+
+/** How far a picture is toned down towards the canvas's ground (plan item M4.7); absent is not at all. */
+export type PictureWash = 'light' | 'strong';
 
 export interface EditorWidget {
   id: string;

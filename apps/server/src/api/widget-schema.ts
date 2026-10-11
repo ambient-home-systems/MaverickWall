@@ -724,6 +724,15 @@ export const widgetConfigBody = laneConfigFields
  */
 const hex6 = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'A colour has to be a #rrggbb hex.');
 
+/**
+ * How far a picture is toned down towards the canvas's own ground (plan item
+ * M4.7): absent is not at all, every background that existed before this.
+ * Only a picture takes it — an uploaded image, a wallpaper or a rotation —
+ * because a colour or a gradient is the household's own and already flat.
+ */
+export const PICTURE_WASHES = ['light', 'strong'] as const;
+const wash = z.enum(PICTURE_WASHES).optional();
+
 export const backgroundSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('solid'), color: hex6 }).strict(),
   z
@@ -737,7 +746,7 @@ export const backgroundSchema = z.discriminatedUnion('type', [
   // An uploaded image, by its stored name (RFC 005 Phase 3b). The wall covers the
   // canvas with it; no external URL, ever (rule three) — it is served from the
   // household's own media store through the SSRF boundary that already exists.
-  z.object({ type: z.literal('image'), image: storedImageName }).strict(),
+  z.object({ type: z.literal('image'), image: storedImageName, wash }).strict(),
   // A bundled wallpaper (plan item P6.1), by its id in `wallpapers.ts` and by
   // nothing else — never a file name, which is the server's to resolve and
   // which changes whenever the picture does. An id the catalogue does not name
@@ -747,6 +756,7 @@ export const backgroundSchema = z.discriminatedUnion('type', [
     .object({
       type: z.literal('wallpaper'),
       id: z.string().max(64).refine(isWallpaperId, 'That is not one of the wallpapers.'),
+      wash,
     })
     .strict(),
   /*
@@ -761,6 +771,7 @@ export const backgroundSchema = z.discriminatedUnion('type', [
       collection: z.enum(ROTATION_COLLECTIONS as [RotationCollection, ...RotationCollection[]]),
       tone: z.enum(['light', 'dark']),
       every: z.union(ROTATION_EVERY.map((minutes) => z.literal(minutes)) as unknown as [z.ZodLiteral<5>, z.ZodLiteral<15>, z.ZodLiteral<60>, z.ZodLiteral<1440>]),
+      wash,
     })
     .strict()
     .refine((bg) => rotationPictures(bg.collection, bg.tone).length >= 2, {

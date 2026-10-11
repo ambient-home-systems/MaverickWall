@@ -177,13 +177,27 @@ export interface Wallpaper {
    * its own inks, never below 0.86.
    */
   readonly soft?: { readonly light: string; readonly dark: string };
+  /**
+   * The lightest and darkest of the shipped 1600px file's 40x40 blocks,
+   * unblurred and unsaturated, for every picture drawn or photographed (plan
+   * item M4.7), from `wallpaper-glass.ts`: what text sits on when a wall has no
+   * widget ground and tones its picture down Strongly. The wall solves the
+   * wash's opacity from these for its own inks. A photograph's `soft` is the
+   * same measurement, taken by `photos.mjs` when it drew the files.
+   */
+  readonly bare?: { readonly light: string; readonly dark: string };
   /** Where a photograph came from, and under which licence (plan item M4.5). Absent for a drawn wallpaper. */
   readonly credit?: PhotoCredit;
 }
 
 export const WALLPAPERS: readonly Wallpaper[] = [...WALLPAPER_CATALOGUE, ...WALLPAPER_PHOTOS].map((one) => {
   const glass = WALLPAPER_GLASS[one.id];
-  return glass === undefined ? one : { ...one, glass: { light: glass.light, dark: glass.dark } };
+  if (glass === undefined) return one;
+  return {
+    ...one,
+    glass: { light: glass.light, dark: glass.dark },
+    ...(glass.bare === undefined ? {} : { bare: { light: glass.bare.light, dark: glass.bare.dark } }),
+  };
 });
 
 /**

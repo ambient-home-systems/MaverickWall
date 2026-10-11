@@ -62,7 +62,10 @@ function init(root: HTMLElement): void {
     // own default applies rather than an empty font-family.
     for (const control of tokenControls) if (control.value !== '') base[control.name] = control.value;
     base['--radius'] = radiusInput?.value ?? '0.4rem';
-    if (shadowInputs.find((input) => input.checked)?.value === 'none') base['--shadow-card'] = 'none';
+    if (shadowInputs.find((input) => input.checked)?.value === 'none') {
+      base['--shadow-card'] = 'none';
+      base['--shadow-text'] = 'none';
+    }
     return base;
   };
 

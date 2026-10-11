@@ -35,6 +35,19 @@ used to be dark and muted. A wall that already uses one keeps it, and it
 looks brighter after the update. Your widgets' text stays as easy to read as
 before. Behind Glass, the colour shows through most.
 
+**Tone down a picture.** Under a wallpaper or a photo, the background picker
+has **Tone down the picture**: None, Light or Strong. It lays your theme's card
+colour over the picture, faintest in the middle and deepest at the edges. If
+you set Widget ground to None so the picture shows in full, Strong is worked
+out for each picture so the words on it stay easy to read. Light only changes
+how the picture looks.
+
+**A halo round words on a picture.** When your widgets sit straight on a
+picture, with no widget ground, their words get a faint halo in your theme's
+card colour so they keep an edge over busy parts of the picture. A theme's
+Shadows setting turns it off with the other shadows, and walls sized as e-ink
+panels never draw it.
+
 ## 1.0.0
 
 **Frosted glass behind your widgets.** Over a wallpaper or a photo, Widget
