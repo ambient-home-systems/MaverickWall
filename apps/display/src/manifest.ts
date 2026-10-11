@@ -25,12 +25,16 @@ export type CivilDate = string;
 export type CanvasBackground =
   | { readonly type: 'solid'; readonly color: string }
   | { readonly type: 'gradient'; readonly from: string; readonly to: string; readonly angle: number }
-  | { readonly type: 'image'; readonly image: string }
+  | { readonly type: 'image'; readonly image: string; readonly wash?: PictureWash }
   | {
       readonly type: 'wallpaper';
       readonly id: string;
       readonly small: string;
       readonly large: string;
+      /** How far the picture is toned down towards the canvas's ground (plan item M4.7); absent is not at all. */
+      readonly wash?: PictureWash;
+      /** Its lightest and darkest patch unblurred, sent with a wash: what a Strong wash is solved from (M4.7). */
+      readonly bare?: { readonly light: string; readonly dark: string };
       /**
        * Where the picture's interest is, in percent of the master, for
        * `background-position` (plan item P6.2). Absent is the centre. Read
@@ -54,6 +58,7 @@ export type CanvasBackground =
       readonly collection?: string;
       readonly tone?: 'light' | 'dark';
       readonly every: number;
+      readonly wash?: PictureWash;
       readonly pictures?: readonly {
         readonly id: string;
         readonly small: string;
@@ -62,8 +67,12 @@ export type CanvasBackground =
         readonly portraitFocal?: { readonly x: number; readonly y: number };
         readonly glass?: { readonly light: string; readonly dark: string };
         readonly soft?: { readonly light: string; readonly dark: string };
+        readonly bare?: { readonly light: string; readonly dark: string };
       }[];
     };
+
+/** How far a picture is toned down towards the canvas's ground (plan item M4.7). */
+export type PictureWash = 'light' | 'strong';
 
 export interface ManifestEvent {
   readonly id: string;

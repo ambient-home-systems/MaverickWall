@@ -402,7 +402,10 @@ describe('the theme builder’s shadows', () => {
     await h.form('/admin/themes', themeFields('Old form'));
     const byName = new Map(readThemes(h.db).map((theme) => [theme.name, theme]));
     expect(byName.get('Dark room')?.tokens['--shadow-card']).toBe('none');
+    // One choice for both shadows (plan item M4.8): None takes the halo off too.
+    expect(byName.get('Dark room')?.tokens['--shadow-text']).toBe('none');
     expect(byName.get('Kitchen')?.tokens['--shadow-card']).toBeUndefined();
+    expect(byName.get('Kitchen')?.tokens['--shadow-text']).toBeUndefined();
     expect(byName.get('Old form')?.tokens['--shadow-card']).toBeUndefined();
   });
 
@@ -428,6 +431,9 @@ describe('the theme builder’s shadows', () => {
     const soft = await poll(wearing(h.db, 'w2', 'Kitchen', `custom:${byName.get('Kitchen')}`));
     expect(none['--shadow-card']).toBe('none');
     expect(soft['--shadow-card']).toMatch(/^0 [0-9.]+rem [0-9.]+rem rgba\(/);
+    // The halo round words on a picture (M4.8): off with None, derived otherwise.
+    expect(none['--shadow-text']).toBe('none');
+    expect(soft['--shadow-text']).toMatch(/^0 0 0\.1em rgba\(\d+, \d+, \d+, 0\.9\), 0 0 0\.4em rgba\(/);
     // And the designed styles' palette travels with the theme (P4.5).
     expect(soft['--wx-rain']).toMatch(/^#[0-9A-Fa-f]{6}$/);
     expect(soft['--sky-storm-ink']).toMatch(/^#[0-9A-Fa-f]{6}$/);

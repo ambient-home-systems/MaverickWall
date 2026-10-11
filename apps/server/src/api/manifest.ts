@@ -829,12 +829,20 @@ const aspectOf = (value: number, fallback: number): number =>
 export type CanvasBackground =
   | { readonly type: 'solid'; readonly color: string }
   | { readonly type: 'gradient'; readonly from: string; readonly to: string; readonly angle: number }
-  | { readonly type: 'image'; readonly image: string }
+  | { readonly type: 'image'; readonly image: string; readonly wash?: PictureWash }
   | {
       readonly type: 'wallpaper';
       readonly id: string;
       readonly small: string;
       readonly large: string;
+      /** How far the picture is toned down towards the canvas's ground (plan item M4.7); absent is not at all. */
+      readonly wash?: PictureWash;
+      /**
+       * Its lightest and darkest patch unblurred, sent only with a wash: the
+       * wall solves a Strong wash's opacity from them when its widgets have no
+       * ground (plan item M4.7). Every unwashed wall's document is unchanged.
+       */
+      readonly bare?: GlassBackdrop;
       /** Where the picture's interest is, in percent; absent is the centre (P6.2). */
       readonly focal?: { readonly x: number; readonly y: number };
       /**
@@ -863,6 +871,8 @@ export type CanvasBackground =
       readonly tone: 'light' | 'dark';
       /** Minutes between pictures; 1440 changes at the wall's midnight. */
       readonly every: number;
+      /** As a wallpaper's, for every picture in turn (plan item M4.7). */
+      readonly wash?: PictureWash;
       readonly pictures: readonly {
         readonly id: string;
         readonly small: string;
@@ -871,8 +881,17 @@ export type CanvasBackground =
         readonly portraitFocal?: { readonly x: number; readonly y: number };
         readonly glass?: GlassBackdrop;
         readonly soft?: GlassBackdrop;
+        readonly bare?: GlassBackdrop;
       }[];
     };
+
+/** How far a picture is toned down towards the canvas's ground (plan item M4.7). */
+export type PictureWash = 'light' | 'strong';
+
+/** A stored wash read back defensively: one of the two, or none. */
+function washOf(value: unknown): { wash?: PictureWash } {
+  return value === 'light' || value === 'strong' ? { wash: value } : {};
+}
 
 /** A picture's lightest and darkest patch through Glass (plan item M4.2). */
 export interface GlassBackdrop {
@@ -947,7 +966,7 @@ export function parseBackground(raw: string | null | undefined): CanvasBackgroun
     return { type: 'gradient', from: bg['from'], to: bg['to'], angle };
   }
   if (bg['type'] === 'image' && typeof bg['image'] === 'string' && STORED_IMAGE.test(bg['image'])) {
-    return { type: 'image', image: bg['image'] };
+    return { type: 'image', image: bg['image'], ...washOf(bg['wash']) };
   }
   /*
    * A wallpaper, resolved against the catalogue (plan item P6.1). An id it
@@ -966,12 +985,14 @@ export function parseBackground(raw: string | null | undefined): CanvasBackgroun
     (bg['tone'] === 'light' || bg['tone'] === 'dark') &&
     (ROTATION_EVERY as readonly unknown[]).includes(bg['every'])
   ) {
+    const washed = washOf(bg['wash']).wash !== undefined;
     const pictures = rotationPictures(bg['collection'] as RotationCollection, bg['tone']).map((one) => ({
       id: one.id,
       small: one.small,
       large: one.large,
       ...(one.focal === undefined ? {} : { focal: { x: one.focal.x, y: one.focal.y } }),
       ...pictureExtras(one),
+      ...bareOf(one, washed),
     }));
     if (pictures.length >= 2) {
       return {
@@ -979,10 +1000,11 @@ export function parseBackground(raw: string | null | undefined): CanvasBackgroun
         collection: bg['collection'] as string,
         tone: bg['tone'],
         every: bg['every'] as number,
+        ...washOf(bg['wash']),
         pictures,
       };
     }
-    if (pictures.length === 1) return { type: 'wallpaper', ...pictures[0]! };
+    if (pictures.length === 1) return { type: 'wallpaper', ...washOf(bg['wash']), ...pictures[0]! };
     return undefined;
   }
   if (bg['type'] === 'wallpaper' && typeof bg['id'] === 'string') {
@@ -997,10 +1019,21 @@ export function parseBackground(raw: string | null | undefined): CanvasBackgroun
         // the document it always sent, so no stored ETag churns.
         ...(wallpaper.focal === undefined ? {} : { focal: { x: wallpaper.focal.x, y: wallpaper.focal.y } }),
         ...pictureExtras(wallpaper),
+        ...washOf(bg['wash']),
+        ...bareOf(wallpaper, washOf(bg['wash']).wash !== undefined),
       };
     }
   }
   return undefined;
+}
+
+/**
+ * A picture's unblurred patches, for a washed background only (plan item
+ * M4.7): what the wall solves a Strong wash from. Spread, so no unwashed
+ * wall's document — and so no stored ETag — moves.
+ */
+function bareOf(one: Wallpaper, washed: boolean): { bare?: GlassBackdrop } {
+  return washed && one.bare !== undefined ? { bare: { light: one.bare.light, dark: one.bare.dark } } : {};
 }
 
 /**

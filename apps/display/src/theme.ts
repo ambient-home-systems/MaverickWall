@@ -497,6 +497,16 @@ function paletteTokens(base: Readonly<Record<string, string | undefined>>): Reco
       : light
         ? `0 0.1rem 0.5rem rgba(${shade[0]}, ${shade[1]}, ${shade[2]}, 0.14)`
         : '0 0.15rem 0.6rem rgba(0, 0, 0, 0.45)';
+  // Words straight on a picture (plan item M4.8): a halo of the canvas's own
+  // ground round every glyph, tight and then wide, so a letter keeps an edge
+  // over a patch of its own colour. The ground's colour rather than black, so
+  // a light theme's dark ink gets a pale halo and a dark theme's pale ink a
+  // dark one — one rule for every theme, a household's own included.
+  const halo = parseHex(panel) ?? [0, 0, 0];
+  out['--shadow-text'] =
+    base['--shadow-text'] === 'none'
+      ? 'none'
+      : `0 0 0.1em rgba(${halo[0]}, ${halo[1]}, ${halo[2]}, 0.9), 0 0 0.4em rgba(${halo[0]}, ${halo[1]}, ${halo[2]}, 0.7)`;
   return out;
 }
 
@@ -662,7 +672,11 @@ export function applyTheme(
    * with it — so a wall re-measured as a television gets its theme's shadow
    * back on the next tick rather than keeping this one.
    */
-  if (eink === true) element.style.setProperty('--shadow-card', 'none');
+  if (eink === true) {
+    element.style.setProperty('--shadow-card', 'none');
+    // And no text shadow (plan item M4.8), for the same reason: it is grey.
+    element.style.setProperty('--shadow-text', 'none');
+  }
 }
 
 function applyThemeTokens(

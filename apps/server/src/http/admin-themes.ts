@@ -280,7 +280,12 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
     if (shadows !== undefined && shadows !== 'soft' && shadows !== 'none') {
       return { ok: false, message: 'Choose None or Soft for the shadows.' };
     }
-    if (shadows === 'none') raw['--shadow-card'] = 'none';
+    // One choice for both shadows: a card's and the halo round words on a
+    // picture (plan item M4.8), so None means no shadow anywhere.
+    if (shadows === 'none') {
+      raw['--shadow-card'] = 'none';
+      raw['--shadow-text'] = 'none';
+    }
 
     const tokens = themeTokensSchema.safeParse(raw);
     if (!tokens.success) {
@@ -574,7 +579,10 @@ export function registerThemeRoutes(app: Hono, deps: AdminDeps): void {
             'shadow on every wall wearing this theme off in one place. A wall sized ' +
             'as an e-ink panel draws none whichever you pick. Soft is worked out ' +
             'from your background: dark and heavier on a dark one, where nothing ' +
-            'lighter would show, and faint in your text colour on a light one.',
+            'lighter would show, and faint in your text colour on a light one. ' +
+            'It also puts a faint halo of your background colour round words that ' +
+            'sit straight on a picture, with no widget ground under them; None ' +
+            'takes that off too.',
           segControl({
             label: 'Shadows',
             name: 'shadows',

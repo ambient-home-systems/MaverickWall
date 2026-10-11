@@ -167,5 +167,9 @@ export function currentPicture(
     // Soft's opacity is solved from (plan item M4.5).
     ...(picture.glass === undefined ? {} : { glass: picture.glass }),
     ...(picture.soft === undefined ? {} : { soft: picture.soft }),
+    // The rotation's wash is every picture's (plan item M4.7), with what a
+    // Strong one is solved from.
+    ...(background.wash === 'light' || background.wash === 'strong' ? { wash: background.wash } : {}),
+    ...(picture.bare === undefined ? {} : { bare: picture.bare }),
   };
 }

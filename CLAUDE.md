@@ -10815,6 +10815,52 @@ weather file re-run after its fix rather than the suite again. The one red is
 `browser-glass`'s striped-picture case, red on a clean `main` in this
 container as before.
 
+**A picture can be toned down, and words straight on one carry a halo (plan
+items M4.7 and M4.8).** *Tone down the picture* sits in the wallpaper picker,
+the rotation picker and under an uploaded image: None (the absence), Light or
+Strong, stored as `wash` on the background and refused on a colour or a
+gradient, which are the household's own and flat. It is a `.canvas-wash`
+layer of the theme's `--panel`, appended first in the canvas so every widget
+draws over it, whose opacity is the edge's and whose radial mask lets the
+centre through at a ratio of it: a vignette, darker at the edges, and a
+plain swap rather than a second picture, so nothing more is fetched.
+Light is 0.25 at the centre and 0.55 at the edge. Strong is 0.5 and 0.8.
+
+**Strong is solved, not chosen, where nothing else is under the words.** With
+the widget ground None, a wash is the only thing between a widget's text and
+the picture, so the centre is `max(0.5, solveGlassAlpha(panel, inks,
+bare))`, Soft's solver against the picture's **unblurred** lightest and
+darkest patch, and the edge is at least the centre. `glass.mjs` measures
+`bare` beside Glass's blurred backdrop (the Glass values regenerated
+byte-identical), and the manifest sends it only to a washed background, so
+every unwashed wall's document is unchanged. An uploaded image is measured in
+the wall's browser as Glass measures one, without the saturation. Over Soft,
+Solid or Glass the ground already keeps the contrast, and the preset is
+drawn. The contrast gate holds every shipped file at both sizes, under every
+built-in of its tone, to 4.5:1 at the solved centre: Panels 0.5–0.91, Swiss
+0.5–0.82, Household and Blueprint 0.5–0.93, Almanac 0.73–0.97.
+
+**`--shadow-text` is the theme's halo**, derived beside `--shadow-card` in
+`paletteTokens` on both sides (held by `themes.test.ts`): two blurs of the
+theme's own `--panel`, at 0.1em and 0.4em, never a black that would read as a
+drop shadow. It is applied only to a leaf box on a wallpaper or a picture
+with ground None and no background of its own (`.fw.on-picture`), where
+the words would otherwise sit straight on the picture. The theme builder's
+Shadows None turns off both tokens, and an e-ink-sized wall gets none, for
+D8's reasons.
+
+**Measured.** `browser-picture-wash.test.ts` (5, a real paired wall and a
+real editor) reads the vignette's pixels on a light paper under Panels, the
+layer under every widget through `elementsFromPoint`, Strong solved on the
+hardest dark photograph and the preset over Soft, the halo on a picture's
+leaves and on nothing else, and the editor saving a wash for both
+orientations and None removing it. `picture-wash.test.ts` (8) covers the
+schema and what is sent, and `wash.test.ts` (9, display) the arithmetic.
+Twelve mutations were checked, each on a rebuilt bundle where the display
+was the subject, and all twelve are red. Two first failed to build, because
+removing a check left its variable unread, and were re-aimed to keep it
+read.
+
 ---
 
 ## Open decisions

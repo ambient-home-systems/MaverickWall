@@ -3456,6 +3456,50 @@ img.wxi { display: block; object-fit: contain; }
   }
 }
 
+/*
+ * A picture toned down towards the canvas's ground (plan item M4.7): the
+ * theme's `--panel` over the whole picture as a vignette, thinnest in the
+ * middle and thickest at the edges. Gradients are allowed (D2). The layer is
+ * drawn at the edge's opacity and masked down to the centre's, because an
+ * alpha cannot go on a token with `color-mix()` out under rule two — so the
+ * two numbers are custom properties `wash.ts` decides and `render.ts` writes
+ * only where a Strong wash is solved for words with no ground under them.
+ * A browser that cannot mask draws the layer at the edge's opacity all over,
+ * which is the more covered of the two and so the safe way to be wrong.
+ *
+ * First in the canvas and with no `z-index` of its own, so every widget —
+ * each positioned and later in the document — draws over it. It moves no box.
+ */
+.canvas-wash {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  pointer-events: none;
+  background: var(--panel, #1B212A);
+  opacity: var(--wash-edge, 0.55);
+  -webkit-mask-image: radial-gradient(ellipse at 50% 50%, rgba(0, 0, 0, var(--wash-ratio, 0.455)) 30%, #000 100%);
+  mask-image: radial-gradient(ellipse at 50% 50%, rgba(0, 0, 0, var(--wash-ratio, 0.455)) 30%, #000 100%);
+}
+.canvas[data-wash="strong"] {
+  --wash-edge: 0.8;
+  --wash-ratio: 0.625;
+}
+
+/*
+ * Words straight on a picture (plan item M4.8): a widget with no ground of its
+ * own over a wallpaper or a photo takes the theme's `--shadow-text`, a halo of
+ * the canvas's own ground colour around every glyph, so a letter keeps an edge
+ * where the picture behind it is the ink's own colour. A token and never a
+ * literal, as `--shadow-card` is (D8): a theme or a household can set it to
+ * `none`, and an e-ink-sized wall always does. A belt rather than the promise —
+ * the contrast a wall keeps is measured without it.
+ */
+.fw.on-picture {
+  text-shadow: var(--shadow-text, none);
+}
+
 .fw-empty {
   margin: auto;
   color: var(--muted, #9AA5B2);

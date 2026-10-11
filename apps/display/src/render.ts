@@ -21,7 +21,7 @@ import {
 } from './clock-face.js';
 import { agendaTimeFitsBeside, weekColumnsFit } from './density.js';
 import type { NewsModel, PanelData, PanelReading } from './viewmodel.js';
-import type { ManifestWidget, CanvasBackground } from './manifest.js';
+import type { ManifestWidget, CanvasBackground, PictureWash } from './manifest.js';
 import { glyphNode, glyphPartsNode, isGlyphKey } from './glyphs.js';
 import { emojiNode } from './emoji.js';
 import { lockAt, lockLoop, lockOnce, oneShotPhase } from './motion.js';
@@ -33,6 +33,7 @@ import { variantOf } from './variants.js';
 import { monthLookClasses, monthLooks, treatmentLooks, type MonthLooks } from './calendar-looks.js';
 import { boxRect, gutterStepFor } from './gutter.js';
 import { WALLPAPER_BASE, wallpaperFile, wallpaperPosition, widgetGroundFor, type WidgetGround } from './wallpaper.js';
+import { washOf, washOpacities, washRatio } from './wash.js';
 import { createFailedPhotos, standIn, standInFile, type StandIn } from './photo-fallback.js';
 import {
   GLASS_SATURATE,
@@ -4941,7 +4942,7 @@ function applyGlassFill(canvas: HTMLElement, background: CanvasBackground | unde
     write(typeof known === 'object' ? known : undefined);
     if (known === undefined) {
       photoBackdrops.set(url, 'measuring');
-      measurePhotoBackdrop(url, (measured) => {
+      measurePhotoBackdrop(url, GLASS_SATURATE, (measured) => {
         photoBackdrops.set(url, measured ?? 'unreadable');
         if (measured !== undefined && canvas.isConnected) write(measured);
       });
@@ -4969,8 +4970,53 @@ function applySoftAlpha(canvas: HTMLElement, background: CanvasBackground | unde
   canvas.style.setProperty('--soft-alpha', String(alpha));
 }
 
+/**
+ * A wash's opacities on this canvas (plan item M4.7), written as the two custom
+ * properties `.canvas-wash` reads.
+ *
+ * Only a Strong wash with no widget ground is solved — that is the one place
+ * words sit on the wash itself — from the picture's own unblurred patches: a
+ * bundled picture carries them, and a household's own is measured once in this
+ * browser and rewritten in place when the measurement lands, at the preset
+ * until then. Anything else draws the preset, which the stylesheet already
+ * holds, so nothing is written.
+ */
+function applyWash(
+  canvas: HTMLElement,
+  background: CanvasBackground | undefined,
+  wash: PictureWash,
+  ground: WidgetGround,
+  mediaBase: string,
+): void {
+  if (wash !== 'strong' || ground !== 'none') return;
+  const style = getComputedStyle(canvas);
+  const panel = style.getPropertyValue('--panel').trim();
+  const inks = [style.getPropertyValue('--ink').trim(), style.getPropertyValue('--ink-scaffold').trim()];
+  const write = (patches: Backdrop | undefined): void => {
+    if (patches === undefined) return;
+    const opacities = washOpacities(wash, solveGlassAlpha(panel, inks, patches));
+    canvas.style.setProperty('--wash-edge', String(opacities.edge));
+    canvas.style.setProperty('--wash-ratio', String(washRatio(opacities)));
+  };
+  if (background?.type === 'wallpaper') return write(readBackdrop(background.bare));
+  if (background?.type === 'image' && background.image !== '') {
+    const url = `${mediaBase}${background.image}`;
+    const known = photoBare.get(url);
+    if (typeof known === 'object') return write(known);
+    if (known === undefined) {
+      photoBare.set(url, 'measuring');
+      measurePhotoBackdrop(url, 1, (measured) => {
+        photoBare.set(url, measured ?? 'unreadable');
+        if (canvas.isConnected) write(measured);
+      });
+    }
+  }
+}
+
 /** A household's own pictures, measured once each in this browser (MQ10). */
 const photoBackdrops = new Map<string, Backdrop | 'measuring' | 'unreadable'>();
+/** The same pictures measured unsaturated, as text with no ground sits on them (plan item M4.7). */
+const photoBare = new Map<string, Backdrop | 'measuring' | 'unreadable'>();
 
 /**
  * Measure a picture as Glass shows it: drawn small and saturated, then cut
@@ -4983,7 +5029,7 @@ const photoBackdrops = new Map<string, Backdrop | 'measuring' | 'unreadable'>();
  * the downscale itself has already averaged anything finer. The catalogue blurs
  * because it measures the full 1600px file.
  */
-function measurePhotoBackdrop(url: string, done: (backdrop: Backdrop | undefined) => void): void {
+function measurePhotoBackdrop(url: string, saturation: number, done: (backdrop: Backdrop | undefined) => void): void {
   const image = new Image();
   image.onload = (): void => {
     const long = 160;
@@ -4995,7 +5041,8 @@ function measurePhotoBackdrop(url: string, done: (backdrop: Backdrop | undefined
     surface.height = height;
     const context = surface.getContext('2d');
     if (context === null) return done(undefined);
-    context.filter = `saturate(${GLASS_SATURATE})`;
+    // Saturated as Glass draws it, or not at all for a wash (M4.7).
+    if (saturation !== 1) context.filter = `saturate(${saturation})`;
     context.drawImage(image, 0, 0, width, height);
     try {
       done(backdropOfPixels(context.getImageData(0, 0, width, height).data, width, height, 40));
@@ -5701,6 +5748,25 @@ export function renderFreeform(
    */
   const ground: WidgetGround = widgetGroundFor(model.widgetGround, layout.background);
   if (ground !== 'none') canvas.setAttribute('data-ground', ground);
+  /*
+   * The picture toned down towards the canvas's ground (plan item M4.7): a
+   * layer of `--panel` under every widget, first in the canvas so every box —
+   * whatever its `z` — draws over it. Its opacities are the preset's until the
+   * canvas is in the document and `applyWash` can read the theme it wears.
+   */
+  const wash = washOf(layout.background);
+  if (wash !== undefined) {
+    canvas.setAttribute('data-wash', wash);
+    canvas.appendChild(el('div', 'canvas-wash'));
+  }
+  /*
+   * Whether a widget with no ground of its own sits straight on a picture,
+   * where the theme's text shadow (plan item M4.8) is what keeps its words
+   * apart from what is behind them. A colour or a gradient is flat, and the
+   * household's own, so nothing there is shadowed.
+   */
+  const pictured =
+    layout.background?.type === 'wallpaper' || (layout.background?.type === 'image' && layout.background.image !== '');
 
   // Widgets whose body is a section from the responsive layout. Each takes a
   // *form* from its box once it is on screen (`applyWidgetTiers`) rather than
@@ -5783,6 +5849,8 @@ export function renderFreeform(
      */
     if (ground !== 'none' && widget.type !== 'group' && box.style.background === '') {
       box.classList.add('has-ground');
+    } else if (pictured && widget.type !== 'group' && box.style.background === '') {
+      box.classList.add('on-picture');
     }
     return box;
   };
@@ -5947,6 +6015,8 @@ export function renderFreeform(
   // Soft's opacity over a photograph (plan item M4.5). Glass falls back to
   // Soft where a browser cannot blur, so a canvas on Glass carries it too.
   if (ground === 'soft' || ground === 'glass') applySoftAlpha(canvas, layout.background);
+  // The wash's opacities, solved for the picture where words sit on it (M4.7).
+  if (wash !== undefined) applyWash(canvas, layout.background, wash, ground, mediaBase);
 
   /*
    * A slideshow that pairs portrait photos reads its own box (plan item M3.7):

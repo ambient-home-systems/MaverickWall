@@ -186,8 +186,11 @@ describe('the generate route, through to the wall', () => {
      * resolved, and nothing is a name the wall would have to look up.
      */
     expect(tokens['--shadow-card']).toBe('0 0.15rem 0.6rem rgba(0, 0, 0, 0.45)');
+    // The words' halo (M4.8) is a shadow too, resolved from this theme's own
+    // card colour.
+    expect(tokens['--shadow-text']).toMatch(/^0 0 0\.1em rgba\(\d+, \d+, \d+, 0\.9\), 0 0 0\.4em rgba\(\d+, \d+, \d+, 0\.7\)$/);
     for (const [token, value] of Object.entries(tokens)) {
-      if (token === '--radius' || token === '--shadow-card') continue;
+      if (token === '--radius' || token === '--shadow-card' || token === '--shadow-text') continue;
       expect(value, `${token} should arrive as a resolved hex`).toMatch(/^#[0-9a-fA-F]{6}$/);
     }
   });

@@ -93,6 +93,7 @@ import {
   postedBackground,
   widgetsForSave,
   type CanvasBackground,
+  type PictureWash,
   type EditorWidget,
 } from './canvas-state.js';
 import {
@@ -290,10 +291,13 @@ function boot(): void {
     if (b['type'] === 'gradient' && typeof b['from'] === 'string' && typeof b['to'] === 'string') {
       return { type: 'gradient', from: b['from'], to: b['to'], angle: typeof b['angle'] === 'number' ? b['angle'] : 180 };
     }
-    if (b['type'] === 'image' && typeof b['image'] === 'string') return { type: 'image', image: b['image'] };
+    // A picture's wash travels with it (plan item M4.7); anything else is none.
+    const said = b['wash'];
+    const wash: { wash?: PictureWash } = said === 'light' || said === 'strong' ? { wash: said } : {};
+    if (b['type'] === 'image' && typeof b['image'] === 'string') return { type: 'image', image: b['image'], ...wash };
     // The id alone: that is what the editor posts, and the preview resolves it
     // against the catalogue below (plan item P6.1).
-    if (b['type'] === 'wallpaper' && typeof b['id'] === 'string') return { type: 'wallpaper', id: b['id'] };
+    if (b['type'] === 'wallpaper' && typeof b['id'] === 'string') return { type: 'wallpaper', id: b['id'], ...wash };
     // A rotation as the editor posts it — never the pictures the server
     // resolves it into, which the schema would refuse (plan item M4.10).
     if (
@@ -302,7 +306,7 @@ function boot(): void {
       (b['tone'] === 'light' || b['tone'] === 'dark') &&
       typeof b['every'] === 'number'
     ) {
-      return { type: 'rotation', collection: b['collection'], tone: b['tone'], every: b['every'] };
+      return { type: 'rotation', collection: b['collection'], tone: b['tone'], every: b['every'], ...wash };
     }
     return undefined;
   };
@@ -404,6 +408,8 @@ function boot(): void {
     /** A photograph's focal point on a portrait wall, and the patches Soft is solved from (plan item M4.5). */
     readonly portraitFocal?: { readonly x: number; readonly y: number };
     readonly soft?: { readonly light: string; readonly dark: string };
+    /** Its lightest and darkest patch unblurred, that a Strong wash is solved from (plan item M4.7). */
+    readonly bare?: { readonly light: string; readonly dark: string };
     /** A photograph's credit: who made it, and the line a CC BY licence asks to be shown (M4.5). */
     readonly credit?: { readonly author: string; readonly attribution?: string };
   }
@@ -3418,6 +3424,7 @@ function boot(): void {
         ...(one.focal ? { focal: one.focal } : {}),
         ...(one.portraitFocal ? { portraitFocal: one.portraitFocal } : {}),
         ...(one.soft ? { soft: one.soft } : {}),
+        ...(one.bare ? { bare: one.bare } : {}),
       }));
       return currentPicture({ ...bg, pictures }, Date.now(), manifest?.timezone ?? 'UTC', undefined);
     }
@@ -3433,6 +3440,8 @@ function boot(): void {
           ...(found.focal ? { focal: found.focal } : {}),
           ...(found.portraitFocal ? { portraitFocal: found.portraitFocal } : {}),
           ...(found.soft ? { soft: found.soft } : {}),
+          ...(bg.wash === undefined ? {} : { wash: bg.wash }),
+          ...(found.bare ? { bare: found.bare } : {}),
         };
   }
 
@@ -3507,10 +3516,11 @@ function boot(): void {
     } else if (bg?.type === 'wallpaper') {
       backgroundPanel.appendChild(wallpaperPicker(bg.id));
     } else if (bg?.type === 'image') {
+      if (!epaperHost && bg.image !== '') backgroundPanel.appendChild(washField());
       backgroundPanel.appendChild(
         mediaPicker(bg.image === '' ? undefined : bg.image, (name) => {
           record();
-          state.background = { type: 'image', image: name };
+          state.background = { type: 'image', image: name, ...washKept() };
           renderPreview();
           markDirty();
         }),
@@ -4816,7 +4826,7 @@ function boot(): void {
     button.append(picture, name, ...wallpaperCredit(one));
     button.addEventListener('click', () => {
       record();
-      const chosen: Background = { type: 'wallpaper', id: one.id };
+      const chosen: Background = { type: 'wallpaper', id: one.id, ...washKept() };
       state.background = chosen;
       /*
        * "Use for both" is the default (P6.4): a household choosing a
@@ -4868,7 +4878,7 @@ function boot(): void {
     const wrap = document.createElement('div');
     wrap.className = 'le-media le-wallpapers le-rotation';
     wrap.dataset['orientation'] = state.orientation;
-    if (!epaperHost) wrap.appendChild(groundField());
+    if (!epaperHost) wrap.append(groundField(), washField());
 
     const write = (next: Extract<Background, { type: 'rotation' }>): void => {
       record();
@@ -4917,7 +4927,7 @@ function boot(): void {
     }
     which.addEventListener('change', () => {
       const [tone, collection] = which.value.split(':') as ['light' | 'dark', string];
-      write({ type: 'rotation', collection, tone, every: bg.every });
+      write({ type: 'rotation', collection, tone, every: bg.every, ...washKept() });
     });
     wrap.appendChild(field('Pictures', which));
 
@@ -4936,7 +4946,7 @@ function boot(): void {
       how.appendChild(element);
     }
     how.addEventListener('change', () => {
-      write({ type: 'rotation', collection: bg.collection ?? 'all', tone: bg.tone ?? wallTone, every: Number(how.value) });
+      write({ type: 'rotation', collection: bg.collection ?? 'all', tone: bg.tone ?? wallTone, every: Number(how.value), ...washKept() });
     });
     wrap.appendChild(field('Change', how));
 
@@ -5018,6 +5028,81 @@ function boot(): void {
    */
   function wallpaperGround(): WidgetGround {
     return groundChoice ?? widgetGroundFor(model?.widgetGround, { type: 'wallpaper', id: '', small: '', large: '' });
+  }
+
+  /** The picture's wash as it stands, to keep when the picture itself changes (plan item M4.7). */
+  function washKept(): { wash?: PictureWash } {
+    const bg = state.background;
+    const wash = bg !== undefined && 'wash' in bg ? bg.wash : undefined;
+    return wash === 'light' || wash === 'strong' ? { wash } : {};
+  }
+
+  /**
+   * Tone down the picture (plan item M4.7): None, Light or Strong, beside the
+   * Widget ground because the two decide together what the words sit on. The
+   * sentence under it says which of them carries the promise: with no ground
+   * the words sit on the wash itself, and only Strong is worked out for the
+   * picture so they stay readable.
+   */
+  function washField(): HTMLElement {
+    const current = washKept().wash ?? 'none';
+    const field = document.createElement('div');
+    field.className = 'le-wp-ground le-wp-wash';
+    const head = document.createElement('p');
+    head.className = 'le-wp-ground-head';
+    head.textContent = 'Tone down the picture';
+    field.appendChild(head);
+    const group = document.createElement('div');
+    group.className = 'seg le-seg';
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-label', 'Tone down the picture');
+    for (const [value, text] of [['none', 'None'], ['light', 'Light'], ['strong', 'Strong']] as const) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = text;
+      button.dataset['wash'] = value;
+      button.className = value === current ? 'on' : '';
+      button.setAttribute('aria-pressed', value === current ? 'true' : 'false');
+      button.addEventListener('click', () => setWash(value));
+      group.appendChild(button);
+    }
+    field.appendChild(group);
+    const say = document.createElement('p');
+    say.className = 'hint le-wp-wash-hint';
+    say.textContent = washSentence(current, state.background?.type === 'image' ? 'image' : wallpaperGround());
+    field.appendChild(say);
+    return field;
+  }
+
+  /** What a wash does, given what the words sit on. */
+  function washSentence(wash: 'none' | PictureWash, ground: WidgetGround | 'image'): string {
+    const theme = possessive(wallThemeName);
+    if (wash === 'none') return 'The picture is shown as it is.';
+    const what =
+      wash === 'light'
+        ? `A light vignette of ${theme} card colour, deepest at the edges.`
+        : `A strong vignette of ${theme} card colour, deepest at the edges.`;
+    const effective = ground === 'image' ? groundChoice ?? widgetGroundFor(model?.widgetGround, undefined) : ground;
+    if (effective !== 'none') return `${what} The widgets keep their ground, so this only changes how the picture looks between them.`;
+    return wash === 'strong'
+      ? `${what} With no widget ground, it is made just strong enough for this picture that words on it stay easy to read.`
+      : `${what} With no widget ground, words sit on the picture and may be hard to read over its busiest parts; Strong is worked out so they are not.`;
+  }
+
+  /** Choose the wash, on this canvas — and the other orientation's too, when "use for both" is on. */
+  function setWash(value: 'none' | PictureWash): void {
+    const bg = state.background;
+    if (bg === undefined || (bg.type !== 'wallpaper' && bg.type !== 'rotation' && bg.type !== 'image')) return;
+    record();
+    const { wash: _dropped, ...rest } = bg as typeof bg & { wash?: PictureWash };
+    void _dropped;
+    const next = (value === 'none' ? rest : { ...rest, wash: value }) as Background;
+    state.background = next;
+    if (wallpaperForBoth && next.type !== 'image') applyToOtherOrientation(next);
+    drawBackgroundPanel();
+    renderPreview();
+    markDirty();
+    backgroundPanel.querySelector<HTMLElement>(`.le-wp-wash [data-wash="${value}"]`)?.focus();
   }
 
   /**
@@ -5129,7 +5214,7 @@ function boot(): void {
     // The tiles crop to the orientation being arranged (see `wallpaperTile`).
     wrap.dataset['orientation'] = state.orientation;
     // A panel draws no background at all, so it has no ground to choose.
-    if (!epaperHost) wrap.appendChild(groundField());
+    if (!epaperHost) wrap.append(groundField(), washField());
 
     /*
      * Filtered by tone to match the wall's theme (P6.3), because a wallpaper
