@@ -20,7 +20,7 @@ import type { DisplayTemplate } from '../api/templates.js';
  */
 const CARD = { corners: 'rounded', shadow: true } as const;
 const AGENDA = { ...CARD, mode: 'list', count: 4 } as const;
-const PAINTINGS = { type: 'rotation', collection: 'painting', tone: 'dark', every: 60 } as const;
+const PAINTINGS = { type: 'rotation', collection: 'painting', tone: 'dark', every: 60, between: 'fade' } as const;
 
 export const template: DisplayTemplate = {
   id: 'photo-frame',

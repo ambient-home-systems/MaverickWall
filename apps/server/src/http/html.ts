@@ -1889,7 +1889,8 @@ pre.code{background:var(--mw-surface-2);
   border-bottom:1px solid var(--rule)}
 .le-wp-ground-head{margin:0;font-size:var(--mw-t-label-size);font-weight:var(--mw-t-label-weight);color:var(--ink)}
 .le-wp-ground .le-seg{align-self:flex-start}
-.le-wp-ground-hint,.le-wp-wash-hint,.le-wp-warning{margin:0}
+.le-wp-ground-hint,.le-wp-wash-hint,.le-wp-room-hint,.le-wp-warning{margin:0}
+.le-wp-room{display:flex;flex-direction:column;align-items:flex-start;gap:var(--mw-s-1);padding-bottom:var(--mw-s-3)}
 .le-media-upload{display:inline-flex;align-items:center;gap:var(--mw-s-2);font-size:var(--mw-t-label-size);color:var(--muted)}
 .le-media-upload input{font-size:var(--mw-t-label-sm-size)}
 .le-media-status{font-family:var(--mono);font-size:var(--mw-t-label-sm-size);color:var(--mw-ink-muted)}

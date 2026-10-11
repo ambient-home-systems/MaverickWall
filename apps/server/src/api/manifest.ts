@@ -873,6 +873,8 @@ export type CanvasBackground =
       readonly every: number;
       /** As a wallpaper's, for every picture in turn (plan item M4.7). */
       readonly wash?: PictureWash;
+      /** Fade into each picture rather than cut to it (plan item M4.10); absent is a cut. */
+      readonly between?: 'fade';
       readonly pictures: readonly {
         readonly id: string;
         readonly small: string;
@@ -1001,6 +1003,8 @@ export function parseBackground(raw: string | null | undefined): CanvasBackgroun
         tone: bg['tone'],
         every: bg['every'] as number,
         ...washOf(bg['wash']),
+        // Spread, so a rotation that cuts sends the document it always sent.
+        ...(bg['between'] === 'fade' ? { between: 'fade' as const } : {}),
         pictures,
       };
     }

@@ -690,6 +690,51 @@ describe('the picker', () => {
           .get(screenId) as { g: string | null; b: string };
         expect(JSON.parse(again.b)).toEqual({ type: 'wallpaper', id: 'hills' });
         expect(again.g).toBe('none');
+
+        /*
+         * Leaving room to see the picture (plan item M4.11). On a wall whose
+         * boxes tile, a picture is seen only through each widget's ground, so
+         * the picker says so and offers Roomy — by writing Wall settings' own
+         * control, never by changing the wall itself. Signed in once for both
+         * halves, because a fifth sign-in in this file meets the rate limit.
+         */
+        setBackground('{"type":"wallpaper","id":"dusk"}');
+        wall.db.prepare('UPDATE screens SET layout_gutter = NULL WHERE id = ?').run(screenId);
+        await page.goto(`${wall.base}/admin/walls/${encodeURIComponent(screenId)}`, { waitUntil: 'load' });
+        await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
+        const previewGutter = (): Promise<string> =>
+          page.evaluate(
+            () =>
+              document.querySelector<HTMLElement>('.le-preview')?.shadowRoot?.querySelector<HTMLElement>('.canvas')
+                ?.style.getPropertyValue('--fw-gutter') ?? '',
+          );
+        expect(await previewGutter(), 'an unasked wall writes no gutter').toBe('');
+        await page.click('.le-background-btn');
+        expect(await page.locator('.le-wp-room-hint').textContent()).toBe(
+          'The widgets cover most of this picture. Leave room between them to see more of it.',
+        );
+        // A hint, and nothing more until it is pressed: nothing on the wall moved.
+        expect(await page.locator('[data-action="save"]').isEnabled()).toBe(false);
+        expect(await page.$eval('input[name="layout_gutter"]:checked', (r) => (r as HTMLInputElement).value)).toBe('4');
+
+        await page.click('.le-wp-room-btn');
+        expect(await page.$eval('input[name="layout_gutter"]:checked', (r) => (r as HTMLInputElement).value)).toBe('5');
+        await expect.poll(previewGutter, { message: 'the preview did not take the room' }).not.toBe('');
+        // The wall has the room now, so it is not offered again.
+        expect(await page.locator('.le-wp-room').count()).toBe(0);
+        expect(await page.locator('.le-background-pop').isVisible()).toBe(true);
+        expect(await page.locator('[data-action="save"]').isEnabled()).toBe(true);
+        await Promise.all([page.waitForNavigation({ timeout: 20_000 }), page.click('[data-action="save"]')]);
+        const roomy = wall.db.prepare('SELECT layout_gutter AS g FROM screens WHERE id = ?').get(screenId) as { g: number | null };
+        expect(roomy.g).toBe(5);
+
+        // And with no picture behind the widgets there is nothing to suggest.
+        wall.db.prepare('UPDATE screens SET layout_gutter = NULL WHERE id = ?').run(screenId);
+        setBackground(null);
+        await page.goto(`${wall.base}/admin/walls/${encodeURIComponent(screenId)}`, { waitUntil: 'load' });
+        await page.waitForSelector('.le-overlay .le-widget', { timeout: 20_000 });
+        await page.click('.le-background-btn');
+        expect(await page.locator('.le-wp-room').count()).toBe(0);
       } finally {
         await context.close();
       }
