@@ -8,6 +8,7 @@ import { runMigrations } from '../src/db/migrate.js';
 import { readLayoutWidgets, replaceLayout } from '../src/api/queries.js';
 import { applyTemplate, copyLayout, findTemplate, templateSchema } from '../src/api/templates.js';
 import { TEMPLATES } from '../src/templates/index.js';
+import { WALLPAPERS, backgroundForTone } from '../src/wallpapers.js';
 
 /**
  * The starting-layout templates (RFC 005).
@@ -88,6 +89,24 @@ describe('the shipped templates', () => {
         expect(t.theme, `${t.id} theme`).toBeUndefined();
         expect(t.portrait.background, `${t.id} portrait bg`).toBeUndefined();
         expect(t.landscape.background, `${t.id} landscape bg`).toBeUndefined();
+        continue;
+      }
+      /*
+       * Two more keep the wall's theme, and for the picture's reason rather
+       * than the arrangement's (plan items M4.9 and M4.12). Photo Frame's
+       * painting is fitted to the wall's tone when it is applied, so it needs
+       * no theme to be legible under; Mosaic's pictures are the household's
+       * own tiles, and it has no canvas background at all.
+       */
+      if (t.id === 'photo-frame' || t.id === 'mosaic') {
+        expect(t.theme, `${t.id} theme`).toBeUndefined();
+        if (t.id === 'photo-frame') {
+          expect(t.portrait.background?.type, `${t.id} portrait bg`).toBe('rotation');
+          expect(t.landscape.background?.type, `${t.id} landscape bg`).toBe('rotation');
+        } else {
+          expect(t.portrait.background, `${t.id} portrait bg`).toBeUndefined();
+          expect(t.landscape.background, `${t.id} landscape bg`).toBeUndefined();
+        }
         continue;
       }
       expect(['household', 'blueprint', 'panels', 'almanac'], t.id).toContain(t.theme);
@@ -202,6 +221,65 @@ describe('applying a template', () => {
       findTemplate('reception')!.portrait.widgets.map((w) => w.type),
     );
     expect(second.some((w) => first.includes(w.id))).toBe(false);
+  });
+});
+
+describe('a template fitted to the wall it lands on (plan items M4.9 and M4.12)', () => {
+  function wall(d: ReturnType<typeof db>, id: string, theme: string): void {
+    const at = Date.now();
+    d.prepare(
+      `INSERT INTO screens (id, name, token_hash, theme, token_issued_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run(id, id, `h-${id}`, theme, at, at, at);
+  }
+  function backgrounds(d: ReturnType<typeof db>, id: string): { p: unknown; l: unknown } {
+    const row = d
+      .prepare(`SELECT layout_background AS p, layout_landscape_background AS l FROM screens WHERE id = ?`)
+      .get(id) as { p: string | null; l: string | null };
+    return { p: row.p === null ? null : JSON.parse(row.p), l: row.l === null ? null : JSON.parse(row.l) };
+  }
+
+  it('keeps the dark paintings on a dark wall and takes the light ones on a light wall', () => {
+    const d = db();
+    wall(d, 'dark', 'panels');
+    wall(d, 'light', 'almanac');
+    const frame = findTemplate('photo-frame')!;
+    applyTemplate(d, 'dark', frame);
+    applyTemplate(d, 'light', frame);
+    expect(backgrounds(d, 'dark').p).toMatchObject({ type: 'rotation', collection: 'painting', tone: 'dark' });
+    expect(backgrounds(d, 'light').p).toMatchObject({ type: 'rotation', collection: 'painting', tone: 'light' });
+    expect(backgrounds(d, 'light').l).toMatchObject({ tone: 'light' });
+    // It names no theme, so the wall keeps its own.
+    const theme = (d.prepare(`SELECT theme FROM screens WHERE id = 'light'`).get() as { theme: string }).theme;
+    expect(theme).toBe('almanac');
+  });
+
+  it('fits the tone to the theme chosen at creation, not the one the row held', () => {
+    const d = db();
+    wall(d, 'w', 'panels');
+    applyTemplate(d, 'w', findTemplate('photo-frame')!, undefined, 'household');
+    expect(backgrounds(d, 'w').p).toMatchObject({ tone: 'light' });
+  });
+
+  it('writes the gutter and the ground a template names, and leaves them where it names none', () => {
+    const d = db();
+    wall(d, 'm', 'panels');
+    d.prepare(`UPDATE screens SET layout_gutter = 5, widget_ground = 'glass' WHERE id = 'm'`).run();
+    applyTemplate(d, 'm', findTemplate('classic')!);
+    const kept = d.prepare(`SELECT layout_gutter AS g, widget_ground AS w FROM screens WHERE id = 'm'`).get();
+    expect(kept).toEqual({ g: 5, w: 'glass' });
+    applyTemplate(d, 'm', findTemplate('mosaic')!);
+    const mosaic = d.prepare(`SELECT layout_gutter AS g, widget_ground AS w FROM screens WHERE id = 'm'`).get();
+    expect(mosaic).toEqual({ g: 0, w: 'solid' });
+  });
+
+  it('swaps a single wallpaper for one of the same kind in the wall\'s tone', () => {
+    const one = WALLPAPERS.find((w) => w.tone === 'dark')!;
+    const swapped = backgroundForTone({ type: 'wallpaper', id: one.id }, 'light');
+    const picked = WALLPAPERS.find((w) => w.id === (swapped as { id: string }).id)!;
+    expect(picked.tone).toBe('light');
+    expect(backgroundForTone({ type: 'wallpaper', id: one.id }, 'dark')).toEqual({ type: 'wallpaper', id: one.id });
+    expect(backgroundForTone({ type: 'solid', color: '#112233' }, 'light')).toEqual({ type: 'solid', color: '#112233' });
   });
 });
 

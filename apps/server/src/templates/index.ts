@@ -15,6 +15,8 @@ import { template as teamWeek } from './team-week.js';
 import { template as meetingRoom } from './meeting-room.js';
 import { template as opsDashboard } from './ops-dashboard.js';
 import { template as reception } from './reception.js';
+import { template as photoFrame } from './photo-frame.js';
+import { template as mosaic } from './mosaic.js';
 
 /**
  * The starting layouts a household picks from (RFC 005).
@@ -54,4 +56,8 @@ export const TEMPLATES: readonly DisplayTemplate[] = [
   // so the gallery's opening four cards, which `templates.test.ts` pins, are
   // untouched by it.
   classicStrip,
+  // Two layouts for a wall that is mostly picture (plan items M4.9 and M4.12):
+  // last again, for the same reason.
+  photoFrame,
+  mosaic,
 ];
