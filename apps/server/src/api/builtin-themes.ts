@@ -1,4 +1,5 @@
-import { COLOUR_TOKENS } from './themes.js';
+import type { SqliteDatabase } from '../db/open.js';
+import { COLOUR_TOKENS, CUSTOM_PREFIX, readTheme } from './themes.js';
 
 /**
  * The five built-in palettes, as the server needs them for the style lane
@@ -130,3 +131,20 @@ export const BUILTIN_THEME_SHADOWS: Readonly<Record<BuiltinThemeName, string>> =
   almanac: '0.08rem 0.12rem 0 rgba(36, 31, 25, 0.14)',
   swiss: 'none',
 };
+
+/**
+ * The colours a wall's theme gives it — a custom theme's own tokens, or the
+ * built-in's transcription — which the wall's default style lane is seeded
+ * from and diffed against (RFC 014 §4.1), the wallpaper picker filters by, and
+ * a template's picture is fitted to (plan items P6.3 and M4.9). A retired or
+ * unknown key resolves to Panels, exactly as the bundle resolves it, and a
+ * custom theme that has since been deleted is the built-in fallback's,
+ * because the fallback is what the wall draws.
+ */
+export function wallThemeColours(db: SqliteDatabase, ref: string): Readonly<Record<string, string>> {
+  if (ref.startsWith(CUSTOM_PREFIX)) {
+    const theme = readTheme(db, ref.slice(CUSTOM_PREFIX.length));
+    if (theme !== undefined) return theme.tokens as Readonly<Record<string, string>>;
+  }
+  return builtinThemeTokens(ref);
+}

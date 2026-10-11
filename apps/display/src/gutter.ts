@@ -86,6 +86,24 @@ export const GUTTER_STEPS: readonly GutterStep[] = [
 export const GUTTER_DEFAULT_STEP = 4;
 
 /**
+ * The step the picture pickers suggest: Roomy, the first at which the canvas
+ * pays and the wall's own ground — the picture — shows between the boxes
+ * (plan item M4.11).
+ */
+export const ROOMY_STEP = 5;
+
+/**
+ * Whether a wall with this step hides most of its picture behind its widgets.
+ *
+ * Below `ROOMY_STEP` the boxes tile, so a picture is seen only through each
+ * widget's ground; the pickers say so and offer the step that opens gaps. An
+ * absent or unknown step is the default, which tiles.
+ */
+export function pictureWantsRoom(step: number | undefined): boolean {
+  return gutterStepFor(step) === undefined ? GUTTER_DEFAULT_STEP < ROOMY_STEP : (step as number) < ROOMY_STEP;
+}
+
+/**
  * What a step spends, or `undefined` to write nothing.
  *
  * `undefined` is the load-bearing answer and the whole of rule nine here: the
