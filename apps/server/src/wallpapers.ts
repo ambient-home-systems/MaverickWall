@@ -287,6 +287,36 @@ export function themeTone(bg: string): WallpaperTone {
 }
 
 /**
+ * A template's picture background, fitted to the tone of the theme the wall is
+ * wearing (plan item M4.9).
+ *
+ * A template that keeps the wall's theme cannot know that theme, and a
+ * wallpaper is drawn for one tone's ink: the contrast gate holds every
+ * picture only against the themes of its own tone. So applying the template
+ * swaps the picture for its counterpart in the wall's tone — a rotation keeps
+ * its collection and changes its tone, and a single wallpaper becomes the
+ * first of its category in that tone, or the first of the tone at all. A
+ * background already of the wall's tone, or not a bundled picture, is handed
+ * back as it is; so is a rotation whose collection has fewer than two
+ * pictures in the other tone, which would otherwise be refused on save.
+ */
+export function backgroundForTone<B extends { readonly type: string }>(background: B, tone: WallpaperTone): B {
+  if (background.type === 'rotation') {
+    const rotation = background as unknown as { collection: RotationCollection; tone: WallpaperTone };
+    if (rotation.tone === tone || rotationPictures(rotation.collection, tone).length < 2) return background;
+    return { ...background, tone };
+  }
+  if (background.type === 'wallpaper') {
+    const one = WALLPAPERS.find((w) => w.id === (background as unknown as { id: string }).id);
+    if (one === undefined || one.tone === tone) return background;
+    const swap =
+      WALLPAPERS.find((w) => w.tone === tone && w.category === one.category) ?? WALLPAPERS.find((w) => w.tone === tone);
+    return swap === undefined ? background : { ...background, id: swap.id };
+  }
+  return background;
+}
+
+/**
  * The bundled picture a slideshow box draws when it has no photo to show
  * (plan item M3.8): a photo the wall could not fetch, or an Immich or folder
  * source with nothing in it. A quiet gradient of the wall's own tone — Dusk on

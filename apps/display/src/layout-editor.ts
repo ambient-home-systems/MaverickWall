@@ -17,6 +17,7 @@
  */
 
 import { renderFreeform } from './render.js';
+import { ROOMY_STEP, pictureWantsRoom } from './gutter.js';
 import { ADMIN_WALLPAPER_BASE, currentPicture, wallpaperPosition, widgetGroundFor, type WidgetGround } from './wallpaper.js';
 import { useAdminIconBase } from './weather-icons.js';
 import { buildModel, type DisplayModel } from './viewmodel.js';
@@ -306,7 +307,10 @@ function boot(): void {
       (b['tone'] === 'light' || b['tone'] === 'dark') &&
       typeof b['every'] === 'number'
     ) {
-      return { type: 'rotation', collection: b['collection'], tone: b['tone'], every: b['every'], ...wash };
+      return {
+        type: 'rotation', collection: b['collection'], tone: b['tone'], every: b['every'], ...wash,
+        ...(b['between'] === 'fade' ? { between: 'fade' as const } : {}),
+      };
     }
     return undefined;
   };
@@ -442,6 +446,12 @@ function boot(): void {
    * which is the whole of why a household would understand what it does.
    */
   let groundChoice: WidgetGround | undefined;
+  /**
+   * Wall settings' "Room between widgets", as chosen this session — the
+   * ground's arrangement one control along (plan item M4.11): the radios are
+   * the value, and the preview follows them.
+   */
+  let gutterChoice: number | undefined;
   /** Whether the picker offers the wallpapers drawn for the other tone. */
   let showAllWallpapers = false;
   /** Whether choosing a wallpaper applies it to both orientations (P6.4). */
@@ -989,6 +999,16 @@ function boot(): void {
    * for one value, so they are one value: the picker writes these radios, and
    * these radios are what the preview follows.
    */
+  for (const radio of gutterRadios()) {
+    radio.addEventListener('change', () => {
+      if (!radio.checked) return;
+      const step = Number(radio.value);
+      if (!Number.isInteger(step)) return;
+      gutterChoice = step;
+      drawBackgroundPanel();
+      renderPreview();
+    });
+  }
   for (const radio of groundRadios()) {
     radio.addEventListener('change', () => {
       if (!radio.checked || !isWidgetGround(radio.value)) return;
@@ -2467,7 +2487,12 @@ function boot(): void {
     const drawn = previewWidgets();
     const drawnBackground = state.background === undefined ? undefined : previewBackground(state.background);
     // A widget ground chosen but not yet saved is drawn as the wall will draw it.
-    renderFreeform(previewWall, groundChoice === undefined ? model : { ...model, widgetGround: groundChoice }, {
+    const drawnModel = {
+      ...model,
+      ...(groundChoice !== undefined ? { widgetGround: groundChoice } : {}),
+      ...(gutterChoice !== undefined ? { layoutGutter: gutterChoice } : {}),
+    };
+    renderFreeform(previewWall, drawnModel, {
       aspect: state.aspect,
       widgets: drawn,
       ...(drawnBackground !== undefined ? { background: drawnBackground } : {}),
@@ -3516,7 +3541,7 @@ function boot(): void {
     } else if (bg?.type === 'wallpaper') {
       backgroundPanel.appendChild(wallpaperPicker(bg.id));
     } else if (bg?.type === 'image') {
-      if (!epaperHost && bg.image !== '') backgroundPanel.appendChild(washField());
+      if (!epaperHost && bg.image !== '') backgroundPanel.append(...roomField(), washField());
       backgroundPanel.appendChild(
         mediaPicker(bg.image === '' ? undefined : bg.image, (name) => {
           record();
@@ -4878,8 +4903,10 @@ function boot(): void {
     const wrap = document.createElement('div');
     wrap.className = 'le-media le-wallpapers le-rotation';
     wrap.dataset['orientation'] = state.orientation;
-    if (!epaperHost) wrap.append(groundField(), washField());
+    if (!epaperHost) wrap.append(groundField(), ...roomField(), washField());
 
+    // How it moves between pictures travels with every other change to it.
+    const fade = (): { between?: 'fade' } => (bg.between === 'fade' ? { between: 'fade' } : {});
     const write = (next: Extract<Background, { type: 'rotation' }>): void => {
       record();
       state.background = next;
@@ -4927,7 +4954,7 @@ function boot(): void {
     }
     which.addEventListener('change', () => {
       const [tone, collection] = which.value.split(':') as ['light' | 'dark', string];
-      write({ type: 'rotation', collection, tone, every: bg.every, ...washKept() });
+      write({ type: 'rotation', collection, tone, every: bg.every, ...washKept(), ...fade() });
     });
     wrap.appendChild(field('Pictures', which));
 
@@ -4946,9 +4973,26 @@ function boot(): void {
       how.appendChild(element);
     }
     how.addEventListener('change', () => {
-      write({ type: 'rotation', collection: bg.collection ?? 'all', tone: bg.tone ?? wallTone, every: Number(how.value), ...washKept() });
+      write({ type: 'rotation', collection: bg.collection ?? 'all', tone: bg.tone ?? wallTone, every: Number(how.value), ...washKept(), ...fade() });
     });
     wrap.appendChild(field('Change', how));
+
+    // Between pictures (plan item M4.10): the slideshow's choice, for the wall.
+    const blend = document.createElement('select');
+    blend.setAttribute('data-rotation-between', '');
+    for (const [value, label] of [['cut', 'Cut'], ['fade', 'Fade']] as const) {
+      const element = document.createElement('option');
+      element.value = value;
+      element.textContent = label;
+      if ((value === 'fade') === (bg.between === 'fade')) element.selected = true;
+      blend.appendChild(element);
+    }
+    blend.addEventListener('change', () => {
+      const { between: _was, ...rest } = bg;
+      void _was;
+      write(blend.value === 'fade' ? { ...rest, between: 'fade' } : rest);
+    });
+    wrap.appendChild(field('Between pictures', blend));
 
     const strip = document.createElement('div');
     strip.className = 'le-wp-grid';
@@ -4976,7 +5020,8 @@ function boot(): void {
     hint.className = 'hint';
     hint.textContent =
       'Every wall showing this changes picture together, by its own clock. “Next picture” in the wall’s ' +
-      'menu, or from your phone, moves it on and gives that picture its full time.';
+      'menu, or from your phone, moves it on and gives that picture its full time. A fade takes two ' +
+      'seconds, and is a cut on a wall with its Motion switch off.';
     wrap.appendChild(hint);
 
     const toggle = (text: string, checked: boolean, onChange: (on: boolean) => void): HTMLElement => {
@@ -5014,6 +5059,49 @@ function boot(): void {
   }
 
   /** Wall settings' Widget ground radios, on this page — none on a panel's page. */
+  function gutterRadios(): HTMLInputElement[] {
+    return Array.from(document.querySelectorAll<HTMLInputElement>('input[type="radio"][name="layout_gutter"]'));
+  }
+
+  /** The wall's gutter step: this session's choice, or what the wall has. */
+  function wallGutter(): number | undefined {
+    return gutterChoice ?? model?.layoutGutter;
+  }
+
+  /**
+   * "Leave room to see the picture" (plan item M4.11).
+   *
+   * On a wall whose boxes tile — every step under Roomy — a picture is seen
+   * only through each widget's ground, which is the commonest surprise after
+   * choosing one. So the pickers say so and offer the step that opens gaps,
+   * and pressing it writes Wall settings' own radio, exactly as the ground
+   * segments do: one value, saved by Save wall, and the editor never changes
+   * the wall on its own. Nothing is drawn once the wall has the room, or where
+   * the settings form is not on the page to write.
+   */
+  function roomField(): HTMLElement[] {
+    const roomy = gutterRadios().find((radio) => radio.value === String(ROOMY_STEP));
+    if (roomy === undefined || !pictureWantsRoom(wallGutter())) return [];
+    const field = document.createElement('div');
+    field.className = 'le-wp-room';
+    const say = document.createElement('p');
+    say.className = 'hint le-wp-room-hint';
+    say.textContent = 'The widgets cover most of this picture. Leave room between them to see more of it.';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn-text le-wp-room-btn';
+    button.textContent = 'Leave room between widgets';
+    button.addEventListener('click', () => {
+      roomy.checked = true;
+      // Its listener redraws this panel (without this suggestion) and the
+      // preview, and the settings form counts as edited, so Save wall is live.
+      roomy.dispatchEvent(new Event('change', { bubbles: true }));
+      backgroundPanel.querySelector<HTMLElement>('.le-wp-ground [aria-pressed="true"]')?.focus();
+    });
+    field.append(say, button);
+    return [field];
+  }
+
   function groundRadios(): HTMLInputElement[] {
     return Array.from(document.querySelectorAll<HTMLInputElement>('input[type="radio"][name="widget_ground"]'));
   }
@@ -5214,7 +5302,7 @@ function boot(): void {
     // The tiles crop to the orientation being arranged (see `wallpaperTile`).
     wrap.dataset['orientation'] = state.orientation;
     // A panel draws no background at all, so it has no ground to choose.
-    if (!epaperHost) wrap.append(groundField(), washField());
+    if (!epaperHost) wrap.append(groundField(), ...roomField(), washField());
 
     /*
      * Filtered by tone to match the wall's theme (P6.3), because a wallpaper

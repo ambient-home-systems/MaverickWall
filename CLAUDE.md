@@ -10859,7 +10859,89 @@ schema and what is sent, and `wash.test.ts` (9, display) the arithmetic.
 Twelve mutations were checked, each on a rebuilt bundle where the display
 was the subject, and all twelve are red. Two first failed to build, because
 removing a check left its variable unread, and were re-aimed to keep it
-read.
+read. That change's own test count was not recorded in its PR, so it is not
+written here; the next figure below includes it.
+
+**Two templates, a fading rotation and a gutter suggestion (plan items
+M4.9–M4.12).** **Photo Frame** is the clock, the weather and a four-event
+agenda as rounded, shadowed cards over the paintings rotating hourly.
+**Mosaic** is three Image tiles edge to edge with square corners, and the
+clock and agenda as cards on a Solid ground with an inset of their own. Two
+things had to be added to make those work, and both happen at apply time.
+
+- **A template may name the wall's gutter step and widget ground**
+  (`gutter`, `widgetGround` on `templateSchema`). They are written with
+  `COALESCE`, so a template that names neither leaves the wall's own values
+  alone. Mosaic needs both: gutter 0 for the tiles, and Solid because a canvas
+  with no picture behind it resolves to no ground.
+- **A picture is fitted to the wall's tone** (`backgroundForTone`). Neither
+  template names a theme, because both keep the wall's own. That means a
+  template cannot know whether the wall is light or dark, and every picture
+  is held to its contrast gate only under themes of its own tone. So once
+  the theme is written, `applyTemplate` swaps a rotation's tone, or a
+  wallpaper for one of the same category in the right tone. Wall creation now
+  hands its chosen theme to `applyTemplate` (`themeOverride`) instead of
+  overwriting the theme afterwards, which is what lets the fitting see the
+  theme the household actually chose. `wallThemeColours` moved to
+  `builtin-themes.ts` for that reason.
+
+The gallery's cards draw a template's gutter and ground, and draw a rotation
+as the picture it would show now.
+
+**A rotation can fade** (`between: 'fade'`, "Between pictures: Cut / Fade";
+absent is a cut, so no saved rotation changes). The key is `between` and not
+`transition`, because `motion.test.ts` refuses that word in every wall module
+outside `motion.ts`, and it caught the first draft. The parts:
+
+- `upcomingPicture` in `wallpaper.ts` names the next picture and its swap.
+  For a period rotation the swap is the next whole period, counted from the
+  epoch or from a Next press. For a daily one it is the wall's own midnight,
+  found by halving rather than computed, so the 25-hour October day is held.
+- It answers only within a minute of the swap. `renderFreeform` then draws
+  the picture on a `.canvas-next` layer, under the wash and every widget, and
+  preloads and decodes it.
+- `lockAt` schedules the layer's fade for the two seconds before the swap.
+  This is M3.6's mechanism, so a redraw lands on the same frame.
+- With motion off or reduced, the layer stays at the opacity 0 its base rule
+  sets, so the swap is the next draw's cut.
+- While the layer is drawn, Soft, Glass and a Strong wash are each solved for
+  both pictures and the larger opacity kept, because halfway through the fade
+  the widgets sit over a mixture of the two. No browser test reads this.
+
+**The gutter suggestion** (`roomField`) appears in the wallpaper, rotation and
+image pickers when the wall's step is below Roomy (`pictureWantsRoom`). Below
+Roomy the boxes tile, so a picture is seen only through each widget's
+ground. The button writes Wall settings' own `layout_gutter` radio, exactly
+as the ground segments write theirs. The preview now follows those radios too
+(`gutterChoice`), which it did not before.
+
+**Measured.** The tests:
+
+- `browser-wallpaper-crossfade.test.ts` (3) works on a real wall. It reads
+  the fade's start against the server's clock, the same start on the rebuilt
+  layer, and every frame through the swap, during which the picture changes
+  once and never back. It also checks that a wall with Motion off never
+  animates, and that a rotation that cuts draws no layer.
+- `browser-wallpaper.test.ts`'s ground test drives the suggestion through to
+  Save. It lives in that test because a fifth sign-in in the file meets the
+  sign-in rate limit, which is how the first draft of it, as a test of its
+  own, made the *next* test time out.
+- `templates.test.ts` covers the tone fitting, the creation override and the
+  gutter and ground writes.
+- The display's `wallpaper.test.ts` and `gutter.test.ts` cover the
+  arithmetic.
+
+Ten mutations were checked and all ten are red. One failed to build at first
+and was re-aimed. The mutation script restored the source after each run but
+did not rebuild, so the next test run used a stale mutant bundle. It read a
+correct test as red until the script was fixed to rebuild.
+
+**5626 tests passing, 1 red and 2 skipped, over 411 files**: calendar 153 (1
+skipped) over 10 · core 314 over 9 · display 1034 over 64 · server 4125 (1
+skipped) over 328, measured with `pnpm test` and a real Chromium. The one red
+is `browser-glass`'s striped-picture case, which is red on a clean `main` in
+this container as recorded above. **Still unproven where it counts:** nobody
+has watched a fade on a kitchen wall.
 
 ---
 

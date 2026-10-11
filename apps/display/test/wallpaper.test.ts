@@ -6,8 +6,12 @@ import {
   wallpaperPosition,
   widgetGroundFor,
   currentPicture,
+  nextRotationAt,
+  upcomingPicture,
+  NEXT_PICTURE_LEAD_MS,
+  ROTATION_FADE_MS,
 } from '../src/wallpaper.js';
-import { rotationIndex, rotationSteps } from '../src/picture-rotation.js';
+import { localEpochDay, rotationIndex, rotationSteps } from '../src/picture-rotation.js';
 
 /**
  * Which of a wallpaper's two files a canvas draws, and what its widgets draw
@@ -157,5 +161,59 @@ describe('currentPicture (plan items M4.10, M1.4)', () => {
     };
     const photos = { ...rotation, collection: 'painting', pictures: rotation.pictures.map((one) => ({ ...one, ...extras })) };
     expect(currentPicture(photos, at, 'UTC', undefined)).toMatchObject({ type: 'wallpaper', ...extras });
+  });
+});
+
+describe('the next picture of a fading rotation (plan item M4.10)', () => {
+  const picture = (id: string) => ({ id, small: `${id}-1600.0123456789.jpg`, large: `${id}-2880.0123456789.jpg` });
+  const rotation = {
+    type: 'rotation' as const,
+    collection: 'gradient',
+    tone: 'dark' as const,
+    every: 15,
+    between: 'fade' as const,
+    pictures: [picture('dusk'), picture('midnight'), picture('ember')],
+  };
+  const swap = Date.UTC(2026, 9, 6, 10, 15, 0);
+
+  it('swaps at the next whole period, and the step after it is the picture it turns to', () => {
+    expect(nextRotationAt(15, swap - 1, 'UTC', undefined)).toBe(swap);
+    // At the swap the next one is a period on: the rotation counts it as taken.
+    expect(nextRotationAt(15, swap, 'UTC', undefined)).toBe(swap + 15 * 60_000);
+    const near = upcomingPicture(rotation, swap - 30_000, 'UTC', undefined);
+    expect(near?.at).toBe(swap);
+    expect(near?.picture).toEqual(currentPicture(rotation, swap, 'UTC', undefined));
+    expect(near?.picture.id).not.toBe(currentPicture(rotation, swap - 30_000, 'UTC', undefined)?.type === 'wallpaper'
+      ? (currentPicture(rotation, swap - 30_000, 'UTC', undefined) as { id: string }).id
+      : undefined);
+  });
+
+  it('counts from where Next picture moved it', () => {
+    const pressedAt = swap - 7 * 60_000;
+    expect(nextRotationAt(15, swap, 'UTC', pressedAt)).toBe(pressedAt + 15 * 60_000);
+    const near = upcomingPicture(rotation, pressedAt + 14 * 60_000, 'UTC', { picturePressedAt: pressedAt, pictureStep: 2 });
+    expect(near?.picture.id).toBe('dusk');
+  });
+
+  it('finds the wall’s own midnight, on the day in October that is 25 hours long', () => {
+    // 25 October 2026, when London's clocks go back.
+    const morning = Date.UTC(2026, 9, 25, 9, 0, 0);
+    const midnight = nextRotationAt(1440, morning, 'Europe/London', undefined);
+    expect(midnight).toBe(Date.UTC(2026, 9, 26, 0, 0, 0));
+    expect(localEpochDay(midnight, 'Europe/London')).toBe(localEpochDay(morning, 'Europe/London') + 1);
+    expect(localEpochDay(midnight - 1, 'Europe/London')).toBe(localEpochDay(morning, 'Europe/London'));
+    // And in summer, an hour before UTC's.
+    expect(nextRotationAt(1440, Date.UTC(2026, 6, 1, 9), 'Europe/London', undefined)).toBe(Date.UTC(2026, 6, 1, 23));
+  });
+
+  it('is drawn only near the swap, only for a fade, and never onto the picture already showing', () => {
+    const lead = NEXT_PICTURE_LEAD_MS + ROTATION_FADE_MS;
+    expect(upcomingPicture(rotation, swap - lead, 'UTC', undefined)).toBeDefined();
+    expect(upcomingPicture(rotation, swap - lead - 1, 'UTC', undefined)).toBeUndefined();
+    const { between: _cut, ...cut } = rotation;
+    void _cut;
+    expect(upcomingPicture(cut, swap - 1000, 'UTC', undefined)).toBeUndefined();
+    expect(upcomingPicture({ ...rotation, pictures: [picture('dusk'), picture('dusk')] }, swap - 1000, 'UTC', undefined)).toBeUndefined();
+    expect(upcomingPicture({ type: 'wallpaper', id: 'dusk', small: 'a', large: 'b' } as never, swap - 1000, 'UTC', undefined)).toBeUndefined();
   });
 });

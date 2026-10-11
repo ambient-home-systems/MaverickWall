@@ -13,7 +13,7 @@
  */
 
 import { renderFreeform } from './render.js';
-import { ADMIN_WALLPAPER_BASE } from './wallpaper.js';
+import { ADMIN_WALLPAPER_BASE, currentPicture } from './wallpaper.js';
 import { useAdminIconBase } from './weather-icons.js';
 import { buildModel, type DisplayModel } from './viewmodel.js';
 import { applyTheme } from './theme.js';
@@ -75,6 +75,9 @@ interface TemplatePreview {
   readonly theme?: string;
   readonly themeLabel?: string;
   readonly background?: CanvasBackground;
+  /** The template's gutter step and widget ground, when it names them. */
+  readonly gutter?: number;
+  readonly widgetGround?: string;
 }
 interface GalleryData {
   readonly owner: string | null;
@@ -383,10 +386,19 @@ function boot(): void {
       thumbThemes.set(thumb, paintTheme);
 
       // On the admin page, so any image reads media behind the session.
-      renderFreeform(wall, model, {
+      // A rotation is drawn as the picture it would show now, which is what
+      // the wall does before every draw (`main.ts`); the renderer draws one
+      // picture and never a collection.
+      const background = currentPicture(template.background, Date.now(), manifest.timezone, undefined);
+      const drawn: DisplayModel = {
+        ...model,
+        layoutGutter: template.gutter ?? model.layoutGutter,
+        widgetGround: template.widgetGround ?? model.widgetGround,
+      };
+      renderFreeform(wall, drawn, {
         aspect: template.aspect,
         widgets: placed(template.widgets),
-        ...(template.background !== undefined ? { background: template.background } : {}),
+        ...(background !== undefined ? { background } : {}),
       }, 'admin/media/', { wallpaperBase: ADMIN_WALLPAPER_BASE });
       // The fallback label is only for when this never runs.
       const fallback = thumb.querySelector('.tpl-fallback');

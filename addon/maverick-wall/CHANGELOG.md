@@ -16,6 +16,24 @@
 
 ## Unreleased
 
+**Two new starting layouts.** **Photo Frame** is the time, the weather and
+what's next as floating cards over a painting that changes every hour, fading
+from one to the next. **Mosaic** puts your own photos edge to edge, with the
+time and what's next floating on top; pick each photo from its widget. Both
+keep your wall's theme, and Photo Frame chooses dark or light paintings to
+suit it.
+
+**A rotating wallpaper can fade.** Under the pictures it goes through,
+*Between pictures* is now Cut or Fade. A fade takes two seconds; on a wall
+with its Motion switch off, or a device asking for less motion, it stays a
+cut.
+
+**Room to see the picture.** When you choose a wallpaper or a photo for a
+wall whose widgets fill it edge to edge, the picker now says that the
+widgets cover most of it and offers to leave room between them. Pressing it
+changes *Room between widgets* in Wall settings to Roomy; nothing changes
+until you save.
+
 ## 1.1.0
 
 **Paintings and pictures from space.** The wallpaper picker has two new

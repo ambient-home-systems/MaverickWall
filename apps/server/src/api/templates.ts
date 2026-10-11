@@ -13,6 +13,9 @@ import type { SqliteDatabase } from '../db/open.js';
 import { TEMPLATES } from '../templates/index.js';
 import { CLASSIC_VARIANTS, classicFor } from '../templates/classic.js';
 import type { HouseholdSetUp } from './manifest.js';
+import { GUTTER_MAX, GUTTER_MIN } from '../gutter.js';
+import { WIDGET_GROUNDS, backgroundForTone, themeTone } from '../wallpapers.js';
+import { wallThemeColours } from './builtin-themes.js';
 
 /**
  * A starting layout a household picks from (RFC 005).
@@ -69,6 +72,16 @@ export const templateSchema = z
      * the four built-ins; a household's custom theme is theirs to choose.
      */
     theme: z.enum(['household', 'blueprint', 'panels', 'almanac', 'swiss']).optional(),
+    /*
+     * The room between the widgets and what each one draws behind itself
+     * (plan items M4.9 and M4.12), written onto the wall like the theme. A
+     * mosaic of pictures is only a mosaic edge to edge, and a card floating
+     * over it needs a ground of its own — and neither is a widget's to say,
+     * because both are the wall's settings. Absent leaves the wall's own, the
+     * way a template naming no theme leaves the theme alone.
+     */
+    gutter: z.number().int().min(GUTTER_MIN).max(GUTTER_MAX).optional(),
+    widgetGround: z.enum(WIDGET_GROUNDS).optional(),
     // Both orientations are always authored (RFC 005's "require both"), so a
     // template-started display is never in the letterbox-one-side case.
     portrait: templateCanvasSchema,
@@ -170,6 +183,12 @@ export function applyTemplate(
   owner: string | null,
   template: DisplayTemplate,
   aspects?: TemplateAspects,
+  /**
+   * The theme the household chose for a wall being created, which wins over
+   * the template's own (RFC 015 §3.1) — passed in rather than written after,
+   * so a picture background is fitted to the theme the wall will wear.
+   */
+  themeOverride?: string,
 ): void {
   // Set the designed theme first, so it and the canvas backgrounds are
   // consistent — a template's light background must not land under a dark theme.
@@ -177,9 +196,21 @@ export function applyTemplate(
   // 2), and the one template still seeded onto it — Classic, by
   // `backfillClassic`'s `seedIfEmpty(null)` — names none, so this branch is
   // never reached with a null owner and a theme together.
-  if (template.theme !== undefined && owner !== null) setOwnerTheme(db, owner, template.theme);
+  const theme = themeOverride ?? template.theme;
+  if (theme !== undefined && owner !== null) setOwnerTheme(db, owner, theme);
+  if (owner !== null && (template.gutter !== undefined || template.widgetGround !== undefined)) {
+    db.prepare(
+      `UPDATE screens SET layout_gutter = COALESCE(?, layout_gutter), widget_ground = COALESCE(?, widget_ground),
+         updated_at = ? WHERE id = ?`,
+    ).run(template.gutter ?? null, template.widgetGround ?? null, Date.now(), owner);
+  }
+  // A picture is drawn for one tone's ink, and a template that keeps the
+  // wall's theme cannot know which that is until now (plan item M4.9).
+  const tone = owner === null ? undefined : wallTone(db, owner);
   for (const orientation of ORIENTATIONS) {
     const canvas = template[orientation];
+    const background =
+      canvas.background === undefined || tone === undefined ? canvas.background : backgroundForTone(canvas.background, tone);
     replaceLayout(db, owner, orientation, {
       mode: 'freeform',
       aspect: aspects?.[orientation] ?? canvas.aspect,
@@ -188,9 +219,18 @@ export function applyTemplate(
       widgets: resolveTemplateWidgets(canvas.widgets, widgetId),
       // A template may carry a background (RFC 005 Phase 3); JSON-stringified for
       // storage, or null when it has none.
-      background: canvas.background !== undefined ? JSON.stringify(canvas.background) : null,
+      background: background !== undefined ? JSON.stringify(background) : null,
     });
   }
+}
+
+/** The tone of the theme a browser wall wears, or undefined for a panel, which draws no picture. */
+function wallTone(db: SqliteDatabase, owner: string): 'light' | 'dark' | undefined {
+  const row = db.prepare('SELECT theme, kind FROM screens WHERE id = ?').get(owner) as
+    | { theme: string | null; kind: string | null }
+    | undefined;
+  if (row === undefined || row.kind === 'epaper' || row.theme === null) return undefined;
+  return themeTone(wallThemeColours(db, row.theme)['--bg'] ?? '');
 }
 
 /**

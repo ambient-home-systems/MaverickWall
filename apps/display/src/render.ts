@@ -32,7 +32,7 @@ import { renderCountdown } from './countdown-looks.js';
 import { variantOf } from './variants.js';
 import { monthLookClasses, monthLooks, treatmentLooks, type MonthLooks } from './calendar-looks.js';
 import { boxRect, gutterStepFor } from './gutter.js';
-import { WALLPAPER_BASE, wallpaperFile, wallpaperPosition, widgetGroundFor, type WidgetGround } from './wallpaper.js';
+import { ROTATION_FADE_MS, WALLPAPER_BASE, wallpaperFile, wallpaperPosition, widgetGroundFor, type WidgetGround } from './wallpaper.js';
 import { washOf, washOpacities, washRatio } from './wash.js';
 import { createFailedPhotos, standIn, standInFile, type StandIn } from './photo-fallback.js';
 import {
@@ -4896,8 +4896,11 @@ function applyWallpaper(
   canvas: HTMLElement,
   background: Extract<CanvasBackground, { type: 'wallpaper' }>,
   base: string,
+  // The box whose size picks the file, when that is not the one painted: a
+  // rotation's next layer is measured by its canvas (plan item M4.10).
+  measured: HTMLElement = canvas,
 ): void {
-  const rect = canvas.getBoundingClientRect();
+  const rect = measured.getBoundingClientRect();
   const ratio = typeof window !== 'undefined' ? window.devicePixelRatio : 1;
   const file = wallpaperFile(background, { width: rect.width, height: rect.height }, ratio);
   if (file === undefined) return;
@@ -4912,6 +4915,19 @@ function applyWallpaper(
 
 
 /**
+ * Fetch and decode a layer's picture ahead of showing it (plan item M4.10). A
+ * background image is fetched when it is set, but decoded only when it is
+ * first painted, which for a layer at zero opacity is the fade's first frame.
+ */
+function preload(backgroundImage: string): void {
+  const url = /^url\("(.*)"\)$/.exec(backgroundImage)?.[1];
+  if (url === undefined || typeof Image !== 'function') return;
+  const image = new Image();
+  image.src = url;
+  if (typeof image.decode === 'function') image.decode().catch(() => undefined);
+}
+
+/**
  * Glass's fill for this canvas (plan item M4.2): the theme's card colour at
  * the lowest opacity that keeps both inks at 4.5:1 over what is behind it.
  *
@@ -4923,12 +4939,19 @@ function applyWallpaper(
  * once in this browser (MQ10); until then the fill is at Soft's opacity, and
  * the measurement rewrites it in place when it lands.
  */
-function applyGlassFill(canvas: HTMLElement, background: CanvasBackground | undefined, mediaBase: string): void {
+function applyGlassFill(
+  canvas: HTMLElement,
+  background: CanvasBackground | undefined,
+  mediaBase: string,
+  next?: Extract<CanvasBackground, { type: 'wallpaper' }>,
+): void {
   const style = getComputedStyle(canvas);
   const panel = style.getPropertyValue('--panel').trim();
   const inks = [style.getPropertyValue('--ink').trim(), style.getPropertyValue('--ink-scaffold').trim()];
+  const solve = (backdrop: Backdrop | undefined): number =>
+    backdrop === undefined ? GLASS_UNMEASURED_ALPHA : solveGlassAlpha(panel, inks, backdrop);
   const write = (backdrop: Backdrop | undefined): void => {
-    const alpha = backdrop === undefined ? GLASS_UNMEASURED_ALPHA : solveGlassAlpha(panel, inks, backdrop);
+    const alpha = next === undefined ? solve(backdrop) : Math.max(solve(backdrop), solve(readBackdrop(next.glass)));
     const fill = glassFill(panel, alpha);
     if (fill !== undefined) canvas.style.setProperty('--glass-fill', fill);
   };
@@ -4959,14 +4982,19 @@ function applyGlassFill(canvas: HTMLElement, background: CanvasBackground | unde
  * every drawn wallpaper is held at. A drawn wallpaper carries no patches and
  * the property is never written, so its widgets draw exactly what they drew.
  */
-function applySoftAlpha(canvas: HTMLElement, background: CanvasBackground | undefined): void {
+function applySoftAlpha(
+  canvas: HTMLElement,
+  background: CanvasBackground | undefined,
+  next?: Extract<CanvasBackground, { type: 'wallpaper' }>,
+): void {
   if (background?.type !== 'wallpaper') return;
-  const patches = readBackdrop(background.soft);
-  if (patches === undefined) return;
+  const all = [readBackdrop(background.soft), next === undefined ? undefined : readBackdrop(next.soft)]
+    .filter((one): one is Backdrop => one !== undefined);
+  if (all.length === 0) return;
   const style = getComputedStyle(canvas);
   const panel = style.getPropertyValue('--panel').trim();
   const inks = [style.getPropertyValue('--ink').trim(), style.getPropertyValue('--ink-scaffold').trim()];
-  const alpha = Math.max(GLASS_UNMEASURED_ALPHA, solveGlassAlpha(panel, inks, patches));
+  const alpha = Math.max(GLASS_UNMEASURED_ALPHA, ...all.map((patches) => solveGlassAlpha(panel, inks, patches)));
   canvas.style.setProperty('--soft-alpha', String(alpha));
 }
 
@@ -4987,14 +5015,20 @@ function applyWash(
   wash: PictureWash,
   ground: WidgetGround,
   mediaBase: string,
+  next?: Extract<CanvasBackground, { type: 'wallpaper' }>,
 ): void {
   if (wash !== 'strong' || ground !== 'none') return;
   const style = getComputedStyle(canvas);
   const panel = style.getPropertyValue('--panel').trim();
   const inks = [style.getPropertyValue('--ink').trim(), style.getPropertyValue('--ink-scaffold').trim()];
+  const nextPatches = next === undefined ? undefined : readBackdrop(next.bare);
   const write = (patches: Backdrop | undefined): void => {
     if (patches === undefined) return;
-    const opacities = washOpacities(wash, solveGlassAlpha(panel, inks, patches));
+    const solved = solveGlassAlpha(panel, inks, patches);
+    const opacities = washOpacities(
+      wash,
+      nextPatches === undefined ? solved : Math.max(solved, solveGlassAlpha(panel, inks, nextPatches)),
+    );
     canvas.style.setProperty('--wash-edge', String(opacities.edge));
     canvas.style.setProperty('--wash-ratio', String(washRatio(opacities)));
   };
@@ -5690,6 +5724,16 @@ export function renderFreeform(
      * — `mediaBase`'s split, one asset along. Absent is the wall's.
      */
     readonly wallpaperBase?: string;
+    /*
+     * The picture a fading rotation turns to next and when (plan item M4.10),
+     * from `upcomingPicture`, which only `main.ts` asks: it alone holds the
+     * rotation before it is flattened to the picture showing. Absent is a cut,
+     * and every admin preview.
+     */
+    readonly nextPicture?: {
+      readonly picture: Extract<CanvasBackground, { type: 'wallpaper' }>;
+      readonly at: number;
+    };
   } = {},
 ): void {
   const takeover = model.interrupts.find((interrupt) => interrupt.takeover);
@@ -5754,6 +5798,21 @@ export function renderFreeform(
    * whatever its `z` — draws over it. Its opacities are the preset's until the
    * canvas is in the document and `applyWash` can read the theme it wears.
    */
+  /*
+   * The next picture of a fading rotation (plan item M4.10): a layer over the
+   * picture showing and under the wash and every widget, clear until
+   * `lockAt` fades it in over the two seconds before its swap. Scheduled on the
+   * wall clock like the slideshow's crossfade (M3.6), so the layer this draw
+   * rebuilds lands on the same frame as the one it replaced; with motion off,
+   * or reduced, nothing animates, the layer stays clear and the swap is a cut.
+   * Only a wallpaper over a wallpaper: the next one is a rotation's picture.
+   */
+  const next = layout.background?.type === 'wallpaper' ? options.nextPicture : undefined;
+  const nextLayer = next === undefined ? undefined : el('div', 'canvas-next');
+  if (nextLayer !== undefined && next !== undefined) {
+    canvas.appendChild(nextLayer);
+    lockAt(nextLayer, ROTATION_FADE_MS, next.at - ROTATION_FADE_MS, model.now);
+  }
   const wash = washOf(layout.background);
   if (wash !== undefined) {
     canvas.setAttribute('data-wash', wash);
@@ -6008,15 +6067,23 @@ export function renderFreeform(
   if (layout.background?.type === 'wallpaper') {
     applyWallpaper(canvas, layout.background, options.wallpaperBase ?? WALLPAPER_BASE);
   }
+  // The next picture, sized and placed by the same rules on its own layer, and
+  // decoded now so the fade's first frame is not the decode.
+  if (nextLayer !== undefined && next !== undefined) {
+    applyWallpaper(nextLayer, next.picture, options.wallpaperBase ?? WALLPAPER_BASE, canvas);
+    preload(nextLayer.style.backgroundImage);
+  }
 
   // Glass's opacity for what is behind these widgets, now the canvas has its
-  // theme's colours to read (plan item M4.2).
-  if (ground === 'glass') applyGlassFill(canvas, layout.background, mediaBase);
+  // theme's colours to read (plan item M4.2). While a fade is drawn, each of
+  // these is solved for both pictures and the more covering kept: halfway
+  // through, the widgets sit over a mixture of the two.
+  if (ground === 'glass') applyGlassFill(canvas, layout.background, mediaBase, next?.picture);
   // Soft's opacity over a photograph (plan item M4.5). Glass falls back to
   // Soft where a browser cannot blur, so a canvas on Glass carries it too.
-  if (ground === 'soft' || ground === 'glass') applySoftAlpha(canvas, layout.background);
+  if (ground === 'soft' || ground === 'glass') applySoftAlpha(canvas, layout.background, next?.picture);
   // The wash's opacities, solved for the picture where words sit on it (M4.7).
-  if (wash !== undefined) applyWash(canvas, layout.background, wash, ground, mediaBase);
+  if (wash !== undefined) applyWash(canvas, layout.background, wash, ground, mediaBase, next?.picture);
 
   /*
    * A slideshow that pairs portrait photos reads its own box (plan item M3.7):

@@ -12,7 +12,7 @@
  * a file is that its name is safe to put inside a `url()`.
  */
 import type { CanvasBackground } from './manifest.js';
-import { rotationIndex, rotationSteps } from './picture-rotation.js';
+import { localEpochDay, rotationIndex, rotationSteps } from './picture-rotation.js';
 
 /**
  * Where the wallpapers are served: absolute on the wall, which is always at
@@ -172,4 +172,69 @@ export function currentPicture(
     ...(background.wash === 'light' || background.wash === 'strong' ? { wash: background.wash } : {}),
     ...(picture.bare === undefined ? {} : { bare: picture.bare }),
   };
+}
+
+/** How long a rotation's crossfade takes, ending at the swap: the slideshow's two seconds (M3.6). */
+export const ROTATION_FADE_MS = 2_000;
+
+/**
+ * How long before a fade the next picture's layer is drawn, so the file is
+ * fetched and decoded before it starts to show. The wall redraws every fifteen
+ * seconds, so the layer is on the glass for 45 to 60 seconds before its fade;
+ * any earlier and an hourly rotation would hold two pictures for the hour.
+ */
+export const NEXT_PICTURE_LEAD_MS = 60_000;
+
+/**
+ * When a rotation next changes picture, by the arithmetic `rotationSteps`
+ * counts in: the next whole period from the epoch, or from where Next picture
+ * last moved it, or the wall's next local midnight for a daily one. A day's
+ * midnight is found rather than computed, because a day in October is 25
+ * hours long; to the millisecond, in about thirty halvings.
+ */
+export function nextRotationAt(every: number, now: number, timezone: string, pressedAt: number | undefined): number {
+  if (every === 1440) {
+    const today = localEpochDay(now, timezone);
+    let before = now;
+    let after = now + 27 * 3_600_000;
+    if (localEpochDay(after, timezone) === today) return after;
+    while (after - before > 1) {
+      const middle = Math.floor((before + after) / 2);
+      if (localEpochDay(middle, timezone) === today) before = middle;
+      else after = middle;
+    }
+    return after;
+  }
+  const period = every * 60_000;
+  const from = pressedAt ?? 0;
+  return from + (Math.floor((now - from) / period) + 1) * period;
+}
+
+/**
+ * The picture a fading rotation turns to next, and when the swap is, while it
+ * is close enough to draw (plan item M4.10); otherwise `undefined`, which is
+ * every rotation that cuts, every background that is not a rotation, and a
+ * swap that lands on the picture already showing (a collection of one).
+ *
+ * The wall draws it as a layer over the picture showing and fades it in over
+ * the `ROTATION_FADE_MS` before the swap — the slideshow's crossfade (M3.6),
+ * scheduled on the wall clock, so a redraw lands on the same frame.
+ */
+export function upcomingPicture(
+  background: CanvasBackground | undefined,
+  now: number,
+  timezone: string,
+  pressed: { readonly picturePressedAt?: number; readonly pictureStep?: number } | undefined,
+): { readonly picture: Extract<CanvasBackground, { type: 'wallpaper' }>; readonly at: number } | undefined {
+  if (background?.type !== 'rotation' || background.between !== 'fade') return undefined;
+  const pressedAt =
+    typeof pressed?.picturePressedAt === 'number' && typeof pressed.pictureStep === 'number'
+      ? pressed.picturePressedAt
+      : undefined;
+  const at = nextRotationAt(background.every, now, timezone, pressedAt);
+  if (at - now > NEXT_PICTURE_LEAD_MS + ROTATION_FADE_MS) return undefined;
+  const showing = currentPicture(background, now, timezone, pressed);
+  const next = currentPicture(background, at, timezone, pressed);
+  if (next?.type !== 'wallpaper' || showing?.type !== 'wallpaper' || next.id === showing.id) return undefined;
+  return { picture: next, at };
 }

@@ -29,7 +29,6 @@ import {
   readHousehold,
   requestSyncNow,
   createScreen,
-  setOwnerTheme,
   readLayoutWidgets,
   panelCanvasOwner,
   clearLayout,
@@ -339,20 +338,6 @@ const personBody = z.object({
   name: text('A name', 80),
   color: colour(),
 });
-
-/**
- * The colours a wall's theme gives it — a custom theme's own tokens, or the
- * built-in's transcription — which is what the wall's default style lane is
- * seeded from and diffed against (RFC 014 §4.1). A retired or unknown key
- * resolves to Panels, exactly as the bundle resolves it.
- */
-function wallThemeColours(db: SqliteDatabase, ref: string): Readonly<Record<string, string>> {
-  if (ref.startsWith(CUSTOM_PREFIX)) {
-    const theme = readTheme(db, ref.slice(CUSTOM_PREFIX.length));
-    if (theme !== undefined) return theme.tokens as Readonly<Record<string, string>>;
-  }
-  return builtinThemeTokens(ref);
-}
 
 /**
  * The name a household knows its wall's theme by — a custom theme's own name,
@@ -691,7 +676,7 @@ import { cssAdvancedRow, registerCssRoutes } from './admin-css.js';
 import { offeredTimezones } from './setup.js';
 import { selfHref } from './self.js';
 import { CUSTOM_PREFIX, FALLBACK_THEME, FONTS, isValidThemeRef, readTheme, readThemes, resolveTheme } from '../api/themes.js';
-import { builtinThemeTokens } from '../api/builtin-themes.js';
+import { wallThemeColours } from '../api/builtin-themes.js';
 import {
   STYLE_INSET_MAX,
   STYLE_TRACKINGS,
@@ -924,6 +909,11 @@ function wallTemplatePreviews(
     // resolved to its files (plan item P6.1), and one the catalogue does not
     // name is no background — the card draws the theme, as the wall would.
     ...(previewBackgroundOf(t.portrait.background) ?? {}),
+    // The two wall settings a template may carry (plan items M4.9 and M4.12),
+    // so a Mosaic card is drawn edge to edge with its cards on a solid ground,
+    // as applying it would draw the wall.
+    ...(t.gutter !== undefined ? { gutter: t.gutter } : {}),
+    ...(t.widgetGround !== undefined ? { widgetGround: t.widgetGround } : {}),
   }));
 }
 
@@ -3417,9 +3407,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       id,
       template.id === 'classic' ? classicSeed(deps.db, id, householdSetUp(deps.db)) : template,
       seedAspects(deps.db, id),
+      shaped.value.theme,
     );
     /*
-     * And the theme the household chose wins over the template's own.
+     * And the theme the household chose wins over the template's own, passed
+     * in rather than written afterwards so a picture background is fitted to
+     * the theme the wall will wear (plan item M4.9).
      *
      * `applyTemplate` writes `template.theme` when the card names one, which is
      * right on the gallery — pressing Sky Week there *is* asking for Almanac,
@@ -3430,13 +3423,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
      * the page: measured in a real browser, choosing Sky Week and then Panels
      * made an Almanac wall (RFC 015 §3.1, and the `options.json` rule).
      *
-     * Written *after* rather than instead, because `applyTemplate` is the one
-     * place that keeps a canvas and its theme consistent and the template's
-     * backgrounds are authored for its own theme. What is overridden is the
-     * answer, never the ordering that produced it — and the household was shown
-     * the template's theme as a suggestion on the card before they chose.
+     * Handed to `applyTemplate` rather than replacing it, because that is the
+     * one place that keeps a canvas and its theme consistent. What is
+     * overridden is the answer, never the ordering that produced it — and the
+     * household was shown the template's theme as a suggestion on the card
+     * before they chose.
      */
-    setOwnerTheme(deps.db, id, shaped.value.theme);
     // Shown on the page the redirect lands on, not here: a POST's own answer
     // is a page a reload resubmits (a second wall) and Back cannot return to.
     reveals.put(id, issued, now());

@@ -1,4 +1,4 @@
-import { currentPicture } from './wallpaper.js';
+import { currentPicture, upcomingPicture } from './wallpaper.js';
 import { UPDATE_RELOAD_KEY, pageVersion, reloadAllowed, reloadFresh, staggerMs, updateDue } from './update.js';
 import { pushUrl, startPush } from './push.js';
 import { activeLayout, refreshDue } from './wall-commands.js';
@@ -435,9 +435,12 @@ function start(): void {
     const drawn = background === undefined
       ? { aspect: canvas.aspect, widgets: canvas.widgets }
       : { ...canvas, background };
+    // And, on a rotation that fades, the picture it turns to next (M4.10).
+    const nextPicture = upcomingPicture(canvas.background, now, manifest.timezone, manifest.screen);
     renderFreeform(root, model, drawn, undefined, {
       daytime: day,
       motion: manifest.screen?.motion !== false,
+      ...(nextPicture !== undefined ? { nextPicture } : {}),
     });
     /*
      * The household's CSS goes on only while a canvas is on the glass. Asked

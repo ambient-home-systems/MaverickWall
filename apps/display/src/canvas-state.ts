@@ -41,7 +41,7 @@ export type CanvasBackground =
    * and the minutes between pictures — never the pictures, which the server
    * resolves and its schema would refuse in a posted body.
    */
-  | { type: 'rotation'; collection: string; tone: 'light' | 'dark'; every: number; wash?: PictureWash };
+  | { type: 'rotation'; collection: string; tone: 'light' | 'dark'; every: number; wash?: PictureWash; between?: 'fade' };
 
 /** How far a picture is toned down towards the canvas's ground (plan item M4.7); absent is not at all. */
 export type PictureWash = 'light' | 'strong';

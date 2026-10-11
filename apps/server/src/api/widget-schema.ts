@@ -772,6 +772,9 @@ export const backgroundSchema = z.discriminatedUnion('type', [
       tone: z.enum(['light', 'dark']),
       every: z.union(ROTATION_EVERY.map((minutes) => z.literal(minutes)) as unknown as [z.ZodLiteral<5>, z.ZodLiteral<15>, z.ZodLiteral<60>, z.ZodLiteral<1440>]),
       wash,
+      // Fade into each picture (plan item M4.10); absent is a cut, which is
+      // every rotation saved before this.
+      between: z.literal('fade').optional(),
     })
     .strict()
     .refine((bg) => rotationPictures(bg.collection, bg.tone).length >= 2, {

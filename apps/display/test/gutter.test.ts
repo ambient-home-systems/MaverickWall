@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { GUTTER_DEFAULT_STEP, GUTTER_STEPS, boxRect, gutterStepFor } from '../src/gutter.js';
+import { GUTTER_DEFAULT_STEP, GUTTER_STEPS, ROOMY_STEP, boxRect, gutterStepFor, pictureWantsRoom } from '../src/gutter.js';
 
 /** The step's padding, or undefined — what the first half of this file asks about. */
 const gutterValue = (step: unknown): string | undefined => gutterStepFor(step)?.padding;
@@ -204,5 +204,21 @@ describe('the canvas taking room out of a box', () => {
     const nearly = boxRect({ x: 0, y: 0, w: 0.9999, h: 1 }, 'var(--s5)');
     expect(nearly.width).toBe('99.99%');
     expect(nearly.insetX).toBe('0px');
+  });
+});
+
+describe('when the picture pickers suggest more room (plan item M4.11)', () => {
+  it('suggests it while the boxes tile, and never once the canvas pays', () => {
+    for (let step = 0; step < GUTTER_STEPS.length; step += 1) {
+      expect(pictureWantsRoom(step)).toBe(step < ROOMY_STEP);
+    }
+    // Roomy is the first step at which the canvas takes room out of a box.
+    expect(gutterStepFor(ROOMY_STEP)?.canvas).not.toBe('0px');
+    expect(gutterStepFor(ROOMY_STEP - 1)?.canvas).toBe('0px');
+  });
+
+  it('reads a wall nobody asked, or a step it does not know, as the default', () => {
+    expect(pictureWantsRoom(undefined)).toBe(GUTTER_DEFAULT_STEP < ROOMY_STEP);
+    expect(pictureWantsRoom(99)).toBe(true);
   });
 });

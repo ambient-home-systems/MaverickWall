@@ -3482,6 +3482,20 @@ img.wxi { display: block; object-fit: contain; }
   -webkit-mask-image: radial-gradient(ellipse at 50% 50%, rgba(0, 0, 0, var(--wash-ratio, 0.455)) 30%, #000 100%);
   mask-image: radial-gradient(ellipse at 50% 50%, rgba(0, 0, 0, var(--wash-ratio, 0.455)) 30%, #000 100%);
 }
+/*
+ * The next picture of a fading rotation (plan item M4.10), over the picture
+ * showing and under the wash and every widget, clear until its fade. Without
+ * motion it never animates, so it stays clear and the swap is a cut.
+ */
+.canvas-next {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  pointer-events: none;
+  opacity: 0;
+}
 .canvas[data-wash="strong"] {
   --wash-edge: 0.8;
   --wash-ratio: 0.625;
@@ -4967,6 +4981,15 @@ img.wxi { display: block; object-fit: contain; }
     to { transform: scale(1.08); }
   }
   .canvas[data-motion="on"] .fw-photo-next.fx-scheduled {
+    animation-name: mw-photo-in;
+    animation-timing-function: ease-in-out;
+    animation-fill-mode: both;
+  }
+  /*
+   * A rotation's crossfade (plan item M4.10): the slideshow's fade, on the
+   * canvas's next-picture layer.
+   */
+  .canvas[data-motion="on"] .canvas-next.fx-scheduled {
     animation-name: mw-photo-in;
     animation-timing-function: ease-in-out;
     animation-fill-mode: both;

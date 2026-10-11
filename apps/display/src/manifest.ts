@@ -59,6 +59,8 @@ export type CanvasBackground =
       readonly tone?: 'light' | 'dark';
       readonly every: number;
       readonly wash?: PictureWash;
+      /** Fade into each picture rather than cut to it (plan item M4.10); absent is a cut. */
+      readonly between?: 'fade';
       readonly pictures?: readonly {
         readonly id: string;
         readonly small: string;
