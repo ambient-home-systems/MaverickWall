@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 1.2.0
+
 **Two new starting layouts.** **Photo Frame** is the time, the weather and
 what's next as floating cards over a painting that changes every hour, fading
 from one to the next. **Mosaic** puts your own photos edge to edge, with the
