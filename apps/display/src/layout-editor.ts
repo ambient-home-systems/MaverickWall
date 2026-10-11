@@ -404,6 +404,8 @@ function boot(): void {
     /** A photograph's focal point on a portrait wall, and the patches Soft is solved from (plan item M4.5). */
     readonly portraitFocal?: { readonly x: number; readonly y: number };
     readonly soft?: { readonly light: string; readonly dark: string };
+    /** A photograph's credit: who made it, and the line a CC BY licence asks to be shown (M4.5). */
+    readonly credit?: { readonly author: string; readonly attribution?: string };
   }
   let wallpapers: readonly WallpaperChoice[] = [];
   /**
@@ -4774,6 +4776,21 @@ function boot(): void {
    * orientation being arranged and centred on its focal point — the part of
    * it this wall will actually show.
    */
+  /**
+   * The line under a photograph's name: its credit. A picture under CC BY
+   * carries the credit line its licence asks to be shown with the picture,
+   * and this tile is where a household meets it; a public-domain painting
+   * names its painter, because "Meadow" alone does not say whose. A drawn
+   * wallpaper is this project's own and carries none.
+   */
+  function wallpaperCredit(one: WallpaperChoice): HTMLElement[] {
+    if (one.credit === undefined) return [];
+    const line = document.createElement('span');
+    line.className = 'le-wp-credit';
+    line.textContent = one.credit.attribution !== undefined ? `Credit: ${one.credit.attribution} (CC BY 4.0)` : one.credit.author;
+    return [line];
+  }
+
   function wallpaperTile(one: WallpaperChoice, current: string): HTMLElement {
     const button = document.createElement('button');
     button.type = 'button';
@@ -4796,7 +4813,7 @@ function boot(): void {
     const name = document.createElement('span');
     name.className = 'le-wp-name';
     name.textContent = one.name;
-    button.append(picture, name);
+    button.append(picture, name, ...wallpaperCredit(one));
     button.addEventListener('click', () => {
       record();
       const chosen: Background = { type: 'wallpaper', id: one.id };
@@ -4940,7 +4957,7 @@ function boot(): void {
       const name = document.createElement('span');
       name.className = 'le-wp-name';
       name.textContent = one.name;
-      item.append(picture, name);
+      item.append(picture, name, ...wallpaperCredit(one));
       strip.appendChild(item);
     }
     wrap.appendChild(strip);

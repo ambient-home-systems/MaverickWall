@@ -86,9 +86,17 @@ export function saturate(rgb: Rgb, amount: number): Rgb {
   ].map((v) => Math.max(0, Math.min(255, v))) as unknown as Rgb;
 }
 
-/** The card colour at `alpha` over a patch, as the browser composites it: in sRGB, rounded to a byte. */
+/**
+ * The card colour at `alpha` over a patch, in sRGB as the browser composites
+ * it, and deliberately **not** rounded to a byte. The browser's own blend is a
+ * byte, but rounding here let the solver pass on half a level the screen may
+ * not give: at an opacity above 0.9 the patch margin moves the blend by under
+ * a fifth of a level, so a rounding in the solver's favour outweighed it, and
+ * a painting (M4.5) was solved to an opacity the contrast gate read as 4.499:1.
+ * Unrounded, the solver can only answer the same hundredth or the next.
+ */
 function over(panel: Rgb, alpha: number, patch: Rgb): Rgb {
-  return [0, 1, 2].map((i) => Math.round(alpha * (panel[i] ?? 0) + (1 - alpha) * (patch[i] ?? 0))) as unknown as Rgb;
+  return [0, 1, 2].map((i) => alpha * (panel[i] ?? 0) + (1 - alpha) * (patch[i] ?? 0)) as unknown as Rgb;
 }
 
 /**

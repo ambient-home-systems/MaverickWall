@@ -15,11 +15,15 @@
  * credited. `wallpaper-photos.test.ts` fails on a shipped file with no entry, on
  * a licence off the allowlist, and on a credit file this script did not write.
  *
- * Two of the allowlist's sources were reachable from the network this was
- * built on, and the set comes from those two: the National Gallery of Art's
- * open-access images (public-domain works, "free of charge for any use") and
- * NASA's image library (photographs taken by NASA astronauts on the
- * International Space Station). The others are a matter of adding entries.
+ * The set comes from five of them: the National Gallery of Art's open-access
+ * images and the Rijksmuseum's (public-domain works, free for any use), NASA's
+ * image library (photographs taken by astronauts on the International Space
+ * Station), and ESA/Hubble and ESA/Webb, whose images are CC BY 4.0. A CC BY
+ * picture names its required credit as \`attribution\`, which the wallpaper
+ * picker shows on its tile, because that licence asks for the credit to be
+ * shown with the picture and not only written down. The Art Institute of
+ * Chicago's image server sits behind a bot check a script cannot pass, so its
+ * works are not here.
  *
  * **The pictures are resized, never edited.** Three files per picture, as the
  * drawn set has: about 320px on the long edge for the picker, and long edges
@@ -71,12 +75,24 @@ const nga = (uuid) => `https://api.nga.gov/iiif/${uuid}/full/!3200,3200/0/defaul
 const ngaPage = (objectId) => `https://www.nga.gov/collection/art-object-page.${objectId}.html`;
 const nasa = (id) => `https://images-assets.nasa.gov/image/${id}/${id}~orig.jpg`;
 const nasaPage = (id) => `https://images.nasa.gov/details/${id}`;
+/**
+ * The Rijksmuseum's IIIF address for a work's image. \`region\` is the IIIF
+ * region, kept for a scan whose own frame shows at its edges: the server crops
+ * it, so the address recorded is still exactly what was fetched.
+ */
+const rijks = (iiif, region = 'full') => `https://iiif.micr.io/${iiif}/${region}/!3200,3200/0/default.jpg`;
+const rijksPage = (objectNumber) => `https://www.rijksmuseum.nl/en/collection/${objectNumber}`;
+/** ESA/Webb's largest JPEG; `large` is only 1200px for some images, `publicationjpg` is the print size. */
+const webb = (id, size = 'large') => `https://cdn.esawebb.org/archives/images/${size}/${id}.jpg`;
+const webbPage = (id) => `https://esawebb.org/images/${id}/`;
+const hubble = (id) => `https://cdn.esahubble.org/archives/images/large/${id}.jpg`;
+const hubblePage = (id) => `https://esahubble.org/images/${id}/`;
 
 const DARK = ['panels', 'swiss'];
 const LIGHT = ['household', 'almanac', 'blueprint'];
 
 /**
- * The set: sixteen, eight of each tone. Paintings whose interest is in a sky
+ * The set: twenty-eight, sixteen dark and twelve light. Paintings whose interest is in a sky
  * or a light take a focal point low enough to keep the horizon on a landscape
  * wall, and a portrait wall's slice is centred on what the picture is of.
  */
@@ -137,6 +153,32 @@ export const PHOTOS = [
     credit: { title: 'Beacon Rock, Newport Harbor', author: 'John Frederick Kensett', date: '1857',
       source: ngaPage(42389), image: nga('c31769b8-f5f8-41bd-b204-1e838690c219'), licence: 'nga-open-access' } },
 
+  // --- Paintings from the Rijksmuseum ---
+  { id: 'wijk-windmill', name: 'Windmill at Wijk', category: 'painting', tone: 'dark', themes: DARK,
+    focal: { x: 50, y: 45 }, portraitFocal: { x: 70, y: 50 },
+    credit: { title: 'The Windmill at Wijk bij Duurstede', author: 'Jacob Isaacksz van Ruisdael', date: 'c. 1668-1670',
+      source: rijksPage('SK-C-211'), image: rijks('XWEFp', 'pct:2,3,96,94'), licence: 'rijksmuseum' } },
+  { id: 'river-riders', name: 'River with riders', category: 'painting', tone: 'dark', themes: DARK,
+    focal: { x: 50, y: 50 }, portraitFocal: { x: 58, y: 50 },
+    credit: { title: 'River Landscape with Riders', author: 'Aelbert Cuyp', date: 'c. 1653-1657',
+      source: rijksPage('SK-A-4118'), image: rijks('uMHxo'), licence: 'rijksmuseum' } },
+  { id: 'winter-skaters', name: 'Winter skaters', category: 'painting', tone: 'light', themes: LIGHT,
+    focal: { x: 50, y: 55 }, portraitFocal: { x: 45, y: 50 },
+    credit: { title: 'Winter Landscape with Ice Skaters', author: 'Hendrick Avercamp', date: 'c. 1608',
+      source: rijksPage('SK-A-1718'), image: rijks('aXnzA'), licence: 'rijksmuseum' } },
+  { id: 'merwede', name: 'The Merwede', category: 'painting', tone: 'light', themes: LIGHT,
+    focal: { x: 50, y: 50 }, portraitFocal: { x: 55, y: 50 },
+    credit: { title: 'View of the Merwede off Dordrecht', author: 'attributed to Jeronymus van Diest (II)', date: 'c. 1660',
+      source: rijksPage('SK-A-121'), image: rijks('CepGg'), licence: 'rijksmuseum' } },
+  { id: 'july-windmill', name: 'In the month of July', category: 'painting', tone: 'light', themes: LIGHT,
+    focal: { x: 50, y: 50 }, portraitFocal: { x: 50, y: 50 },
+    credit: { title: "A Windmill on a Polder Waterway, Known as 'In the Month of July'", author: 'Paul Joseph Constantin Gabriël', date: 'c. 1889',
+      source: rijksPage('SK-A-1505'), image: rijks('HNwWx'), licence: 'rijksmuseum' } },
+  { id: 'zwijndrecht-winter', name: 'Zwijndrecht in winter', category: 'painting', tone: 'light', themes: LIGHT,
+    focal: { x: 50, y: 45 }, portraitFocal: { x: 55, y: 50 },
+    credit: { title: 'Zwijndrecht in the Winter', author: 'Siebe Johannes ten Cate', date: '1892',
+      source: rijksPage('SK-A-2299'), image: rijks('cJXML'), licence: 'rijksmuseum' } },
+
   // --- From space, dark ---
   { id: 'orbital-sunset', name: 'Sunset from orbit', category: 'space', tone: 'dark', themes: DARK,
     focal: { x: 50, y: 50 }, portraitFocal: { x: 60, y: 50 },
@@ -150,6 +192,38 @@ export const PHOTOS = [
     focal: { x: 50, y: 85 }, portraitFocal: { x: 55, y: 50 },
     credit: { title: 'Aurora borealis and city lights on the horizon (ISS029-E-012564)', author: 'NASA astronaut Mike Fossum', date: '29 September 2011',
       source: nasaPage('iss029e012564'), image: nasa('iss029e012564'), licence: 'nasa-media' } },
+
+  // --- From space, ESA/Hubble and ESA/Webb (CC BY 4.0: each names its required credit) ---
+  { id: 'westerlund', name: 'Westerlund 2', category: 'space', tone: 'dark', themes: DARK,
+    focal: { x: 50, y: 50 }, portraitFocal: { x: 50, y: 50 },
+    credit: { title: "Westerlund 2 — Hubble's 25th anniversary image (heic1509a)", author: 'NASA, ESA, the Hubble Heritage Team (STScI/AURA), A. Nota (ESA/STScI), and the Westerlund 2 Science Team', date: '23 April 2015',
+      source: hubblePage('heic1509a'), image: hubble('heic1509a'), licence: 'esa-hubble',
+      attribution: 'NASA, ESA, the Hubble Heritage Team (STScI/AURA), A. Nota (ESA/STScI), and the Westerlund 2 Science Team' } },
+  { id: 'bubble-nebula', name: 'The Bubble Nebula', category: 'space', tone: 'dark', themes: DARK,
+    focal: { x: 55, y: 55 }, portraitFocal: { x: 55, y: 50 },
+    credit: { title: 'The Bubble Nebula (heic1608a)', author: 'NASA, ESA, Hubble Heritage Team', date: '21 April 2016',
+      source: hubblePage('heic1608a'), image: hubble('heic1608a'), licence: 'esa-hubble',
+      attribution: 'NASA, ESA, Hubble Heritage Team' } },
+  { id: 'butterfly-nebula', name: 'Butterfly Nebula', category: 'space', tone: 'dark', themes: DARK,
+    focal: { x: 50, y: 50 }, portraitFocal: { x: 48, y: 50 },
+    credit: { title: 'Butterfly emerges from stellar demise in planetary nebula NGC 6302 (heic0910h)', author: 'NASA, ESA and the Hubble SM4 ERO Team', date: '9 September 2009',
+      source: hubblePage('heic0910h'), image: hubble('heic0910h'), licence: 'esa-hubble',
+      attribution: 'NASA, ESA and the Hubble SM4 ERO Team' } },
+  { id: 'cosmic-cliffs', name: 'Cosmic Cliffs', category: 'space', tone: 'dark', themes: DARK,
+    focal: { x: 50, y: 55 }, portraitFocal: { x: 45, y: 50 },
+    credit: { title: 'NIRCam Image of the "Cosmic Cliffs" in Carina (weic2205a)', author: 'NASA, ESA, CSA, and STScI', date: '12 July 2022',
+      source: webbPage('weic2205a'), image: webb('weic2205a'), licence: 'esa-webb',
+      attribution: 'NASA, ESA, CSA, and STScI' } },
+  { id: 'pillars-webb', name: 'Pillars of Creation', category: 'space', tone: 'dark', themes: DARK,
+    focal: { x: 50, y: 50 }, portraitFocal: { x: 50, y: 50 },
+    credit: { title: 'Webb Takes a Stunning, Star-Filled Portrait of the Pillars of Creation (weic2216a)', author: 'NASA, ESA, CSA, STScI; J. DePasquale, A. Koekemoer, A. Pagan (STScI)', date: '19 October 2022',
+      source: webbPage('weic2216a'), image: webb('weic2216a', 'publicationjpg'), licence: 'esa-webb',
+      attribution: 'NASA, ESA, CSA, STScI; J. DePasquale, A. Koekemoer, A. Pagan (STScI)' } },
+  { id: 'rho-ophiuchi', name: 'Rho Ophiuchi', category: 'space', tone: 'dark', themes: DARK,
+    focal: { x: 50, y: 45 }, portraitFocal: { x: 55, y: 50 },
+    credit: { title: 'Rho Ophiuchi cloud complex (weic2316a)', author: 'NASA, ESA, CSA, STScI, K. Pontoppidan (STScI), A. Pagan (STScI)', date: '12 July 2023',
+      source: webbPage('weic2316a'), image: webb('weic2316a'), licence: 'esa-webb',
+      attribution: 'NASA, ESA, CSA, STScI, K. Pontoppidan (STScI), A. Pagan (STScI)' } },
 ];
 
 /**
@@ -170,6 +244,26 @@ export const LICENCES = {
     terms: 'https://www.nasa.gov/nasa-brand-center/images-and-media/',
     statement: 'NASA content is generally not subject to copyright in the United States; credit NASA.',
     hosts: ['images-assets.nasa.gov', 'images.nasa.gov'],
+  },
+  rijksmuseum: {
+    name: 'Public domain, Rijksmuseum',
+    terms: 'https://data.rijksmuseum.nl/policy',
+    statement: 'Images of works in the public domain, marked with the Public Domain Mark or CC0, free to use for any purpose.',
+    hosts: ['data.rijksmuseum.nl', 'www.rijksmuseum.nl', 'iiif.micr.io'],
+  },
+  'esa-hubble': {
+    name: 'CC BY 4.0, ESA/Hubble',
+    terms: 'https://esahubble.org/copyright/',
+    statement: 'Released under the Creative Commons Attribution 4.0 International licence; the credit listed with each image must be shown with it.',
+    attribution: true,
+    hosts: ['esahubble.org', 'cdn.esahubble.org'],
+  },
+  'esa-webb': {
+    name: 'CC BY 4.0, ESA/Webb',
+    terms: 'https://esawebb.org/copyright/',
+    statement: 'Released under the Creative Commons Attribution 4.0 International licence; the credit listed with each image must be shown with it.',
+    attribution: true,
+    hosts: ['esawebb.org', 'cdn.esawebb.org'],
   },
 };
 
@@ -361,7 +455,7 @@ const credits = entries
   .map((e) => {
     const licence = LICENCES[e.credit.licence];
     return `- **${e.name}** (\`${e.id}\`): *${e.credit.title}*, ${e.credit.author}, ${e.credit.date}. ` +
-      `${licence.name}. Source: ${e.credit.source}. Fetched ${e.credit.retrieved} from ${e.credit.image} ` +
+      `${licence.name}.${e.credit.attribution ? ` Credit: ${e.credit.attribution}.` : ''} Source: ${e.credit.source}. Fetched ${e.credit.retrieved} from ${e.credit.image} ` +
       `(sha256 \`${e.credit.sha256}\`).`;
   })
   .join('\n');
@@ -375,8 +469,10 @@ GENERATED by \`scripts/wallpapers/photos.mjs\` from the list in that script; do
 not edit between these markers.
 
 These are not this project's work and are not under its licence. Each is a
-public-domain picture from a source on the plan's allowlist (MD5), resized and
-re-encoded and otherwise unchanged. The licences:
+picture from a source on the plan's allowlist (MD5), public domain or under
+Creative Commons Attribution, resized and re-encoded and otherwise unchanged.
+A picture under CC BY carries its required credit, which the wallpaper picker
+shows beside it. The licences:
 
 ${licenceList}
 
@@ -395,11 +491,12 @@ const noticeStart = '# photos:start';
 const noticeEnd = '# photos:end';
 const noticeBody = `${noticeStart}
 The bundled photographs and paintings under apps/server/assets/wallpapers/ are
-not this project's work. They are public-domain pictures from the National
-Gallery of Art's open-access programme and from NASA, credited one by one, with
-where each came from and the sha256 of the bytes fetched, in
+not this project's work. They are pictures from the National Gallery of Art's
+open-access programme, the Rijksmuseum and NASA (public domain), and from
+ESA/Hubble and ESA/Webb (CC BY 4.0, with the credit given), credited one by
+one, with where each came from and the sha256 of the bytes fetched, in
 apps/server/assets/wallpapers/LICENSES.md:
-${entries.map((e) => `  ${e.credit.title}, ${e.credit.author}, ${e.credit.date} (${LICENCES[e.credit.licence].name})`).join('\n')}
+${entries.map((e) => `  ${e.credit.title}, ${e.credit.author}, ${e.credit.date} (${LICENCES[e.credit.licence].name}${e.credit.attribution ? `; credit: ${e.credit.attribution}` : ''})`).join('\n')}
 ${noticeEnd}`;
 const notice = readFileSync(NOTICE, 'utf8');
 const ns = notice.indexOf(noticeStart);

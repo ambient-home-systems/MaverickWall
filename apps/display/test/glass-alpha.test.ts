@@ -26,7 +26,7 @@ const HOUSEHOLD = { panel: '#FFFDF8', ink: '#2B2620', scaffold: '#6E665C' };
 const over = (panel: string, alpha: number, patch: string): Rgb => {
   const p = parseRgb(panel) as Rgb;
   const b = parseRgb(patch) as Rgb;
-  return [0, 1, 2].map((i) => Math.round(alpha * (p[i] ?? 0) + (1 - alpha) * (b[i] ?? 0))) as unknown as Rgb;
+  return [0, 1, 2].map((i) => alpha * (p[i] ?? 0) + (1 - alpha) * (b[i] ?? 0)) as unknown as Rgb;
 };
 const widen = (hexes: readonly string[]): string[] => {
   const shift = (h: string, by: number): string =>

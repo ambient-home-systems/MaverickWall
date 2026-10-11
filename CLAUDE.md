@@ -10762,6 +10762,59 @@ one red is `browser-glass`'s striped-picture case, which is red on a clean
 `playwright-core` expects. **Still unproven where it counts:** nobody has
 looked at a painting on a kitchen wall.
 
+**Twelve more pictures, and the credit a CC BY picture asks for is on its tile
+(M4.5 continued).** Once the owner allowed the other museum hosts, the set grew
+to twenty-eight: six Rijksmuseum paintings (Avercamp, Ruisdael, Cuyp, ten Cate,
+Gabriël and a Merwede view attributed to Jeronymus van Diest), all marked
+Public Domain or CC0 in their own records, and six nebulae from ESA/Hubble and
+ESA/Webb under CC BY 4.0. The Art Institute of Chicago answers its catalogue
+but serves its images behind Cloudflare's bot check, so it is not used, and
+the Smithsonian's search key was rate-limited. Three things came with it:
+
+- **A CC BY picture carries its credit line** (`credit.attribution`), and the
+  wallpaper picker draws it under the picture's name, because ESA's licence
+  asks for the credit to be shown with the image and not only written in
+  `NOTICE`. A public-domain painting's tile names its painter.
+  `wallpaper-photos.test.ts` holds the line present exactly when the licence
+  asks for one; `browser-wallpaper-photos.test.ts` reads it off a real
+  picker's tiles. Both mutations (no line, or the author where the credit
+  belongs) are red.
+- **Two sources needed more than an address.** A Ruisdael scan shows its own
+  frame at the edges, so its address asks the Rijksmuseum's IIIF server for a
+  region (`pct:2,3,96,94`) and the address recorded is still exactly what was
+  fetched. ESA's `large` file is 1200px for Webb's Pillars, so that one is
+  `publicationjpg`, and Mystic Mountain, which exists only at 2104px, was
+  swapped for Westerlund 2.
+- **The opacity solvers stopped rounding the blend.** The wall's solver, and
+  five copies in tests, rounded the card-over-picture colour to a byte before
+  checking 4.5:1. Above 0.9 opacity the three-level patch margin moves the
+  blend by under a fifth of a level, so a rounding in the solver's favour
+  outweighed it: the 1892 Zwijndrecht winter was solved to 0.95 on Almanac and
+  read 4.499:1 in the contrast gate, which checks the unrounded blend. Every
+  solver now checks the unrounded blend too, which can only answer the same
+  hundredth or the next. The solved Soft ranges came out unchanged; one Glass
+  opacity rose by a hundredth.
+
+The budget is 40 MB, the owner's call, and the directory is 32 MB.
+`node scripts/wallpapers/photos.mjs` cannot reach the network on its own in a
+cloud session, because Node's `fetch` does not use the proxy; the originals
+were put in its cache with curl, which it then reads and checks.
+
+**The full run also found a test that fails for an hour every night, on
+`main` too.** `weather-providers-admin`'s Home Assistant forecast was dated by
+the UTC calendar for a household in London, so from 23:00 UTC in summer its
+first day was yesterday and read "Sat" where the test wanted "Today". Measured
+red on a clean worktree of `main` at 23:04 UTC, then green with the fixture
+dated in the household's own zone, in the same hour. It is the
+`fixtureDate` fault of the browser harness, one file along.
+
+**5590 tests passing, 1 red and 2 skipped, over 407 files**: calendar 153 (1
+skipped) over 10 · core 314 over 9 · display 1018 over 63 · server 4105 (1
+skipped) over 325. That count is `pnpm test` with a real Chromium, with the
+weather file re-run after its fix rather than the suite again. The one red is
+`browser-glass`'s striped-picture case, red on a clean `main` in this
+container as before.
+
 ---
 
 ## Open decisions

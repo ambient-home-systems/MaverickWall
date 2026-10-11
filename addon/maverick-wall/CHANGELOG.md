@@ -17,11 +17,13 @@
 ## Unreleased
 
 **Paintings and pictures from space.** The wallpaper picker has two new
-groups. **Paintings** has thirteen public-domain landscapes from the National
-Gallery of Art in Washington, by Monet, Turner, Church, Bierstadt, Seurat,
-Pissarro and others. **From space** has three photographs taken from the
-International Space Station: a sunset, an aurora and a city at night. They
-work in rotations like any other wallpaper. Each painting is framed for
+groups. **Paintings** has nineteen public-domain landscapes from the National
+Gallery of Art in Washington and the Rijksmuseum in Amsterdam, by Monet,
+Turner, Church, Bierstadt, Seurat, Pissarro, Avercamp, Ruisdael, Cuyp and
+others. **From space** has nine: a sunset, an aurora and a city at night
+photographed from the International Space Station, and six nebulae from the
+Hubble and Webb space telescopes. Each picture's painter or credit is shown
+under it in the picker. They work in rotations like any other wallpaper. Each painting is framed for
 portrait and landscape walls separately. Over a painting the Soft ground
 behind your widgets is a little more solid where the picture needs it, so the
 text stays easy to read.

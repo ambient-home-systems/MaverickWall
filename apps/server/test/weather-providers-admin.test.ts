@@ -124,8 +124,17 @@ async function connect(h: Harness, ha: FakeHa): Promise<void> {
 }
 
 /** A weather entity as Met.no makes one: metric, daily and hourly. */
+/**
+ * The household's own date, in Europe/London as it is set up above. The UTC
+ * date is the wrong day from 23:00 UTC in summer, when London is already on
+ * the next one, and the forecast's first day then reads "Sat" rather than
+ * "Today" for an hour every night.
+ */
+const londonDate = (ms: number): string =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit' }).format(ms);
+
 function metNo(now = Date.now()): FakeWeather {
-  const day = (offset: number): string => new Date(now + offset * 86_400_000).toISOString().slice(0, 10);
+  const day = (offset: number): string => londonDate(now + offset * 86_400_000);
   return {
     state: 'rainy',
     last_updated: new Date(now - 10 * 60_000).toISOString(),
@@ -269,7 +278,7 @@ describe('a Home Assistant weather entity, end to end', () => {
     const ha = await fakeHomeAssistant();
     const entity = metNo();
     const now = Date.now();
-    const date = new Date(now).toISOString().slice(0, 10);
+    const date = londonDate(now);
     ha.weather['weather.nws_home'] = {
       ...entity,
       attributes: { ...entity.attributes, supported_features: 4, temperature_unit: '°F', temperature: 58 },
