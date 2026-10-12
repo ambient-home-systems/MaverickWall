@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 1.7.0
+
 **More than one account, and a second step at sign-in.** System › Accounts
 adds an account for each person, as an Admin, who can change everything, or
 View only, who can look at everything and change nothing. A view-only account
