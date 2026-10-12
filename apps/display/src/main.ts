@@ -16,7 +16,7 @@ import {
   type CanvasBackground,
 } from './manifest.js';
 import { renderFreeform, renderMessage, renderPairing } from './render.js';
-import { applyTheme, daytimeActive } from './theme.js';
+import { applyTheme, daylightShowing } from './theme.js';
 import {
   geometryFor,
   normaliseOrientation,
@@ -396,12 +396,9 @@ function start(): void {
     // manifest, or the switch to the daylight theme would wait for a calendar
     // to change rather than for the sun to come up.
     const local = localTime(now, manifest.timezone);
-    const day = daytimeActive(
-      local,
-      manifest.theme.daytime,
-      manifest.theme.daytimeStartsAt,
-      manifest.theme.daytimeEndsAt,
-    );
+    // By the hours, the sun, or a Home Assistant entity while this copy is
+    // fresh enough to believe it (M8.7).
+    const day = daylightShowing(local, manifest.theme, now - lastConfirmedAt);
     applyTheme(
       document.documentElement,
       day && manifest.theme.daytime !== undefined ? manifest.theme.daytime : manifest.theme.active,

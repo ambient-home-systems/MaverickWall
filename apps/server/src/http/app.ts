@@ -105,12 +105,14 @@ import {
   readShiftPlans,
   readShiftTypes,
   readSources,
+  readWeatherSettings,
   touchScreen,
   recordFrameForwarding,
   recordScreenViewport,
   type ScreenRow,
 } from '../api/queries.js';
 import type { SqliteDatabase } from '../db/open.js';
+import { resolveDaylight } from '../api/daylight.js';
 
 /**
  * The HTTP surface.
@@ -1250,6 +1252,32 @@ export function createApp(deps: AppDeps): Hono {
         ? screenLike.timezone
         : household.timezone;
 
+    /*
+     * What switches this wall to its daylight theme (plan item M8.7): read
+     * here, from its own row and the household's location, because assembly
+     * does no I/O. A document for no wall has no row and keeps its hours.
+     */
+    const daylight = (() => {
+      if (screenLike.id === undefined) return undefined;
+      const row = deps.db
+        .prepare(
+          `SELECT daylight_source AS source, daylight_state AS state, daylight_read_at AS readAt
+             FROM screens WHERE id = ?`,
+        )
+        .get(screenLike.id) as { source: string | null; state: number | null; readAt: number | null } | undefined;
+      if (row === undefined || row.source === null) return undefined;
+      const place = readWeatherSettings(deps.db);
+      return resolveDaylight({
+        source: row.source,
+        state: row.state,
+        readAt: row.readAt,
+        latitude: place.latitude,
+        longitude: place.longitude,
+        timezone,
+        now: at,
+      });
+    })();
+
     // This wall's effective display settings — its own overrides, or the
     // household's — and which canvas of widgets to read: its own, or the
     // shared default. One resolver, so every surface agrees.
@@ -1397,6 +1425,7 @@ export function createApp(deps: AppDeps): Hono {
         daytimeTheme: screenLike.daytimeTheme,
         daytimeStartsAt: screenLike.daytimeStartsAt,
         daytimeEndsAt: screenLike.daytimeEndsAt,
+        ...(daylight === undefined ? {} : { daylight }),
       },
       notices: deps.bootNotices,
     });

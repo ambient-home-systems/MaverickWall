@@ -35,6 +35,7 @@ import {
 } from '../wallpapers.js';
 import { ROTATION_EVERY } from './picture-rotation.js';
 import { builtinThemeTokens } from './builtin-themes.js';
+import type { ResolvedDaylight } from './daylight.js';
 import { lookLane, resolveStyleTokens, storedStyleLayer, styleLayerOf, type WidgetStyle } from './widget-style.js';
 
 /**
@@ -1320,6 +1321,12 @@ export interface Manifest {
     readonly daytimeStartsAt?: string;
     readonly daytimeEndsAt?: string;
     /**
+     * Day or night now, from a Home Assistant entity (plan item M8.7). Sent
+     * only while the reading is fresh; the wall honours it only while its own
+     * copy is, and falls back to the window above otherwise.
+     */
+    readonly daylightNow?: boolean;
+    /**
      * The `data-theme` shape for the active/daytime theme, and — for a *custom*
      * theme the display bundle has never heard of — its fully-resolved token
      * set. A built-in carries no tokens (the bundle owns them) and a shape equal
@@ -1827,6 +1834,12 @@ export interface BuildManifestInput {
     readonly daytimeTheme?: string | null;
     readonly daytimeStartsAt?: string | null;
     readonly daytimeEndsAt?: string | null;
+    /**
+     * What switches it, resolved by the caller from the row, the household's
+     * location and Home Assistant's last reading (plan item M8.7). Absent is
+     * the hours above.
+     */
+    readonly daylight?: ResolvedDaylight;
     /** The physical facts, straight off the row; null until measured. */
     readonly panelWidthMm?: number | null;
     readonly panelHeightMm?: number | null;
@@ -2244,8 +2257,15 @@ export function buildManifest(input: BuildManifestInput): Manifest {
 
   const activeTheme = pick(input.screen?.theme) ?? STAND_IN_THEME;
   const daytimeTheme = pick(input.screen?.daytimeTheme);
-  const daytimeStartsAt = pick(input.screen?.daytimeStartsAt);
-  const daytimeEndsAt = pick(input.screen?.daytimeEndsAt);
+  /*
+   * The sun's window replaces the typed hours; an entity's answer travels
+   * beside them, which stay the wall's fallback when the answer goes stale
+   * (M8.7). Only for a wall that has a daylight theme to switch to.
+   */
+  const daylight = daytimeTheme === null ? undefined : input.screen?.daylight;
+  const sunWindow = daylight !== undefined && 'startsAt' in daylight ? daylight : undefined;
+  const daytimeStartsAt = sunWindow?.startsAt ?? pick(input.screen?.daytimeStartsAt);
+  const daytimeEndsAt = sunWindow?.endsAt ?? pick(input.screen?.daytimeEndsAt);
 
   // Resolve the active (and any daytime) theme to what the display needs: a
   // built-in yields just its shape, a custom theme its token set too. Falls back
@@ -2280,6 +2300,7 @@ export function buildManifest(input: BuildManifestInput): Manifest {
     ...(day?.tokens !== undefined ? { daytimeTokens: day.tokens } : {}),
     ...(daytimeStartsAt !== null ? { daytimeStartsAt } : {}),
     ...(daytimeEndsAt !== null ? { daytimeEndsAt } : {}),
+    ...(daylight !== undefined && 'now' in daylight ? { daylightNow: daylight.now } : {}),
   };
 
   return {

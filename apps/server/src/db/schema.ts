@@ -580,6 +580,28 @@ export const screens = sqliteTable(
     daytimeEndsAt: text('daytime_ends_at'),
 
     /**
+     * What switches to the daylight theme (plan item M8.7). Null is the clock —
+     * the two columns above, which every wall had before this — and stays the
+     * fallback for the other two: `sun` needs the household's weather location
+     * and `entity` needs Home Assistant to have answered recently, and a wall
+     * with neither switches by its hours rather than not at all.
+     */
+    daylightSource: text('daylight_source', { enum: ['sun', 'entity'] }),
+    /**
+     * The entity `entity` reads: `sun.sun`, or an on/off sensor. Kept here and
+     * never sent to a wall (rule 12) — the wall is handed day or night.
+     */
+    daylightEntity: text('daylight_entity'),
+    /**
+     * The entity's last reading, written by the Home Assistant poll: 1 for
+     * daylight, 0 for not, null for a state that is neither ("unavailable").
+     * With `daylight_read_at`, so a reading Home Assistant stopped refreshing
+     * is not taken as the sky's.
+     */
+    daylightState: integer('daylight_state', { mode: 'number' }),
+    daylightReadAt: integer('daylight_read_at', { mode: 'number' }),
+
+    /**
      * The rest of the per-screen overrides. Null follows the household, exactly
      * like the theme above — a household with one wall sets none of these, and
      * that stays the easy case.

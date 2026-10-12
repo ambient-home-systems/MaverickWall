@@ -375,6 +375,11 @@ export interface FakeHa {
   readonly weather: Record<string, FakeWeather>;
   /** What the media player proxy answers with (plan item M3.4): a real PNG unless a test says otherwise. */
   artwork: Buffer;
+  /**
+   * `sun.sun`'s state (plan item M8.7), or undefined for a house that lists no
+   * sun — every test's house but the daylight one, so no other list changes.
+   */
+  sun: string | undefined;
   /** Stand the fake down without reaching into a module-level array. */
   close(): Promise<void>;
 }
@@ -395,6 +400,7 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
     todoFeatures: {},
     weather: {},
     artwork: ARTWORK,
+    sun: undefined,
     todo: {
       'todo.shopping': {
         items: [
@@ -483,7 +489,11 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
         last_updated: one.last_updated,
         context: { id: '01W', parent_id: null, user_id: null },
       }));
-      return json(JSON.stringify([...listed, ...weather]));
+      const sun =
+        state.sun === undefined
+          ? []
+          : [{ entity_id: 'sun.sun', state: state.sun, attributes: { friendly_name: 'Sun', elevation: 12.4 } }];
+      return json(JSON.stringify([...listed, ...weather, ...sun]));
     }
     if (url.startsWith('/api/states/weather.')) {
       const entityId = decodeURIComponent(url.slice('/api/states/'.length));

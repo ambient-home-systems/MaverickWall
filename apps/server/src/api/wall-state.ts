@@ -6,6 +6,8 @@ import { z } from '../validation.js';
 import { WIDGET_GROUNDS } from '../wallpapers.js';
 import { CUSTOM_CSS_MAX_BYTES, sanitiseCustomCss, type CssScope } from './custom-css.js';
 import { isHhmm, MAX_LAYOUT_SLOTS, MAX_SCHEDULE_ROWS, SLOT_NAME } from './layout-slots.js';
+import { DAYLIGHT_ENTITY_PATTERN } from './daylight.js';
+import { readDaylightChoice, writeDaylightChoice, type DaylightChoice } from './queries.js';
 import { isValidThemeRef } from './themes.js';
 import { backgroundSchema, layoutWidgetBody, widgetTreeIssues } from './widget-schema.js';
 import { widgetStyleBody } from './widget-style.js';
@@ -101,6 +103,19 @@ export const wallStateSchema = z
     daytimeTheme: z.string().min(1).max(80).nullable(),
     daytimeStartsAt: hhmm.nullable(),
     daytimeEndsAt: hhmm.nullable(),
+    /*
+     * What switches the daytime theme (plan item M8.7): 'clock' for the hours,
+     * 'sun', or 'entity:<id>'. Optional, so a file or a snapshot from before
+     * it existed still opens, and leaves the wall's choice as it is.
+     */
+    daylightBy: z
+      .string()
+      .max(220)
+      .refine(
+        (v) => v === 'clock' || v === 'sun' || (v.startsWith('entity:') && DAYLIGHT_ENTITY_PATTERN.test(v.slice(7))),
+        'That is not something the daytime theme can switch by.',
+      )
+      .optional(),
     gutter: z.number().int().refine((n) => canvasGutterStep(n) !== undefined, 'That spacing is not one of the steps.').nullable(),
     style: widgetStyleBody.nullable(),
     widgetGround: z.enum(WIDGET_GROUNDS).nullable(),
@@ -279,6 +294,7 @@ export function readWallState(db: SqliteDatabase, screenId: string): WallState |
     daytimeTheme: window ? row.daytimeTheme : null,
     daytimeStartsAt: window ? row.daytimeStartsAt : null,
     daytimeEndsAt: window ? row.daytimeEndsAt : null,
+    daylightBy: daylightByOf(readDaylightChoice(db, screenId)),
     gutter: canvasGutterStep(row.gutter) ?? null,
     style: readAs(widgetStyleBody, json(row.style)),
     widgetGround: readAs(z.enum(WIDGET_GROUNDS), row.widgetGround),
@@ -378,6 +394,7 @@ export function applyWallState(
   const at = Date.now();
 
   const tx = db.transaction(() => {
+    if (state.daylightBy !== undefined) writeDaylightChoice(db, screenId, daylightChoiceOf(state.daylightBy));
     const wallCss = scoped(state.customCss, { kind: 'wall' });
     if (wallCss === 'refused') cssDropped++;
     const window = daytimeOk && state.daytimeTheme !== null;
@@ -550,4 +567,14 @@ export function readSnapshotState(db: SqliteDatabase, screenId: string, snapshot
   if (row === undefined) return undefined;
   const parsed = wallStateSchema.safeParse(json(row.state));
   return parsed.success ? parsed.data : undefined;
+}
+
+function daylightByOf(choice: DaylightChoice): string {
+  return choice.source === 'entity' ? `entity:${choice.entity ?? ''}` : (choice.source ?? 'clock');
+}
+
+function daylightChoiceOf(value: string): DaylightChoice {
+  if (value === 'sun') return { source: 'sun', entity: null };
+  if (value.startsWith('entity:')) return { source: 'entity', entity: value.slice(7) };
+  return { source: null, entity: null };
 }

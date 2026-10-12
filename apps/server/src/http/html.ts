@@ -1661,6 +1661,18 @@ pre.code{background:var(--mw-surface-2);
   background:var(--panel2);border:1px solid var(--rule);border-radius:calc(var(--mw-r-1) * 2 + var(--mw-r-3))}
 .le-canvas{position:relative;background:var(--bg);border-radius:var(--mw-r-3);overflow:hidden;
   box-shadow:inset 0 0 0 1px var(--rule);touch-action:none}
+/* A wall's own shape around the canvas, while a chip previews it (M8.8): the
+ * bands either side are where the layout and the wall differ in shape, the way
+ * the wall letterboxes them. With no chip pressed the frame is the canvas's
+ * size and draws nothing. */
+.le-frame{display:flex;align-items:center;justify-content:center}
+.le-frame.is-device{background:var(--panel);border-radius:var(--mw-r-3);
+  outline:var(--mw-hairline) dashed var(--mw-ink-2);outline-offset:var(--mw-hairline)}
+.le-wall-chips{display:flex;flex-wrap:wrap;gap:var(--mw-s-2)}
+.le-wall-chip{background:transparent;color:var(--mw-ink);border:var(--mw-hairline) solid var(--rule);
+  border-radius:var(--mw-r-2);padding:var(--mw-s-1) var(--mw-s-3);font-size:var(--mw-t-label-sm-size);cursor:pointer}
+.le-wall-chip:hover,.le-wall-chip:active{background:var(--panel2);color:var(--mw-ink)}
+.le-wall-chip[aria-pressed=true]{border-color:var(--accent);background:var(--panel2)}
 /* The snap grid, on the overlay so it sits over the live preview but under the
  * draggable boxes. Shown only while snapping; background-size is set in script to
  * the snap step as a percentage. A placement aid, never on the wall. */

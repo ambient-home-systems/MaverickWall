@@ -16,6 +16,25 @@
 
 ## Unreleased
 
+**The daytime theme can follow the sun.** Under the daytime theme on a wall's
+Look settings, "Switch by" now offers sunrise and sunset where you live (from
+the location on Weather), or a Home Assistant entity: the sun itself, or any
+on/off reading you watch, such as a "dark outside" sensor. The hours you typed
+stay as the fallback, so a wall with no location set, or one that has not heard
+from Home Assistant for a while, still switches by them rather than not at all.
+
+**See a layout on each of your walls before you save it.** In the layout
+editor, Size & grid now lists every wall that has checked in, with its size.
+Press one to see the layout at that wall's own shape — turned to the way it is
+hung, with the bands it will show where the shapes differ. Nothing is saved by
+looking.
+
+**The guide to writing a module is up to date.** It said a module could show a
+big number, a strip of tiles and an emoji beside each reading; the wall has
+drawn all of those as plain rows, without the emoji, for a while. It now says
+so, lists the pictures a reading can use, and points at the Store and the
+Module widget.
+
 ## 1.3.0
 
 **Go back to an earlier layout.** Every time a wall's layout or look is

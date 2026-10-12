@@ -1,6 +1,6 @@
 # Plan: parity with Magic Frame
 
-**Status: in progress.** RFC 018 (M6.0) is built, and so are the companion token, its Home Assistant to-do add, timers and messages, and refreshing walls and showing one wall's layout on the others (M1.1–M1.5, M2.1, M2.2, M2.3, M3.1–M3.8, M4.1–M4.12, M5.1–M5.12); everything else is planned. On 2026-10-05 the owner asked for a
+**Status: in progress.** RFC 018 (M6.0) is built, and so are the companion token, its Home Assistant to-do add, timers and messages, and refreshing walls and showing one wall's layout on the others (M1.1–M1.5, M2.1, M2.2, M2.3, M3.1–M3.8, M4.1–M4.12, M5.1–M5.12, M6.12, M6.13, M7.1, M8.4–M8.8); everything else is planned. On 2026-10-05 the owner asked for a
 competitive review of [Magic Frame](https://github.com/jeremiaa/magic-frame)
 against Maverick Wall, then a deeper look at its custom widgets and its
 backgrounds. This document is that review, the decisions taken on it, and the
@@ -170,8 +170,8 @@ The read-only items can start now. Items marked † follow RFC 018's phases (acc
 | M6.9 | **Now-playing card**; playback controls only †. | M | Cover art proxied by the server. |
 | M6.10 | **Sensor sparklines** from HA history. | M | A history read, not a service call. Fixed-height series, so no reflow. |
 | M6.11 | **Notification tiles**: rule-based, plus HA persistent notifications; dismissing one in HA is †. | M | Rule-based tiles reuse the interrupt matcher. |
-| M6.12 | **Wall control** †: whatever RFC 018 accepts. | L | Rate-limited, logged without entity names, never offered on e-paper. |
-| M6.13 | **Webhook button** †: a wall button that POSTs to a URL. | S | Through the SSRF-guarded fetcher; targets set in the admin, never typed on the wall: MQ9. |
+| M6.12 | **Wall control** †: whatever RFC 018 accepts. **Built** as RFC 018 phases 2–4 and 6 (M6.0). | L | Rate-limited, logged without entity names, never offered on e-paper. |
+| M6.13 | **Webhook button** †: a wall button that POSTs to a URL. **Built** as RFC 018 phase 5 (M6.0): the Buttons screen and widget. | S | Through the SSRF-guarded fetcher; targets set in the admin, never typed on the wall: MQ9. |
 
 ### M8 — Admin, editor and layout safety
 
@@ -183,8 +183,8 @@ The read-only items can start now. Items marked † follow RFC 018's phases (acc
 | M8.4 | **Snapshot before every save**, with one-click restore. **Built**: the last 20 per wall, under Advanced › Versions and copies; one Save is one version, and a save that changed nothing is none. | M | Keep the last N per wall; a restore snapshots the current state first. |
 | M8.5 | **Export and import layouts** as JSON. **Built**: every layout, its hours and the look; a guest Wi-Fi password is left out, and a file is refused whole, CSS included. | M | No credentials in the file; Zod on import; unknown widget types refused, not coerced. |
 | M8.6 | **Duplicate a wall**: canvases, named layouts, schedule, background, settings. **Built**: straight to pairing; the copy may press nothing until allowed. | S | A new wall needs its own pairing. |
-| M8.7 | **Light/dark by the sun or an HA entity**, with the clock as fallback. | S | A state read of `sun.sun` or the chosen entity. |
-| M8.8 | **Connected-size chips** in the editor, previewing at each wall's real size. | S | Uses the viewport each wall already reports. |
+| M8.7 | **Light/dark by the sun or an HA entity**, with the clock as fallback. **Built**: "Switch by" under the daytime theme — the hours, sunrise and sunset at the weather location, or `sun.sun` or a watched on/off reading; the wall is sent a window or day-or-night, never the entity, and falls back to its hours when either has no answer. | S | A state read of `sun.sun` or the chosen entity. |
+| M8.8 | **Connected-size chips** in the editor, previewing at each wall's real size. **Built**: under Size & grid, one chip per wall that has reported its size; a chip turns the editor to that wall's orientation and frames the canvas at its shape, bands and all. Nothing is saved by looking. | S | Uses the viewport each wall already reports. |
 
 ### M9 — Documentation
 
@@ -247,7 +247,7 @@ upload more modules.
 
 | ID | Item | Size | Detail |
 | --- | --- | --- | --- |
-| M7.1 | **Fix the stale module docs.** | S | `docs/building-a-module.md` still advertises `stat` and `tiles` as distinct looks and emoji `icon`s; the wall draws all three as rows and drops `icon` (`panel-data.ts`). |
+| M7.1 | **Fix the stale module docs.** **Built**: the guide says `glyph` and lists the keys, says `stat` and `tiles` draw as rows, points at the Store and the Module widget, and every JSON example in it is parsed by `module-docs.test.ts`. | S | `docs/building-a-module.md` still advertises `stat` and `tiles` as distinct looks and emoji `icon`s; the wall draws all three as rows and drops `icon` (`panel-data.ts`). |
 | M7.2 | **Contract 2: rows with a tone.** | M | `active` / `alert` / `idle` per row, drawn like the HA tiles (P5.3). |
 | M7.3 | **Contract 2: progress and gauge.** | M | Bars, rings and one gauge; a gauge is capped against the event role like the clock (D1). |
 | M7.4 | **Contract 2: series and table.** | M | Sparklines from a number series; a small table with fixed columns. |

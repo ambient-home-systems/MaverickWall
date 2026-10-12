@@ -631,6 +631,38 @@ export function daytimeActive(
     : localHhmm >= startsAt || localHhmm < endsAt;
 }
 
+/**
+ * How long a wall trusts a Home Assistant entity's day-or-night answer after
+ * it last heard from its server (plan item M8.7). A sensor says what it says
+ * now and not when it will change, so a wall drawing a copy older than this
+ * switches by its hours instead — a night that ended an hour ago is the one
+ * thing a stored answer must not hold.
+ */
+export const DAYLIGHT_TRUST_MS = 15 * 60_000;
+
+/**
+ * Whether the daylight theme is showing: the entity's answer while the wall's
+ * copy is fresh enough to believe it, and the window otherwise. The window is
+ * the household's hours, or today's sunrise and sunset when the server worked
+ * those out — the wall cannot tell the two apart, and does not need to.
+ */
+export function daylightShowing(
+  localHhmm: string,
+  theme: {
+    readonly daytime?: string;
+    readonly daytimeStartsAt?: string;
+    readonly daytimeEndsAt?: string;
+    readonly daylightNow?: boolean;
+  },
+  sinceConfirmedMs: number,
+): boolean {
+  if (theme.daytime === undefined) return false;
+  if (theme.daylightNow !== undefined && sinceConfirmedMs >= 0 && sinceConfirmedMs <= DAYLIGHT_TRUST_MS) {
+    return theme.daylightNow;
+  }
+  return daytimeActive(localHhmm, theme.daytime, theme.daytimeStartsAt, theme.daytimeEndsAt);
+}
+
 export function themeAt(
   localHhmm: string,
   active: string,

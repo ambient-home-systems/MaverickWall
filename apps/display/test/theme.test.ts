@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  daylightShowing,
+  DAYLIGHT_TRUST_MS,
   applyTheme,
   customTokens,
   daytimeActive,
@@ -527,5 +529,31 @@ describe('inkOn', () => {
     expect(inkOn('rebeccapurple')).toBe('#ffffff');
     expect(inkOn('')).toBe('#ffffff');
     expect(inkOn('#fff')).toBe('#ffffff');
+  });
+});
+
+describe('daylightShowing (M8.7)', () => {
+  const window = { daytime: 'almanac', daytimeStartsAt: '07:00', daytimeEndsAt: '21:00' };
+
+  it('is the window when nothing else answers', () => {
+    expect(daylightShowing('12:00', window, 0)).toBe(true);
+    expect(daylightShowing('22:00', window, 0)).toBe(false);
+    // The sun's window for a polar summer reaches the end of the day.
+    expect(daylightShowing('23:59', { ...window, daytimeStartsAt: '00:00', daytimeEndsAt: '24:00' }, 0)).toBe(true);
+  });
+
+  it('takes an entity’s answer over the window while this copy is fresh', () => {
+    expect(daylightShowing('12:00', { ...window, daylightNow: false }, 60_000)).toBe(false);
+    expect(daylightShowing('22:00', { ...window, daylightNow: true }, DAYLIGHT_TRUST_MS)).toBe(true);
+  });
+
+  it('falls back to the window once the copy is older than it trusts', () => {
+    expect(daylightShowing('12:00', { ...window, daylightNow: false }, DAYLIGHT_TRUST_MS + 1)).toBe(true);
+    // A confirmation time in the future is a clock that moved, not a fresh copy.
+    expect(daylightShowing('12:00', { ...window, daylightNow: false }, -1)).toBe(true);
+  });
+
+  it('never shows a daytime theme that is not there', () => {
+    expect(daylightShowing('12:00', { daylightNow: true }, 0)).toBe(false);
   });
 });

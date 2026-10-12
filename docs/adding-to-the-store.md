@@ -23,7 +23,7 @@ export const entry: CatalogEntry = {
   name: 'Tide times',
   author: 'your name',
   description: 'The next high tide, from a public tide API.',
-  icon: '🌊',                        // one glyph — no images (rule three)
+  glyph: 'moisture',                // a key from the drawn set, never an emoji
   kind: 'recipe',
   recipe: {
     name: 'Tide',
@@ -35,7 +35,7 @@ export const entry: CatalogEntry = {
       intervalSeconds: 900,
       allowLan: false,
     },
-    panel: { kind: 'stat', title: 'Next tide', value: '{next.height | round:1}', caption: 'm' },
+    panel: { kind: 'text', title: 'Next tide', text: '{next.height | round:1} m at {next.time | date:short}' },
     signals: [],
   },
 };

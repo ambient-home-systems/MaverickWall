@@ -1,6 +1,8 @@
 import type { SqliteDatabase } from '../../db/open.js';
 import type { ModuleContext, PanelModule } from '../registry.js';
 import type { Signal } from '@maverick-wall/core';
+import { z } from '../../validation.js';
+import { daylightFromState } from '../../api/daylight.js';
 import { call, resolveConnection } from './client.js';
 import { wallActionsFor } from './services.js';
 import { parseCalendarList, type CalendarEntity } from './calendars.js';
@@ -330,7 +332,22 @@ export const haModule: PanelModule = {
         .all() as { entityId: string }[]) {
         wanted.add(row.entityId);
       }
-      if (wanted.size === 0) return;
+      /*
+       * And the entities a wall switches its daylight theme by (plan item
+       * M8.7). Not cached as readings: `sun.sun` is no reading anybody watches,
+       * and what a wall needs of it is one bit, written on the wall's own row.
+       */
+      const daylight = new Set(
+        (
+          context.db
+            .prepare(
+              `SELECT DISTINCT daylight_entity AS entityId FROM screens
+                WHERE daylight_source = 'entity' AND daylight_entity IS NOT NULL AND revoked_at IS NULL`,
+            )
+            .all() as { entityId: string }[]
+        ).map((row) => row.entityId),
+      );
+      if (wanted.size === 0 && daylight.size === 0) return;
 
       const resolved = resolveConnection(context.db, context.keyring);
       if (!resolved.ok) {
@@ -357,7 +374,16 @@ export const haModule: PanelModule = {
           WHERE entity_id = ?`,
       );
 
+      const daylightStates = readDaylightStates(response.body, daylight);
+      const writeDaylight = context.db.prepare(
+        `UPDATE screens SET daylight_state = ?, daylight_read_at = ?
+          WHERE daylight_source = 'entity' AND daylight_entity = ?`,
+      );
+
       const write = context.db.transaction(() => {
+        // An entity Home Assistant no longer lists is no reading: the wall
+        // falls back to its hours once the last one goes stale.
+        for (const [entityId, day] of daylightStates) writeDaylight.run(day, at, entityId);
         for (const state of states) {
           update.run(
             state.state,
@@ -396,6 +422,32 @@ function recordError(db: SqliteDatabase, message: string): void {
     `UPDATE ha_settings SET last_error = ?, last_sync_at = ?, updated_at = ?
       WHERE id = 'singleton'`,
   ).run(message, Date.now(), Date.now());
+}
+
+/** One row of `/api/states`, as far as the daylight switch reads it. */
+const daylightRow = z.object({ entity_id: z.string().max(255), state: z.string().max(255) });
+
+/**
+ * Day or night for each daylight entity in a `/api/states` body (M8.7). Read
+ * apart from `parseStates`, which keeps only the domains a wall draws as a
+ * reading — and `sun` is not one. A row of the wrong shape is skipped.
+ */
+export function readDaylightStates(body: string, wanted: ReadonlySet<string>): Map<string, 0 | 1 | null> {
+  const found = new Map<string, 0 | 1 | null>();
+  if (wanted.size === 0) return found;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(body);
+  } catch {
+    return found;
+  }
+  if (!Array.isArray(raw)) return found;
+  for (const item of raw) {
+    const row = daylightRow.safeParse(item);
+    if (!row.success || !wanted.has(row.data.entity_id)) continue;
+    found.set(row.data.entity_id, daylightFromState(row.data.entity_id, row.data.state));
+  }
+  return found;
 }
 
 /** Re-exported so the admin screen draws the same characters the wall does. */

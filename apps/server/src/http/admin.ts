@@ -48,7 +48,8 @@ import {
   type PersonRecord,
 } from '../api/queries.js';
 import { countWatchedZones, hasWeatherLocation } from '../api/rules.js';
-import { readWeatherSettings } from '../api/queries.js';
+import { readDaylightChoice, readWeatherSettings, writeDaylightChoice, type DaylightChoice } from '../api/queries.js';
+import { DAYLIGHT_ENTITY_PATTERN } from '../api/daylight.js';
 import {
   MAX_LAYOUT_SLOTS,
   MAX_SCHEDULE_ROWS,
@@ -437,6 +438,9 @@ const screenBody = z.object({
   daytime_theme: optionalText(64),
   daytime_starts_at: optionalText(5),
   daytime_ends_at: optionalText(5),
+  // What switches it (M8.7): absent leaves the stored choice alone, so a page
+  // rendered before the control existed cannot reset it.
+  daylight_by: optionalText(220),
   timezone: optionalText(64),
   allow_dismiss: checkbox(),
   allow_chores: checkbox(),
@@ -1289,6 +1293,55 @@ export function layoutEditorMount(initial: unknown): string {
 
 export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   const now = deps.now ?? ((): number => Date.now());
+
+  /**
+   * The "Switch by" choices for a wall's daytime theme (plan item M8.7), as
+   * one select so the form needs no script: the hours, the sun, or a Home
+   * Assistant entity that can say day or night — `sun.sun`, and the on/off
+   * readings the household already watches. Listing the whole house would be
+   * a request to Home Assistant on every draw of this page, and a sensor
+   * worth trusting with the sky is one somebody has already put on Readings.
+   */
+  function daylightByRow(screenId: string): string {
+    const stored = readDaylightChoice(deps.db, screenId);
+    const place = readWeatherSettings(deps.db);
+    const located = place.latitude !== null && place.longitude !== null;
+    const connected = resolveConnection(deps.db, deps.keyring).ok;
+    const entities: { id: string; name: string }[] = [];
+    if (connected) entities.push({ id: 'sun.sun', name: 'Sun' });
+    for (const reading of watchedReadingChoices(deps.db)) {
+      if (DAYLIGHT_ENTITY_PATTERN.test(reading.id) && !reading.id.startsWith('sun.')) entities.push(reading);
+    }
+    if (stored.entity !== null && !entities.some((e) => e.id === stored.entity)) {
+      entities.push({ id: stored.entity, name: `${stored.entity} (not found)` });
+    }
+    const chosen = stored.source === 'entity' ? `entity:${stored.entity ?? ''}` : (stored.source ?? 'clock');
+    const pick = (value: string, label: string): string =>
+      `<option value="${escapeHtml(value)}"${value === chosen ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+    return selectRow({
+      label: 'Switch by',
+      name: 'daylight_by',
+      wide: true,
+      hint:
+        (located
+          ? 'Sunrise and sunset are worked out for the weather location. '
+          : 'Sunrise and sunset need a location: set one on Weather. ') +
+        'A Home Assistant entity switches to the daytime theme while it is on, or while the sun is up. ' +
+        'Either falls back to the hours above when it has no answer.',
+      optionsHtml:
+        pick('clock', 'The hours above') +
+        pick('sun', located ? 'Sunrise and sunset' : 'Sunrise and sunset (no location set)') +
+        entities.map((e) => pick(`entity:${e.id}`, `Home Assistant: ${e.name}`)).join(''),
+    });
+  }
+
+  /** The select's value back as a choice; null is a value the list never offers. */
+  function parseDaylightBy(value: string): DaylightChoice | null {
+    if (value === 'clock') return { source: null, entity: null };
+    if (value === 'sun') return { source: 'sun', entity: null };
+    const entity = value.startsWith('entity:') ? value.slice('entity:'.length) : '';
+    return DAYLIGHT_ENTITY_PATTERN.test(entity) ? { source: 'entity', entity } : null;
+  }
   /**
    * The pairing link (or e-paper frame URL) a POST just minted, waiting for
    * the page its redirect lands on to show it once. See `reveal.ts` for why a
@@ -3077,6 +3130,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     if (scheduled && startsAt === endsAt) {
       return c.html(displayDetailPage(id, 'A daylight window of no length would never switch.', c), 400);
     }
+    const daylightBy = shaped.value.daylight_by;
+    const daylightChoice = daylightBy === undefined ? undefined : parseDaylightBy(daylightBy);
+    if (daylightChoice === null) {
+      return c.html(displayDetailPage(id, 'Choose what switches the daytime theme from the list.', c), 400);
+    }
     /*
      * Whatever the panel offered, which is the offered zones *and* the one this
      * screen already has.
@@ -3292,6 +3350,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     if (!size.ok) return c.html(displayDetailPage(id, size.message, c), 400);
 
     keepVersion(id, 'Before wall settings were saved');
+    if (daylightChoice !== undefined) writeDaylightChoice(deps.db, id, daylightChoice);
     if (
       !writeScreenSettings(deps.db, id, {
         name,
@@ -5438,7 +5497,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
             type: 'time',
             value: screen.daytimeEndsAt ?? '21:00',
           }) +
-          `</div></div></div>` +
+          `</div></div>` +
+          daylightByRow(screen.id) +
+          `</div>` +
           `</div>`,
       );
     const look = themeLook + backgroundAndDefaults;
@@ -6161,6 +6222,18 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       ...(owner?.reportW != null && owner?.reportH != null
         ? { report: { w: owner.reportW, h: owner.reportH } }
         : {}),
+      /*
+       * Every browser wall that has reported its viewport, for the chips
+       * that preview this layout at each one's real shape (plan item M8.8).
+       * A panel's own designer already draws its one shape, so it gets none.
+       */
+      ...(owner?.kind === 'epaper'
+        ? {}
+        : {
+            walls: readAdminScreens(deps.db)
+              .filter((s) => s.revokedAt === null && s.kind !== 'epaper' && s.reportW !== null && s.reportH !== null)
+              .map((s) => ({ name: s.name, w: s.reportW, h: s.reportH })),
+          }),
       /*
        * The ink lane (RFC 005, direction B) — present only when a panel is
        * actually looking at this canvas.
