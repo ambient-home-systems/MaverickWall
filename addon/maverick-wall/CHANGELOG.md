@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 1.5.0
+
 **Show a widget only when the house says so.** Every widget, and every group,
 now has "Show this widget" at the end of its Content settings in the layout editor:
 always, while a Home Assistant entity is in a state (the porch camera while the
