@@ -263,7 +263,7 @@ const widgetConfigFields = z
         // countdown
         'number', 'page', 'ticket', 'occasion', 'progress', 'month',
         // homeassistant
-        'list', 'tile',
+        'list', 'tile', 'status',
         // calendar
         'planner', 'bold',
       ])
@@ -360,6 +360,45 @@ const widgetConfigFields = z
     hideState: z.boolean().optional(),
     showChanged: z.boolean().optional(),
     showBar: z.boolean().optional(),
+    /*
+     * Home Assistant — a line of the last day under each number the widget
+     * shows (plan item M6.10), on every look. Absent is off, so no widget
+     * already hanging grows one and no house is asked for its history until a
+     * household asks. The history is a read of Home Assistant's recorder, never
+     * a service call, made for the readings a widget with this switch on names
+     * and for nothing else; the row it draws in is the same height whether or
+     * not the history has arrived, so a box never moves when it does.
+     */
+    sparkline: z.boolean().optional(),
+    /*
+     * Home Assistant's `status` look (plan item M6.8): one thing the house is
+     * doing — the washer, the car charging — as a card.
+     *
+     *  - `subject` is the reading the card is about, **by entity id**, and it
+     *    leaves for the wall as its handle (`displayConfig`), as `readings`
+     *    does. Absent is the first reading the widget shows.
+     *  - `progress` is a reading whose number is how far along it is, out of
+     *    a hundred — a washer's "programme progress" sensor. Absent is the
+     *    subject's own level where it has one (a blind's position).
+     *  - `doneState` is the words the subject says when it has finished —
+     *    "Complete", "Finished", as the wall writes them. While it says them
+     *    the card is loud: the alert colour and a ring that pulses.
+     *  - `subjectPicture` draws the subject's own picture from Home Assistant —
+     *    a car, a person — through a handle the server minted, never its
+     *    address. Absent is its mark in a circle, as a tile draws it.
+     *
+     * The card's other readings are the widget's `readings`, up to four.
+     */
+    subject: z.string().regex(CONDITION_ENTITY_PATTERN, 'Choose a reading for the card.').optional(),
+    progress: z.string().regex(CONDITION_ENTITY_PATTERN, 'Choose a reading for the progress.').optional(),
+    doneState: z
+      .string()
+      .trim()
+      .min(1)
+      .max(40)
+      .regex(/^[^\u0000-\u001f\u007f]+$/, 'The finished words cannot hold control characters.')
+      .optional(),
+    subjectPicture: z.boolean().optional(),
     /*
      * Home Assistant — `act` makes a reading this wall may operate a button
      * (RFC 018 §7). Absent is "show only", which is what every widget drew

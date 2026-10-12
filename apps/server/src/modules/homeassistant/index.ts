@@ -4,6 +4,8 @@ import type { Signal } from '@maverick-wall/core';
 import { z } from '../../validation.js';
 import { daylightFromState } from '../../api/daylight.js';
 import { conditionEntities, readConditionStates, writeConditionStates } from './conditions.js';
+import { historyPath, historyWindowEnd, parseHistory, seriesFrom, sparklineEntities, storedSeries } from './history.js';
+import { statusPictures } from './artwork.js';
 import { call, resolveConnection } from './client.js';
 import { wallActionsFor } from './services.js';
 import { parseCalendarList, type CalendarEntity } from './calendars.js';
@@ -56,6 +58,8 @@ interface WatchRow {
   readonly attributes: string | null;
   /** The household's "can be controlled from walls" switch (RFC 018 §6). */
   readonly controllable: number;
+  /** The last day as a series, while a widget asks for its sparkline (M6.10). */
+  readonly history: string | null;
 }
 
 /**
@@ -186,7 +190,7 @@ export async function fetchCalendarEntities(
 const SELECT_WATCHED = `SELECT entity_id AS entityId, label, display_mode AS displayMode,
           sort_order AS sortOrder, glyph, state, friendly_name AS friendlyName,
           unit_of_measurement AS unit, last_changed_at AS lastChangedAt,
-          fetched_at AS fetchedAt, attributes, controllable
+          fetched_at AS fetchedAt, attributes, controllable, history
      FROM ha_entity_cache WHERE watched = 1
     ORDER BY sort_order, entity_id`;
 
@@ -235,6 +239,10 @@ export const haModule: PanelModule = {
     const rows = context.db.prepare(SELECT_WATCHED).all() as WatchRow[];
     if (rows.length === 0) return null;
 
+    // The subjects of status cards that draw their own picture (M6.8), as a
+    // handle each — and nothing for any other reading, so a household that
+    // never asked sends the document it sent before.
+    const pictures = statusPictures(context.db);
     const readings = rows.map((row) => ({
       ...toReading(
         stateFrom(row),
@@ -249,6 +257,8 @@ export const haModule: PanelModule = {
         context.now,
       ),
       ...actionsOf(row),
+      ...seriesOf(row),
+      ...(pictures[row.entityId] === undefined ? {} : { picture: pictures[row.entityId] as string }),
     }));
 
     const error = context.db
@@ -415,9 +425,53 @@ export const haModule: PanelModule = {
           .run(at, at);
       });
       write();
+
+      await refreshHistory(context, resolved.connection);
     },
   },
 };
+
+/**
+ * A reading's last day, spread only when there is one (M6.10): the poll keeps
+ * `history` for the readings a sparkline asks for and clears every other, so
+ * a house with no sparkline on any wall sends the document it sent before.
+ */
+function seriesOf(row: WatchRow): { readonly series?: readonly (number | null)[] } {
+  const series = storedSeries(row.history);
+  return series === undefined ? {} : { series };
+}
+
+/**
+ * Read the last day of every reading a sparkline asks for, when the half hour
+ * has moved since it was last read (M6.10), and forget it for every reading
+ * none asks for any more.
+ *
+ * One request per reading rather than one for all of them: a power meter that
+ * reports every second has a day of history the size of the whole house's, and
+ * one chatty sensor must cost its own line and nobody else's. A failed read
+ * keeps the line it had — a sparkline half an hour old is still the day — and
+ * is tried again on the next poll. Nothing about it is a write.
+ */
+async function refreshHistory(context: ModuleContext, connection: Parameters<typeof call>[1]): Promise<void> {
+  const wanted = sparklineEntities(context.db);
+  const keep = new Set(wanted);
+  const held = context.db
+    .prepare('SELECT entity_id AS entityId, history_at AS historyAt FROM ha_entity_cache WHERE history IS NOT NULL OR history_at IS NOT NULL')
+    .all() as { entityId: string; historyAt: number | null }[];
+  const clear = context.db.prepare('UPDATE ha_entity_cache SET history = NULL, history_at = NULL WHERE entity_id = ?');
+  for (const row of held) if (!keep.has(row.entityId)) clear.run(row.entityId);
+  if (wanted.length === 0) return;
+
+  const end = historyWindowEnd(context.now);
+  const readAt = new Map(held.map((row) => [row.entityId, row.historyAt]));
+  const store = context.db.prepare('UPDATE ha_entity_cache SET history = ?, history_at = ? WHERE entity_id = ?');
+  for (const entityId of wanted) {
+    if (readAt.get(entityId) === end) continue;
+    const response = await call(context.fetcher, connection, historyPath(entityId, end), 15_000);
+    if (!response.ok) continue;
+    store.run(JSON.stringify(seriesFrom(parseHistory(response.body), end)), end, entityId);
+  }
+}
 
 /**
  * Record why the last poll did not work.

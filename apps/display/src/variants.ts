@@ -64,7 +64,7 @@ export const VARIANTS = {
   clock: ['plain', 'stacked', 'analogue'],
   weather: ['strip', 'today', 'range', 'colour', 'playful'],
   countdown: ['number', 'page', 'ticket', 'occasion', 'progress', 'month'],
-  homeassistant: ['list', 'tile'],
+  homeassistant: ['list', 'tile', 'status'],
   calendar: ['', 'planner', 'bold'],
 } as const;
 
@@ -92,7 +92,7 @@ export const VARIANT_LABELS: { readonly [T in VariantType]: Readonly<Record<Vari
     progress: 'Progress',
     month: 'Month',
   },
-  homeassistant: { list: 'List', tile: 'Tiles' },
+  homeassistant: { list: 'List', tile: 'Tiles', status: 'Status card' },
   calendar: { '': 'Standard', planner: 'Planner', bold: 'Bold' },
 };
 
@@ -184,9 +184,14 @@ export const VARIANT_HIDES: {
   // that moves nothing on it; the tile's own four options are the list's
   // nothing in return (P5.3). The help that says what a tile deliberately
   // cannot do rides on `tileLayout` and goes with it.
+  // The status card (M6.8) is one reading's card, so it reads neither the
+  // ladder nor a tile's layout, state switch or bar — its progress is its own —
+  // and its four keys are no other look's. "When it changed" stays: "Running ·
+  // 42 min ago" is what a washer's card is for.
   homeassistant: {
-    list: ['tileLayout', 'hideState', 'showChanged', 'showBar'],
-    tile: ['fields'],
+    list: ['tileLayout', 'hideState', 'showChanged', 'showBar', 'subject', 'progress', 'doneState', 'subjectPicture'],
+    tile: ['fields', 'subject', 'progress', 'doneState', 'subjectPicture'],
+    status: ['fields', 'tileLayout', 'hideState', 'showBar'],
   },
   calendar: { '': [], planner: [], bold: [] },
 };

@@ -3004,7 +3004,16 @@ function boot(): void {
         w.type === 'homeassistant' || w.type === 'environment'
           ? previewReadingKeys(w.config?.['readings'], state.readings)
           : undefined;
-      const read = picked === undefined ? listed : { ...listed, config: { ...listed.config, readings: picked } };
+      const read0 = picked === undefined ? listed : { ...listed, config: { ...listed.config, readings: picked } };
+      // A status card's subject and progress (M6.8), one reading each, the same way.
+      const one = (key: 'subject' | 'progress'): Record<string, unknown> => {
+        const entry = w.type === 'homeassistant' ? read0.config?.[key] : undefined;
+        if (typeof entry !== 'string') return {};
+        return { [key]: previewReadingKeys([entry], state.readings)?.[0] ?? entry };
+      };
+      const read = w.type === 'homeassistant'
+        ? { ...read0, config: { ...read0.config, ...one('subject'), ...one('progress') } }
+        : read0;
       // And an album, as `displayConfig` hands it over (plan item M5.12): its
       // photos and its name in place of the id, or none for one that has gone.
       const album = w.type === 'image' && typeof read.config?.['album'] === 'string' ? read.config['album'] : undefined;
@@ -8014,9 +8023,104 @@ function boot(): void {
       ),
     );
 
+    /*
+     * The status card's four (plan item M6.8), keyed so they go wherever the
+     * card's controls go and nowhere else (`VARIANT_HIDES`). Each is written
+     * as an absence when it is the default: the first reading the widget
+     * shows, the subject's own level, never finished, and its mark.
+     */
+    const readingChoice = (
+      label: string,
+      key: 'subject' | 'progress',
+      none: string,
+    ): void => {
+      const field = cfgField(label, key);
+      const select = document.createElement('select');
+      const blank = document.createElement('option');
+      blank.value = '';
+      blank.textContent = none;
+      select.appendChild(blank);
+      for (const reading of state.readings) {
+        const option = document.createElement('option');
+        option.value = reading.id;
+        option.textContent = reading.name;
+        select.appendChild(option);
+      }
+      select.value = typeof cfg[key] === 'string' && state.readings.some((r) => r.id === cfg[key]) ? (cfg[key] as string) : '';
+      select.addEventListener('change', () => setConfig(widget, key, select.value === '' ? undefined : select.value));
+      field.appendChild(select);
+      configPanel.appendChild(field);
+    };
+    readingChoice('The card is about', 'subject', 'The first reading it shows');
+    readingChoice('How far along', 'progress', 'Its own level, where it has one');
+    const progressHint = document.createElement('p');
+    progressHint.className = 'hint';
+    progressHint.dataset['cfgKey'] = 'progress';
+    progressHint.textContent =
+      'A reading out of 100, in per cent — a washer’s programme progress, a car’s charge. The other readings ' +
+      'ticked above sit under it on the card, four at most.';
+    configPanel.appendChild(progressHint);
+
+    const doneField = cfgField('Finished when it says', 'doneState');
+    const done = document.createElement('input');
+    done.type = 'text';
+    done.maxLength = 40;
+    done.className = 'le-done-state';
+    done.placeholder = 'Complete';
+    done.value = typeof cfg['doneState'] === 'string' ? (cfg['doneState'] as string) : '';
+    const doneList = document.createElement('datalist');
+    doneList.id = `le-done-${widget.id}`;
+    for (const word of ['Complete', 'Finished', 'Done', 'Idle', 'Off', 'Charged']) {
+      const option = document.createElement('option');
+      option.value = word;
+      doneList.appendChild(option);
+    }
+    done.setAttribute('list', doneList.id);
+    done.addEventListener('change', () => {
+      const words = done.value.trim();
+      setConfig(widget, 'doneState', words === '' ? undefined : words.slice(0, 40));
+    });
+    doneField.appendChild(done);
+    doneField.appendChild(doneList);
+    configPanel.appendChild(doneField);
+    const doneHint = document.createElement('p');
+    doneHint.className = 'hint';
+    doneHint.dataset['cfgKey'] = 'doneState';
+    doneHint.textContent =
+      'The words the card’s reading shows when it has finished, as the wall writes them — capitals do not ' +
+      'matter. While it says them the card turns the alert colour and a ring round its picture breathes. ' +
+      'Empty, it is never loud.';
+    configPanel.appendChild(doneHint);
+    configPanel.appendChild(
+      switchRow(
+        'Its own picture',
+        'The picture Home Assistant has for it — a car, a person — fetched by this server and handed to the wall ' +
+          'without its address. Without one, the card shows the reading’s mark.',
+        cfg['subjectPicture'] === true,
+        (on) => setConfig(widget, 'subjectPicture', on ? true : undefined),
+        'subjectPicture',
+      ),
+    );
+
+    // The day's line (plan item M6.10), on every look.
+    configPanel.appendChild(
+      switchRow(
+        'Line of the last day',
+        'A line under each number this widget shows, from Home Assistant’s own history: the last 24 hours, ' +
+          'brought up to date every half hour. Only for readings that are numbers; on tiles, only where it costs no tile.',
+        sparklineOf(cfg),
+        (on) => setConfig(widget, 'sparkline', on ? true : undefined),
+        'sparkline',
+      ),
+    );
+
     // What each of those readings says. Its default is per entity rather than
     // per widget, which the ladder's own hint explains.
     buildLadder(widget, cfg);
+  }
+
+  function sparklineOf(cfg: Record<string, unknown>): boolean {
+    return cfg['sparkline'] === true;
   }
 
   // ---- pointer interaction ---------------------------------------------

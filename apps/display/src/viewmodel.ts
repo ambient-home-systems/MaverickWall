@@ -751,6 +751,37 @@ export interface HouseReadingModel {
   readonly step?: number;
   /** A media player's volume, 0-100 — beside `volume` only. */
   readonly volume?: number;
+  /**
+   * The unit on its own, as well as joined into `value` — a status card asks
+   * whether a reading is a percentage (M6.8). Absent for a reading with none.
+   */
+  readonly unit?: string;
+  /**
+   * The last day as half-hour means, oldest first, `null` for a half hour with
+   * no number (M6.10) — only while a widget asks for this reading's sparkline.
+   */
+  readonly series?: readonly (number | null)[];
+  /**
+   * The reading's own picture, as a handle the server minted, shaped like a
+   * stored media name (M6.8) — only beside a status card that draws it.
+   */
+  readonly picture?: string;
+}
+
+/** The fixed length of a reading's day (`HISTORY_POINTS` on the server). */
+export const SERIES_POINTS = 48;
+/** A picture handle: a hash and `.jpg`, the media route's own shape. */
+const PICTURE_HANDLE = /^[a-f0-9]{64}\.jpg$/;
+
+/**
+ * A series this bundle can draw, or nothing: the fixed length, every point a
+ * finite number or `null`. A series of any other shape is a server one release
+ * ahead, and a line drawn from part of it would be a day nobody measured.
+ */
+function seriesFrom(raw: unknown): { readonly series?: readonly (number | null)[] } {
+  if (!Array.isArray(raw) || raw.length !== SERIES_POINTS) return {};
+  const ok = raw.every((point) => point === null || (typeof point === 'number' && Number.isFinite(point)));
+  return ok ? { series: raw as (number | null)[] } : {};
 }
 
 /** The words a wall can press, as this bundle knows them. */
@@ -1025,7 +1056,8 @@ export function houseFrom(panel: unknown): {
     const reading = entry as {
       key?: unknown; label?: unknown; value?: unknown; unit?: unknown; glyph?: unknown;
       mode?: unknown; stale?: unknown; tone?: unknown; changedAt?: unknown; level?: unknown;
-      actions?: unknown; kelvin?: unknown; step?: unknown; volume?: unknown;
+      actions?: unknown; kelvin?: unknown; step?: unknown; volume?: unknown; series?: unknown;
+      picture?: unknown;
     };
     /*
      * Through the same sanitiser the alert text uses.
@@ -1082,6 +1114,9 @@ export function houseFrom(panel: unknown): {
         reading.volume >= 0 && reading.volume <= 100
         ? { volume: reading.volume }
         : {}),
+      ...(unit === '' ? {} : { unit }),
+      ...seriesFrom(reading.series),
+      ...(typeof reading.picture === 'string' && PICTURE_HANDLE.test(reading.picture) ? { picture: reading.picture } : {}),
     });
   }
 

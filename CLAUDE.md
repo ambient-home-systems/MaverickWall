@@ -11132,6 +11132,77 @@ is `browser-glass`'s striped-picture case, red on a clean `main` in this
 container as before. **Still unproven where it counts:** no real doorbell has
 put a box on a kitchen wall.
 
+**The Home Assistant widget has a status card, and every look a line of the
+last day (plan items M6.8 and M6.10).** The card is a third look, `status`:
+one reading's card (`subject`, by entity id, else the first reading shown), its
+state as the card's one large reading, a progress bar from a percentage reading
+(`progress`) or the subject's own level, and up to four of the widget's other
+readings. When the subject says the household's finished words (`doneState`,
+compared without capitals) the card takes the alert colour, a heavier edge
+drawn as an outline so its box does not move, and a ring that breathes in
+`opacity` on the wall clock (`STATUS_RING_MS`, `lockLoop`), inside reduced
+motion and the Motion switch. The sparkline is `sparkline` on any look: a
+row on a tile, a fixed-width slot on a list reading's line, a band on the card.
+
+**What the card and the line read is written once.** `api/status-card.ts`
+decides the subject, the details, the progress, whether it has finished, and
+how a day becomes heights and runs. It is transcribed into the display between
+`status-card` markers, and `transcription-parity.test.ts` holds six pairs now.
+The wall and the panel draw from one answer.
+
+**The history is a read, made only for what a widget asks.**
+`modules/homeassistant/history.ts` finds the sensors a widget with the switch
+shows (and a card's subject), at most sixteen. For each it asks
+`GET /api/history/period` once per half hour, `minimal_response` and
+`no_attributes`, through `call`, so no write path is touched. It keeps 48
+time-weighted half-hour means ending on the last half-hour boundary in two
+new cache columns (migration `0074`, two generated `ADD COLUMN`s, read). So
+the series, and the manifest with it, moves at most twice an hour. A failed
+read keeps the line it had. A reading no widget asks for is cleared on the
+next poll, so a household that never turned it on sends what it sent before.
+
+**The line's box is the same height with no day in it.** A reading whose
+history has not arrived, or that is no number, draws the empty box. A tile
+keeps the row only where it costs no tile, `barKeepsEveryTile`'s rule, tried
+before the bar. The browser test caught the first version leaving the lined
+draw on the glass when it gave the line up.
+
+**A card's own picture is the album-art mechanism, widened.** `picture_key`,
+a hash of `entity_picture`, is kept for every domain now
+(`EVERY_DOMAIN_ATTRIBUTES`; the allowlist tests name it), never the address.
+It reaches a wall only as `picture` on the subject of a card with
+`subjectPicture` on (`pictureEntities`). `/d/media/<handle>` serves it through
+`artworkPhoto`, which asks Home Assistant again live and fetches only when the
+address still hashes to the handle. A picture that does not load gives way to
+the mark. `displayConfig` rewrites `subject` and `progress` to handles for
+every type (rule 12).
+
+**The panel draws both** in one bit: an outlined card with a doubled edge for
+finished, a Bresenham line for a day, and no picture (MQ11, `subjectPicture`
+in `PANEL_IGNORES`). Its frame input keeps a reading's series only where that
+widget draws the line, and a picture never. So a line asked for elsewhere,
+which moves twice an hour, refreshes no other panel. `epaper-ink` probes all
+five keys by rendering.
+
+**Measured.** `ha-sparkline-status.test.ts` (18) runs the real app against the
+fake house, which now answers history and the image proxy.
+`epaper-ha-status.test.ts` (6) reads decoded frames. `browser-ha-status.test.ts`
+(7) uses a real paired wall and the editor. `house-status.test.ts` (4) is on
+the display. Twenty mutations were checked and all are red. One was green at
+first: removing the editor's trim of the finished words, which the schema
+trims anyway. What the trim prevents is a field cleared to spaces, which the
+server would refuse as empty, and the test now clears one. The first browser
+run also caught the card's large state at 1.82 times its name on an unmeasured
+wall, over D1's cap, so its fallback is now 1.4em of the card's own type.
+**5723 tests passing, 1 red and 2 skipped, over 423 files**: calendar 153 (1
+skipped) over 10 · core 314 over 9 · display 1055 over 67 · server 4201 (1
+skipped) over 337, measured with `pnpm test` and a real Chromium. Against
+M6.4–M6.7's 5685 over 419, that is +38 and +4. The one red is
+`browser-glass`'s striped-picture case, red on a clean `main` in this
+container as before. **Still unproven where it counts:** no real
+Home Assistant's history has been drawn, and no washer has finished on a
+kitchen wall.
+
 ---
 
 ## Open decisions

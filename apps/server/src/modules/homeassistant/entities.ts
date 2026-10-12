@@ -165,6 +165,14 @@ export const ATTRIBUTE_ALLOWLIST: Readonly<Partial<Record<SupportedDomain, reado
   media_player: ['supported_features', 'volume_level', 'picture_key'],
 };
 
+/**
+ * The attributes every domain may keep, beside its own: `picture_key`, the
+ * hash of an entity's picture and never its address (plan item M6.8), so a
+ * status card can draw a car or a person. It reaches a wall only beside a card
+ * that asked for that reading's picture (`pictureEntities`).
+ */
+export const EVERY_DOMAIN_ATTRIBUTES: readonly AttributeKey[] = ['picture_key'];
+
 export type AttributeKey =
   | 'brightness'
   | 'current_position'
@@ -246,8 +254,19 @@ const ATTRIBUTE_SCHEMAS: Readonly<Record<AttributeKey, z.ZodType<number | string
  * carry anything onward that this table does not name.
  */
 export function pickAttributes(domain: string, raw: unknown): HaAttributes {
-  const allowed = (ATTRIBUTE_ALLOWLIST as Readonly<Record<string, readonly AttributeKey[]>>)[domain];
-  if (allowed === undefined || typeof raw !== 'object' || raw === null) return {};
+  if (!isSupported(`${domain}.x`) || typeof raw !== 'object' || raw === null) return {};
+  /*
+   * `picture_key` on every domain (plan item M6.8): a status card may draw its
+   * subject's own picture — a car, a person — and the key is a hash, never the
+   * address, so it is as safe on a sensor as on a player. It reaches a wall
+   * only beside a card that asked for it (`pictureEntities`).
+   */
+  const allowed = [
+    ...((ATTRIBUTE_ALLOWLIST as Readonly<Record<string, readonly AttributeKey[]>>)[domain] ?? []).filter(
+      (key) => !EVERY_DOMAIN_ATTRIBUTES.includes(key),
+    ),
+    ...EVERY_DOMAIN_ATTRIBUTES,
+  ];
   const picked: Record<string, number | string | readonly string[]> = {};
   for (const key of allowed) {
     const shaped = ATTRIBUTE_SCHEMAS[key].safeParse((raw as Record<string, unknown>)[key]);
@@ -284,7 +303,7 @@ export function pictureKey(entityPicture: string): string {
 }
 
 function withPictureKey(domain: string, picked: HaAttributes, raw: Record<string, unknown>): HaAttributes {
-  if (domain !== 'media_player') return picked;
+  if (!isSupported(`${domain}.x`)) return picked;
   // Never an integration's own `picture_key`: the key is ours, from the picture.
   const { picture_key: _ignored, ...rest } = picked;
   const picture = raw['entity_picture'];
@@ -756,6 +775,17 @@ export interface EntityReading {
   readonly step?: number;
   /** A media player's volume, 0-100 — only beside a `volume` action. */
   readonly volume?: number;
+  /**
+   * The last day as `HISTORY_POINTS` half-hour means, oldest first (M6.10) —
+   * only while a Home Assistant widget asks for this reading's sparkline.
+   */
+  readonly series?: readonly (number | null)[];
+  /**
+   * The reading's own picture, as a handle shaped like a stored media name
+   * (M6.8) — only while a status card that draws it is about this reading.
+   * Never the address, which may carry a token.
+   */
+  readonly picture?: string;
 }
 
 export interface WatchedEntity {

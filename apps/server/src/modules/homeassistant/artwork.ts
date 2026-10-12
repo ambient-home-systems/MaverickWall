@@ -7,7 +7,8 @@ import type { Keyring } from '../../secrets/keyring.js';
 import { sniffImage } from '../../api/media.js';
 import { parseJsonOr, z } from '../../validation.js';
 import { call, callPicture, resolveConnection } from './client.js';
-import { pickAttributes, pictureKey } from './entities.js';
+import { domainOf, pickAttributes, pictureKey } from './entities.js';
+import { pictureEntities } from './history.js';
 
 /**
  * Album art while music plays (plan item M3.4).
@@ -47,6 +48,27 @@ export function nowPlayingArt(db: SqliteDatabase): Readonly<Record<string, strin
   return out;
 }
 
+/**
+ * The pictures status cards draw (plan item M6.8): each card's subject that
+ * has a picture of its own — a car, a person — as a handle, by entity id. The
+ * same key and the same live check as album art, so a card asks for nothing
+ * album art could not.
+ */
+export function statusPictures(db: SqliteDatabase): Readonly<Record<string, string>> {
+  const wanted = pictureEntities(db);
+  if (wanted.size === 0) return {};
+  const rows = db
+    .prepare(`SELECT entity_id AS entityId, attributes FROM ha_entity_cache WHERE watched = 1`)
+    .all() as { entityId: string; attributes: string | null }[];
+  const out: Record<string, string> = {};
+  for (const row of rows) {
+    if (!wanted.has(row.entityId)) continue;
+    const attributes = pickAttributes(domainOf(row.entityId), parseJsonOr(z.unknown(), row.attributes ?? '', undefined));
+    if (attributes.picture_key !== undefined) out[row.entityId] = `${attributes.picture_key}.jpg`;
+  }
+  return out;
+}
+
 const HANDLE = /^[a-f0-9]{64}\.jpg$/;
 const CONTENT_TYPES = { png: 'image/png', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' } as const;
 const liveState = z.object({ state: z.string(), attributes: z.looseObject({ entity_picture: z.string().max(2000).optional().catch(undefined) }) });
@@ -61,11 +83,12 @@ export async function artworkPhoto(
   handle: string,
 ): Promise<{ bytes: Buffer; contentType: string } | undefined> {
   if (!HANDLE.test(handle)) return undefined;
-  const playing = nowPlayingArt(context.db);
+  // Album art playing now, and the pictures status cards draw: one route.
+  const playing = { ...statusPictures(context.db), ...nowPlayingArt(context.db) };
   const entityId = Object.keys(playing).find((id) => playing[id] === handle);
   if (entityId === undefined) return undefined;
   const dir = cacheDir(context.dataDir);
-  // Only the pictures playing now are kept: a song that has finished is not.
+  // Only the pictures shown now are kept: a song that has finished is not.
   if (existsSync(dir)) {
     const current = new Set(Object.values(playing));
     for (const name of readdirSync(dir)) if (!current.has(name)) rmSync(join(dir, name), { force: true });

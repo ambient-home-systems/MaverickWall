@@ -519,6 +519,13 @@
       "when": 1791820606226,
       "tag": "0073_show_when",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "6",
+      "when": 1791826302863,
+      "tag": "0074_sparklines",
+      "breakpoints": true
     }
   ]
 }

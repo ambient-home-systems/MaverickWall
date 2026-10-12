@@ -155,3 +155,11 @@ export function barPercent(reading: HouseReadingModel): number | undefined {
 export function barKeepsEveryTile(shownWithBar: number, shownWithoutBar: number): boolean {
   return shownWithBar >= shownWithoutBar;
 }
+
+/**
+ * How long a finished status card's ring takes to breathe in and out (plan
+ * item M6.8): slow, because a ring that pulses quickly in a kitchen is an
+ * alarm, and "the washing is done" is not one. Stated here and handed to
+ * `lockLoop`, so the stylesheet names no duration of its own.
+ */
+export const STATUS_RING_MS = 2_400;

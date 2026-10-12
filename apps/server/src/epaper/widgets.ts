@@ -18,6 +18,7 @@
 import { daysBetween } from '@maverick-wall/core';
 
 import {
+  haReadingHandle,
   readingHandlesFor,
   readingIndexOf,
   todoListHandle,
@@ -67,6 +68,7 @@ import { calendarView } from './calendar-view.js';
 import { shiftsShown } from './shift-style.js';
 import { calendarsOf } from './calendar-filter.js';
 import { variantOf } from './variants.js';
+import { sparkHeights, sparkRuns, statusParts } from '../api/status-card.js';
 import { withInk } from './honours.js';
 import { childCells, groupChildren, topLevelWidgets } from './group-cells.js';
 import { clockLabel, type EpaperModel } from './viewmodel.js';
@@ -1910,6 +1912,18 @@ interface EpaperReading {
   readonly tone: 'active' | 'alert' | undefined;
   /** A light's brightness, a fan's speed or a blind's position, 0-100. */
   readonly level: number | undefined;
+  /** The unit, for a status card asking whether a reading is a percentage (M6.8). */
+  readonly unit: string | undefined;
+  /** The last day as half-hour means (M6.10), when a widget asked for its line. */
+  readonly series: readonly (number | null)[] | undefined;
+}
+
+/** A series of the fixed length with nothing but numbers and gaps in it, or none. */
+function seriesOf(raw: unknown): readonly (number | null)[] | undefined {
+  if (!Array.isArray(raw) || raw.length !== 48) return undefined;
+  return raw.every((v) => v === null || (typeof v === 'number' && Number.isFinite(v)))
+    ? (raw as (number | null)[])
+    : undefined;
 }
 
 function houseReadings(panel: unknown): EpaperReading[] {
@@ -1921,7 +1935,7 @@ function houseReadings(panel: unknown): EpaperReading[] {
     if (entry === null || typeof entry !== 'object') continue;
     const row = entry as {
       key?: unknown; label?: unknown; value?: unknown; mode?: unknown; glyph?: unknown; tone?: unknown;
-      level?: unknown;
+      level?: unknown; unit?: unknown; series?: unknown;
     };
     if (typeof row.label !== 'string' || typeof row.value !== 'string') continue;
     out.push({
@@ -1934,13 +1948,29 @@ function houseReadings(panel: unknown): EpaperReading[] {
       // Refused rather than clamped, the wall's rule: a level outside 0-100
       // is a server being wrong, not a bar to draw full.
       level: typeof row.level === 'number' && row.level >= 0 && row.level <= 100 ? row.level : undefined,
+      unit: typeof row.unit === 'string' ? row.unit : undefined,
+      series: seriesOf(row.series),
     });
   }
   return out;
 }
 
+/** The house panel as a panel's frame reads it — see `panelInput`. */
+function houseInput(panel: unknown, sparkline: boolean): unknown {
+  if (panel === null || typeof panel !== 'object') return panel;
+  const raw = (panel as { readings?: unknown }).readings;
+  if (!Array.isArray(raw)) return panel;
+  const readings = raw.map((entry: unknown) => {
+    if (entry === null || typeof entry !== 'object') return entry;
+    const { series, picture: _never, ...rest } = entry as Record<string, unknown>;
+    return sparkline && series !== undefined ? { ...rest, series } : rest;
+  });
+  return { ...(panel as Record<string, unknown>), readings };
+}
+
 function drawHouse(fb: Framebuffer, m: EpaperMetrics, box: Box, panel: unknown, config: Config): void {
-  let readings = houseReadings(panel);
+  const all = houseReadings(panel);
+  let readings = all;
   const noReadings = (): void => {
     drawLines(fb, m, ['No readings yet'], box, rungToFit('No readings yet', box.w, m.body), 'left');
   };
@@ -1961,6 +1991,10 @@ function drawHouse(fb: Framebuffer, m: EpaperMetrics, box: Box, panel: unknown, 
   if (wanted.length > 0) readings = readings.filter((r) => r.key !== undefined && wanted.includes(r.key));
   if (readings.length === 0) {
     noReadings();
+    return;
+  }
+  if (variantOf('homeassistant', config) === 'status') {
+    drawHouseStatus(fb, m, box, all, readings, config);
     return;
   }
   const cap = config['count'];
@@ -2004,7 +2038,16 @@ function drawHouse(fb: Framebuffer, m: EpaperMetrics, box: Box, panel: unknown, 
   // reading with a mark and one without still share a scale — the strip rule
   // `drawWeather` states, one widget along.
   const anyGlyph = lines.some((line) => line.glyph !== undefined);
-  const textWidth = Math.max(1, box.w - (anyGlyph ? advance : 0));
+  /*
+   * The day's line on the right of every reading's row (M6.10), in a slot of
+   * a fixed width taken off the words whether or not a reading has a line —
+   * so the words of every row end at one edge, and the slot is a function of
+   * the box and the widget's settings, never of the house (the refresh
+   * contract).
+   */
+  const sparkW = config['sparkline'] === true ? Math.min(Math.floor(box.w / 3), measureText('000000', { rung: m.body })) : 0;
+  const sparkGap = sparkW > 0 ? m.widget.inset : 0;
+  const textWidth = Math.max(1, box.w - (anyGlyph ? advance : 0) - sparkW - sparkGap);
   const rung = lines.reduce(
     (smallest, line) => shorterRung(smallest, rungToFit(line.text, textWidth, m.body)),
     m.body,
@@ -2033,6 +2076,160 @@ function drawHouse(fb: Framebuffer, m: EpaperMetrics, box: Box, panel: unknown, 
     }
     const text = fit(line.text, textWidth, { rung });
     drawText(fb, left, y + Math.floor((rowH - m.widget.linePad - textH) / 2), text, { rung });
+    if (sparkW > 0) {
+      const index = lines.indexOf(line);
+      drawSpark(fb, box.x + box.w - sparkW, y + Math.floor((rowH - m.widget.linePad - textH) / 2), sparkW, textH, readings[index]?.series);
+    }
+    y += rowH;
+  }
+}
+
+/**
+ * A reading's last day as a line on one bit (M6.10): each run of half hours
+ * that had a number, joined point to point, and a run of one as a dot. The
+ * same heights and runs as the wall's (`status-card.ts`), so a panel following
+ * a wall draws the same day. Inside its rectangle and nowhere else; an empty
+ * day is an empty rectangle.
+ */
+function drawSpark(
+  fb: Framebuffer,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  series: readonly (number | null)[] | undefined,
+): void {
+  const heights = sparkHeights(series);
+  if (heights === undefined || w < 4 || h < 3) return;
+  const stroke = Math.max(1, Math.round(h / 14));
+  const px = (index: number): number => x + Math.round((index * (w - stroke)) / (heights.length - 1));
+  const py = (height: number): number => y + Math.round((1 - height) * (h - stroke));
+  const dot = (cx: number, cy: number): void => fb.fillRect(cx, cy, stroke, stroke);
+  for (const run of sparkRuns(heights)) {
+    if (run.length === 1) {
+      const [index, height] = run[0] as readonly [number, number];
+      fb.fillRect(px(index), py(height), Math.max(2, stroke), Math.max(2, stroke));
+      continue;
+    }
+    for (let i = 1; i < run.length; i++) {
+      const [ia, ha] = run[i - 1] as readonly [number, number];
+      const [ib, hb] = run[i] as readonly [number, number];
+      let x0 = px(ia);
+      let y0 = py(ha);
+      const x1 = px(ib);
+      const y1 = py(hb);
+      // Bresenham: crisp at one bit, with no half-lit pixel to smear.
+      const dx = Math.abs(x1 - x0);
+      const dy = -Math.abs(y1 - y0);
+      const sx = x0 < x1 ? 1 : -1;
+      const sy = y0 < y1 ? 1 : -1;
+      let err = dx + dy;
+      for (;;) {
+        dot(x0, y0);
+        if (x0 === x1 && y0 === y1) break;
+        const e2 = 2 * err;
+        if (e2 >= dy) {
+          err += dy;
+          x0 += sx;
+        }
+        if (e2 <= dx) {
+          err += dx;
+          y0 += sy;
+        }
+      }
+    }
+  }
+}
+
+/**
+ * The status card on one bit (M6.8): an outlined rounded card, its disc and
+ * mark beside its name and its state, the state at the header's rung — the
+ * card's one large reading; a progress bar as a track and a fill; the day's
+ * line where asked; and the readings beside it, one a line, as many as fit.
+ *
+ * **Finished is drawn as the disc filled and ringed and the card's edge
+ * doubled**, still: a panel never moves, and what the wall's breathing ring
+ * says — "this has finished" — a heavier edge and a ring say from a doorway.
+ * Its subject's own picture is never drawn: a panel draws no photographs
+ * (MQ11), so `subjectPicture` is a note beside the switch.
+ *
+ * Every rectangle is a function of the box: the head, the bar and the line
+ * have fixed heights from the panel's rungs, and the readings beside it are
+ * lines at the body's pitch, as many as the rest of the box holds.
+ */
+function drawHouseStatus(
+  fb: Framebuffer,
+  m: EpaperMetrics,
+  box: Box,
+  all: readonly EpaperReading[],
+  shown: readonly EpaperReading[],
+  config: Config,
+): void {
+  const subject = typeof config['subject'] === 'string' ? haReadingHandle(config['subject']) : undefined;
+  const progress = typeof config['progress'] === 'string' ? haReadingHandle(config['progress']) : undefined;
+  const words = typeof config['doneState'] === 'string' ? asciiTitle(config['doneState']) : undefined;
+  const parts = statusParts(all, shown, {
+    ...(subject === undefined ? {} : { subject }),
+    ...(progress === undefined ? {} : { progress }),
+    ...(words === undefined ? {} : { doneState: words }),
+  });
+  if (parts === undefined) {
+    drawLines(fb, m, ['No readings yet'], box, rungToFit('No readings yet', box.w, m.body), 'left');
+    return;
+  }
+  const pad = Math.max(2, Math.round(m.widget.inset / 2));
+  outlineRounded(fb, box.x, box.y, box.w, box.h, pad);
+  if (parts.done) outlineRounded(fb, box.x + 1, box.y + 1, box.w - 2, box.h - 2, Math.max(1, pad - 1));
+  const inner = { x: box.x + pad * 2, y: box.y + pad * 2, w: box.w - pad * 4, h: box.h - pad * 4 };
+  if (inner.w < 8 || inner.h < 8) return;
+
+  const scale = glyphScaleFor(m.bodyGlyph);
+  const glyphPx = glyphHeight(scale);
+  const disc = glyphPx + 2 * pad;
+  const lede = m.header;
+  const headH = Math.max(disc, m.body.height + m.widget.linePad + lede.height);
+  const filled = parts.done || parts.subject.tone !== undefined;
+  const discY = inner.y + Math.floor((headH - disc) / 2);
+  drawDisc(fb, inner.x, discY, disc, filled);
+  if (parts.done) {
+    // The ring: one stroke, a gap of a stroke outside the disc.
+    const ring = disc + 4 * Math.max(1, Math.round(disc / 16));
+    const off = Math.floor((ring - disc) / 2);
+    if (inner.x - off >= box.x) drawDisc(fb, inner.x - off, discY - off, ring, false);
+  }
+  if (parts.subject.glyph !== undefined) drawGlyph(fb, inner.x + pad, discY + pad, parts.subject.glyph, scale, !filled);
+  const wordsX = inner.x + disc + pad * 2;
+  const wordsW = Math.max(1, inner.x + inner.w - wordsX);
+  const textTop = inner.y + Math.floor((headH - (m.body.height + m.widget.linePad + lede.height)) / 2);
+  drawText(fb, wordsX, textTop, fit(parts.subject.label, wordsW, { rung: m.body }), { rung: m.body });
+  const ledeRung = shorterRung(lede, rungToFit(parts.subject.value, wordsW, lede));
+  drawText(fb, wordsX, textTop + m.body.height + m.widget.linePad, fit(parts.subject.value, wordsW, { rung: ledeRung }), { rung: ledeRung });
+  let y = inner.y + headH + pad * 2;
+  const bottom = inner.y + inner.h;
+
+  if (parts.progress !== undefined) {
+    const barH = Math.max(3, Math.round(m.small.height / 2));
+    if (y + barH <= bottom) {
+      fb.strokeRect(inner.x, y, inner.w, barH);
+      const filledW = Math.round((inner.w * parts.progress) / 100);
+      if (filledW > 0) fb.fillRect(inner.x, y, filledW, barH);
+      y += barH + pad * 2;
+    }
+  }
+  if (config['sparkline'] === true) {
+    const lineH = m.body.height * 2;
+    if (y + lineH <= bottom) {
+      drawSpark(fb, inner.x, y, inner.w, lineH, parts.subject.series);
+      y += lineH + pad * 2;
+    }
+  }
+  const rowH = m.small.height + m.widget.linePad;
+  for (const detail of parts.details) {
+    if (y + m.small.height > bottom) break;
+    const value = fit(detail.value, Math.floor(inner.w / 2), { rung: m.small });
+    const valueW = measureText(value, { rung: m.small });
+    drawText(fb, inner.x + inner.w - valueW, y, value, { rung: m.small });
+    drawText(fb, inner.x, y, fit(detail.label, Math.max(1, inner.w - valueW - pad * 2), { rung: m.small }), { rung: m.small });
     y += rowH;
   }
 }
@@ -2092,12 +2289,22 @@ function drawHouseTiles(
   const textW = measureText('0'.repeat(TILE_TEXT_CHARS), { rung: nameRung });
   const anyBar = showBar && readings.some((reading) => reading.level !== undefined);
   const barRow = anyBar ? pad + barH : 0;
-  const tileH = vertical
-    ? pad * 2 + disc + pad + textH + barRow
-    : pad * 2 + Math.max(disc, textH) + barRow;
   const minW = vertical ? pad * 2 + Math.max(disc, textW) : pad * 2 + disc + pad + textW;
-
   const columns = Math.max(1, Math.min(readings.length, Math.floor((box.w + gap) / (minW + gap))));
+  const heightWith = (sparkRow: number): number =>
+    vertical ? pad * 2 + disc + pad + textH + barRow + sparkRow : pad * 2 + Math.max(disc, textH) + barRow + sparkRow;
+  const shownAt = (tileH: number): number =>
+    Math.min(readings.length, columns * Math.max(1, Math.floor((box.h + gap) / (tileH + gap))));
+  /*
+   * The day's line (M6.10) in a row under every tile, kept only where it costs
+   * no tile — the wall's rule (`barKeepsEveryTile`) on one bit. Decided from
+   * the box and the number of readings, never from the history.
+   */
+  const sparkH = nameRung.height;
+  const wantSpark = config['sparkline'] === true;
+  const spark = wantSpark && shownAt(heightWith(pad + sparkH)) >= shownAt(heightWith(0));
+  const sparkRow = spark ? pad + sparkH : 0;
+  const tileH = heightWith(sparkRow);
   const rows = Math.max(1, Math.floor((box.h + gap) / (tileH + gap)));
   const shown = Math.min(readings.length, columns * rows);
   const tileW = Math.floor((box.w - gap * (columns - 1)) / columns);
@@ -2109,7 +2316,7 @@ function drawHouseTiles(
     outlineRounded(fb, x, y, tileW, tileH, pad);
 
     const inner = tileW - pad * 2;
-    const bodyH = tileH - pad * 2 - barRow;
+    const bodyH = tileH - pad * 2 - barRow - sparkRow;
     const discX = vertical ? x + Math.floor((tileW - disc) / 2) : x + pad;
     const discY = vertical ? y + pad : y + pad + Math.floor((bodyH - disc) / 2);
     const filled = reading.tone !== undefined;
@@ -2131,8 +2338,9 @@ function drawHouseTiles(
     place(reading.label, nameRung);
     if (!hideState) place(reading.value, stateRung);
 
+    if (spark) drawSpark(fb, x + pad, y + tileH - pad - sparkH, inner, sparkH, reading.series);
     if (anyBar && reading.level !== undefined) {
-      const barY = y + tileH - pad - barH;
+      const barY = y + tileH - pad - barH - sparkRow;
       fb.strokeRect(x + pad, barY, inner, barH);
       const filledW = Math.round((inner * reading.level) / 100);
       if (filledW > 0) fb.fillRect(x + pad, barY, filledW, barH);
@@ -2550,7 +2758,7 @@ export type PanelInput =
       readonly kind: 'panel';
       readonly panel: unknown;
       /** Home Assistant's `tile` look, which reads the same slice differently. */
-      readonly look?: 'tile';
+      readonly look?: 'tile' | 'status';
     };
 
 const NO_INPUT: PanelInput = { kind: 'none' };
@@ -2785,9 +2993,16 @@ export function panelInput(type: string, manifest: Manifest, config: Config): Pa
        * nothing had moved. Named on the tile alone, so every list panel hashes
        * exactly what it hashed and nothing refreshes that did not change.
        */
-      return variantOf('homeassistant', config) === 'tile'
-        ? { kind: 'panel', panel, look: 'tile' }
-        : { kind: 'panel', panel };
+      /*
+       * A reading's day (M6.10) only where this widget draws its line, and a
+       * card's picture never: a panel draws no photographs (MQ11). So a
+       * sparkline asked for on some other widget, which moves twice an hour,
+       * does not refresh a panel that does not draw one, and a house with
+       * neither hashes exactly what it hashed.
+       */
+      const slice = houseInput(panel, config['sparkline'] === true);
+      const look = variantOf('homeassistant', config);
+      return look === 'list' ? { kind: 'panel', panel: slice } : { kind: 'panel', panel: slice, look };
     }
     case 'external': {
       const mod = str(config, 'module');

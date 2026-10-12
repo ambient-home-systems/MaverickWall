@@ -30,7 +30,7 @@ import {
   UNLISTED_ATTRIBUTE_MARKERS,
   type FakeHa,
 } from './fake-home-assistant.js';
-import { ATTRIBUTE_ALLOWLIST } from '../src/modules/homeassistant/entities.js';
+import { ATTRIBUTE_ALLOWLIST, EVERY_DOMAIN_ATTRIBUTES } from '../src/modules/homeassistant/entities.js';
 
 /**
  * Home Assistant, driven against a real HTTP server.
@@ -898,7 +898,11 @@ describe('readings on the wall', () => {
     expect(rows).toHaveLength(READ_ONLY.length + 1);
     for (const row of rows) {
       const domain = row.entityId.slice(0, row.entityId.indexOf('.'));
-      const allowed = ['device_class', ...((ATTRIBUTE_ALLOWLIST as Record<string, readonly string[]>)[domain] ?? [])];
+      const allowed = [
+        'device_class',
+        ...((ATTRIBUTE_ALLOWLIST as Record<string, readonly string[]>)[domain] ?? []),
+        ...EVERY_DOMAIN_ATTRIBUTES,
+      ];
       const stored = Object.keys(JSON.parse(row.attributes ?? '{}') as Record<string, unknown>);
       for (const key of stored) expect(allowed, `${row.entityId} stored ${key}`).toContain(key);
     }
@@ -917,6 +921,9 @@ describe('readings on the wall', () => {
       supported_color_modes: ['color_temp', 'rgb'],
       min_color_temp_kelvin: 2202,
       max_color_temp_kelvin: 6535,
+      // The picture as its hash, since M6.8 — the address, with its token, is
+      // among the markers refused above.
+      picture_key: expect.stringMatching(/^[0-9a-f]{64}$/),
     });
     // An old domain is stored exactly as it was before the allowlist existed.
     const door = rows.find((row) => row.entityId === 'binary_sensor.freezer_door');

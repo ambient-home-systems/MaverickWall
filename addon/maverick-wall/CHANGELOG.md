@@ -16,6 +16,18 @@
 
 ## Unreleased
 
+**A status card, and a line of the last day.** The Home Assistant widget has
+a third look, Status card: one thing the house is doing — the washer, the car
+charging — with its state large, how far along it is, and up to four readings
+beside it. Tell it the words it says when it has finished ("Complete") and it
+turns the alert colour, with a ring round its picture that breathes slowly. It
+can show the thing's own picture from Home Assistant, such as a car or a
+person. And every look can now draw "Line of the last day" under each reading
+that is a number: the last 24 hours from Home Assistant's own history, brought
+up to date every half hour. Turning it on asks Home Assistant for that history
+and changes nothing in your house. An e-paper panel draws both, in black and
+white, but never the card's own picture.
+
 ## 1.5.0
 
 **Show a widget only when the house says so.** Every widget, and every group,
