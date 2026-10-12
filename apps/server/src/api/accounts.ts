@@ -154,3 +154,38 @@ export function ingressAccount(
     return undefined;
   }
 }
+
+/**
+ * Accounts whose two-step codes are locked now (M8.3). Better Auth's plugin
+ * locks an account for fifteen minutes after ten wrong codes in a row, from
+ * any address, and keeps the lock on the account's own row, so it is listed
+ * by account rather than by address.
+ */
+export function twoStepLocks(
+  db: SqliteDatabase,
+  at: number,
+): readonly { readonly id: string; readonly name: string; readonly until: number }[] {
+  try {
+    return db
+      .prepare(
+        `SELECT u.id AS id, u.name AS name, t.locked_until AS until
+           FROM two_factor t JOIN user u ON u.id = t.user_id
+          WHERE t.locked_until IS NOT NULL AND t.locked_until > ?
+          ORDER BY t.locked_until`,
+      )
+      .all(at) as { id: string; name: string; until: number }[];
+  } catch {
+    return [];
+  }
+}
+
+/** Lift an account's two-step lock and start its count of wrong codes again. True when there was one. */
+export function releaseTwoStepLock(db: SqliteDatabase, id: string, at: number): boolean {
+  const result = db
+    .prepare(
+      `UPDATE two_factor SET failed_verification_count = 0, locked_until = NULL
+        WHERE user_id = ? AND locked_until IS NOT NULL AND locked_until > ?`,
+    )
+    .run(id, at);
+  return result.changes > 0;
+}

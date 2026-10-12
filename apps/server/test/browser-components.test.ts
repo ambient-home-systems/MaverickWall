@@ -248,7 +248,7 @@ describe.each(WIDTHS)('the converted screens on %s', (_label, viewport, mobile) 
           return { height: rect.height, title: (row.querySelector('b')?.textContent ?? '').trim(), hits };
         });
       });
-      // The planted short row, then Backup's two files, the two account links,
+      // The planted short row, then Backup's two files, the three account links,
       // the link to the companion token and the diagnostics export — in the
       // order the page draws them.
       expect(rows.map((r) => r.title)).toEqual([
@@ -257,6 +257,7 @@ describe.each(WIDTHS)('the converted screens on %s', (_label, viewport, mobile) 
         'Encryption key',
         'Accounts',
         'Your account',
+        'Lockouts',
         'Companion token',
         'Diagnostics export',
       ]);

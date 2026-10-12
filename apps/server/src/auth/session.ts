@@ -74,8 +74,17 @@ const ALWAYS_OPEN = [
   '/api/auth/',
 ];
 
+/**
+ * Open by whole path segment, never by spelling. A prefix that does not end in
+ * a slash opens itself and what is under it, and nothing that merely begins
+ * with the same letters: `/admin/sign-in` must not open `/admin/sign-ins`, a
+ * screen that would otherwise have been served to anybody who could reach
+ * the port because its name started the same way.
+ */
 function isAlwaysOpen(path: string): boolean {
-  return ALWAYS_OPEN.some((prefix) => path === prefix || path.startsWith(prefix));
+  return ALWAYS_OPEN.some((prefix) =>
+    prefix.endsWith('/') ? path.startsWith(prefix) : path === prefix || path.startsWith(`${prefix}/`),
+  );
 }
 
 /**

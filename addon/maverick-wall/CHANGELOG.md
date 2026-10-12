@@ -16,6 +16,16 @@
 
 ## Unreleased
 
+**See who is trying to sign in, and let a locked address back in.** System ›
+Lockouts lists the recent sign-in attempts — where each came from and what
+happened, never the email address typed — and anything currently told to
+wait: an address that got the password wrong too often, a wall that guessed
+too many pairing codes, a phone shortcut still sending an old token, or an
+account whose two-step codes were got wrong ten times in a row. Each runs out
+by itself; Release lets it try again at once. An account locked out of its
+codes is now told it is fifteen minutes, not a minute, and that another admin
+can release it.
+
 ## 1.7.0
 
 **More than one account, and a second step at sign-in.** System › Accounts

@@ -4561,6 +4561,11 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
               title: 'Your account',
               href: 'admin/account',
               detail: 'Your password and two-step sign-in.',
+            }) +
+            listRow('', {
+              title: 'Lockouts',
+              href: 'admin/lockouts',
+              detail: 'Recent sign-in attempts, and any address told to wait. Release one here.',
             }),
         ) +
 
