@@ -1829,7 +1829,7 @@ pre.code{background:var(--mw-surface-2);
 .le-fallback{margin:0 0 var(--mw-s-4);padding-bottom:var(--mw-s-3);border-bottom:var(--mw-hairline) solid var(--mw-line)}
 /* When the box is on the wall at all (plan items M6.4, M6.5, M6.7): about the
  * box, like its fallback, and set off from the widget's options the same way. */
-.le-show-when{margin:0 0 var(--mw-s-4);padding-bottom:var(--mw-s-3);border-bottom:var(--mw-hairline) solid var(--mw-line)}
+.le-show-when{margin:var(--mw-s-4) 0 0;padding-top:var(--mw-s-3);border-top:var(--mw-hairline) solid var(--mw-line)}
 .le-handle{position:absolute;right:2px;bottom:2px;width:12px;height:12px;background:var(--accent);
   border-radius:calc(var(--mw-r-1) + var(--mw-hairline)) 0 calc(var(--mw-r-1) + var(--mw-hairline)) 0;cursor:se-resize;touch-action:none}
 /* A 12px corner is a pointer target on a mouse and nothing at all on a

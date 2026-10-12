@@ -4247,7 +4247,6 @@ function boot(): void {
       note.textContent = view.note;
       configPanel.appendChild(note);
     }
-    buildShowWhenConfig(widget);
     if (view.fallback !== undefined) buildFallbackConfig(widget, view.fallback);
 
     /*
@@ -4293,7 +4292,12 @@ function boot(): void {
     // Layering moved to the Layers list (drag a row to restack); the
     // per-widget front/back buttons it replaces are gone.
     const cfg = widget.config ?? {};
-    if (view.tab === 'content') buildTypeConfig(widget, cfg);
+    if (view.tab === 'content') {
+      buildTypeConfig(widget, cfg);
+      // When the box is on the wall at all, after what it says (M6.4–M6.7):
+      // the Content tab's, not the Style tab's, which leads with the Look.
+      buildShowWhenConfig(widget);
+    }
     else {
       // Style is the same set of controls for every widget — one
       // implementation, writing the same per-widget keys it always has.
