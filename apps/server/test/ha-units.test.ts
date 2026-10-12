@@ -10,6 +10,7 @@ import {
   isSupported,
   parseStates,
   pickAttributes,
+  withoutTrack,
   pictureKey,
   readState,
   SUPPORTED_DOMAINS,
@@ -446,12 +447,28 @@ describe('the attributes a reading may keep', () => {
 
   it('names only the five domains that need one', () => {
     // A media player since RFC 018 phase 6: its features and its volume, for
-    // the panel — and not its title, artist or picture.
+    // the panel — and since M6.9 what it plays, for a now-playing card, which
+    // the job keeps only for a player such a card follows (`withoutTrack`).
+    // Never its picture's address, which is a hash.
     expect(Object.keys(ATTRIBUTE_ALLOWLIST).sort()).toEqual(['climate', 'cover', 'fan', 'light', 'media_player']);
     expect(pickAttributes('media_player', {
       supported_features: 21, volume_level: 0.4, media_title: 'x', media_artist: 'y', entity_picture: '/z',
-    })).toEqual({ supported_features: 21, volume_level: 0.4 });
+    })).toEqual({ supported_features: 21, volume_level: 0.4, media_title: 'x', media_artist: 'y' });
     expect(pickAttributes('media_player', { volume_level: 1.5 })).toEqual({});
+    // Refused rather than coerced: a title that is not a string, or a length that is not a number.
+    expect(pickAttributes('media_player', { media_title: 7, media_duration: '200' })).toEqual({});
+  });
+
+  it('takes what a player plays out of a state no card follows, and nothing else (M6.9)', () => {
+    const playing = state({
+      domain: 'media_player',
+      deviceClass: null,
+      attributes: { volume_level: 0.4, media_title: 'x', media_artist: 'y', media_duration: 200, media_position: 3 },
+    });
+    expect(withoutTrack(playing).attributes).toEqual({ volume_level: 0.4 });
+    // A state with no track is the same object: nothing to take out.
+    const quiet = state({ domain: 'media_player', deviceClass: null, attributes: { volume_level: 0.4 } });
+    expect(withoutTrack(quiet)).toBe(quiet);
   });
 });
 

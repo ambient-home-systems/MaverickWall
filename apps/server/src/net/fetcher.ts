@@ -2,6 +2,7 @@ import { brotliDecompressSync, gunzipSync, inflateSync } from 'node:zlib';
 import { lookup as dnsLookup } from 'node:dns';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
+import WebSocket from 'ws';
 import {
   REDIRECT_POLICY,
   classifyIp,
@@ -21,6 +22,8 @@ import {
   type NetworkOption,
   type PostJsonOutcome,
   type PostJsonRequest,
+  type SocketOutcome,
+  type SocketRequest,
   type UrlPolicy,
   type ValidatedUrl,
 } from '@maverick-wall/core';
@@ -951,6 +954,100 @@ export function createFetcher(): Fetcher {
           'network-error',
           error instanceof Error ? networkErrorMessage(error) : 'unknown error',
         ) as PostJsonOutcome;
+      }
+    },
+
+    /**
+     * One short WebSocket conversation (plan item M6.11), under the guard
+     * every request here is under: the address validated, the name resolved
+     * and every answer checked, and the socket pinned to the address that was
+     * checked — `ws` hands `lookup` to the HTTP request it upgrades, so the pin
+     * is the same pin. No redirect is followed, a message over `maxBytes` ends
+     * it, and so does the clock.
+     */
+    async socket(request: SocketRequest): Promise<SocketOutcome> {
+      try {
+        const validated = validateOutboundUrl(request.url, request.policy);
+        if (!validated.ok) return { status: 'rejected', code: 'url-rejected', message: validated.error.message };
+        const target = validated.value;
+        const resolved = await resolveAndCheck(target.hostname, request.policy);
+        if (!resolved.ok) {
+          const outcome = resolved.outcome;
+          return outcome.status === 'rejected'
+            ? { status: 'rejected', code: outcome.code, message: outcome.message }
+            : { status: 'failed', code: 'network-error', message: 'The address could not be checked.' };
+        }
+        const href = new URL(target.href);
+        href.protocol = target.protocol === 'https:' ? 'wss:' : 'ws:';
+        const timeoutMs = request.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+
+        return await new Promise<SocketOutcome>((resolve) => {
+          let settled = false;
+          const socket = new WebSocket(href.toString(), {
+            // The pin.
+            lookup: pinnedLookup(resolved.addresses) as never,
+            followRedirects: false,
+            handshakeTimeout: timeoutMs,
+            maxPayload: request.maxBytes,
+            perMessageDeflate: false,
+            headers: { 'user-agent': DEFAULT_USER_AGENT },
+          });
+          const finish = (outcome: SocketOutcome): void => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            socket.removeAllListeners();
+            // An error after the end is nobody's business; a listener keeps it from being thrown.
+            socket.on('error', () => undefined);
+            socket.terminate();
+            resolve(outcome);
+          };
+          const timer = setTimeout(
+            () => finish({ status: 'failed', code: 'timeout', message: `No answer within ${Math.round(timeoutMs / 1000)} seconds.` }),
+            timeoutMs,
+          );
+          socket.on('message', (data: WebSocket.RawData, isBinary: boolean) => {
+            if (isBinary) {
+              finish({ status: 'failed', code: 'unacceptable-content-type', message: 'The server answered in binary.' });
+              return;
+            }
+            const text = Buffer.isBuffer(data) ? data.toString('utf8') : Buffer.concat(data as Buffer[]).toString('utf8');
+            let step;
+            try {
+              step = request.converse(text);
+            } catch {
+              finish({ status: 'failed', code: 'network-error', message: 'The answer could not be read.' });
+              return;
+            }
+            if ('done' in step) finish({ status: 'ok', body: step.done });
+            else if ('fail' in step) finish({ status: 'failed', code: 'http-error', message: step.fail });
+            else for (const message of step.send) socket.send(message);
+          });
+          socket.on('unexpected-response', (_req, response) => {
+            const status = response.statusCode ?? 0;
+            finish(
+              status >= 300 && status < 400
+                ? { status: 'rejected', code: 'redirect-rejected', message: 'The server answered with a redirect.' }
+                : { status: 'failed', code: 'http-error', message: `The server answered ${status}.` },
+            );
+          });
+          socket.on('error', (error: Error) =>
+            finish({
+              status: 'failed',
+              code: /max payload/i.test(error.message) ? 'too-large' : 'network-error',
+              message: networkErrorMessage(error),
+            }),
+          );
+          socket.on('close', () =>
+            finish({ status: 'failed', code: 'network-error', message: 'The server closed the connection.' }),
+          );
+        });
+      } catch (error) {
+        return {
+          status: 'failed',
+          code: 'network-error',
+          message: error instanceof Error ? networkErrorMessage(error) : 'unknown error',
+        };
       }
     },
   };

@@ -102,7 +102,9 @@ const OWN_HONOURS: Readonly<Record<string, readonly string[]>> = {
   // its progress, the readings beside it and a doubled edge once finished, and
   // a sparkline is a line in one bit — so `subject`, `progress`, `doneState`
   // and `sparkline` move ink. The card's own picture does not: a panel draws
-  // no photographs (`PANEL_IGNORES`).
+  // no photographs (`PANEL_IGNORES`). M6.9's `media` look is a value of
+  // `variant` and adds no key: the panel draws the player's card with no
+  // sleeve and no bar, both of which would be wrong within the hour.
   homeassistant: [
     'title', 'showTitle', 'count', 'fields', 'readings', 'variant', 'tileLayout', 'hideState', 'showBar',
     'sparkline', 'subject', 'progress', 'doneState', STYLE_INSET, WHEN_EMPTY,
@@ -144,6 +146,10 @@ const OWN_HONOURS: Readonly<Record<string, readonly string[]>> = {
   ],
   // Environment (plan item M5.6): which readings, and which sensors beside them.
   environment: ['title', 'showTitle', 'envFields', 'readings', STYLE_INSET],
+  // Notifications (plan item M6.11): how many, and whether Home Assistant's
+  // own are among them. The OK on a tile is the wall's alone — a panel has
+  // nothing to press.
+  notifications: ['title', 'showTitle', 'align', 'count', 'haNotifications', STYLE_INSET, WHEN_EMPTY],
   heading: [
     'title', 'showTitle', 'align', 'text', 'subtitle', 'textSize', 'valign', 'glyph', 'divider', 'uppercase',
     STYLE_INSET,
@@ -229,6 +235,8 @@ export const INK_LANE: Readonly<Record<string, readonly string[]>> = {
   news: ['mode', 'count', 'showSource', 'showTime', 'showQr'],
   // Which readings a panel shows is how much it says, as a forecast's fields are.
   environment: ['envFields'],
+  // How many a panel says, and whether Home Assistant's own are among them.
+  notifications: ['count', 'haNotifications'],
   // A panel could honestly lay a group out differently from the wall it
   // follows — a row on the wall, a column on a narrow panel — and that is
   // density and shape, which is what the lane is for. Empty until the editor
@@ -261,7 +269,7 @@ export const PANEL_LOOKS: Readonly<Record<string, readonly string[]>> = {
   countdown: ['page', 'ticket', 'progress', 'month'],
   // Tiles, as outlined boxes with the disc filled for a reading that is on or
   // wrong (P5.3) — the one colour a tile has, said in the one way a bit can.
-  homeassistant: ['tile', 'status'],
+  homeassistant: ['tile', 'status', 'media'],
 };
 
 /**

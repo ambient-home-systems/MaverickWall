@@ -16,6 +16,21 @@
 
 ## Unreleased
 
+**Now playing, and a Notifications widget.** The Home Assistant widget has a
+fourth look, Now playing: what a speaker is playing, with its sleeve, the
+title and artist, and a bar of how far through the song it is. Tick more than
+one speaker and it follows whichever is playing. Where you have let the wall
+operate the speaker, it has Previous, Pause and Next buttons, and "More" opens
+its volume. What a speaker plays is only kept for a speaker a Now playing card
+follows. A new Notifications widget shows two things: Home Assistant's own
+notifications ("New devices discovered", your automations' messages), which go
+when you dismiss them in Home Assistant, and any "Tell me when…" rule you set
+to the new "A tile in a Notifications widget", which says it there instead of
+over the calendar. A tile has an OK where the wall may acknowledge alerts. With
+nothing to say, the widget is left out, and its "When this has nothing to show"
+setting takes the box. An e-paper panel draws both, without the sleeve or the
+bar.
+
 ## 1.6.0
 
 **A status card, and a line of the last day.** The Home Assistant widget has

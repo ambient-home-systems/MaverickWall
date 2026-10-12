@@ -66,6 +66,7 @@ import { haActBody, operate, valueFor } from '../modules/homeassistant/control.j
 import { pressWebhook } from '../modules/webhooks/index.js';
 import { activeOn, localToday, readChores, setChoreDone } from '../api/chores.js';
 import { evaluateInterrupts } from '@maverick-wall/core';
+import { NOTIFICATIONS_BLOCK, bannersOf, tileFor, tilesOf } from '../api/notifications.js';
 import { dismissInterrupt, readDismissals, readRules } from '../api/rules.js';
 import { createLogBuffer, type LogBuffer } from '../logbuffer.js';
 import { ADMIN_STYLESHEET, ADMIN_STYLESHEET_ETAG, errorBlock, escapeHtml, page, textField } from './html.js';
@@ -836,6 +837,36 @@ export function createApp(deps: AppDeps): Hono {
     }
 
     /*
+     * A notification tile (plan item M6.11) is named by a handle, never by its
+     * signal — which for a Home Assistant rule is an entity id the wall is
+     * never given. So the handle is matched against what is firing now, the
+     * same evaluation the manifest drew it from; a tile that has stopped
+     * firing has nothing left to acknowledge.
+     */
+    if (key.startsWith('tile:')) {
+      const at = now();
+      const household = readHousehold(deps.db);
+      const modules = allModules(deps.db);
+      const context = { db: deps.db, fetcher: deps.fetcher, keyring: deps.keyring, now: at, timezone: household.timezone };
+      const rules = readRules(deps.db);
+      const tile = tileFor(
+        key,
+        evaluateInterrupts({
+          rules,
+          signals: collectSignals(modules, context),
+          now: at,
+          localHhmm: localClock(at, household.timezone),
+          dismissedAt: readDismissals(deps.db),
+        }).active,
+      );
+      const rule = tile === undefined ? undefined : rules.find((candidate) => candidate.id === tile.ruleId);
+      if (tile === undefined || rule === undefined) return c.json({ error: 'not-found' }, 404);
+      if (!rule.dismissible) return c.json({ error: 'not-dismissible' }, 403);
+      dismissInterrupt(deps.db, rule.source, tile.signalKey, at);
+      return c.json({ ok: true });
+    }
+
+    /*
      * Only a rule that said it may be dismissed.
      *
      * The wall hides the button for the rest, but the button is not the
@@ -1327,6 +1358,31 @@ export function createApp(deps: AppDeps): Hono {
       };
     })();
 
+    /*
+     * Evaluated per poll, from stored signals and stored rules — every wall
+     * reads the same document, including which interrupts have been cleared.
+     * A rule whose action is `tile` (plan item M6.11) is taken out of the
+     * interrupts here, so nothing that draws over the wall or pushes a wake
+     * ever sees one, and handed to the Notifications widget instead.
+     */
+    const rules = readRules(deps.db);
+    const firing = evaluateInterrupts({
+      rules,
+      // The same module list as the panels: a third-party module's signals go
+      // through the identical isolation, and core's source guard keeps them
+      // matchable only by a rule the household armed for it.
+      signals: collectSignals(modules, moduleContext),
+      now: at,
+      // Worked out here because core may not reach for `Intl` — rule one.
+      localHhmm: localClock(at, timezone),
+      dismissedAt: readDismissals(deps.db),
+    }).active;
+    const tiles = tilesOf(firing, rules);
+    const panels = collectPanels(modules, moduleContext);
+    if (tiles.length > 0) {
+      panels[NOTIFICATIONS_BLOCK] = { ...((panels[NOTIFICATIONS_BLOCK] as object | undefined) ?? {}), tiles };
+    }
+
     return buildManifest({
       household: effective,
       // Resolve a theme reference to its tokens (custom) or just its shape
@@ -1363,14 +1419,19 @@ export function createApp(deps: AppDeps): Hono {
       // no I/O: every module reads its own cache, filled by its own job. The
       // registered third-party modules join the first-party ones, so they go
       // through the same isolation and ordering.
-      panels: collectPanels(modules, moduleContext),
+      panels,
       /*
        * Which of those modules the household has set up — a location for the
        * forecast, a watched entity, an active chore. A widget with nothing
        * behind it yields its space instead of drawing a permanent note nobody
        * standing at the wall can act on (RFC 009 Phase 2).
        */
-      readyModules: setUp.modules,
+      // And the Notifications widget's (M6.11), which is set up when a tile
+      // is firing as well as when Home Assistant has said something.
+      readyModules:
+        tiles.length > 0 && !setUp.modules.includes(NOTIFICATIONS_BLOCK)
+          ? [...setUp.modules, NOTIFICATIONS_BLOCK]
+          : setUp.modules,
       // The to-do lists, for the one widget whose omission is a fact about
       // its own config rather than its type (RFC 012 §6.2).
       watchedTodoLists: setUp.todoLists,
@@ -1379,21 +1440,7 @@ export function createApp(deps: AppDeps): Hono {
       // The house's state at this instant, for the boxes shown only while it
       // says so (plan items M6.4, M6.5, M6.7).
       conditions: readConditions(deps.db, at),
-      /*
-       * Evaluated per poll, from stored signals and stored rules — every wall
-       * reads the same document, including which interrupts have been cleared.
-       */
-      interrupts: evaluateInterrupts({
-        rules: readRules(deps.db),
-        // The same module list as the panels above: a third-party module's
-        // signals go through the identical isolation, and core's source guard
-        // keeps them matchable only by a rule the household armed for it.
-        signals: collectSignals(modules, moduleContext),
-        now: at,
-        // Worked out here because core may not reach for `Intl` — rule one.
-        localHhmm: localClock(at, timezone),
-        dismissedAt: readDismissals(deps.db),
-      }).active,
+      interrupts: bannersOf(firing),
       screen: {
         orientation: screenLike.orientation,
         rotation: screenLike.rotation,

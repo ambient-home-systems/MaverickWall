@@ -11203,6 +11203,89 @@ container as before. **Still unproven where it counts:** no real
 Home Assistant's history has been drawn, and no washer has finished on a
 kitchen wall.
 
+
+**The Home Assistant widget has a now-playing card, and there is a
+Notifications widget (plan items M6.9 and M6.11).**
+
+- **Now playing** is the widget's fourth look, `media`. It follows, of the
+  speakers the widget shows, the one playing, else the one with a track
+  paused, else the first (`mediaFollowed`, in the `status-card` parity
+  block). It draws:
+  - the sleeve, through the checked handle album art uses (M3.4);
+  - the title as its one large reading, then the artist, the album and the
+    speaker;
+  - a bar the wall counts on its own clock from the instant the track
+    started;
+  - behind RFC 018's three switches, Previous, Play or Pause and Next on the
+    card, through `/d/ha/act`, and More, which opens the speaker's own panel
+    with its volume.
+
+  The start instant is sent rounded to five seconds (`mediaFor`), because some
+  integrations re-report the position every few seconds, and a position that
+  travelled would be a new manifest every poll. The allowlist reads the title,
+  artist, album, duration and position for every player. The job keeps them in
+  the cache only for a player a now-playing card follows (`withoutTrack`). So
+  a backup of a house with no such card holds no record of what it listens to,
+  and the old "a track title must not travel" assertions still hold there.
+  The editor's preview marks every watched speaker as a player, so a card
+  chosen and not yet saved draws the speaker's own words until Save brings
+  the title. A panel draws the card in one bit with no sleeve and no bar.
+  Its frame hashes the words alone, so a new song is the only thing that
+  refreshes it. Seeking is no verb in RFC 018's table.
+- **A rule may say what it found as a tile**: `tile` is a fifth interrupt
+  action, ranked under a banner. The matcher evaluates it with every other
+  rule. The manifest builder then takes the tiles out of `interrupts`, so
+  nothing that draws over the wall or pushes a wake ever sees one. It hands
+  them to the `notifications` panel as the rule's sentence, what it is about,
+  and a handle (`tile:` and a hash). Never the signal's key, which for a Home
+  Assistant rule is an entity id. A tile's OK posts that handle to
+  `/d/interrupts/dismiss`, which matches it against what is firing now,
+  behind the wall's alert switch and the rule's own.
+- **Home Assistant's persistent notifications are read over its WebSocket
+  API**, because since 2023.6 that is the only place it keeps them. It is one
+  short exchange: the token, `persistent_notification/get`, and the answer.
+  The fetcher gains an optional `socket` for it, under the same validate,
+  resolve, check and pin guard as every request (rule 4). A test holds the
+  socket to that one file and to those two messages. It is read only while a
+  Notifications widget shows them, replaced whole on each read, and kept on a
+  failed one. Migration `0075` is `ha_notifications`, one generated
+  `CREATE TABLE`, read. Dismissing one from a wall is † and not built.
+- With nothing to say the widget is left out and its `whenEmpty` takes the
+  box: the module is ready when Home Assistant has said something, and the
+  builder adds it while a tile fires.
+
+**Building it found a shipped fault in M6.8.** The status card's belt looked
+for `.house-status` inside the tier entry's body, and the body *is* the card,
+so the belt never ran and a status card in a short box was never trimmed. The
+now-playing card's pass made the same mistake, and its browser test caught
+it. Both now look in the box, and a browser test holds the status card's
+trim.
+
+**Measured.**
+- Server: `now-playing-notifications.test.ts` (21, the real app against the
+  fake house, which gains a WebSocket API) and
+  `epaper-now-playing-notifications.test.ts` (6).
+- Browser: `browser-now-playing-notifications.test.ts` (6, a real paired wall
+  and the editor).
+- Display: `now-playing-notifications.test.ts` (4).
+
+Nineteen mutations were checked and all nineteen are red. Two failed to
+build at first and were re-aimed. Two were green until a test was tightened:
+- **The notifications read's own guard** was only reachable from a house
+  that watches readings.
+- **The widget's readiness** was invisible on a canvas holding nothing else,
+  because the never-empty guard kept the box anyway.
+
+**5772 tests passing, 1 red and 2 skipped, over 427 files**: calendar 153
+(1 skipped) over 10 · core 314 over 9 · display 1060 over 68 · server 4245
+(1 skipped) over 340, measured with `pnpm test` and a real Chromium. The
+looks test was re-run after its one-line fix (Now playing is a designed
+look). The one red is `browser-glass`'s striped-picture case, red on a clean
+`main` in this container as before. Against M6.8's 5723 over 423 that is
++49 and +4.
+
+**Still unproven where it counts:** no real speaker has been followed on a
+kitchen wall, and no real Home Assistant has answered the WebSocket read.
 ---
 
 ## Open decisions

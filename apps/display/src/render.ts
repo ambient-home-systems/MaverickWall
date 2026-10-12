@@ -20,7 +20,7 @@ import {
   wallClockReading,
 } from './clock-face.js';
 import { agendaTimeFitsBeside, weekColumnsFit } from './density.js';
-import type { NewsModel, PanelData, PanelReading } from './viewmodel.js';
+import type { NewsModel, PanelData, PanelReading, WallAction } from './viewmodel.js';
 import type { ManifestWidget, CanvasBackground, PictureWash } from './manifest.js';
 import { glyphNode, glyphPartsNode, isGlyphKey } from './glyphs.js';
 import { emojiNode } from './emoji.js';
@@ -129,7 +129,7 @@ import {
   STATUS_RING_MS,
   type TileWord,
 } from './house-tiles.js';
-import { sparkHeights, sparkRuns, statusParts } from './status-card.js';
+import { mediaElapsed, mediaFollowed, sparkHeights, sparkRuns, statusParts } from './status-card.js';
 import {
   PLAYFUL_BOB_MS,
   PLAYFUL_BOB_STEP_MS,
@@ -1698,13 +1698,190 @@ function renderHouseStatus(
   return card;
 }
 
+/** A track's time as the wall writes it: `3:07`, or `1:02:07` past the hour. */
+export function trackTime(seconds: number): string {
+  const whole = Math.max(0, Math.floor(seconds));
+  const h = Math.floor(whole / 3600);
+  const m = Math.floor((whole % 3600) / 60);
+  const sec = String(whole % 60).padStart(2, '0');
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
+}
+
+/** The transport a now-playing card draws, in the order a remote has it. */
+const MEDIA_TRANSPORT: readonly { readonly action: WallAction; readonly label: (playing: boolean) => string }[] = [
+  { action: 'previous', label: () => 'Previous' },
+  { action: 'play_pause', label: (playing) => (playing ? 'Pause' : 'Play') },
+  { action: 'next', label: () => 'Next' },
+];
+
+/**
+ * Home Assistant's `media` look (plan item M6.9): what a speaker is playing,
+ * as a card — its sleeve, the title, who it is by, a bar of how far through,
+ * and, where RFC 018's three switches all say so, its transport.
+ *
+ * **Which player** is `mediaFollowed`'s: of the players the widget shows, the
+ * one that is playing, else the one with a track loaded, else the first. The
+ * title and the rest travel only beside a card like this (`mediaEntities` on
+ * the server), so a reading with `media` on it is a player this card may
+ * follow, and a widget showing none has nothing to draw.
+ *
+ * **The bar is counted on the wall's own clock** from the instant the track
+ * started, so it moves on every fifteen-second draw while the manifest stays
+ * put for the whole song. It is a picture of the time, not a control: seeking
+ * is no verb in RFC 018's table.
+ *
+ * **The transport is three buttons on the card** carrying the player's handle
+ * and a word, the press any reading makes (`/d/ha/act`), and only for the words
+ * the player itself supports. A player whose volume can be set also offers
+ * "More", which opens the reading's own panel with the volume slider in it.
+ */
+function renderHouseMedia(
+  model: DisplayModel,
+  config: unknown,
+  mediaBase: string,
+  widgetId = '',
+): HTMLElement | undefined {
+  const player = mediaFollowed(houseReadingsFor(model.house, config));
+  if (player === undefined) return undefined;
+  const media = player.media ?? {};
+  const playing = player.tone === 'active';
+
+  const card = el('section', 'house-media');
+  card.setAttribute('data-tone', playing ? 'active' : 'idle');
+  const notice = model.houseNotices[widgetId];
+  if (notice !== undefined) card.appendChild(houseNoticeNode(notice, 'mp-note'));
+
+  const art = el('span', 'mp-art');
+  const glyph = player.glyph === undefined ? null : glyphNode(player.glyph, 'mp-ico gl');
+  if (player.picture !== undefined) {
+    const picture = el('img', 'mp-picture') as HTMLImageElement;
+    picture.alt = '';
+    picture.src = `${mediaBase}${player.picture}`;
+    // A sleeve that does not arrive gives way to the mark, never a broken box.
+    picture.addEventListener('error', () => {
+      picture.remove();
+      art.classList.remove('mp-has-picture');
+      if (glyph !== null && glyph.parentNode === null) art.appendChild(glyph);
+    });
+    art.classList.add('mp-has-picture');
+    art.appendChild(picture);
+  } else if (glyph !== null) {
+    art.appendChild(glyph);
+  }
+  card.appendChild(art);
+
+  const words = el('div', 'mp-words');
+  const title = el('span', 'mp-title', media.title ?? player.value);
+  title.setAttribute('data-field', 'title');
+  words.appendChild(title);
+  if (media.artist !== undefined) {
+    const artist = el('span', 'mp-artist', media.artist);
+    artist.setAttribute('data-field', 'artist');
+    words.appendChild(artist);
+  }
+  if (media.album !== undefined) {
+    const album = el('span', 'mp-album', media.album);
+    album.setAttribute('data-field', 'album');
+    words.appendChild(album);
+  }
+  // Which speaker, and what it is doing: the reading's own words.
+  const where = el('span', 'mp-player', media.title === undefined ? player.label : `${player.label} · ${player.value}`);
+  where.setAttribute('data-field', 'player');
+  words.appendChild(where);
+
+  const elapsed = mediaElapsed(media, model.now);
+  if (elapsed !== undefined && media.duration !== undefined) {
+    const track = el('span', 'mp-progress');
+    track.setAttribute('data-field', 'progress');
+    track.setAttribute('role', 'progressbar');
+    track.setAttribute('aria-valuemin', '0');
+    track.setAttribute('aria-valuemax', String(media.duration));
+    track.setAttribute('aria-valuenow', String(Math.round(elapsed)));
+    track.setAttribute('aria-valuetext', `${trackTime(elapsed)} of ${trackTime(media.duration)}`);
+    const fill = el('span', 'mp-fill');
+    fill.style.width = `${(elapsed / media.duration) * 100}%`;
+    track.appendChild(fill);
+    words.appendChild(track);
+    const times = el('span', 'mp-times');
+    times.setAttribute('data-field', 'times');
+    times.appendChild(el('span', 'mp-at', trackTime(elapsed)));
+    times.appendChild(el('span', 'mp-length', trackTime(media.duration)));
+    words.appendChild(times);
+  }
+
+  const press = operable(model, config, player);
+  const actions = player.actions ?? [];
+  if (press !== undefined && player.key !== undefined) {
+    const transport = el('div', 'mp-transport');
+    transport.setAttribute('data-field', 'transport');
+    for (const one of MEDIA_TRANSPORT) {
+      if (!actions.includes(one.action)) continue;
+      const button = el('button', 'mp-button', one.label(playing));
+      button.setAttribute('type', 'button');
+      button.setAttribute('data-ha-act', player.key);
+      button.setAttribute('data-ha-action', one.action);
+      transport.appendChild(button);
+    }
+    if (actions.includes('volume')) {
+      const more = el('button', 'mp-button mp-more', 'More');
+      more.setAttribute('type', 'button');
+      more.setAttribute('data-ha-act', player.key);
+      more.setAttribute('data-ha-action', 'panel');
+      more.setAttribute('aria-haspopup', 'dialog');
+      const open = model.controlPanel?.widgetId === widgetId && model.controlPanel.reading === player.key;
+      more.setAttribute('aria-expanded', open ? 'true' : 'false');
+      transport.appendChild(more);
+    }
+    if (transport.childElementCount > 0) words.appendChild(transport);
+  }
+  card.appendChild(words);
+  if (model.houseNote !== undefined) card.appendChild(el('div', 'ht-note', model.houseNote));
+  return card;
+}
+
+/**
+ * The now-playing card's form, from its own box: the sleeve **beside** the
+ * words where the box is wide, **above** them where it is tall, and sized to
+ * what the box leaves it — a function of the box alone, so the card is the
+ * same rectangle whatever is playing. Then the belt gives up from the bottom
+ * what still does not fit — the album, the times, the bar, the artist — and
+ * never the title or the transport, which are what the card is for.
+ */
+function tierMedia(entry: TieredWidget): void {
+  // From the box: the card is the body itself, and an element is not its own descendant.
+  const card = entry.box.querySelector('.house-media');
+  if (!(card instanceof HTMLElement)) return;
+  // The box less its own padding: what the card has to fill.
+  const { w: width, h: height } = innerBox(entry.box);
+  const beside = width >= height * MEDIA_BESIDE_ASPECT;
+  card.setAttribute('data-layout', beside ? 'beside' : 'above');
+  // The sleeve's side: at most the box's height beside the words (less the
+  // card's own padding, which the stylesheet subtracts), at most half of it
+  // above them, and never more than the width allows.
+  const side = beside ? Math.min(height, width * 0.45) : Math.min(width, height * 0.5);
+  card.style.setProperty('--mp-art', `${Math.max(0, Math.floor(side))}px`);
+  const words = card.querySelector('.mp-words');
+  if (!(words instanceof HTMLElement)) return;
+  const order = ['album', 'times', 'progress', 'artist'];
+  for (const field of order) {
+    if (card.scrollHeight <= card.clientHeight + 1 && entry.body.scrollHeight <= entry.box.clientHeight + 1) break;
+    const node = words.querySelector(`[data-field="${field}"]`);
+    if (node instanceof HTMLElement) node.style.display = 'none';
+  }
+  entry.box.setAttribute('data-mp-layout', beside ? 'beside' : 'above');
+}
+
+/** Wider than this and the sleeve sits beside the words; narrower and above them. */
+export const MEDIA_BESIDE_ASPECT = 1.3;
+
 /**
  * The status card's belt: everything after the head, given up from the
  * bottom whole — the readings beside it first, one at a time, then the line,
  * then the progress — and never the head, which is the card.
  */
 function beltStatus(entry: TieredWidget): void {
-  const card = entry.body.querySelector('.house-status');
+  // From the box: the card *is* the body, and an element is not its own descendant.
+  const card = entry.box.querySelector('.house-status');
   if (!(card instanceof HTMLElement)) return;
   const items: HTMLElement[] = [];
   for (const child of [...card.children] as HTMLElement[]) {
@@ -1839,6 +2016,55 @@ function renderMessagesWidget(model: DisplayModel): HTMLElement {
       clear.setAttribute('aria-label', 'Clear this message');
       row.appendChild(clear);
     }
+    list.appendChild(row);
+  }
+  return list;
+}
+
+/**
+ * A Notifications widget (plan item M6.11): the tiles the household's alert
+ * rules raised, loudest first, then Home Assistant's own notifications, each a
+ * row of its own in a card's grammar — the alert colour down the edge of one
+ * that is severe, the rule's own sentence, what it is about, and for Home
+ * Assistant's how long ago.
+ *
+ * A tile carries an OK where this wall may acknowledge (the same switch as a
+ * banner's, `allowDismiss`) and its rule said it may be cleared; the press is
+ * the banner's own, `/d/interrupts/dismiss`, by the tile's handle. Home
+ * Assistant's carry none: dismissing one from a wall is no verb in RFC 018's
+ * table, so it goes when it is dismissed in Home Assistant.
+ */
+function renderNotificationsWidget(model: DisplayModel, config: unknown): HTMLElement {
+  const showHa = widgetConfig(config)['haNotifications'] !== false;
+  const tiles = model.notifications.tiles;
+  const ha = showHa ? model.notifications.ha : [];
+  if (tiles.length === 0 && ha.length === 0) return el('div', 'cd-empty', 'Nothing new.');
+  const list = el('section', 'nf');
+  for (const tile of tiles) {
+    const row = el('div', tile.alert ? 'nf-row nf-alert' : 'nf-row');
+    row.setAttribute('data-notification', tile.key);
+    const words = el('span', 'nf-words');
+    words.appendChild(el('span', 'nf-title', tile.title));
+    if (tile.detail !== undefined) words.appendChild(el('span', 'nf-detail', tile.detail));
+    row.appendChild(words);
+    if (model.allowDismiss && tile.dismissible) {
+      const ok = el('button', 'nf-ok', 'OK');
+      ok.setAttribute('type', 'button');
+      ok.setAttribute('data-tile-dismiss', tile.key);
+      ok.setAttribute('aria-label', `Acknowledge: ${tile.title}`);
+      row.appendChild(ok);
+    }
+    list.appendChild(row);
+  }
+  for (const note of ha) {
+    const row = el('div', 'nf-row nf-ha');
+    row.setAttribute('data-notification', note.key);
+    const words = el('span', 'nf-words');
+    if (note.title !== undefined) words.appendChild(el('span', 'nf-title', note.title));
+    words.appendChild(el('span', note.title === undefined ? 'nf-title' : 'nf-detail', note.message));
+    const ago = note.createdAt === undefined ? undefined : changedWords(note.createdAt, model.now);
+    if (ago !== undefined) words.appendChild(el('span', 'nf-ago', ago));
+    row.appendChild(words);
     list.appendChild(row);
   }
   return list;
@@ -2803,6 +3029,7 @@ export function renderWidget(
       const look = variantOf('homeassistant', config);
       if (look === 'tile') return renderHouseTiles(model, config, {}, widgetId);
       if (look === 'status') return renderHouseStatus(model, config, mediaBase, widgetId);
+      if (look === 'media') return renderHouseMedia(model, config, mediaBase, widgetId);
       return renderHouse(model, config, undefined, widgetId);
     }
     case 'shift':
@@ -2831,6 +3058,8 @@ export function renderWidget(
       return renderHeadingWidget(config);
     case 'news':
       return renderNewsWidget(model, config);
+    case 'notifications':
+      return renderNotificationsWidget(model, config);
     case 'environment':
       return renderEnvironmentWidget(model, config);
     /*
@@ -4058,6 +4287,8 @@ const WIDGET_PRIMARY: Readonly<Record<string, { readonly cls: string; readonly h
   buttons: { cls: 'bt-button', host: '.bt' },
   // A headline is the list's line (plan item M5.5).
   news: { cls: 'nw-title', host: '.nw' },
+  // A notification's first line (plan item M6.11).
+  notifications: { cls: 'nf-title', host: '.nf' },
 };
 
 /**
@@ -4135,6 +4366,12 @@ function applyWidgetTiers(
     // the bottom, whole, by the belt.
     if (entry.widget.type === 'homeassistant' && variantOf('homeassistant', entry.widget.config) === 'status') {
       beltStatus(entry);
+      continue;
+    }
+    // The now-playing card (M6.9): a form from the box's own shape, then the
+    // belt for what does not fit under it.
+    if (entry.widget.type === 'homeassistant' && variantOf('homeassistant', entry.widget.config) === 'media') {
+      tierMedia(entry);
       continue;
     }
     const look = entry.widget.type === 'weather' ? variantOf('weather', entry.widget.config) : undefined;
@@ -4985,7 +5222,7 @@ function listGroups(body: HTMLElement): readonly { readonly items: HTMLElement[]
       items: [...column.querySelectorAll('.ch-row')] as HTMLElement[],
     }));
   }
-  for (const selector of ['.ch-day', '.ch-row', '.td-row', '.nt-line, .nt-gap', '.bt-button', '.nw-item']) {
+  for (const selector of ['.ch-day', '.ch-row', '.td-row', '.nt-line, .nt-gap', '.bt-button', '.nw-item', '.nf-row']) {
     const found = [...body.querySelectorAll(selector)] as HTMLElement[];
     if (found.length > 0) return [{ items: found }];
   }

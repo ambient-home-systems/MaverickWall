@@ -228,12 +228,30 @@ export function pictureEntities(db: SqliteDatabase): Set<string> {
   const configs = haWidgetConfigs(db).filter(
     (config) => config['variant'] === 'status' && config['subjectPicture'] === true,
   );
+  // A now-playing card draws the sleeve of every player it may follow (M6.9).
+  const out = new Set<string>(mediaEntities(db));
+  if (configs.length === 0) return out;
+  const watched = watchedNames(db);
+  for (const config of configs) {
+    const subject = statusSubjectOf(config, watched);
+    if (subject !== undefined) out.add(subject);
+  }
+  return out;
+}
+
+/**
+ * The media players a now-playing card may follow (plan item M6.9): every
+ * player a Home Assistant widget with the `media` look shows. Only those carry
+ * what is playing, and their sleeve, to a wall, so a house with no such card
+ * sends the document it sent before, song after song.
+ */
+export function mediaEntities(db: SqliteDatabase): Set<string> {
+  const configs = haWidgetConfigs(db).filter((config) => config['variant'] === 'media');
   if (configs.length === 0) return new Set();
   const watched = watchedNames(db);
   const out = new Set<string>();
   for (const config of configs) {
-    const subject = statusSubjectOf(config, watched);
-    if (subject !== undefined) out.add(subject);
+    for (const id of readingsOf(config, watched)) if (domainOf(id) === 'media_player') out.add(id);
   }
   return out;
 }

@@ -1188,6 +1188,8 @@ function whyNotDrawn(db: SqliteDatabase, type: string): string {
       return 'Shows while there is a message — send one from a phone or on Timers and messages.';
     case 'news':
       return 'Add a feed on News and its headlines appear here.';
+    case 'notifications':
+      return 'Shows while a rule set to a tile has something to say, or Home Assistant has a notification.';
     default:
       return 'Nothing is set up for this yet, so it is left out.';
   }

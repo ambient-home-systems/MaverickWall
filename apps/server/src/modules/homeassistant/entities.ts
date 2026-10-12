@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { parseJsonOr, z } from '../../validation.js';
 import { isGlyphKey, type GlyphKey } from '../../glyphs.js';
 import { haReadingHandle } from '../../api/manifest.js';
+import { clean } from '../weather/alerts.js';
 
 /**
  * Entity readings: parsing what Home Assistant says, and deciding how it reads.
@@ -77,7 +78,9 @@ export const SUPPORTED_DOMAINS = [
    * skip and set the volume, behind the same three switches. The reading is
    * what the player is doing, never what it is playing: a track title is a
    * stranger's string that changes every three minutes, and the now-playing
-   * card (plan item M6.9) is where that belongs.
+   * card (plan item M6.9) is where that belongs: it keeps the title, the
+   * artist and the album, and only a wall with a now-playing card is sent
+   * them (`mediaEntities`).
    */
   'media_player',
 ] as const;
@@ -162,7 +165,24 @@ export const ATTRIBUTE_ALLOWLIST: Readonly<Partial<Record<SupportedDomain, reado
   // 6): the features it supports and where its volume is. Not the title.
   // And `picture_key` (plan item M3.4): a hash of the artwork's address,
   // never the address, which carries an access token — see `pictureKey`.
-  media_player: ['supported_features', 'volume_level', 'picture_key'],
+  // And what the now-playing card says (plan item M6.9): the track, its
+  // artist and album, how long it is and where it had got to when Home
+  // Assistant last said. Read here for every player, but **kept in the cache
+  // only for a player a now-playing card follows** (`withoutTrack`, in the
+  // job) and sent to a wall only beside one (`mediaEntities`): a title changes
+  // with every song, and a backup of a house that never asked for the card
+  // should carry no record of what it listens to.
+  media_player: [
+    'supported_features',
+    'volume_level',
+    'picture_key',
+    'media_title',
+    'media_artist',
+    'media_album_name',
+    'media_duration',
+    'media_position',
+    'media_position_updated_at',
+  ],
 };
 
 /**
@@ -187,7 +207,13 @@ export type AttributeKey =
   | 'picture_key'
   | 'color_temp_kelvin'
   | 'percentage_step'
-  | 'volume_level';
+  | 'volume_level'
+  | 'media_title'
+  | 'media_artist'
+  | 'media_album_name'
+  | 'media_duration'
+  | 'media_position'
+  | 'media_position_updated_at';
 
 export type HaAttributes = Readonly<Partial<{
   /** Home Assistant's 0-255, not a percentage. */
@@ -215,6 +241,15 @@ export type HaAttributes = Readonly<Partial<{
   volume_level: number;
   /** The hash of a media player's `entity_picture` — see `pictureKey`. */
   picture_key: string;
+  /** What is playing, as the integration wrote it — a stranger's string, cleaned on the way out. */
+  media_title: string;
+  media_artist: string;
+  media_album_name: string;
+  /** The track's length and where it had got to, in seconds. */
+  media_duration: number;
+  media_position: number;
+  /** When `media_position` was true, as Home Assistant's ISO instant. */
+  media_position_updated_at: string;
 }>>;
 
 /**
@@ -243,6 +278,14 @@ const ATTRIBUTE_SCHEMAS: Readonly<Record<AttributeKey, z.ZodType<number | string
   percentage_step: z.number().finite().gt(0).max(100),
   volume_level: z.number().finite().min(0).max(1),
   picture_key: z.string().regex(/^[0-9a-f]{64}$/),
+  // Bounded rather than trusted: a title is a stranger's string, and one that
+  // is not a string, or is a paragraph, is no title.
+  media_title: z.string().min(1).max(300),
+  media_artist: z.string().min(1).max(300),
+  media_album_name: z.string().min(1).max(300),
+  media_duration: z.number().finite().min(0).max(7 * 86_400),
+  media_position: z.number().finite().min(0).max(7 * 86_400),
+  media_position_updated_at: z.string().max(64),
 };
 
 /**
@@ -284,6 +327,29 @@ export function pickAttributes(domain: string, raw: unknown): HaAttributes {
  */
 export function cachedAttributes(state: HaState): string {
   return JSON.stringify({ device_class: state.deviceClass, ...state.attributes });
+}
+
+/** The attributes that say what a player is playing (M6.9). */
+export const TRACK_ATTRIBUTES: readonly AttributeKey[] = [
+  'media_title',
+  'media_artist',
+  'media_album_name',
+  'media_duration',
+  'media_position',
+  'media_position_updated_at',
+];
+
+/**
+ * A state with what it plays taken out: how the cache stores a player no
+ * now-playing card follows, so a backup of a house that never asked for one
+ * carries no song, and the cache row does not change with every track.
+ */
+export function withoutTrack(state: HaState): HaState {
+  if (!TRACK_ATTRIBUTES.some((key) => key in state.attributes)) return state;
+  const attributes = Object.fromEntries(
+    Object.entries(state.attributes).filter(([key]) => !TRACK_ATTRIBUTES.includes(key as AttributeKey)),
+  ) as HaAttributes;
+  return { ...state, attributes };
 }
 
 /**
@@ -786,6 +852,64 @@ export interface EntityReading {
    * Never the address, which may carry a token.
    */
   readonly picture?: string;
+  /**
+   * What a media player is playing (M6.9) — only while a now-playing card
+   * shows this player. See `mediaFor`.
+   */
+  readonly media?: MediaNow;
+}
+
+/**
+ * What a now-playing card says of a player (plan item M6.9).
+ *
+ * The words are cleaned, as every string a stranger wrote is. Where the track
+ * had got to travels as **the instant it started**, worked out from where Home
+ * Assistant says it was and when, so the wall counts the bar on with its own
+ * clock and the manifest does not move while a song plays — some integrations
+ * re-report the position every few seconds, and a position that travelled
+ * would be a new manifest every poll. Rounded to five seconds for the same
+ * reason. A paused player says where it stopped instead, which does not move.
+ */
+export interface MediaNow {
+  readonly title?: string;
+  readonly artist?: string;
+  readonly album?: string;
+  /** The track's length, in whole seconds. */
+  readonly duration?: number;
+  /** While playing: when the track would have started, epoch ms, to five seconds. */
+  readonly startedAt?: number;
+  /** While paused: where it stopped, in whole seconds. */
+  readonly position?: number;
+}
+
+/** Five seconds: finer than a bar moves across a box, coarser than a re-report jitters. */
+export const MEDIA_START_GRAIN_MS = 5_000;
+
+export function mediaFor(state: HaState): MediaNow {
+  const a = state.attributes;
+  const title = clean(a.media_title, 120);
+  const artist = clean(a.media_artist, 120);
+  const album = clean(a.media_album_name, 120);
+  const duration = a.media_duration === undefined || a.media_duration <= 0 ? undefined : Math.round(a.media_duration);
+  const updatedAt = a.media_position_updated_at === undefined ? NaN : Date.parse(a.media_position_updated_at);
+  const position = a.media_position;
+  let startedAt: number | undefined;
+  let stoppedAt: number | undefined;
+  if (position !== undefined && duration !== undefined && position <= duration) {
+    if (state.state === 'playing' && Number.isFinite(updatedAt)) {
+      startedAt = Math.round((updatedAt - position * 1000) / MEDIA_START_GRAIN_MS) * MEDIA_START_GRAIN_MS;
+    } else if (state.state === 'paused') {
+      stoppedAt = Math.round(position);
+    }
+  }
+  return {
+    ...(title === null || title === '' ? {} : { title }),
+    ...(artist === null || artist === '' ? {} : { artist }),
+    ...(album === null || album === '' ? {} : { album }),
+    ...(duration === undefined ? {} : { duration }),
+    ...(startedAt === undefined ? {} : { startedAt }),
+    ...(stoppedAt === undefined ? {} : { position: stoppedAt }),
+  };
 }
 
 export interface WatchedEntity {

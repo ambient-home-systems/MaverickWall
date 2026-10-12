@@ -53,6 +53,7 @@ export const WIDGET_VIEWS: Readonly<Record<string, readonly WidgetView[]>> = {
   messages: [{ value: '', label: 'Messages' }],
   heading: [{ value: '', label: 'Heading' }],
   environment: [{ value: '', label: 'Tiles' }],
+  notifications: [{ value: '', label: 'Notifications' }],
   // News (plan item M5.5): a list is the absence; one at a time turns by the clock.
   news: [
     { value: '', label: 'Headlines list' },

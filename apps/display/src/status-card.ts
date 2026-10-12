@@ -126,4 +126,46 @@ export function sparkRuns(heights: readonly (number | null)[]): (readonly [numbe
   if (run.length > 0) runs.push(run);
   return runs;
 }
+/** What a now-playing card reads of a player's track (M6.9). */
+export interface MediaNowReading {
+  readonly title?: string;
+  readonly artist?: string;
+  readonly album?: string;
+  readonly duration?: number;
+  readonly startedAt?: number;
+  readonly position?: number;
+}
+
+/** A reading a now-playing card may follow: one that carries what it plays. */
+export interface MediaReading extends StatusReading {
+  readonly tone?: string | null | undefined;
+  readonly media?: MediaNowReading | undefined;
+}
+
+/**
+ * The player a now-playing card follows, from the players it shows: the first
+ * that is playing, else the first with a track loaded (paused), else the
+ * first. Several speakers on one card is the household naming them; which one
+ * the card is about is whichever is doing something. No player is no card.
+ */
+export function mediaFollowed<R extends MediaReading>(shown: readonly R[]): R | undefined {
+  const players = shown.filter((reading) => reading.media !== undefined);
+  return (
+    players.find((reading) => reading.tone === 'active') ??
+    players.find((reading) => reading.media?.title !== undefined) ??
+    players[0]
+  );
+}
+
+/**
+ * How far into its track a player is, in seconds, at `now` — from the instant
+ * it started while it plays, or where it stopped while paused, never past the
+ * track's end — or nothing when the player did not say.
+ */
+export function mediaElapsed(media: MediaNowReading | undefined, now: number): number | undefined {
+  if (media?.duration === undefined) return undefined;
+  if (media.startedAt !== undefined) return Math.min(media.duration, Math.max(0, (now - media.startedAt) / 1000));
+  if (media.position !== undefined) return Math.min(media.duration, media.position);
+  return undefined;
+}
 /* status-card:end */

@@ -46,6 +46,8 @@ export const PALETTE: readonly { readonly type: string; readonly label: string }
   { type: 'news', label: 'News' },
   // Plan item M5.6: the air, the pollen, the UV, the sunlight and the wind.
   { type: 'environment', label: 'Environment' },
+  // Plan item M6.11: alert rules said as tiles, and Home Assistant's own notifications.
+  { type: 'notifications', label: 'Notifications' },
   { type: 'image', label: 'Image' },
   { type: 'external', label: 'Module' },
 ];
@@ -73,6 +75,7 @@ export const SWATCH: Readonly<Record<string, string>> = {
   heading: 'var(--accent)',
   news: 'var(--muted)',
   environment: 'var(--ok)',
+  notifications: 'var(--warn)',
   image: 'var(--ok)',
   external: 'var(--warn)',
 };

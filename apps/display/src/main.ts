@@ -874,8 +874,8 @@ function start(): void {
      * click on Enter is one the OK key must leave alone, and a second handler
      * with its own copy of this rule is how the two would come to disagree.
      */
-    if (document.activeElement?.closest?.('[data-chore], [data-todo], [data-ha-act], [data-timer-clear], [data-message-clear], .hc-panel') !== null &&
-        document.activeElement?.closest?.('[data-chore], [data-todo], [data-ha-act], [data-timer-clear], [data-message-clear], .hc-panel') !== undefined) {
+    if (document.activeElement?.closest?.('[data-chore], [data-todo], [data-ha-act], [data-timer-clear], [data-message-clear], [data-tile-dismiss], .hc-panel') !== null &&
+        document.activeElement?.closest?.('[data-chore], [data-todo], [data-ha-act], [data-timer-clear], [data-message-clear], [data-tile-dismiss], .hc-panel') !== undefined) {
       return;
     }
     const key = dismissTarget();
@@ -1216,6 +1216,14 @@ function start(): void {
         return;
       }
       void actOnReading(widgetId, reading, action);
+      return;
+    }
+
+    // A notification tile's OK (plan item M6.11): the banner's acknowledgement,
+    // by the tile's handle — never the OK key's target, which is a banner's.
+    const tileKey = target?.closest?.('[data-tile-dismiss]')?.getAttribute('data-tile-dismiss');
+    if (tileKey !== null && tileKey !== undefined && tileKey !== '') {
+      void acknowledge(tileKey);
       return;
     }
 

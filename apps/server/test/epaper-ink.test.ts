@@ -200,6 +200,12 @@ function manifest(): Manifest {
       // lines to align and a title to sit over.
       timers: { timers: [{ key: 'tm-aaaaaaaaaaaa', label: 'Pasta', startedAt: 0, endsAt: 4102444800000 }] },
       messages: { messages: [{ key: 'ms-aaaaaaaaaaaa', text: 'Back at 6', postedAt: 0, expiresAt: 4102444800000 }] },
+      // A tile a rule raised and one of Home Assistant's own (plan item
+      // M6.11), so `haNotifications` can take the second away.
+      notifications: {
+        tiles: [{ key: 'tile:aaaaaaaaaaaaaaaaaaaaaaaa', title: 'Freezer left open', detail: 'Freezer door · Open', dismissible: true }],
+        ha: [{ key: 'han:bbbbbbbbbbbbbbbbbbbbbbbb', title: 'Backup', message: 'The nightly backup failed.' }],
+      },
       // Two feeds' headlines, so `newsFeeds` can take one away (plan item M5.5).
       news: {
         headlines: [
@@ -325,6 +331,7 @@ const BASES: Readonly<Record<string, readonly Record<string, unknown>[]>> = {
   timers: [{}],
   messages: [{}],
   environment: [{}],
+  notifications: [{}],
   // A list and the one-at-a-time view, since the code is drawn only in the second.
   news: [{}, { mode: 'one' }],
   // A heading with a second line, so the rule and the line under it have
@@ -462,6 +469,8 @@ const PROBES: Readonly<Record<string, readonly unknown[]>> = {
   progress: ['sensor.washer_progress'],
   doneState: ['Locked'],
   subjectPicture: [true],
+  // Home Assistant's own notifications off (plan item M6.11).
+  haNotifications: [false],
   target: ['2027-01-01'],
   // The countdown's words, picture and confetti (plan item P5.2).
   unitWords: ['sleeps'],
@@ -863,7 +872,7 @@ describe('a Look, value by value', () => {
 
   it('probes every value the schema holds', () => {
     expect([...LOOKS].sort()).toEqual([...widgetConfigBody.shape.variant.unwrap().options].sort());
-    expect(LOOKS.length).toBe(19);
+    expect(LOOKS.length).toBe(20);
   });
 });
 

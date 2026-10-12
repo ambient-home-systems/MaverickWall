@@ -19,7 +19,7 @@ import { parseOr, z } from '../validation.js';
  * is a column.
  */
 
-const ACTIONS: readonly string[] = ['none', 'banner', 'takeover', 'takeover_and_wake'];
+const ACTIONS: readonly string[] = ['none', 'tile', 'banner', 'takeover', 'takeover_and_wake'];
 const HHMM = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 
 /**

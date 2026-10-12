@@ -526,6 +526,13 @@
       "when": 1791826302863,
       "tag": "0074_sparklines",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "6",
+      "when": 1791831055436,
+      "tag": "0075_ha_notifications",
+      "breakpoints": true
     }
   ]
 }

@@ -4,8 +4,9 @@ import type { Signal } from '@maverick-wall/core';
 import { z } from '../../validation.js';
 import { daylightFromState } from '../../api/daylight.js';
 import { conditionEntities, readConditionStates, writeConditionStates } from './conditions.js';
-import { historyPath, historyWindowEnd, parseHistory, seriesFrom, sparklineEntities, storedSeries } from './history.js';
+import { historyPath, historyWindowEnd, mediaEntities, parseHistory, seriesFrom, sparklineEntities, storedSeries } from './history.js';
 import { statusPictures } from './artwork.js';
+import { refreshHaNotifications, wantsHaNotifications } from './notifications.js';
 import { call, resolveConnection } from './client.js';
 import { wallActionsFor } from './services.js';
 import { parseCalendarList, type CalendarEntity } from './calendars.js';
@@ -14,7 +15,9 @@ import type { Fetcher } from '@maverick-wall/core';
 import {
   cachedAttributes,
   domainOf,
+  withoutTrack,
   glyphFor,
+  mediaFor,
   parseStates,
   pickAttributes,
   readState,
@@ -243,6 +246,9 @@ export const haModule: PanelModule = {
     // handle each — and nothing for any other reading, so a household that
     // never asked sends the document it sent before.
     const pictures = statusPictures(context.db);
+    // What a now-playing card's players are playing (M6.9), and nothing for a
+    // player no such card follows.
+    const media = mediaEntities(context.db);
     const readings = rows.map((row) => ({
       ...toReading(
         stateFrom(row),
@@ -259,6 +265,7 @@ export const haModule: PanelModule = {
       ...actionsOf(row),
       ...seriesOf(row),
       ...(pictures[row.entityId] === undefined ? {} : { picture: pictures[row.entityId] as string }),
+      ...(media.has(row.entityId) ? { media: mediaFor(stateFrom(row)) } : {}),
     }));
 
     const error = context.db
@@ -363,6 +370,14 @@ export const haModule: PanelModule = {
       if (wanted.size === 0 && daylight.size === 0 && conditions.size === 0) {
         // Nothing to read; forget any state no widget names any more.
         context.db.prepare('DELETE FROM ha_condition_states').run();
+        // But Home Assistant's own notifications are no reading (M6.11): a
+        // house watching nothing may still have a widget that shows them.
+        if (!wantsHaNotifications(context.db)) {
+          context.db.prepare('DELETE FROM ha_notifications').run();
+          return;
+        }
+        const quiet = resolveConnection(context.db, context.keyring);
+        if (quiet.ok) await refreshHaNotifications(context.db, context.fetcher, quiet.connection, context.now);
         return;
       }
 
@@ -399,6 +414,10 @@ export const haModule: PanelModule = {
 
       const conditionStates = readConditionStates(response.body, conditions, at);
 
+      // What a player plays is kept only for the players a now-playing card
+      // follows (M6.9): a backup of a house with no such card carries no song.
+      const followed = mediaEntities(context.db);
+
       const write = context.db.transaction(() => {
         writeConditionStates(context.db, conditionStates, conditions);
         // An entity Home Assistant no longer lists is no reading: the wall
@@ -409,7 +428,7 @@ export const haModule: PanelModule = {
             state.state,
             // `device_class` and the domain's allowlisted attributes, never
             // the whole object — see `ATTRIBUTE_ALLOWLIST`.
-            cachedAttributes(state),
+            cachedAttributes(followed.has(state.entityId) ? state : withoutTrack(state)),
             state.friendlyName,
             state.unit,
             state.lastChangedAt,
@@ -427,6 +446,8 @@ export const haModule: PanelModule = {
       write();
 
       await refreshHistory(context, resolved.connection);
+      // And Home Assistant's own notifications, while a widget shows them (M6.11).
+      await refreshHaNotifications(context.db, context.fetcher, resolved.connection, context.now);
     },
   },
 };

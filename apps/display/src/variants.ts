@@ -64,7 +64,7 @@ export const VARIANTS = {
   clock: ['plain', 'stacked', 'analogue'],
   weather: ['strip', 'today', 'range', 'colour', 'playful'],
   countdown: ['number', 'page', 'ticket', 'occasion', 'progress', 'month'],
-  homeassistant: ['list', 'tile', 'status'],
+  homeassistant: ['list', 'tile', 'status', 'media'],
   calendar: ['', 'planner', 'bold'],
 } as const;
 
@@ -92,7 +92,7 @@ export const VARIANT_LABELS: { readonly [T in VariantType]: Readonly<Record<Vari
     progress: 'Progress',
     month: 'Month',
   },
-  homeassistant: { list: 'List', tile: 'Tiles', status: 'Status card' },
+  homeassistant: { list: 'List', tile: 'Tiles', status: 'Status card', media: 'Now playing' },
   calendar: { '': 'Standard', planner: 'Planner', bold: 'Bold' },
 };
 
@@ -188,10 +188,27 @@ export const VARIANT_HIDES: {
   // ladder nor a tile's layout, state switch or bar — its progress is its own —
   // and its four keys are no other look's. "When it changed" stays: "Running ·
   // 42 min ago" is what a washer's card is for.
+  // The now-playing card (M6.9) is a player's card: what it plays, its
+  // sleeve, a bar of the track and its transport. It reads none of the other
+  // looks' keys, and a player's state is no number, so it has no line either.
+  // `mediaFollows` is no stored key: it is the editor's sentence saying which
+  // speaker the card follows, which every other look hides.
   homeassistant: {
-    list: ['tileLayout', 'hideState', 'showChanged', 'showBar', 'subject', 'progress', 'doneState', 'subjectPicture'],
-    tile: ['fields', 'subject', 'progress', 'doneState', 'subjectPicture'],
-    status: ['fields', 'tileLayout', 'hideState', 'showBar'],
+    list: ['tileLayout', 'hideState', 'showChanged', 'showBar', 'subject', 'progress', 'doneState', 'subjectPicture', 'mediaFollows'],
+    tile: ['fields', 'subject', 'progress', 'doneState', 'subjectPicture', 'mediaFollows'],
+    status: ['fields', 'tileLayout', 'hideState', 'showBar', 'mediaFollows'],
+    media: [
+      'fields',
+      'tileLayout',
+      'hideState',
+      'showChanged',
+      'showBar',
+      'subject',
+      'progress',
+      'doneState',
+      'subjectPicture',
+      'sparkline',
+    ],
   },
   calendar: { '': [], planner: [], bold: [] },
 };

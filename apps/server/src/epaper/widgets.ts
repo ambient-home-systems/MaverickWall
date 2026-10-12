@@ -68,7 +68,7 @@ import { calendarView } from './calendar-view.js';
 import { shiftsShown } from './shift-style.js';
 import { calendarsOf } from './calendar-filter.js';
 import { variantOf } from './variants.js';
-import { sparkHeights, sparkRuns, statusParts } from '../api/status-card.js';
+import { mediaFollowed, sparkHeights, sparkRuns, statusParts } from '../api/status-card.js';
 import { withInk } from './honours.js';
 import { childCells, groupChildren, topLevelWidgets } from './group-cells.js';
 import { clockLabel, type EpaperModel } from './viewmodel.js';
@@ -1916,6 +1916,27 @@ interface EpaperReading {
   readonly unit: string | undefined;
   /** The last day as half-hour means (M6.10), when a widget asked for its line. */
   readonly series: readonly (number | null)[] | undefined;
+  /** What a player is playing (M6.9): its words only, in ASCII. Present marks a player. */
+  readonly media: { readonly title?: string; readonly artist?: string; readonly album?: string } | undefined;
+}
+
+/** A track's words as a panel draws them, or no player at all. */
+function mediaWordsOf(raw: unknown): EpaperReading['media'] {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const m = raw as { title?: unknown; artist?: unknown; album?: unknown };
+  const word = (value: unknown): string | undefined => {
+    if (typeof value !== 'string') return undefined;
+    const ascii = asciiTitle(value);
+    return ascii === '' ? undefined : ascii;
+  };
+  const title = word(m.title);
+  const artist = word(m.artist);
+  const album = word(m.album);
+  return {
+    ...(title === undefined ? {} : { title }),
+    ...(artist === undefined ? {} : { artist }),
+    ...(album === undefined ? {} : { album }),
+  };
 }
 
 /** A series of the fixed length with nothing but numbers and gaps in it, or none. */
@@ -1935,7 +1956,7 @@ function houseReadings(panel: unknown): EpaperReading[] {
     if (entry === null || typeof entry !== 'object') continue;
     const row = entry as {
       key?: unknown; label?: unknown; value?: unknown; mode?: unknown; glyph?: unknown; tone?: unknown;
-      level?: unknown; unit?: unknown; series?: unknown;
+      level?: unknown; unit?: unknown; series?: unknown; media?: unknown;
     };
     if (typeof row.label !== 'string' || typeof row.value !== 'string') continue;
     out.push({
@@ -1950,20 +1971,34 @@ function houseReadings(panel: unknown): EpaperReading[] {
       level: typeof row.level === 'number' && row.level >= 0 && row.level <= 100 ? row.level : undefined,
       unit: typeof row.unit === 'string' ? row.unit : undefined,
       series: seriesOf(row.series),
+      media: mediaWordsOf(row.media),
     });
   }
   return out;
 }
 
 /** The house panel as a panel's frame reads it — see `panelInput`. */
-function houseInput(panel: unknown, sparkline: boolean): unknown {
+function houseInput(panel: unknown, sparkline: boolean, media = false): unknown {
   if (panel === null || typeof panel !== 'object') return panel;
   const raw = (panel as { readings?: unknown }).readings;
   if (!Array.isArray(raw)) return panel;
   const readings = raw.map((entry: unknown) => {
     if (entry === null || typeof entry !== 'object') return entry;
-    const { series, picture: _never, ...rest } = entry as Record<string, unknown>;
-    return sparkline && series !== undefined ? { ...rest, series } : rest;
+    const { series, picture: _never, media: track, ...rest } = entry as Record<string, unknown>;
+    const lined = sparkline && series !== undefined ? { ...rest, series } : rest;
+    // What a player plays (M6.9) only where this widget is a now-playing card,
+    // and only its words: where the track has got to is the wall's to count,
+    // and a panel that hashed it would refresh every time a song started.
+    if (!media || track === null || typeof track !== 'object') return lined;
+    const { title, artist, album } = track as Record<string, unknown>;
+    return {
+      ...lined,
+      media: {
+        ...(title === undefined ? {} : { title }),
+        ...(artist === undefined ? {} : { artist }),
+        ...(album === undefined ? {} : { album }),
+      },
+    };
   });
   return { ...(panel as Record<string, unknown>), readings };
 }
@@ -1995,6 +2030,10 @@ function drawHouse(fb: Framebuffer, m: EpaperMetrics, box: Box, panel: unknown, 
   }
   if (variantOf('homeassistant', config) === 'status') {
     drawHouseStatus(fb, m, box, all, readings, config);
+    return;
+  }
+  if (variantOf('homeassistant', config) === 'media') {
+    drawHouseMedia(fb, m, box, readings);
     return;
   }
   const cap = config['count'];
@@ -2232,6 +2271,62 @@ function drawHouseStatus(
     drawText(fb, inner.x, y, fit(detail.label, Math.max(1, inner.w - valueW - pad * 2), { rung: m.small }), { rung: m.small });
     y += rowH;
   }
+}
+
+/**
+ * The now-playing card on one bit (plan item M6.9): the player the wall's card
+ * follows (`mediaFollowed`, the same rule), as an outlined card — a disc for
+ * the speaker, filled while it plays, then the title, who it is by, and which
+ * speaker is doing what.
+ *
+ * **No sleeve and no bar.** A panel draws no photographs (MQ11), and a bar of
+ * how far through a song is wrong within a minute on a picture that stays up
+ * for an hour; redrawing it to keep it true would refresh a battery panel all
+ * song long. So the panel's frame hashes the words alone (`houseInput`), and
+ * the title changing is the one thing that moves it.
+ *
+ * Every rectangle is the box's: the disc and the three lines have fixed
+ * heights from the panel's rungs, and the words are fitted into them.
+ */
+function drawHouseMedia(fb: Framebuffer, m: EpaperMetrics, box: Box, shown: readonly EpaperReading[]): void {
+  const player = mediaFollowed(shown);
+  if (player === undefined) {
+    drawLines(fb, m, ['No player chosen'], box, rungToFit('No player chosen', box.w, m.body), 'left');
+    return;
+  }
+  const pad = Math.max(2, Math.round(m.widget.inset / 2));
+  outlineRounded(fb, box.x, box.y, box.w, box.h, pad);
+  const inner = { x: box.x + pad * 2, y: box.y + pad * 2, w: box.w - pad * 4, h: box.h - pad * 4 };
+  if (inner.w < 8 || inner.h < 8) return;
+  const media = player.media ?? {};
+  const playing = player.tone !== undefined;
+
+  const scale = glyphScaleFor(m.bodyGlyph);
+  const disc = glyphHeight(scale) + 2 * pad;
+  const lede = m.header;
+  const lines = [
+    { text: media.title ?? player.value, rung: lede },
+    ...(media.artist === undefined ? [] : [{ text: media.artist, rung: m.body }]),
+    { text: media.title === undefined ? player.label : `${player.label} - ${player.value}`, rung: m.small },
+  ];
+  const textH = lines.reduce((sum, line, i) => sum + line.rung.height + (i === 0 ? 0 : m.widget.linePad), 0);
+  const headH = Math.max(disc, textH);
+  const discY = inner.y + Math.floor((Math.min(headH, inner.h) - disc) / 2);
+  if (disc <= inner.h) {
+    drawDisc(fb, inner.x, discY, disc, playing);
+    if (player.glyph !== undefined) drawGlyph(fb, inner.x + pad, discY + pad, player.glyph, scale, !playing);
+  }
+  const wordsX = inner.x + disc + pad * 2;
+  const wordsW = Math.max(1, inner.x + inner.w - wordsX);
+  let y = inner.y + Math.max(0, Math.floor((Math.min(headH, inner.h) - textH) / 2));
+  const bottom = inner.y + inner.h;
+  lines.forEach((line, i) => {
+    if (i > 0) y += m.widget.linePad;
+    if (y + line.rung.height > bottom) return;
+    const rung = i === 0 ? shorterRung(line.rung, rungToFit(line.text, wordsW, line.rung)) : line.rung;
+    drawText(fb, wordsX, y, fit(line.text, wordsW, { rung }), { rung });
+    y += line.rung.height;
+  });
 }
 
 /**
@@ -2758,10 +2853,42 @@ export type PanelInput =
       readonly kind: 'panel';
       readonly panel: unknown;
       /** Home Assistant's `tile` look, which reads the same slice differently. */
-      readonly look?: 'tile' | 'status';
+      readonly look?: 'tile' | 'status' | 'media';
     };
 
 const NO_INPUT: PanelInput = { kind: 'none' };
+
+/**
+ * The Notifications widget's lines on a panel (plan item M6.11): the tiles
+ * the alert rules raised, loudest first, then Home Assistant's own unless the
+ * widget turned them off — each one line, an alert marked with "!", and as many
+ * as `count` allows. Words only, so the frame moves when what is said does and
+ * at no other time; a panel has nothing to press, so no OK.
+ */
+function notificationLines(manifest: Manifest, config: Config): readonly string[] {
+  const raw = manifest.panels['notifications'];
+  const panel = typeof raw === 'object' && raw !== null ? (raw as { tiles?: unknown; ha?: unknown }) : {};
+  const lines: string[] = [];
+  for (const entry of Array.isArray(panel.tiles) ? panel.tiles : []) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const { title, detail, tone } = entry as { title?: unknown; detail?: unknown; tone?: unknown };
+    if (typeof title !== 'string') continue;
+    // The wall's middle dot is no ASCII, and `asciiTitle` would drop it and
+    // weld the words either side; a panel says it with a dash.
+    const words = typeof detail === 'string' ? `${title} - ${detail.replace(/ · /g, ' - ')}` : title;
+    lines.push(tone === 'alert' ? `! ${words}` : words);
+  }
+  if (config['haNotifications'] !== false) {
+    for (const entry of Array.isArray(panel.ha) ? panel.ha : []) {
+      if (typeof entry !== 'object' || entry === null) continue;
+      const { title, message } = entry as { title?: unknown; message?: unknown };
+      if (typeof message !== 'string') continue;
+      lines.push(typeof title === 'string' ? `${title}: ${message}` : message);
+    }
+  }
+  const cap = config['count'];
+  return typeof cap === 'number' && Number.isFinite(cap) && cap >= 1 ? lines.slice(0, Math.trunc(cap)) : lines;
+}
 
 /** The names a Buttons widget shows, in order, read defensively from the panel. */
 function buttonNames(panel: unknown, config: Config): readonly string[] {
@@ -2980,6 +3107,8 @@ export function panelInput(type: string, manifest: Manifest, config: Config): Pa
       return { kind: 'panel', panel: messageLines(manifest) };
     case 'news':
       return { kind: 'panel', panel: newsRows(manifest, config) };
+    case 'notifications':
+      return { kind: 'panel', panel: notificationLines(manifest, config) };
     case 'environment':
       return { kind: 'panel', panel: environmentLines(manifest, config) };
     case 'homeassistant': {
@@ -3000,8 +3129,8 @@ export function panelInput(type: string, manifest: Manifest, config: Config): Pa
        * does not refresh a panel that does not draw one, and a house with
        * neither hashes exactly what it hashed.
        */
-      const slice = houseInput(panel, config['sparkline'] === true);
       const look = variantOf('homeassistant', config);
+      const slice = houseInput(panel, config['sparkline'] === true, look === 'media');
       return look === 'list' ? { kind: 'panel', panel: slice } : { kind: 'panel', panel: slice, look };
     }
     case 'external': {
@@ -3094,6 +3223,7 @@ function drawWidget(
       return drawEnvironment(fb, m, box, input.kind === 'panel' && Array.isArray(input.panel) ? (input.panel as string[]) : []);
     case 'news':
       return drawNews(fb, m, box, input.kind === 'panel' && Array.isArray(input.panel) ? (input.panel as NewsPanelRow[]) : [], config);
+    case 'notifications':
     case 'timers':
     case 'messages': {
       // The lines `panelInput` worked out, one a line; nothing to clear, since
@@ -3103,7 +3233,7 @@ function drawWidget(
         fb,
         m,
         lines.length === 0
-          ? [type === 'timers' ? 'No timers running' : 'No messages']
+          ? [type === 'timers' ? 'No timers running' : type === 'notifications' ? 'Nothing new' : 'No messages']
           : lines.map((line) => asciiTitle(line)),
         box,
         m.body,

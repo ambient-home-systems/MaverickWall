@@ -275,7 +275,7 @@ const ruleBody = z.object({
   for_minutes: optionalText(4),
   from_time: optionalText(5),
   to_time: optionalText(5),
-  action: z.enum(['banner', 'takeover', 'takeover_and_wake'], {
+  action: z.enum(['tile', 'banner', 'takeover', 'takeover_and_wake'], {
     error: () => 'Choose how loudly this should be shown.',
   }),
 }).superRefine((value, ctx) => {
@@ -357,6 +357,9 @@ const ruleBody = z.object({
  */
 
 const ACTIONS: readonly { key: InterruptAction; label: string }[] = [
+  // Quietest first (plan item M6.11): said in a Notifications widget the
+  // household placed, and never over the wall.
+  { key: 'tile', label: 'A tile in a Notifications widget' },
   { key: 'banner', label: 'A strip above the calendar' },
   { key: 'takeover', label: 'The whole wall' },
   { key: 'takeover_and_wake', label: 'The whole wall, and wake it if it has gone dark' },
@@ -1391,7 +1394,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       // Ordering matters only when two fire at once, which is rare enough that
       // asking about it would be a field nobody could answer. A takeover
       // outranks a banner, which is the only ordering anybody means.
-      priority: action === 'banner' ? 40 : action === 'takeover' ? 60 : 90,
+      priority: action === 'tile' ? 20 : action === 'banner' ? 40 : action === 'takeover' ? 60 : 90,
     });
 
     // The entity has to be polled or the rule can never fire, and it would look
