@@ -2053,6 +2053,21 @@ export const haEntityCache = sqliteTable(
      * until phase 2 builds the Readings switch and the route.
      */
     controllable: integer('controllable', { mode: 'boolean' }).notNull().default(false),
+    /**
+     * The last day of this reading as a fixed-length series, for a sparkline
+     * (plan item M6.10): `HISTORY_POINTS` half-hour means, oldest first, a
+     * `null` for a half hour with no number in it. Read from Home Assistant's
+     * history, which is a read and not a service call (`history.ts`), and only
+     * while a Home Assistant widget asks for a sparkline of this reading —
+     * every other row holds null, and the poll clears one nobody asks for.
+     */
+    history: text('history'),
+    /**
+     * The end of the window `history` was built for, so the poll asks Home
+     * Assistant again only when the half hour has moved — and the manifest
+     * moves at most once a half hour for it.
+     */
+    historyAt: integer('history_at', { mode: 'number' }),
   },
   (table) => ({
     byWatched: index('ha_entity_watched_idx').on(table.watched),

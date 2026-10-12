@@ -74,12 +74,13 @@ const UNDRAWN: readonly VariantType[] = ['homeassistant'];
  * own files instead. The countdown emptied it when it left `UNDRAWN` (its six
  * are measured in the `browser-countdown-*` files); Home Assistant's `tile`
  * (P5.3) is the case it was kept for — one look of several designed — and is
- * measured in `browser-ha-tile`. The letter moved and the intent did not:
+ * measured in `browser-ha-tile`, and its `status` card (M6.8) in
+ * `browser-ha-status`. The letter moved and the intent did not:
  * Home Assistant stays in `UNDRAWN`, so its `list`, written out, is still held
  * here to the box with no look at all, element for element, which is the
  * "a list widget byte-identical to before" half of that item.
  */
-const DESIGNED: ReadonlySet<string> = new Set<string>(['homeassistant.tile']);
+const DESIGNED: ReadonlySet<string> = new Set<string>(['homeassistant.tile', 'homeassistant.status']);
 
 /** What each type needs to have something to say, so no box is left out. */
 const BASE_CONFIG: Readonly<Record<string, Record<string, unknown>>> = {

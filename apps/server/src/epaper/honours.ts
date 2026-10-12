@@ -98,9 +98,14 @@ const OWN_HONOURS: Readonly<Record<string, readonly string[]>> = {
   // disc filled for a reading that is on or wrong, and `tileLayout`,
   // `hideState` and `showBar` are the tile's own. `showChanged` is not —
   // `PANEL_IGNORES` says why.
+  // M6.8 and M6.10: the status card is an outlined card with its subject,
+  // its progress, the readings beside it and a doubled edge once finished, and
+  // a sparkline is a line in one bit — so `subject`, `progress`, `doneState`
+  // and `sparkline` move ink. The card's own picture does not: a panel draws
+  // no photographs (`PANEL_IGNORES`).
   homeassistant: [
     'title', 'showTitle', 'count', 'fields', 'readings', 'variant', 'tileLayout', 'hideState', 'showBar',
-    STYLE_INSET, WHEN_EMPTY,
+    'sparkline', 'subject', 'progress', 'doneState', STYLE_INSET, WHEN_EMPTY,
   ],
   external: ['title', 'showTitle', 'count', 'module', STYLE_INSET],
   // `variant` and `unitWords` since P5.2: `page`, `ticket`, `progress` and
@@ -256,7 +261,7 @@ export const PANEL_LOOKS: Readonly<Record<string, readonly string[]>> = {
   countdown: ['page', 'ticket', 'progress', 'month'],
   // Tiles, as outlined boxes with the disc filled for a reading that is on or
   // wrong (P5.3) — the one colour a tile has, said in the one way a bit can.
-  homeassistant: ['tile'],
+  homeassistant: ['tile', 'status'],
 };
 
 /**
@@ -507,6 +512,12 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
     types: ['news'],
     label: 'Each headline shows for',
     why: 'a panel shows the newest headline and does not turn, which would refresh a battery panel every minute.',
+  },
+  {
+    key: 'subjectPicture',
+    types: ['homeassistant'],
+    label: 'Its own picture',
+    why: 'a panel draws no photographs, so the card draws the reading’s mark.',
   },
   {
     key: 'showChanged',

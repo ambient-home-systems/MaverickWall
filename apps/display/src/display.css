@@ -1371,6 +1371,143 @@ img.wxi { display: block; object-fit: contain; }
 }
 
 /*
+ * A reading's last day as a line (plan item M6.10), on every look of the Home
+ * Assistant widget. **A fixed box whether or not there is a line in it**: the
+ * row a sparkline sits in is a function of the widget's settings and never of
+ * the house, so a box does not move when the history arrives, and a reading
+ * with no number draws the same empty box as one whose day has not come yet.
+ * The picture stretches to the box; `vector-effect` keeps the stroke its own
+ * width however far the day is stretched. In the accent, because a line of
+ * data is a thing to read, and on its own ground the accent is held to the
+ * contrast every other accent mark is.
+ */
+.spark { display: block; color: var(--accent); }
+.spark svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.spark-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+/* Beside a list reading's words, on its own line: a width, never a row. */
+.hs-spark { display: inline-block; flex: 0 0 auto; width: 4.5rem; height: 1.3rem; align-self: center; }
+/* Under a tile, the width of the tile, in a row of its own that every tile
+   carries while the widget asks for it — so a row of tiles is one height. */
+.house-tiles[data-spark] .ht-tile { grid-template-areas: "circle words" "bar bar" "spark spark"; }
+.house-tiles[data-spark][data-layout="vertical"] .ht-tile { grid-template-areas: "circle" "words" "bar" "spark"; }
+.ht-spark { grid-area: spark; justify-self: stretch; height: 1.6em; }
+
+/*
+ * The status card (plan item M6.8): one thing the house is doing, as a card —
+ * the washer, the car charging. A tile's grammar made larger rather than a
+ * second grammar: the circle is the tone, the ground is the theme's `--bg`
+ * with a hairline and the theme's `--shadow-card`, and the state is the one
+ * large reading, at the lede role D1 caps against the event role.
+ *
+ * **Loud when it has finished** (`data-done`): the alert colour on the circle
+ * and the state, a heavier edge drawn as an outline so the card's box does
+ * not move, and a ring round the circle that breathes where the wall may move
+ * (below, in the motion block) and stands still where it may not.
+ */
+.house-status {
+  --st-tone: var(--state-idle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  min-width: 0;
+  padding: var(--s3);
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius, 0.4rem);
+  box-shadow: var(--shadow-card, none);
+  font-size: var(--t-wall-event, 1.5rem);
+  line-height: 1.15;
+  flex: 0 0 auto;
+}
+.house-status[data-tone="active"] { --st-tone: var(--state-active); }
+.house-status[data-tone="alert"] { --st-tone: var(--state-alert); }
+.house-status[data-done] { outline: 0.2em solid var(--state-alert); outline-offset: -0.2em; }
+.st-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s3);
+  min-width: 0;
+}
+.st-circle {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3em;
+  height: 3em;
+  border-radius: 50%;
+  background: var(--st-tone);
+  color: var(--bg);
+}
+.st-circle.st-has-picture { background: var(--panel); }
+.st-ico { width: 1.8em; height: 1.8em; }
+.st-picture { display: block; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.st-ring {
+  position: absolute;
+  top: -0.3em;
+  right: -0.3em;
+  bottom: -0.3em;
+  left: -0.3em;
+  border: 0.15em solid var(--state-alert);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.st-words { display: flex; flex-direction: column; min-width: 0; }
+.st-name { font-weight: 600; color: var(--ink); overflow-wrap: break-word; }
+.st-state {
+  /* The lede on a measured wall; on one nobody measured, 1.4 of the card's
+     own type, which is its name's — so the cap of 1.8 holds on both. */
+  font-size: var(--t-wall-lede, 1.4em);
+  font-weight: 700;
+  color: var(--ink);
+  overflow-wrap: break-word;
+}
+.house-status[data-done] .st-state { color: var(--state-alert); }
+.st-ago { font-size: var(--t-wall-time, 1.3rem); color: var(--muted); }
+.st-stale .st-state { color: var(--muted); }
+.st-progress {
+  position: relative;
+  height: 0.45em;
+  border-radius: 0.225em;
+  background: var(--rule);
+  overflow: hidden;
+}
+.st-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: inherit;
+  background: var(--st-tone);
+}
+.st-spark { height: 2em; }
+.st-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 9em), 1fr));
+  gap: var(--s1) var(--s3);
+}
+.st-detail {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s1);
+  min-width: 0;
+  font-size: var(--t-wall-time, 1.3rem);
+}
+.st-detail-ico { width: 1.1em; height: 1.1em; align-self: center; }
+.st-detail-name { color: var(--muted); overflow-wrap: break-word; min-width: 0; }
+.st-detail-value { margin-left: auto; font-weight: 600; white-space: nowrap; }
+.st-detail.st-stale .st-detail-value { color: var(--muted); }
+.st-act-note { order: -1; }
+
+/*
  * A reading a press operates (RFC 018 phase 2): the same element as the one
  * that does not, made a <button>, with everything a button brings by default
  * put back to what the reading drew — so an operable reading is the same
@@ -1379,7 +1516,8 @@ img.wxi { display: block; object-fit: contain; }
  * own font, colour, alignment and appearance are reset.
  */
 .hs-act,
-.ht-act {
+.ht-act,
+.st-act {
   position: relative;
   font: inherit;
   letter-spacing: inherit;
@@ -1390,6 +1528,8 @@ img.wxi { display: block; object-fit: contain; }
   appearance: none;
 }
 .hs-act { background: none; border: 0; }
+/* A status card's head is the card's top line, not a card of its own. */
+.st-act { width: 100%; margin: 0; padding: 0; background: none; border: 0; }
 /* A list reading is a line of type; 44px of target is grown behind it with a
    pseudo-element, `.td-tick`'s idiom, rather than by making the line taller —
    which would move every reading beside it. A tile is already larger. */
@@ -1408,12 +1548,15 @@ img.wxi { display: block; object-fit: contain; }
 .hs-act:focus,
 .hs-act:focus-visible,
 .ht-act:focus,
-.ht-act:focus-visible { outline: 0.2rem solid var(--accent); outline-offset: 0.25rem; }
+.ht-act:focus-visible,
+.st-act:focus,
+.st-act:focus-visible { outline: 0.2rem solid var(--accent); outline-offset: 0.25rem; }
 /* Held down: a faint answer before the round trip does — not a "sending"
    state, because the server is the authority and the reading changes only
    when the next document says so. */
 .hs-act:active,
-.ht-act:active { opacity: 0.6; }
+.ht-act:active,
+.st-act:active { opacity: 0.6; }
 /*
  * A scene or a script being held (RFC 018 phase 4): a ring, heavier than the
  * focus ring, for as long as the press lasts. Still rather than filling: an
@@ -1424,7 +1567,8 @@ img.wxi { display: block; object-fit: contain; }
  * 600 ms.
  */
 .hs-act[data-holding],
-.ht-act[data-holding] { outline: 0.35rem solid var(--accent); outline-offset: 0.25rem; }
+.ht-act[data-holding],
+.st-act[data-holding] { outline: 0.35rem solid var(--accent); outline-offset: 0.25rem; }
 
 /*
  * A Buttons widget (RFC 018 phase 5): a grid of cards, each a name. The tile
@@ -4933,6 +5077,21 @@ img.wxi { display: block; object-fit: contain; }
   }
   .canvas[data-motion="on"] .wp-emoji {
     animation-name: wp-bob;
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
+  }
+
+  /*
+   * A finished status card's ring (plan item M6.8): it breathes, in `opacity`
+   * alone, slowly — a washer that has finished is news, not an alarm. Locked
+   * to the wall clock by `render.ts` through `lockLoop` (`STATUS_RING_MS`).
+   */
+  @keyframes st-ring {
+    0%, 100% { opacity: 0.25; }
+    50% { opacity: 1; }
+  }
+  .canvas[data-motion="on"] .st-ring {
+    animation-name: st-ring;
     animation-timing-function: ease-in-out;
     animation-iteration-count: infinite;
   }

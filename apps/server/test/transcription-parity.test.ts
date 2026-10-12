@@ -49,6 +49,12 @@ const PAIRS = [
     server: join(HERE, '..', 'src', 'api', 'env-tiles.ts'),
     display: join(HERE, '..', '..', 'display', 'src', 'env-tiles.ts'),
   },
+  // The Home Assistant widget's status card and sparklines (M6.8, M6.10).
+  {
+    marker: 'status-card',
+    server: join(HERE, '..', 'src', 'api', 'status-card.ts'),
+    display: join(HERE, '..', '..', 'display', 'src', 'status-card.ts'),
+  },
   {
     marker: 'qr-payload',
     server: join(HERE, '..', 'src', 'api', 'qr-payload.ts'),

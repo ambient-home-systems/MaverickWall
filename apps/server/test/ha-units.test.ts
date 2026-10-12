@@ -10,6 +10,7 @@ import {
   isSupported,
   parseStates,
   pickAttributes,
+  pictureKey,
   readState,
   SUPPORTED_DOMAINS,
   toneFor,
@@ -399,7 +400,12 @@ describe('the attributes a reading may keep', () => {
         },
       ]),
     );
-    expect(light?.attributes).toEqual({ brightness: 153 });
+    // The picture as its hash (M6.8), never its address, which carries a token.
+    expect(light?.attributes).toEqual({
+      brightness: 153,
+      picture_key: pictureKey('/api/image_proxy/light.lounge?token=secret'),
+    });
+    expect(JSON.stringify(light?.attributes)).not.toContain('secret');
     expect(climate?.attributes).toEqual({ hvac_action: 'heating', current_temperature: 21, temperature: 22 });
   });
 

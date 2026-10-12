@@ -342,6 +342,16 @@ function withReadingHandles(
   let out = config;
   const own = readingHandlesFor(out['readings'], index);
   if (own !== undefined) out = { ...out, readings: own };
+  /*
+   * A status card's subject and progress (plan item M6.8) are one reading
+   * each, by entity id, and leave as its handle by the same rule — whatever
+   * the type, so no entry under either key reaches a wall as written.
+   */
+  for (const key of ['subject', 'progress'] as const) {
+    if (typeof out[key] !== 'string') continue;
+    const handle = readingHandlesFor([out[key]], index)?.[0];
+    out = { ...out, [key]: handle };
+  }
   const ink = out['ink'];
   if (typeof ink === 'object' && ink !== null && !Array.isArray(ink)) {
     const lane = readingHandlesFor((ink as Record<string, unknown>)['readings'], index);

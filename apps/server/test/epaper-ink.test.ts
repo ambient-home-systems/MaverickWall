@@ -9,6 +9,7 @@ import {
 } from '../src/api/manifest.js';
 import { inkOverrideBody, widgetConfigBody } from '../src/api/widget-schema.js';
 import { widgetStyleBody } from '../src/api/widget-style.js';
+import { haReadingHandle } from '../src/api/manifest.js';
 import type { Framebuffer } from '../src/epaper/framebuffer.js';
 import {
   INK_KEYS,
@@ -130,7 +131,11 @@ function manifest(): Manifest {
         readings: [
           { label: 'Front door', value: 'Locked', glyph: 'lock', mode: 'label_value' },
           // A handle on this one, so a widget naming it by label resolves to it (P1.3, M5.6).
-          { key: 'rd-kitchen', label: 'Kitchen', value: '19.4 C', glyph: 'temperature', mode: 'label_value' },
+          {
+            key: 'rd-kitchen', label: 'Kitchen', value: '19.4 C', glyph: 'temperature', mode: 'label_value',
+            // A day with a shape (M6.10), so `sparkline` has a line to draw.
+            series: Array.from({ length: 48 }, (_, i) => (i % 9 === 0 ? null : 18 + Math.sin(i / 5) * 2)),
+          },
           { label: 'Garage', value: 'Open', icon: 'garage', mode: 'label_value' },
           /*
            * A lamp that is on, at a level, and changed a while ago (P5.3): the
@@ -142,6 +147,19 @@ function manifest(): Manifest {
           {
             label: 'Lamp', value: 'On * 60%', glyph: 'light', mode: 'label_value', tone: 'active', level: 60,
             changedAt: Date.UTC(2026, 7, 22, 15, 25, 0),
+          },
+          /*
+           * A washer and how far along it is (M6.8), keyed by the handles the
+           * panel mints from the entity ids a status card stores — so
+           * `subject` and `progress` each have a reading to point at.
+           */
+          {
+            key: haReadingHandle('sensor.washer'), label: 'Washer', value: 'Running', glyph: 'power',
+            mode: 'label_value', tone: 'active',
+          },
+          {
+            key: haReadingHandle('sensor.washer_progress'), label: 'Washer progress', value: '45', unit: '%',
+            mode: 'label_value',
           },
         ],
         fetchedAt: 1,
@@ -355,6 +373,16 @@ const KEY_BASES: Readonly<Record<string, Readonly<Record<string, readonly Record
     hideState: [{ variant: 'tile' }],
     showBar: [{ variant: 'tile' }],
     showChanged: [{ variant: 'tile' }, { variant: 'tile', showBar: true }],
+    /*
+     * The status card's (M6.8) on a card, and a sparkline (M6.10) on every
+     * look. The card's own picture is probed there and proved to move none:
+     * a panel draws no photographs.
+     */
+    sparkline: [{}, { variant: 'tile' }, { variant: 'status' }],
+    subject: [{ variant: 'status' }],
+    progress: [{ variant: 'status' }],
+    doneState: [{ variant: 'status' }],
+    subjectPicture: [{ variant: 'status' }],
   },
 };
 
@@ -428,6 +456,12 @@ const PROBES: Readonly<Record<string, readonly unknown[]>> = {
   hideState: [true],
   showChanged: [true],
   showBar: [true],
+  // The status card (M6.8) and the day's line (M6.10).
+  sparkline: [true],
+  subject: ['sensor.washer'],
+  progress: ['sensor.washer_progress'],
+  doneState: ['Locked'],
+  subjectPicture: [true],
   target: ['2027-01-01'],
   // The countdown's words, picture and confetti (plan item P5.2).
   unitWords: ['sleeps'],
@@ -829,7 +863,7 @@ describe('a Look, value by value', () => {
 
   it('probes every value the schema holds', () => {
     expect([...LOOKS].sort()).toEqual([...widgetConfigBody.shape.variant.unwrap().options].sort());
-    expect(LOOKS.length).toBe(18);
+    expect(LOOKS.length).toBe(19);
   });
 });
 

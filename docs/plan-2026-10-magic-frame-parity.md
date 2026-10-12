@@ -1,6 +1,6 @@
 # Plan: parity with Magic Frame
 
-**Status: in progress.** RFC 018 (M6.0) is built, and so are the companion token, its Home Assistant to-do add, timers and messages, and refreshing walls and showing one wall's layout on the others (M1.1–M1.5, M2.1, M2.2, M2.3, M3.1–M3.8, M4.1–M4.12, M5.1–M5.12, M6.4, M6.5, M6.7, M6.12, M6.13, M7.1, M8.4–M8.8); everything else is planned. On 2026-10-05 the owner asked for a
+**Status: in progress.** RFC 018 (M6.0) is built, and so are the companion token, its Home Assistant to-do add, timers and messages, and refreshing walls and showing one wall's layout on the others (M1.1–M1.5, M2.1, M2.2, M2.3, M3.1–M3.8, M4.1–M4.12, M5.1–M5.12, M6.4, M6.5, M6.7, M6.8, M6.10, M6.12, M6.13, M7.1, M8.4–M8.8); everything else is planned. On 2026-10-05 the owner asked for a
 competitive review of [Magic Frame](https://github.com/jeremiaa/magic-frame)
 against Maverick Wall, then a deeper look at its custom widgets and its
 backgrounds. This document is that review, the decisions taken on it, and the
@@ -166,9 +166,9 @@ The read-only items can start now. Items marked † follow RFC 018's phases (acc
 | M6.5 | **Pulse / auto-hide timer** for momentary triggers. **Built** as "After…": shown for a set time from Home Assistant's own instant — the change to a state, or an `event`/`button`/`input_button` entity's timestamp — and taken down by the wall's own clock (`showUntil`), so it ends on time with the server gone. A panel never draws one. | S | Built from Home Assistant's instant rather than per-wall state in `main.ts`, so two walls agree and a reload does not restart it. |
 | M6.6 | **Stacked widgets with a swap button.** | M | A local tap, no server write. Survives the rebuild as model state. |
 | M6.7 | **HA presses a button**: an entity shows or hides a group. **Built**: a group carries the same rule, and an `input_button` pressed by an automation shows it for a while. | S | The same mechanism as M6.4. |
-| M6.8 | **Status card**: washer, car charging; picture, details, progress, loud "finished". | M | Builds on the tile look (P5.3); picture via a proxied handle. |
+| M6.8 | **Status card**: washer, car charging; picture, details, progress, loud "finished". **Built** as the Home Assistant widget's third look, `status`: its subject's mark in a circle coloured by its tone (or its own picture, behind `subjectPicture`, served by the media route through a handle checked live against Home Assistant), its state as the card's one large reading, a progress bar from a percentage reading or the subject's own level, up to four of the widget's other readings, and — when it says the household's finished words (`doneState`) — the alert colour and a ring that breathes on the wall clock, inside reduced motion and the Motion switch. A panel draws it in one bit with a doubled edge for finished, and never the picture (MQ11). | M | Builds on the tile look (P5.3); picture via a proxied handle. |
 | M6.9 | **Now-playing card**; playback controls only †. | M | Cover art proxied by the server. |
-| M6.10 | **Sensor sparklines** from HA history. | M | A history read, not a service call. Fixed-height series, so no reflow. |
+| M6.10 | **Sensor sparklines** from HA history. **Built** as "Line of the last day" on every look of the Home Assistant widget: the last 24 hours of each sensor a widget with the switch shows, read with `GET /api/history/period` once per half hour per reading and kept as 48 time-weighted half-hour means. The row it draws in is the same height whether or not the day has arrived, a tile keeps it only where it costs no tile, and a panel draws it as a one-bit line. Nothing is read or sent for a household that has not turned it on. | M | A history read, not a service call. Fixed-height series, so no reflow. |
 | M6.11 | **Notification tiles**: rule-based, plus HA persistent notifications; dismissing one in HA is †. | M | Rule-based tiles reuse the interrupt matcher. |
 | M6.12 | **Wall control** †: whatever RFC 018 accepts. **Built** as RFC 018 phases 2–4 and 6 (M6.0). | L | Rate-limited, logged without entity names, never offered on e-paper. |
 | M6.13 | **Webhook button** †: a wall button that POSTs to a URL. **Built** as RFC 018 phase 5 (M6.0): the Buttons screen and widget. | S | Through the SSRF-guarded fetcher; targets set in the admin, never typed on the wall: MQ9. |
@@ -448,16 +448,16 @@ says where each lands in this plan.
 | Weather | Six providers; four icon sets (Lucide, solid, Meteocons with moon phases and animation, a 3D set); current, hourly and daily; humidity, wind, UV, sun times, feels-like; atmospheric background. | Providers M5.8; icons M5.9; styles exist (P5.1). |
 | Environment | AQI (EU or US scale), PM2.5, PM10, ozone, NO₂, pollen (hide zeros), UV, solar, wind; HA sensor tiles. | M5.6. |
 | Calendar | List, agenda, month; iCal, Google, Microsoft, CalDAV, HA feeds; per-feed colour; cards or minimal design; week numbers; location and description lines; per-day limit auto/all/fixed; month title. | We lead on the month grid; Google/Microsoft is M5.11. |
-| HA entity | Pills per entity; tap to toggle; brightness, colour and position pop-ups; `colorWhen` with numeric comparisons; hide-when and show-if rules; sparklines; live or polled. | Reads exist (tiles, P5.3); control is M6.12 †; sparklines M6.10. |
+| HA entity | Pills per entity; tap to toggle; brightness, colour and position pop-ups; `colorWhen` with numeric comparisons; hide-when and show-if rules; sparklines; live or polled. | Reads exist (tiles, P5.3); control is M6.12 †; sparklines M6.10, built. |
 | Notifications | Rule-based tiles (trigger, message, icon, colour, duration, acknowledge entity, tap action); HA persistent notifications; timers, media, RSS and status cards docked in one stack. | M6.11. |
 | Camera | HA or URL source; snapshot, MJPEG, WebRTC; caption; tap for full screen; full screen on an HA trigger. | M6.1–M6.3; tap-for-full-screen not planned. |
-| Sensor | Large numbers; cards or two-column grid; unit and decimals override; icon colour; sparklines; polled every 15 s. | Covered by readings and tiles; sparklines M6.10. |
+| Sensor | Large numbers; cards or two-column grid; unit and decimals override; icon colour; sparklines; polled every 15 s. | Covered by readings and tiles; sparklines M6.10, built. |
 | Buttons | Up to four; toggle/show/hide widgets, HA toggle, HA service with JSON, webhook, reload; long-press action; shapes; HA "Auto" press. | M6.6, M6.7, M6.12 †, M6.13 †. |
 | Image | Immich album slideshow in a tile; fit modes incl. blur; interval; corner radius. | M5.12 with M3. |
 | Media Player | Row, stack and cover layouts chosen from the tile; several players with auto-follow; progress seek; volume; spinning circular cover; artwork as tile background; hide when idle. | M6.9 (controls †). |
 | RSS Feed | Up to 8 feeds merged; list or rotate; source, date, summary, image; QR to read on a phone; no links by default. | M5.5. |
 | QR Code | Wi-Fi, link or text; dot and eye styles; gradient; centre icon (raises error correction); transparent or solid background. | M5.3. |
-| Status | Card while an entity is active; alert states that pulse and ring; picture from entity, URL or icon; up to four detail entities; progress bar or ring; tap entity. | M6.8. |
+| Status | Card while an entity is active; alert states that pulse and ring; picture from entity, URL or icon; up to four detail entities; progress bar or ring; tap entity. | M6.8, built: the `status` look; "while active" is M6.4's Show this widget. |
 | Timer | Started over HTTP; countdown ring; "done" state; dismiss; max four shown. | M5.1. |
 | Messages | Posted over HTTP; expiry; optional image URL; per-view target. | M5.2. |
 | Shopping list | Local, HA or Todoist source; tick, clear done; light markdown. | HA lists exist; Todoist M5.7; local not planned. |

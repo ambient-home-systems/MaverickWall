@@ -126,8 +126,10 @@ import {
   tileOptions,
   tileTone,
   tileWords,
+  STATUS_RING_MS,
   type TileWord,
 } from './house-tiles.js';
+import { sparkHeights, sparkRuns, statusParts } from './status-card.js';
 import {
   PLAYFUL_BOB_MS,
   PLAYFUL_BOB_STEP_MS,
@@ -1382,6 +1384,9 @@ function renderHouse(
       }
       cell.appendChild(el('span', HOUSE_ROW_CLASS[row.field], row.text));
     }
+    // A line of the day beside the words (M6.10): a fixed width on the
+    // reading's own line, so it moves no other reading and costs no row.
+    if (sparklineOn(config)) cell.appendChild(sparkNode(reading.series, 'hs-spark'));
     strip.appendChild(cell);
   }
 
@@ -1408,6 +1413,8 @@ interface TileDraw {
   readonly words?: readonly TileWord[];
   /** Whether the bar is drawn — asked for, and costing no tile. */
   readonly bar?: boolean;
+  /** Whether the day's line is drawn (M6.10) — asked for, and costing no tile. */
+  readonly spark?: boolean;
   /** How many tiles sit across. */
   readonly columns?: number;
 }
@@ -1448,9 +1455,11 @@ function renderHouseTiles(
   const options = tileOptions(config);
   const words = draw.words ?? tileWords(options);
   const bar = draw.bar ?? options.showBar;
+  const spark = draw.spark ?? sparklineOn(config);
 
   const grid = el('section', 'house-tiles');
   grid.setAttribute('data-layout', options.layout);
+  if (spark) grid.setAttribute('data-spark', '');
   if (draw.columns !== undefined) grid.style.setProperty('--ht-cols', String(draw.columns));
   const notice = model.houseNotices[widgetId];
   if (notice !== undefined) grid.appendChild(houseNoticeNode(notice, 'ht-act-note'));
@@ -1501,11 +1510,210 @@ function renderHouseTiles(
       track.appendChild(fill);
       tile.appendChild(track);
     }
+    // Every tile carries the row, the history arrived or not, so the box is
+    // the same height either way — a sparkline is a fixed-height series.
+    if (spark) tile.appendChild(sparkNode(reading.series, 'ht-spark'));
     grid.appendChild(tile);
   }
 
   if (model.houseNote !== undefined) grid.appendChild(el('div', 'ht-note', model.houseNote));
   return grid;
+}
+
+/** Whether a Home Assistant widget asks for the day's line under its numbers (M6.10). */
+function sparklineOn(config: unknown): boolean {
+  return widgetConfig(config)['sparkline'] === true;
+}
+
+/**
+ * A reading's last day as a line (plan item M6.10): one `<svg>` stretched to
+ * the box the stylesheet gives it, a polyline per run of half hours that had
+ * a number, and a dot for a run of one.
+ *
+ * **The box is the same size whether or not there is a line in it.** A reading
+ * whose history has not arrived, or which has no number at all, draws the
+ * empty box — so the row it sits in is a function of the widget's settings and
+ * never of the house, and a box never moves when the history lands.
+ *
+ * The line is drawn in `vector-effect: non-scaling-stroke`, so stretching the
+ * picture to a wide tile or a narrow list stretches the day and never the
+ * stroke. Its words are for a screen reader: the least and the most, which is
+ * what the line is a picture of.
+ */
+function sparkNode(series: readonly (number | null)[] | undefined, className: string): HTMLElement {
+  const box = el('span', `spark ${className}`);
+  box.setAttribute('data-field', 'spark');
+  const heights = sparkHeights(series);
+  if (heights === undefined || series === undefined) {
+    box.setAttribute('aria-hidden', 'true');
+    return box;
+  }
+  const numbers = series.filter((value): value is number => typeof value === 'number');
+  box.setAttribute('role', 'img');
+  box.setAttribute(
+    'aria-label',
+    `The last day: from ${Math.min(...numbers)} to ${Math.max(...numbers)}`,
+  );
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  const width = heights.length - 1;
+  svg.setAttribute('viewBox', `0 0 ${width} 10`);
+  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.setAttribute('focusable', 'false');
+  svg.setAttribute('aria-hidden', 'true');
+  for (const run of sparkRuns(heights)) {
+    const points = run.length === 1
+      ? [[(run[0] as readonly [number, number])[0] - 0.2, (run[0] as readonly [number, number])[1]], [(run[0] as readonly [number, number])[0] + 0.2, (run[0] as readonly [number, number])[1]]]
+      : run;
+    const line = document.createElementNS(ns, 'polyline');
+    // Heights 0..1 to 9..1: a margin of one in ten, so the stroke at the
+    // day's most and least is not cut in half by the box's edge.
+    line.setAttribute('points', points.map(([x, h]) => `${x},${(9 - (h as number) * 8).toFixed(2)}`).join(' '));
+    line.setAttribute('class', 'spark-line');
+    svg.appendChild(line);
+  }
+  box.appendChild(svg);
+  return box;
+}
+
+/**
+ * The status card (plan item M6.8): one thing the house is doing — the washer,
+ * the car charging — as a card. Its picture, its name and what it says now,
+ * large; how far along it is; its last day as a line, where asked; and up to
+ * four of the widget's other readings beside it.
+ *
+ * **Loud when it has finished**, and only then: when the subject says the
+ * words the household chose (`doneState`), the card takes the alert colour and
+ * a ring round its picture breathes — locked to the wall clock through
+ * `lockLoop`, inside reduced motion and the wall's Motion switch like every
+ * other moving thing here, and only in `opacity`. With motion off it is the
+ * alert colour and a still ring, which still says "finished" from the door.
+ *
+ * **Its one large reading is the state**, at the lede role — the size the
+ * forecast's Today card and the countdown carry, which D1 caps against the
+ * event role. Never a stat tile: one card, one reading made large.
+ *
+ * **The picture is the subject's own only where the card asks** and the
+ * server handed a handle for it; otherwise it is the reading's mark in a
+ * circle coloured by its tone, as a tile draws it. A picture that fails to load
+ * gives way to the mark.
+ *
+ * A press on the head operates the subject exactly as a tile would, behind the
+ * same three switches (`operable`).
+ */
+function renderHouseStatus(
+  model: DisplayModel,
+  config: unknown,
+  mediaBase: string,
+  widgetId = '',
+): HTMLElement | undefined {
+  const parts = statusParts(model.house, houseReadingsFor(model.house, config), config);
+  if (parts === undefined) return undefined;
+  const { subject, details, progress, done } = parts;
+  const c = widgetConfig(config);
+
+  const card = el('section', 'house-status');
+  const tone = done ? 'alert' : tileTone(subject);
+  card.setAttribute('data-tone', tone);
+  if (done) card.setAttribute('data-done', '');
+  const notice = model.houseNotices[widgetId];
+  if (notice !== undefined) card.appendChild(houseNoticeNode(notice, 'st-act-note'));
+
+  const head = readingNode(
+    subject.stale ? 'st-head st-stale' : 'st-head',
+    operable(model, config, subject),
+    subject,
+    'st-act',
+    model,
+    widgetId,
+  );
+  const circle = el('span', 'st-circle');
+  const glyph = subject.glyph === undefined ? null : glyphNode(subject.glyph, 'st-ico gl');
+  if (c['subjectPicture'] === true && subject.picture !== undefined) {
+    const picture = el('img', 'st-picture') as HTMLImageElement;
+    picture.alt = '';
+    picture.src = `${mediaBase}${subject.picture}`;
+    // A picture that does not arrive gives way to the mark, never a broken box.
+    picture.addEventListener('error', () => {
+      picture.remove();
+      if (glyph !== null && glyph.parentNode === null) circle.appendChild(glyph);
+      circle.classList.remove('st-has-picture');
+    });
+    circle.classList.add('st-has-picture');
+    circle.appendChild(picture);
+  } else if (glyph !== null) {
+    circle.appendChild(glyph);
+  }
+  if (done) {
+    const ring = el('span', 'st-ring');
+    lockLoop(ring, STATUS_RING_MS, model.now);
+    circle.appendChild(ring);
+  }
+  head.appendChild(circle);
+
+  const words = el('span', 'st-words');
+  const name = el('span', 'st-name', subject.label);
+  name.setAttribute('data-field', 'name');
+  words.appendChild(name);
+  const state = el('span', 'st-state', subject.value);
+  state.setAttribute('data-field', 'state');
+  words.appendChild(state);
+  const ago = tileOptions(config).showChanged ? changedWords(subject.changedAt, model.now) : undefined;
+  if (ago !== undefined) {
+    const when = el('span', 'st-ago', ago);
+    when.setAttribute('data-field', 'changed');
+    words.appendChild(when);
+  }
+  head.appendChild(words);
+  card.appendChild(head);
+
+  if (progress !== undefined) {
+    const track = el('span', 'st-progress');
+    track.setAttribute('data-field', 'progress');
+    track.setAttribute('role', 'progressbar');
+    track.setAttribute('aria-valuemin', '0');
+    track.setAttribute('aria-valuemax', '100');
+    track.setAttribute('aria-valuenow', String(Math.round(progress)));
+    const fill = el('span', 'st-fill');
+    fill.style.width = `${progress}%`;
+    track.appendChild(fill);
+    card.appendChild(track);
+  }
+  if (sparklineOn(config)) card.appendChild(sparkNode(subject.series, 'st-spark'));
+
+  if (details.length > 0) {
+    const list = el('div', 'st-details');
+    for (const detail of details) {
+      const row = el('div', detail.stale ? 'st-detail st-stale' : 'st-detail');
+      row.setAttribute('data-field', 'detail');
+      const mark = detail.glyph === undefined ? null : glyphNode(detail.glyph, 'st-detail-ico gl');
+      if (mark !== null) row.appendChild(mark);
+      row.appendChild(el('span', 'st-detail-name', detail.label));
+      row.appendChild(el('span', 'st-detail-value', detail.value));
+      list.appendChild(row);
+    }
+    card.appendChild(list);
+  }
+  if (model.houseNote !== undefined) card.appendChild(el('div', 'ht-note', model.houseNote));
+  return card;
+}
+
+/**
+ * The status card's belt: everything after the head, given up from the
+ * bottom whole — the readings beside it first, one at a time, then the line,
+ * then the progress — and never the head, which is the card.
+ */
+function beltStatus(entry: TieredWidget): void {
+  const card = entry.body.querySelector('.house-status');
+  if (!(card instanceof HTMLElement)) return;
+  const items: HTMLElement[] = [];
+  for (const child of [...card.children] as HTMLElement[]) {
+    if (child.classList.contains('st-details')) items.push(...([...child.children] as HTMLElement[]));
+    else items.push(child);
+  }
+  beltItems(entry.box, items);
+  const shown = ([...card.querySelectorAll('.st-detail')] as HTMLElement[]).filter((d) => d.style.display !== 'none').length;
+  entry.box.setAttribute('data-tier-items', String(shown));
 }
 
 /**
@@ -2591,10 +2799,12 @@ export function renderWidget(
       return calendarWidget(model, config);
     case 'weather':
       return renderWeather(model, config);
-    case 'homeassistant':
-      return variantOf('homeassistant', config) === 'tile'
-        ? renderHouseTiles(model, config, {}, widgetId)
-        : renderHouse(model, config, undefined, widgetId);
+    case 'homeassistant': {
+      const look = variantOf('homeassistant', config);
+      if (look === 'tile') return renderHouseTiles(model, config, {}, widgetId);
+      if (look === 'status') return renderHouseStatus(model, config, mediaBase, widgetId);
+      return renderHouse(model, config, undefined, widgetId);
+    }
     case 'shift':
       return renderShiftWidget(model, config);
     case 'countdown':
@@ -3920,6 +4130,13 @@ function applyWidgetTiers(
       tierHouseTiles(entry, model);
       continue;
     }
+    // The status card (M6.8): its head is the card, and what follows it —
+    // progress, the day's line, then the readings beside it — is given up from
+    // the bottom, whole, by the belt.
+    if (entry.widget.type === 'homeassistant' && variantOf('homeassistant', entry.widget.config) === 'status') {
+      beltStatus(entry);
+      continue;
+    }
     const look = entry.widget.type === 'weather' ? variantOf('weather', entry.widget.config) : undefined;
     const table = look !== undefined ? (WEATHER_STYLE_TIERS[look] ?? WIDGET_TIERS['weather']) : WIDGET_TIERS[entry.widget.type];
     const primary =
@@ -4680,8 +4897,8 @@ function tierHouseTiles(entry: TieredWidget, model: DisplayModel): void {
    * the next, and a count read off the first row promised the box tiles the
    * belt then took away. Measured, that is the only count this pass trusts.
    */
-  const drawn = (bar: boolean): { readonly shown: number; readonly bars: number } => {
-    const rebuilt = renderHouseTiles(model, config, { words, columns, bar }, entry.widget.id);
+  const drawn = (bar: boolean, spark = false): { readonly shown: number; readonly bars: number } => {
+    const rebuilt = renderHouseTiles(model, config, { words, columns, bar, spark }, entry.widget.id);
     if (rebuilt !== undefined) replaceBody(entry, rebuilt);
     const tiles = [...entry.body.querySelectorAll('.ht-tile')] as HTMLElement[];
     const note = entry.body.querySelector('.ht-note');
@@ -4690,15 +4907,28 @@ function tierHouseTiles(entry: TieredWidget, model: DisplayModel): void {
     return { shown: shown.length, bars: shown.filter((tile) => tile.querySelector('.ht-bar') !== null).length };
   };
 
-  let result = drawn(false);
+  /*
+   * The day's line first and the bar after it, each kept only where it costs
+   * no tile (`barKeepsEveryTile` states the rule for both): the line says
+   * something the state line does not — how the day went — so where only one
+   * fits, it is the one kept.
+   */
+  const plain = drawn(false);
+  let spark = false;
+  let result = plain;
+  if (sparklineOn(config)) {
+    const lined = drawn(false, true);
+    spark = barKeepsEveryTile(lined.shown, plain.shown);
+    // Given up: the box holds the lined draw, so the plain one is drawn again.
+    result = spark ? lined : drawn(false);
+  }
   if (options.showBar) {
-    const plain = result;
-    const barred = drawn(true);
-    // Kept only where it costs no tile — `barKeepsEveryTile` states the rule.
-    result = barKeepsEveryTile(barred.shown, plain.shown) ? barred : drawn(false);
+    const barred = drawn(true, spark);
+    result = barKeepsEveryTile(barred.shown, plain.shown) ? barred : drawn(false, spark);
   }
   stampTier(entry.box, tier, result.shown);
-  stampRungs(entry.box, result.bars > 0 ? [...words, 'bar'] : words);
+  const kept = result.bars > 0 ? [...words, 'bar'] : [...words];
+  stampRungs(entry.box, spark ? [...kept, 'spark'] : kept);
 }
 
 /**

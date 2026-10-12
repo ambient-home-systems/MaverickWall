@@ -386,6 +386,12 @@ export interface FakeHa {
    * presses — none until a test adds one, so no other test's house changes.
    */
   readonly others: Record<string, { state: string; lastChanged?: string; name?: string }>;
+  /**
+   * Each entity's recorded changes, as `/api/history/period` answers them
+   * (plan item M6.10): a list per entity asked for, the first in full and the
+   * rest as a state and an instant. None until a test records some.
+   */
+  readonly history: Record<string, { state: string; last_changed: string }[]>;
   /** Stand the fake down without reaching into a module-level array. */
   close(): Promise<void>;
 }
@@ -408,6 +414,7 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
     artwork: ARTWORK,
     sun: undefined,
     others: {},
+    history: {},
     todo: {
       'todo.shopping': {
         items: [
@@ -569,6 +576,39 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
       response.writeHead(200, { 'content-type': 'image/png' });
       response.end(state.artwork);
       return;
+    }
+    // An entity's own picture (plan item M6.8) through Home Assistant's image
+    // proxy, the way the living-room lamp's `entity_picture` names it.
+    if (url.startsWith('/api/image_proxy/')) {
+      const entityId = decodeURIComponent(url.slice('/api/image_proxy/'.length).split('?')[0] ?? '');
+      if (entityId !== 'light.living_room' || state.gone.has(entityId)) {
+        response.writeHead(404, { 'content-type': 'application/json' });
+        response.end('{"message":"Entity not found."}');
+        return;
+      }
+      response.writeHead(200, { 'content-type': 'image/png' });
+      response.end(state.artwork);
+      return;
+    }
+    // The recorder (plan item M6.10): one list per entity asked for, as core
+    // answers `minimal_response` — the first row in full, the rest as a state
+    // and an instant. Refused without a start, as core refuses one.
+    if (url.startsWith('/api/history/period/')) {
+      const parsed = new URL(url, 'http://ha.local');
+      const start = Date.parse(decodeURIComponent(parsed.pathname.slice('/api/history/period/'.length)));
+      if (!Number.isFinite(start) || request.method !== 'GET') {
+        response.writeHead(400, { 'content-type': 'application/json' });
+        response.end('{"message":"Invalid datetime"}');
+        return;
+      }
+      const ids = (parsed.searchParams.get('filter_entity_id') ?? '').split(',').filter((id) => id !== '');
+      return json(
+        JSON.stringify(
+          ids
+            .map((id) => (state.history[id] ?? []).map((row, index) => (index === 0 ? { entity_id: id, ...row } : row)))
+            .filter((rows) => rows.length > 0),
+        ),
+      );
     }
     if (url === '/api/calendars') {
       return json(JSON.stringify([{ entity_id: 'calendar.family', name: 'Family' }]));

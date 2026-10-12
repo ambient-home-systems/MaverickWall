@@ -130,12 +130,23 @@ describe('which controls a look hides', () => {
     // A tile is always its mark, its name and its state, so the ladder moves
     // nothing on it; the tile's own options move nothing on the list. An
     // absent look is the list, as a config saved before tiles existed is.
+    // And the status card's four (M6.8) are its own: hidden off both.
+    const cardKeys = ['subject', 'progress', 'doneState', 'subjectPicture'];
     const tileKeys = ['tileLayout', 'hideState', 'showChanged', 'showBar'];
-    expect(hiddenByVariant('homeassistant', {})).toEqual(tileKeys);
-    expect(hiddenByVariant('homeassistant', { variant: 'list' })).toEqual(tileKeys);
-    expect(hiddenByVariant('homeassistant', { variant: 'tile' })).toEqual(['fields']);
+    expect(hiddenByVariant('homeassistant', {})).toEqual([...tileKeys, ...cardKeys]);
+    expect(hiddenByVariant('homeassistant', { variant: 'list' })).toEqual([...tileKeys, ...cardKeys]);
+    expect(hiddenByVariant('homeassistant', { variant: 'tile' })).toEqual(['fields', ...cardKeys]);
     // A clock's look on a Home Assistant box is "not for me": the list.
-    expect(hiddenByVariant('homeassistant', { variant: 'analogue' })).toEqual(tileKeys);
+    expect(hiddenByVariant('homeassistant', { variant: 'analogue' })).toEqual([...tileKeys, ...cardKeys]);
+  });
+
+  it('keeps the card’s own controls and "when it changed" on the status card, and the sparkline on every look (M6.8, M6.10)', () => {
+    // A card is one reading's: the ladder, a tile's layout, its state switch
+    // and its bar move nothing on it. "When it changed" is a card's too.
+    expect(hiddenByVariant('homeassistant', { variant: 'status' })).toEqual(['fields', 'tileLayout', 'hideState', 'showBar']);
+    for (const variant of ['list', 'tile', 'status']) {
+      expect(hiddenByVariant('homeassistant', { variant })).not.toContain('sparkline');
+    }
   });
 
   it('hides the occasion picker off `occasion` and the start date off `progress` (P5.2)', () => {
