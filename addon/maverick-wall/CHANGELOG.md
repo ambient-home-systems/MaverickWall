@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 1.4.0
+
 **The daytime theme can follow the sun.** Under the daytime theme on a wall's
 Look settings, "Switch by" now offers sunrise and sunset where you live (from
 the location on Weather), or a Home Assistant entity: the sun itself, or any
