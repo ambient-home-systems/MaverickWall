@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 1.3.0
+
 **Go back to an earlier layout.** Every time a wall's layout or look is
 saved, how it was just before is kept — the last twenty, under the wall's
 Advanced settings › Versions and copies. Restore puts back every layout, its
