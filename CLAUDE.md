@@ -11364,6 +11364,12 @@ One was green at first: an admin removing themselves, because every check of
 it ran while that admin was also the last one, so the other guard refused it.
 It is asked again after a second admin is added. `browser-components` pins
 System's rows exactly and now names Accounts and Your account.
+**5792 tests passing, 1 red and 2 skipped, over 428 files**: calendar 153 (1
+skipped) over 10 · core 314 over 9 · display 1060 over 68 · server 4265 (1
+skipped) over 341, measured with `pnpm test` and a real Chromium. Against
+M6.9–M6.11's 5772 over 427 that is +20 and +1: the new file's 19 and one walk
+in `migration-upgrade`. The one red is `browser-glass`'s striped-picture
+case, red on a clean `main` in this container as before.
 **Still unproven where it counts:** nobody has scanned the setup code with a
 real phone's code app, and no second person has opened a real supervisor's
 sidebar.
