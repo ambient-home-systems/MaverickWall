@@ -373,6 +373,33 @@ export const layoutSchedule = sqliteTable(
 );
 
 /**
+ * A browser wall's look as it was before a save changed it (plan item M8.4).
+ *
+ * `state` is `wall-state.ts`'s document as JSON — every canvas, the schedule,
+ * the theme and the rest of the look — and is read back through the schema
+ * that writes it, so a row a later release cannot read is a version the page
+ * says it cannot restore rather than a restore that half works. The newest
+ * twenty per wall are kept; `snapshotWall` prunes the rest as it writes.
+ *
+ * A plain `screen_id` rather than a foreign key, for the reason
+ * `layout_schedule.screen_id` gives: `deleteScreen` sweeps it itself.
+ */
+export const layoutSnapshots = sqliteTable(
+  'layout_snapshots',
+  {
+    id: text('id').primaryKey(),
+    screenId: text('screen_id').notNull(),
+    /** What was about to change it, in the words the page shows. */
+    reason: text('reason').notNull(),
+    state: text('state').notNull(),
+    ...timestamps,
+  },
+  (table) => ({
+    byScreen: index('layout_snapshots_screen_idx').on(table.screenId, table.createdAt),
+  }),
+);
+
+/**
  * A household-authored display theme.
  *
  * The four built-in directions (Board / Slate / Almanac / Glance) live in the
