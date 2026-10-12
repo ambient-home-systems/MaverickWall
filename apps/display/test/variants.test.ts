@@ -85,7 +85,7 @@ describe('what the Look picker shows', () => {
 
   it('is a segmented row up to three choices and a grid past it', () => {
     expect(LOOK_SEGMENTS_MAX).toBe(3);
-    expect(TYPES.filter(lookIsGrid)).toEqual(['weather', 'countdown']);
+    expect(TYPES.filter(lookIsGrid)).toEqual(['weather', 'countdown', 'homeassistant']);
     for (const type of TYPES) expect(lookIsGrid(type), type).toBe(VARIANTS[type].length > 3);
   });
 });
@@ -131,7 +131,8 @@ describe('which controls a look hides', () => {
     // nothing on it; the tile's own options move nothing on the list. An
     // absent look is the list, as a config saved before tiles existed is.
     // And the status card's four (M6.8) are its own: hidden off both.
-    const cardKeys = ['subject', 'progress', 'doneState', 'subjectPicture'];
+    // And the now-playing card's sentence (M6.9), which is no other look's.
+    const cardKeys = ['subject', 'progress', 'doneState', 'subjectPicture', 'mediaFollows'];
     const tileKeys = ['tileLayout', 'hideState', 'showChanged', 'showBar'];
     expect(hiddenByVariant('homeassistant', {})).toEqual([...tileKeys, ...cardKeys]);
     expect(hiddenByVariant('homeassistant', { variant: 'list' })).toEqual([...tileKeys, ...cardKeys]);
@@ -143,10 +144,25 @@ describe('which controls a look hides', () => {
   it('keeps the card’s own controls and "when it changed" on the status card, and the sparkline on every look (M6.8, M6.10)', () => {
     // A card is one reading's: the ladder, a tile's layout, its state switch
     // and its bar move nothing on it. "When it changed" is a card's too.
-    expect(hiddenByVariant('homeassistant', { variant: 'status' })).toEqual(['fields', 'tileLayout', 'hideState', 'showBar']);
+    expect(hiddenByVariant('homeassistant', { variant: 'status' })).toEqual([
+      'fields', 'tileLayout', 'hideState', 'showBar', 'mediaFollows',
+    ]);
     for (const variant of ['list', 'tile', 'status']) {
       expect(hiddenByVariant('homeassistant', { variant })).not.toContain('sparkline');
     }
+  });
+
+  it('keeps nothing but the speakers, the switch and its own sentence on the now-playing card (M6.9)', () => {
+    // A player's card reads none of the other looks' keys, and a player's state
+    // is no number, so it draws no line either; its sentence is its own.
+    const hidden = hiddenByVariant('homeassistant', { variant: 'media' });
+    expect(hidden).toEqual([
+      'fields', 'tileLayout', 'hideState', 'showChanged', 'showBar', 'subject', 'progress', 'doneState',
+      'subjectPicture', 'sparkline',
+    ]);
+    expect(hidden).not.toContain('readings');
+    expect(hidden).not.toContain('tapAction');
+    expect(hidden).not.toContain('mediaFollows');
   });
 
   it('hides the occasion picker off `occasion` and the start date off `progress` (P5.2)', () => {

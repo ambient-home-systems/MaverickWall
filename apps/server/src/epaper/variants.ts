@@ -53,7 +53,7 @@ export const VARIANTS = {
   clock: ['plain', 'stacked', 'analogue'],
   weather: ['strip', 'today', 'range', 'colour', 'playful'],
   countdown: ['number', 'page', 'ticket', 'occasion', 'progress', 'month'],
-  homeassistant: ['list', 'tile', 'status'],
+  homeassistant: ['list', 'tile', 'status', 'media'],
   calendar: ['', 'planner', 'bold'],
 } as const;
 
@@ -81,7 +81,7 @@ export const VARIANT_LABELS: { readonly [T in VariantType]: Readonly<Record<Vari
     progress: 'Progress',
     month: 'Month',
   },
-  homeassistant: { list: 'List', tile: 'Tiles', status: 'Status card' },
+  homeassistant: { list: 'List', tile: 'Tiles', status: 'Status card', media: 'Now playing' },
   calendar: { '': 'Standard', planner: 'Planner', bold: 'Bold' },
 };
 

@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { WebSocketServer } from 'ws';
 
 /**
  * A Home Assistant that is real enough to be wrong in the same ways.
@@ -147,6 +148,12 @@ export function statesBody(
         volume_level: 0.4,
         media_title: 'A track title that must not travel',
         media_artist: 'An artist',
+        // Where the track had got to and when (plan item M6.9): ninety seconds
+        // into four minutes, said a minute after the house was stood up.
+        media_album_name: 'An album',
+        media_duration: 240,
+        media_position: 90,
+        media_position_updated_at: new Date(at + 60_000).toISOString(),
         entity_picture: '/api/media_player_proxy/media_player.kitchen?token=picture-token-that-must-not-travel',
       },
       ...stamp(at - 600_000),
@@ -181,7 +188,9 @@ export const UNLISTED_ATTRIBUTE_MARKERS = [
   'Keypad 3',
   'hvac_modes',
   'target_temp_step',
-  // A media player's track (RFC 018 phase 6): the wall reads what it is doing.
+  // A media player's track (RFC 018 phase 6): the wall reads what it is doing,
+  // and since M6.9 the cache keeps what it plays only for a player a
+  // now-playing card follows — so with no such card this must not be there.
   'A track title that must not travel',
   'An artist',
 ] as const;
@@ -392,6 +401,13 @@ export interface FakeHa {
    * rest as a state and an instant. None until a test records some.
    */
   readonly history: Record<string, { state: string; last_changed: string }[]>;
+  /**
+   * Persistent notifications (plan item M6.11), as the WebSocket API's
+   * `persistent_notification/get` answers them. None until a test adds some.
+   */
+  readonly notifications: { notification_id: string; title: string | null; message: string; created_at: string }[];
+  /** Every message the WebSocket endpoint received, in order — the token is in the first. */
+  readonly wsReceived: string[];
   /** Stand the fake down without reaching into a module-level array. */
   close(): Promise<void>;
 }
@@ -415,6 +431,8 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
     sun: undefined,
     others: {},
     history: {},
+    notifications: [],
+    wsReceived: [],
     todo: {
       'todo.shopping': {
         items: [
@@ -887,6 +905,58 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
 
     response.writeHead(404, { 'content-type': 'application/json' });
     response.end('{"message":"Not found"}');
+  });
+
+  /*
+   * The WebSocket API (plan item M6.11), at `/api/websocket` as Core serves it:
+   * `auth_required` on connect, `auth_ok` for the token and `auth_invalid` for
+   * anything else, then one answer per command. It answers the read the Notifications
+   * widget needs and refuses every other command the way Core refuses an
+   * unknown one, so a test can see what was asked.
+   */
+  const sockets = new WebSocketServer({ noServer: true });
+  server.on('upgrade', (request, socket, head) => {
+    if ((request.url ?? '') !== '/api/websocket' || state.down) {
+      socket.destroy();
+      return;
+    }
+    sockets.handleUpgrade(request, socket, head, (ws) => {
+      let authed = false;
+      ws.send(JSON.stringify({ type: 'auth_required', ha_version: '2026.10.0' }));
+      ws.on('message', (data) => {
+        const text = data.toString();
+        state.wsReceived.push(text);
+        let message: { type?: string; id?: number; access_token?: string };
+        try {
+          message = JSON.parse(text) as typeof message;
+        } catch {
+          ws.close();
+          return;
+        }
+        if (!authed) {
+          if (message.type === 'auth' && message.access_token === TOKEN) {
+            authed = true;
+            ws.send(JSON.stringify({ type: 'auth_ok', ha_version: '2026.10.0' }));
+          } else {
+            ws.send(JSON.stringify({ type: 'auth_invalid', message: 'Invalid access token or password' }));
+            ws.close();
+          }
+          return;
+        }
+        if (message.type === 'persistent_notification/get') {
+          ws.send(JSON.stringify({ id: message.id, type: 'result', success: true, result: state.notifications }));
+          return;
+        }
+        ws.send(
+          JSON.stringify({
+            id: message.id,
+            type: 'result',
+            success: false,
+            error: { code: 'unknown_command', message: 'Unknown command.' },
+          }),
+        );
+      });
+    });
   });
 
   servers.push(server);

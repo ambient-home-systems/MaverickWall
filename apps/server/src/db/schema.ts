@@ -1725,13 +1725,14 @@ export const interruptRules = sqliteTable(
      * almost everything. `takeover` covers the wall, and is for the small set
      * of facts that are worth losing the calendar over — water on the floor,
      * a garage left open overnight. `takeover_and_wake` also lights a screen
-     * that has gone dark.
+     * that has gone dark. `tile` (plan item M6.11) is the quietest: a tile in a
+     * Notifications widget, and nothing over the wall.
      *
      * `wakeScreen` below predates this and is kept in step with it rather than
      * dropped: removing a column means rebuilding the table, and a rebuild on
      * a household's live database is a worse risk than a redundant flag.
      */
-    action: text('action', { enum: ['banner', 'takeover', 'takeover_and_wake'] })
+    action: text('action', { enum: ['tile', 'banner', 'takeover', 'takeover_and_wake'] })
       .notNull()
       .default('banner'),
 
@@ -2092,6 +2093,26 @@ export const haConditionStates = sqliteTable('ha_condition_states', {
   state: text('state').notNull(),
   /** Home Assistant's own `last_changed`, so a pulse is timed from the change and not from our poll. */
   changedAt: integer('changed_at', { mode: 'number' }).notNull(),
+  readAt: integer('read_at', { mode: 'number' }).notNull(),
+});
+
+/**
+ * Home Assistant's persistent notifications, as last read (plan item M6.11) —
+ * "a new device was discovered", "the backup failed", and whatever a
+ * household's own automations post with `persistent_notification.create`.
+ *
+ * Read over Home Assistant's WebSocket API, the one place it keeps them, and
+ * only while a Notifications widget asks for them. **Replaced whole** on every
+ * read that works, so one dismissed in Home Assistant leaves every wall on the
+ * next; kept as they were when a read fails, because a house that is briefly
+ * unreachable has not cleared its notifications. Dismissing one from a wall is
+ * no verb this application has (rule 12).
+ */
+export const haNotifications = sqliteTable('ha_notifications', {
+  notificationId: text('notification_id').primaryKey(),
+  title: text('title'),
+  message: text('message').notNull(),
+  createdAt: integer('created_at', { mode: 'number' }),
   readAt: integer('read_at', { mode: 'number' }).notNull(),
 });
 

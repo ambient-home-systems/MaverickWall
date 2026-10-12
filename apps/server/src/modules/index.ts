@@ -11,6 +11,7 @@ import { buttonsModule } from './webhooks/index.js';
 import { timersModule } from './timers/index.js';
 import { messagesModule } from './messages/index.js';
 import { newsModule } from './news/index.js';
+import { notificationsModule } from './notifications/index.js';
 
 /**
  * Every first-party panel module, in one list.
@@ -29,6 +30,7 @@ export const MODULES: readonly PanelModule[] = [
   timersModule,
   messagesModule,
   newsModule,
+  notificationsModule,
 ];
 
 /** First-party plus whatever the household has registered. */

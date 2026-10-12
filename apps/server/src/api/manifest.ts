@@ -114,6 +114,9 @@ export const WIDGET_TYPES = [
   // The air, the pollen, the UV, the sunlight and the wind, and any Home
   // Assistant sensors the household picks, as tiles (plan item M5.6).
   'environment',
+  // Alert rules a household set to say what they found as a tile, and Home
+  // Assistant's own persistent notifications (plan item M6.11).
+  'notifications',
   // A panel from a registered third-party module (docs/rfc-001-module-framework.md).
   // Still first-party by the rule that matters: the wall draws sanitised strings
   // through renderGenericPanel, never anything the module ships.
@@ -165,6 +168,9 @@ export const WIDGET_MODULE: Readonly<Record<string, string>> = {
   messages: 'messages',
   // Left out until some feed has headlines (plan item M5.5).
   news: 'news',
+  // Left out while no tile rule is firing and Home Assistant has said nothing
+  // (plan item M6.11): its `whenEmpty` is what the box shows the rest of the time.
+  notifications: 'notifications',
 };
 
 /**

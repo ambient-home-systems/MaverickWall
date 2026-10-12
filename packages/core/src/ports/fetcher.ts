@@ -352,7 +352,45 @@ export interface Fetcher {
    * broken network.
    */
   postJson(request: PostJsonRequest): Promise<PostJsonOutcome>;
+  /**
+   * One short conversation over a WebSocket, under the same guard — optional,
+   * because only one caller needs it and every test's stand-in fetcher would
+   * otherwise have to grow one it never uses.
+   *
+   * Home Assistant keeps its persistent notifications behind its WebSocket API
+   * alone (plan item M6.11); there is no REST read for them. So this is a
+   * request and an answer, never a subscription: the address is validated
+   * against `policy`, the name is resolved and every address checked, the
+   * socket connects to the address that was checked, a message over
+   * `maxBytes` ends it, and so does `timeoutMs`. What is said is `converse`'s
+   * decision, one reply at a time, and the conversation ends when it says
+   * `done` — or `fail`, with a sentence of its own.
+   *
+   * `url` is an `http:` or `https:` address, upgraded to `ws:` or `wss:` here:
+   * the guard reads http, and one address in one spelling is one thing to
+   * validate.
+   */
+  socket?(request: SocketRequest): Promise<SocketOutcome>;
 }
+
+export interface SocketRequest {
+  readonly url: string;
+  readonly policy: UrlPolicy;
+  readonly maxBytes: number;
+  readonly timeoutMs?: number;
+  /** Each text message the server sends, answered with what to send, or the end. */
+  readonly converse: (message: string) => SocketStep;
+}
+
+export type SocketStep =
+  | { readonly send: readonly string[] }
+  | { readonly done: string }
+  | { readonly fail: string };
+
+export type SocketOutcome =
+  | { readonly status: 'ok'; readonly body: string }
+  | { readonly status: 'rejected'; readonly code: FetchRejectionCode; readonly message: string }
+  | { readonly status: 'failed'; readonly code: FetchFailureCode; readonly message: string };
 
 /** Sizes are stated per call site rather than shared, so one cannot creep. */
 export const FETCH_LIMITS = {

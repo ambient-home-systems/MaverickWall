@@ -541,6 +541,8 @@ export interface DisplayModel {
   readonly messages: readonly MessageModel[];
   /** News headlines (plan item M5.5), newest first, across every feed. */
   readonly news: readonly NewsModel[];
+  /** The Notifications widget's (M6.11): rule tiles, loudest first, then Home Assistant's. */
+  readonly notifications: NotificationsModel;
   /** Something quiet to say about them, such as a connection that is failing. */
   readonly houseNote: string | undefined;
   /**
@@ -766,6 +768,56 @@ export interface HouseReadingModel {
    * stored media name (M6.8) — only beside a status card that draws it.
    */
   readonly picture?: string;
+  /**
+   * What a media player is playing (M6.9), only while a now-playing card
+   * shows it. Present — possibly with nothing in it — is what marks a reading
+   * as a player such a card may follow.
+   */
+  readonly media?: MediaModel;
+}
+
+/** A track, as a now-playing card draws it. Each part spread only when it is one. */
+export interface MediaModel {
+  readonly title?: string;
+  readonly artist?: string;
+  readonly album?: string;
+  /** Whole seconds. */
+  readonly duration?: number;
+  /** While playing: when the track started, epoch ms. */
+  readonly startedAt?: number;
+  /** While paused: where it stopped, in seconds. */
+  readonly position?: number;
+}
+
+/** A week: the longest track a card counts, and what a wrong number is refused past. */
+const MEDIA_SECONDS_MAX = 7 * 86_400;
+
+/**
+ * A track this bundle can draw: the words through the sanitiser every
+ * stranger's string goes through, the numbers refused rather than clamped. Not
+ * an object is no player.
+ */
+function mediaFrom(raw: unknown): { readonly media?: MediaModel } {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {};
+  const m = raw as { title?: unknown; artist?: unknown; album?: unknown; duration?: unknown; startedAt?: unknown; position?: unknown };
+  const title = text(m.title, 120);
+  const artist = text(m.artist, 120);
+  const album = text(m.album, 120);
+  const seconds = (value: unknown): number | undefined =>
+    typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= MEDIA_SECONDS_MAX ? value : undefined;
+  const duration = seconds(m.duration);
+  const position = seconds(m.position);
+  const startedAt = typeof m.startedAt === 'number' && Number.isFinite(m.startedAt) && m.startedAt > 0 ? m.startedAt : undefined;
+  return {
+    media: {
+      ...(title === undefined ? {} : { title }),
+      ...(artist === undefined ? {} : { artist }),
+      ...(album === undefined ? {} : { album }),
+      ...(duration === undefined || duration === 0 ? {} : { duration }),
+      ...(startedAt === undefined ? {} : { startedAt }),
+      ...(position === undefined ? {} : { position }),
+    },
+  };
 }
 
 /** The fixed length of a reading's day (`HISTORY_POINTS` on the server). */
@@ -929,6 +981,71 @@ export interface NewsModel {
  * caps them again and refuses a link that is not a web address, because a
  * wall that draws a stranger's string as a code should not trust one hop.
  */
+/** A tile an alert rule raised (M6.11): the household's sentence, what it is about, and its handle. */
+export interface NotificationTileModel {
+  readonly key: string;
+  readonly title: string;
+  readonly detail?: string;
+  readonly alert: boolean;
+  readonly dismissible: boolean;
+}
+
+/** One of Home Assistant's persistent notifications (M6.11). */
+export interface HaNotificationModel {
+  readonly key: string;
+  readonly title?: string;
+  readonly message: string;
+  readonly createdAt?: number;
+}
+
+export interface NotificationsModel {
+  readonly tiles: readonly NotificationTileModel[];
+  readonly ha: readonly HaNotificationModel[];
+}
+
+/** A handle the server minted for a tile or a notification, and nothing else. */
+const NOTIFICATION_HANDLE = /^(tile|han):[0-9a-f]{24}$/;
+
+/**
+ * The Notifications panel, read defensively: every word through the sanitiser
+ * a stranger's string goes through, a handle only in the shape the server
+ * mints, and an entry that will not read left out rather than costing the
+ * rest.
+ */
+export function notificationsFrom(panel: unknown): NotificationsModel {
+  const raw = typeof panel === 'object' && panel !== null ? (panel as { tiles?: unknown; ha?: unknown }) : {};
+  const tiles: NotificationTileModel[] = [];
+  for (const entry of Array.isArray(raw.tiles) ? raw.tiles : []) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const t = entry as { key?: unknown; title?: unknown; detail?: unknown; tone?: unknown; dismissible?: unknown };
+    const title = text(t.title, 120);
+    if (typeof t.key !== 'string' || !t.key.startsWith('tile:') || !NOTIFICATION_HANDLE.test(t.key) || title === undefined) continue;
+    const detail = text(t.detail, 160);
+    tiles.push({
+      key: t.key,
+      title,
+      ...(detail === undefined ? {} : { detail }),
+      alert: t.tone === 'alert',
+      dismissible: t.dismissible === true,
+    });
+  }
+  const ha: HaNotificationModel[] = [];
+  for (const entry of Array.isArray(raw.ha) ? raw.ha : []) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const n = entry as { key?: unknown; title?: unknown; message?: unknown; createdAt?: unknown };
+    const message = text(n.message, 400);
+    if (typeof n.key !== 'string' || !n.key.startsWith('han:') || !NOTIFICATION_HANDLE.test(n.key) || message === undefined) continue;
+    const title = text(n.title, 120);
+    ha.push({
+      key: n.key,
+      ...(title === undefined ? {} : { title }),
+      message,
+      ...(typeof n.createdAt === 'number' && Number.isFinite(n.createdAt) ? { createdAt: n.createdAt } : {}),
+    });
+  }
+  return { tiles, ha };
+}
+
 export function newsFrom(panel: unknown): NewsModel[] {
   if (typeof panel !== 'object' || panel === null) return [];
   const raw = (panel as { headlines?: unknown }).headlines;
@@ -1057,7 +1174,7 @@ export function houseFrom(panel: unknown): {
       key?: unknown; label?: unknown; value?: unknown; unit?: unknown; glyph?: unknown;
       mode?: unknown; stale?: unknown; tone?: unknown; changedAt?: unknown; level?: unknown;
       actions?: unknown; kelvin?: unknown; step?: unknown; volume?: unknown; series?: unknown;
-      picture?: unknown;
+      picture?: unknown; media?: unknown;
     };
     /*
      * Through the same sanitiser the alert text uses.
@@ -1117,6 +1234,7 @@ export function houseFrom(panel: unknown): {
       ...(unit === '' ? {} : { unit }),
       ...seriesFrom(reading.series),
       ...(typeof reading.picture === 'string' && PICTURE_HANDLE.test(reading.picture) ? { picture: reading.picture } : {}),
+      ...mediaFrom(reading.media),
     });
   }
 
@@ -2183,6 +2301,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
     timers: timersFrom(manifest.panels?.['timers'], now),
     messages: messagesFrom(manifest.panels?.['messages'], now),
     news: newsFrom(manifest.panels?.['news']),
+    notifications: notificationsFrom(manifest.panels?.['notifications']),
     houseNote: house.note,
     now,
     interrupts: interruptsFrom(manifest.interrupts),

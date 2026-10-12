@@ -35,7 +35,13 @@ export type Certainty = 'Observed' | 'Likely' | 'Possible' | 'Unlikely' | 'Unkno
  */
 export type InterruptSource = 'nws' | 'homeassistant' | 'calendar' | 'manual' | `ext:${string}`;
 
-export type InterruptAction = 'none' | 'banner' | 'takeover' | 'takeover_and_wake';
+/**
+ * How loudly a rule says what it found. `tile` (plan item M6.11) is the quiet
+ * one: it says it in a Notifications widget the household placed, and never
+ * over the wall — so it ranks under a banner, and a banner rule about the same
+ * thing wins (`resolveConflicts`, one interrupt per signal).
+ */
+export type InterruptAction = 'none' | 'tile' | 'banner' | 'takeover' | 'takeover_and_wake';
 
 /**
  * Ranked so "at least this serious" is a comparison rather than a lookup table
@@ -59,9 +65,10 @@ export const URGENCY_RANK: Readonly<Record<Urgency, number>> = {
 };
 
 export const ACTION_RANK: Readonly<Record<InterruptAction, number>> = {
-  takeover_and_wake: 3,
-  takeover: 2,
-  banner: 1,
+  takeover_and_wake: 4,
+  takeover: 3,
+  banner: 2,
+  tile: 1,
   none: 0,
 };
 

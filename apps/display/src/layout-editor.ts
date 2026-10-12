@@ -2539,6 +2539,25 @@ function boot(): void {
         remember(named?.landscape?.widgets);
       }
 
+      /*
+       * Every watched speaker as a player a now-playing card may follow (M6.9).
+       * The server sends a track only beside a saved card, so a card chosen
+       * here and not yet saved would otherwise follow nothing and draw an empty
+       * box; marked, it draws the speaker's own words until Save brings the
+       * title. Only the preview's own copy, and only a mark: no words invented.
+       */
+      const players = new Set(
+        state.readings.filter((reading) => reading.id.startsWith('media_player.')).map((reading) => reading.key),
+      );
+      const home = (manifest.panels as Record<string, unknown> | undefined)?.['home'] as { readings?: unknown } | undefined;
+      if (players.size > 0 && home !== undefined && Array.isArray(home.readings)) {
+        home.readings = (home.readings as Record<string, unknown>[]).map((reading) =>
+          typeof reading?.['key'] === 'string' && players.has(reading['key']) && reading['media'] === undefined
+            ? { ...reading, media: {} }
+            : reading,
+        );
+      }
+
       const at = Date.now();
       model = buildModel({ manifest, now: at, lastConfirmedAt: at, offline: false });
       renderPreview();
@@ -4662,6 +4681,7 @@ function boot(): void {
     else if (widget.type === 'qr') buildQrConfig(widget, cfg);
     else if (widget.type === 'heading') buildHeadingConfig(widget, cfg);
     else if (widget.type === 'news') buildNewsConfig(widget, cfg);
+    else if (widget.type === 'notifications') buildNotificationsConfig(widget, cfg);
     else if (widget.type === 'environment') buildEnvironmentConfig(widget, cfg);
     else if (widget.type === 'shift') buildShiftConfig(widget, cfg);
     else if (widget.type === 'clock') buildClockConfig(widget, cfg);
@@ -6074,6 +6094,31 @@ function boot(): void {
    * each stays one at a time, and the source, the age and the QR code. Each of
    * those three is on unless switched off, and is stored only as `false`.
    */
+  /**
+   * A Notifications widget (plan item M6.11). What raises a tile is a rule, set
+   * on Home Assistant's "Tell me when…" page with "A tile in a Notifications
+   * widget", so this says where; the one control here is whether Home
+   * Assistant's own notifications are among them.
+   */
+  function buildNotificationsConfig(widget: Widget, cfg: Record<string, unknown>): void {
+    const where = document.createElement('p');
+    where.className = 'hint';
+    where.textContent =
+      'Shows the rules you set to “A tile in a Notifications widget” on Home Assistant › Tell me when…, ' +
+      'while they have something to say. With nothing to say, it is left out.';
+    configPanel.appendChild(where);
+    configPanel.appendChild(
+      switchRow(
+        'Home Assistant’s notifications',
+        'What Home Assistant itself is saying — a device it found, an update, your own automations’ messages. ' +
+          'They go when you dismiss them in Home Assistant.',
+        cfg['haNotifications'] !== false,
+        (on) => setConfig(widget, 'haNotifications', on ? undefined : false),
+        'haNotifications',
+      ),
+    );
+  }
+
   function buildNewsConfig(widget: Widget, cfg: Record<string, unknown>): void {
     const which = cfgField('Feeds to show', 'newsFeeds');
     which.appendChild(
@@ -7938,6 +7983,15 @@ function boot(): void {
     note.textContent = 'None ticked shows them all.';
     note.dataset['cfgKey'] = 'readings';
     configPanel.appendChild(note);
+    // The now-playing card (M6.9) follows a speaker rather than drawing a
+    // list, so it says which of the ticked ones it will be about.
+    const follows = document.createElement('p');
+    follows.className = 'hint';
+    follows.textContent =
+      'Now playing follows the speakers among these: the one playing, else the one with something paused, else the first. ' +
+      'Its play, pause and skip buttons appear where you have allowed this wall to operate the speaker, below and on the Readings screen.';
+    follows.dataset['cfgKey'] = 'mediaFollows';
+    configPanel.appendChild(follows);
 
     /*
      * The tile look's four (plan item P5.3), each written as an absence when

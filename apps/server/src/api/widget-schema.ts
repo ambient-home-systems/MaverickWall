@@ -263,7 +263,7 @@ const widgetConfigFields = z
         // countdown
         'number', 'page', 'ticket', 'occasion', 'progress', 'month',
         // homeassistant
-        'list', 'tile', 'status',
+        'list', 'tile', 'status', 'media',
         // calendar
         'planner', 'bold',
       ])
@@ -399,6 +399,14 @@ const widgetConfigFields = z
       .regex(/^[^\u0000-\u001f\u007f]+$/, 'The finished words cannot hold control characters.')
       .optional(),
     subjectPicture: z.boolean().optional(),
+    /*
+     * Notifications (plan item M6.11) — whether Home Assistant's own persistent
+     * notifications are among the tiles. Absent is on: the widget is new, so no
+     * box already hanging changes, and a household placing it from a house with
+     * Home Assistant connected expects to see what Home Assistant is saying.
+     * The house is asked for them only while some widget has this on.
+     */
+    haNotifications: z.boolean().optional(),
     /*
      * Home Assistant — `act` makes a reading this wall may operate a button
      * (RFC 018 §7). Absent is "show only", which is what every widget drew
@@ -632,6 +640,7 @@ export const inkOverrideBody = widgetConfigFields
     count: true,
     envFields: true,
     fields: true,
+    haNotifications: true,
     mode: true,
     people: true,
     readings: true,
