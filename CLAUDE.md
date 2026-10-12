@@ -11015,6 +11015,61 @@ test and the fixed file were re-run after fetching the tags. Against M4.9–M4.1
 container as before. **Still unproven where it counts:** nobody has restored
 a layout on a real kitchen wall.
 
+**The daytime theme switches by the sun or a Home Assistant entity, the editor
+previews a layout on each connected wall, and the module guide is true again
+(plan items M8.7, M8.8 and M7.1).**
+
+- **"Switch by"** sits under the daytime theme: the hours (the absence, and
+  every wall before this), sunrise and sunset, or a Home Assistant entity.
+  Four columns on `screens` (migration `0072`, four generated `ADD COLUMN`s,
+  read): the source, the entity, its last reading and when it was read.
+- **The sun is a window, an entity is a state**, and that is the whole design
+  (`api/daylight.ts`, pure). The sun's answer is today's sunrise and sunset in
+  the wall's zone, sent as `daytimeStartsAt`/`daytimeEndsAt` in place of the
+  typed hours, so a wall drawing from its stored copy goes on switching
+  offline, a minute or two out by the week's end. A polar day is `00:00`–`24:00`
+  and a polar night a window of no length. A sensor says what it says now and
+  not when it will change, so an entity is sent as `daylightNow`, only while
+  the poll's reading is under ten minutes old, and the wall honours it only
+  while its own copy was confirmed in the last fifteen (`daylightShowing`,
+  `DAYLIGHT_TRUST_MS`). Either way the typed hours stay underneath: no location,
+  a stale reading, or `unavailable` falls back to them rather than to never.
+- **Rule 12.** The wall is handed a window or a boolean, never the entity; the
+  test reads every manifest for `sun.sun`. The entity is `sun.*` by its own
+  words, or a `binary_sensor`/`input_boolean` read as on-is-day. The choices
+  are `sun.sun` and the on/off readings already watched, because listing the
+  whole house would be a request to Home Assistant on every draw of the page.
+  The Home Assistant poll reads them out of the `/api/states` body it already
+  fetches, apart from `parseStates`, which drops the `sun` domain. Choosing
+  another entity forgets the last reading at once.
+- **It travels with a version, a file and a copy** (`daylightBy` on
+  `WallState`, optional, so an older file or snapshot leaves the choice alone).
+- **The chips** are under Size & grid: one per browser wall that has reported
+  a viewport, in name order, from the bootstrap. A chip turns the editor to the
+  orientation that wall is hung in and puts the canvas in a frame at the wall's
+  shape, letterboxed as the wall letterboxes it; pressing it again, or the
+  other orientation, ends it. The frame is a wrapper the canvas always sits
+  in, sized by the canvas alone while no chip is pressed.
+- **The guide** says `glyph` and lists the keys, says `stat` and `tiles` are
+  drawn as rows and why, points at the Store and the Module widget, and drops
+  the remote catalogues the Store retired. `module-docs.test.ts` parses every
+  complete JSON example in it through the schema it claims to be.
+
+**Measured.** `daylight-source.test.ts` (9) runs the resolver at London's
+solstices, Sydney's and Tromsø's, and the whole path through the form, the poll
+against the fake house (which can now list a sun) and the manifest.
+`theme.test.ts` gains 4, `module-docs.test.ts` is 5, and
+`browser-wall-chips.test.ts` (1) measures the frame, the canvas inside it and
+the bands at a 2560×1080 television and an 800×1280 tablet. Ten mutations were
+checked and all ten are red. **5655 tests passing, 1 red and 2 skipped, over 415
+files**: calendar 153 (1 skipped) over 10 · core 314 over 9 · display 1038
+over 64 · server 4150 (1 skipped) over 332, measured with `pnpm test` and a
+real Chromium. Against M8.4–M8.6's 5636 over 412 that is +19 and +3, this
+change's own count. The one red is `browser-glass`'s striped-picture case, red
+on a clean `main` in this container as before.
+**Still unproven where it counts:** no real `sun.sun` has switched a kitchen
+wall at sunset.
+
 ---
 
 ## Open decisions

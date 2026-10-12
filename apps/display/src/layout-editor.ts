@@ -326,6 +326,14 @@ function boot(): void {
   // The viewport this wall last reported, for the "match this wall" button.
   // Editor-only, so it lives beside the state rather than in it.
   let report: { readonly w: number; readonly h: number } | undefined;
+  /*
+   * Every browser wall that has reported its viewport, for the chips that
+   * preview this layout at each one's real shape (plan item M8.8), and which
+   * of them is being previewed. A layout can be shown on every wall (M1.3) or
+   * copied to another, so the walls are the household's, not just this one.
+   */
+  let connectedWalls: readonly { readonly name: string; readonly w: number; readonly h: number }[] = [];
+  let previewOn: number | undefined;
 
   // Whether the host page is an e-paper panel's designer. On a panel the words
   // change (reset means "back to the built-in layout"), the preview behind the
@@ -508,6 +516,7 @@ function boot(): void {
       readonly modules?: unknown;
       readonly people?: unknown;
       readonly report?: { readonly w?: unknown; readonly h?: unknown };
+      readonly walls?: unknown;
       readonly orientation?: unknown;
       readonly panel?: { readonly width?: unknown; readonly height?: unknown };
       readonly ink?: unknown;
@@ -526,6 +535,21 @@ function boot(): void {
     const r = parsed.report;
     if (r !== undefined && typeof r.w === 'number' && typeof r.h === 'number' && r.w > 0 && r.h > 0) {
       report = { w: r.w, h: r.h };
+    }
+    if (Array.isArray(parsed.walls)) {
+      connectedWalls = parsed.walls
+        .filter(
+          (wall): wall is { name: string; w: number; h: number } =>
+            typeof wall === 'object' &&
+            wall !== null &&
+            typeof (wall as { name?: unknown }).name === 'string' &&
+            Number.isFinite((wall as { w?: unknown }).w) &&
+            Number.isFinite((wall as { h?: unknown }).h) &&
+            (wall as { w: number }).w > 0 &&
+            (wall as { h: number }).h > 0,
+        )
+        .slice(0, 12)
+        .map((wall) => ({ name: wall.name, w: wall.w, h: wall.h }));
     }
     epaperHost = parsed.kind === 'epaper';
     if (parsed.orientation === 'landscape' || parsed.orientation === 'portrait') {
@@ -959,7 +983,20 @@ function boot(): void {
   // each widget already draws its own border in the frame beneath.
   overlay.className = epaperHost ? 'le-overlay is-epaper' : 'le-overlay';
   canvas.append(preview, overlay);
-  stage.appendChild(canvas);
+  /*
+   * The device a chip previews on (plan item M8.8): a box at that wall's own
+   * shape, with the canvas letterboxed inside it the way the wall letterboxes
+   * it. With no chip pressed it is sized by the canvas alone and draws
+   * nothing, so the editor is what it always was.
+   */
+  const frame = document.createElement('div');
+  frame.className = 'le-frame';
+  frame.appendChild(canvas);
+  stage.appendChild(frame);
+  const frameNote = document.createElement('p');
+  frameNote.className = 'hint le-frame-note';
+  frameNote.setAttribute('aria-live', 'polite');
+  frameNote.hidden = true;
 
   const hint = document.createElement('p');
   hint.className = 'hint';
@@ -1780,6 +1817,51 @@ function boot(): void {
    * Background onto a row of its own at 1440px. The shape stays in the
    * accessible name, where a screen reader has no header beside it.
    */
+  /*
+   * One chip per connected wall (plan item M8.8). Pressing one turns the
+   * editor to the orientation that wall is hung in and frames the canvas at
+   * its reported shape; pressing it again, or another orientation, ends it.
+   */
+  const wallChips = connectedWalls.map((wall, index) => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'le-wall-chip';
+    chip.setAttribute('aria-pressed', 'false');
+    chip.textContent = `${wall.name} · ${wall.w}×${wall.h}`;
+    chip.addEventListener('click', () => {
+      if (previewOn === index) {
+        endWallPreview();
+        return;
+      }
+      const hung: 'portrait' | 'landscape' = wall.w >= wall.h ? 'landscape' : 'portrait';
+      if (hung !== state.orientation) switchOrientation(hung);
+      previewOn = index;
+      syncWallPreview();
+    });
+    return chip;
+  });
+
+  function syncWallPreview(): void {
+    const wall = previewOn === undefined ? undefined : connectedWalls[previewOn];
+    wallChips.forEach((chip, index) => chip.setAttribute('aria-pressed', String(index === previewOn)));
+    if (wall === undefined) {
+      frameNote.hidden = true;
+      frameNote.textContent = '';
+    } else {
+      frameNote.hidden = false;
+      frameNote.textContent =
+        `As ${wall.name} shows it, at ${wall.w}×${wall.h}. ` +
+        'The bands either side are where this layout’s shape and the wall’s differ.';
+    }
+    sizeCanvas();
+  }
+
+  function endWallPreview(): void {
+    if (previewOn === undefined) return;
+    previewOn = undefined;
+    syncWallPreview();
+  }
+
   const canvasButton = document.createElement('button');
   canvasButton.type = 'button';
   canvasButton.className = 'le-tool-btn le-size-btn';
@@ -1812,6 +1894,17 @@ function boot(): void {
         matchRow.className = 'le-pop-row';
         matchRow.appendChild(matchButton);
         canvasPopover.appendChild(matchRow);
+      }
+      if (connectedWalls.length > 0) {
+        const seeLabel = document.createElement('div');
+        seeLabel.className = 'le-pop-sub';
+        seeLabel.textContent = 'See it on a wall. Nothing is saved: the editor shows the layout at that wall’s own shape.';
+        const chipRow = document.createElement('div');
+        chipRow.className = 'le-wall-chips';
+        chipRow.setAttribute('role', 'group');
+        chipRow.setAttribute('aria-label', 'See it on a wall');
+        chipRow.append(...wallChips);
+        canvasPopover.append(seeLabel, chipRow);
       }
       const sep1 = document.createElement('div');
       sep1.className = 'le-pop-sep';
@@ -2371,7 +2464,7 @@ function boot(): void {
   });
 
   toolbar.appendChild(slotNote);
-  mount.append(toolbar, stage, hint, modal);
+  mount.append(toolbar, stage, frameNote, hint, modal);
   if (inspectorInline) mount.appendChild(inspectorHost);
   placeBuildControls();
   window.addEventListener('resize', placeBuildControls);
@@ -2757,10 +2850,34 @@ function boot(): void {
             ),
           )
         : Math.max(360, roomOnScreen());
-    let w = maxW;
+    /*
+     * Previewing on a wall (M8.8): the frame takes the wall's shape inside the
+     * budget, and the canvas fits inside the frame at its own — the arithmetic
+     * the wall does when it letterboxes, so the bands are the wall's.
+     */
+    const device = previewOn === undefined ? undefined : connectedWalls[previewOn];
+    let boxW = maxW;
+    let boxH = maxH;
+    if (device !== undefined) {
+      const shape = device.w / device.h;
+      boxW = maxW;
+      boxH = boxW / shape;
+      if (boxH > maxH) {
+        boxH = maxH;
+        boxW = boxH * shape;
+      }
+      frame.style.width = `${Math.round(boxW)}px`;
+      frame.style.height = `${Math.round(boxH)}px`;
+      frame.classList.add('is-device');
+    } else {
+      frame.style.width = '';
+      frame.style.height = '';
+      frame.classList.remove('is-device');
+    }
+    let w = boxW;
     let h = w / state.aspect;
-    if (h > maxH) {
-      h = maxH;
+    if (h > boxH) {
+      h = boxH;
       w = h * state.aspect;
     }
     canvas.style.width = `${Math.round(w)}px`;
@@ -8042,6 +8159,9 @@ function boot(): void {
    * still loses neither; it now loses neither to a failed request either.
    */
   function switchOrientation(which: 'portrait' | 'landscape'): void {
+    // A wall previewed in one orientation says nothing about the other.
+    const wall = previewOn === undefined ? undefined : connectedWalls[previewOn];
+    if (wall !== undefined && (wall.w >= wall.h ? 'landscape' : 'portrait') !== which) endWallPreview();
     switchCanvas(which, state.slot);
   }
 

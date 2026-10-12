@@ -35,16 +35,17 @@ grow.
 }
 ```
 
-- `name` — shown to the household on the Add-ons screen.
+- `name` — shown to the household in the Store, under **Installed**.
 - `contract` — the Panel Data version you speak. Today that is `1`.
 - `intervalSeconds` — how often you'd like to be polled. Maverick Wall clamps it
   to a sane range; treat it as a hint.
 
 ### `GET /panel`
 
-What to show, as **Panel Data**. Return exactly one of four shapes.
+What to show, as **Panel Data**. Return one of the shapes below; `readings`
+is the one to reach for.
 
-## Panel Data — the four shapes
+## Panel Data — the shapes
 
 Small on purpose. This is the safety boundary and what keeps your panel looking
 like the wall rather than a random dashboard. Every string is length-capped and
@@ -58,19 +59,33 @@ markup, a URL, or a script in a value simply becomes those characters.
   "kind": "readings",
   "title": "Bins",
   "items": [
-    { "label": "Recycling", "value": "Tomorrow", "icon": "♻️" },
+    { "label": "Recycling", "value": "Tomorrow", "glyph": "problem" },
     { "label": "General",   "value": "Mon 25th" }
   ]
 }
 ```
 
-### `stat` — one big value and a caption
+A row's `glyph` is optional and is a **key** from the wall's own drawn set,
+never a character: `clear`, `mostly-clear`, `partly-cloudy`, `cloudy`, `fog`,
+`drizzle`, `rain`, `showers`, `snow`, `sleet`, `thunderstorm`, `wind`,
+`temperature`, `humidity`, `pressure`, `battery`, `power`, `illuminance`,
+`door`, `garage`, `window`, `motion`, `occupancy`, `moisture`, `smoke`, `gas`,
+`problem`, `lock`, `person`, `light`, `switch`, `fan`, `cover`, `thermostat`.
+A key the wall does not know is dropped and the row is drawn without one. The
+wall draws the picture in the theme's ink, and an e-paper panel draws it in one
+bit, so it looks like the rest of the wall on both.
+
+An emoji is not a glyph. The image ships no emoji font, so an emoji set as text
+is drawn by whatever font the tablet happens to have — a different picture on
+every screen, an empty box on some, and nothing at all on e-paper. The old
+`icon` field carried exactly that; it is still **accepted, so an older module's
+panel is not refused, and then dropped**.
+
+### `stat` and `tiles` — accepted, drawn as rows
 
 ```json
 { "kind": "stat", "title": "Christmas", "value": "135", "caption": "days" }
 ```
-
-### `tiles` — a short strip of label / value
 
 ```json
 {
@@ -83,6 +98,13 @@ markup, a URL, or a script in a value simply becomes those characters.
 }
 ```
 
+Both are still valid, and both are drawn exactly like `readings`: a `stat` is
+one row with its `caption` as the label, and `tiles` is a list of rows. There is
+no big number and no strip of tiles. The wall used to draw them that way, and
+took them out because a widget the household placed must not outsize the wall
+around it — the one large reading a wall may carry is a designed style's, capped
+against the event text. If you are writing a module now, send `readings`.
+
 ### `text` — a line or two
 
 ```json
@@ -94,24 +116,27 @@ markup, a URL, or a script in a value simply becomes those characters.
 | Field | Limit |
 |---|---|
 | `title`, `label`, `value`, `caption` | 60 characters |
-| `icon` | 4 characters (a glyph — an emoji or a symbol) |
+| `glyph` | a key from the list above; anything else is dropped |
 | `text` | 280 characters |
 | `items` | 1–12 rows |
 
 A body that does not fit — an unknown `kind`, a missing field, an extra key, an
 oversized list — is **rejected**, not patched. The wall keeps the last good panel
-and the Add-ons screen shows why the last poll failed. So make `/panel` valid, or
+and its card in the Store shows why the last poll failed. So make `/panel` valid, or
 return the same shape with placeholder values while your data loads.
 
 ## Adding it to the wall
 
-On the **Add-ons** screen, paste your service's address (e.g.
-`http://192.168.1.20:9000`). Maverick Wall must be able to reach it: run it on
+In the admin, open **Store** → **Advanced** → **Add a module by URL**, and
+paste your service's address (e.g. `http://192.168.1.20:9000`). Maverick Wall must be able to reach it: run it on
 the same network and give the machine's LAN address, not `localhost`, unless both
 run on the same host. Plain `http` on the LAN is fine.
 
-The card shows whether the module is answering, and lets you turn it off or
-remove it. Your block is drawn after the built-in ones; reorder is on the roadmap.
+Its card in the Store shows whether the module is answering, and lets you turn
+it off or remove it. Nothing appears on a wall until somebody puts it there:
+open the wall's layout, press **Add widget**, choose **Module**, pick your module
+in the widget's settings, and drag the box where it belongs. The Store card says
+which walls draw it.
 
 ## `GET /signals` — raising an alert (optional)
 
@@ -143,7 +168,7 @@ panel-only.
 **A signal does nothing on its own.** Two things have to be true first, and
 neither is yours to set:
 
-1. The household turns your module's **Alerts** control on (Add-ons screen). It
+1. The household turns your module's **Alerts** control on (its Store card). It
    is **off by default**, and they choose **banner** or **take over the wall** —
    never "wake a dark screen", which stays with genuine safety alerts.
 2. A rule scoped to your module matches. Maverick Wall keeps exactly one, tied
@@ -172,8 +197,8 @@ wall.
 If your module is really just "fetch a public JSON feed and show a couple of
 fields", you do not need to run a service at all. A **recipe** is a small
 declarative document that Maverick Wall runs itself: it names a URL, selects
-values out of the response, and draws them. Add one on the **Add-ons** screen →
-**Add a recipe**.
+values out of the response, and draws them. Paste one in **Store** →
+**Advanced** → **Build a recipe**, or install one from the Store.
 
 A recipe is *data, never code*. It can pull fields and format them, and nothing
 else — no expressions, no branching, no I/O beyond its one fetch. That is what
@@ -187,14 +212,16 @@ lets Maverick Wall run it in-process safely.
     "url": "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=gbp",
     "intervalSeconds": 900
   },
-  "panel": { "kind": "stat", "title": "Bitcoin", "value": "{bitcoin.gbp | currency:GBP}", "caption": "GBP" }
+  "panel": { "kind": "text", "title": "Bitcoin", "text": "{bitcoin.gbp | currency:GBP}" }
 }
 ```
 
-- **`panel`** is the same four shapes as above, except each string is a
+- **`panel`** is the same shapes as above, except each string is a
   *template*: plain text plus `{selector}` or `{selector | formatter}`
-  placeholders. For `readings`/`tiles`, give `items` a `for` (a selector that
-  points at an array) and `label`/`value` templates evaluated against each row.
+  placeholders. For `readings`, give `items` a `for` (a selector that points at
+  an array) and `label`/`value` templates evaluated against each row. A recipe's
+  rows carry no `glyph`; `stat` and `tiles` are accepted and drawn as rows, as
+  above.
 - **Selectors** are dotted / indexed paths into the fetched JSON:
   `bitcoin.gbp`, `results.items[0].name`. Traversal only.
 - **Formatters** are a fixed set: `upper`, `lower`, `trim`, `round:N`, `int`,
@@ -230,7 +257,7 @@ A recipe may also declare `signals` — the same alerts an add-on module can rai
   of `Minor` / `Moderate` / `Severe` / `Extreme`, optional.
 
 As with any module, a signal does **nothing** until the household turns your
-module's **Alerts** control on (Add-ons screen, off by default), and even then a
+module's **Alerts** control on (its Store card, off by default), and even then a
 recipe can only raise a banner or cover the wall — never wake a dark screen. Its
 alert clears on its own when `when` stops holding.
 
@@ -250,30 +277,17 @@ never in the address:
 The household types the value into a password field when they install the
 recipe. It is stored **encrypted**, injected into the request header at fetch
 time, and never appears in the manifest, on the wall, or in a log. A secret may
-**not** go in the URL (a URL is stored and logged), and a **remote** catalogue
-may not ask for one at all — a recipe that needs a secret is one a household
-pastes in themselves.
+**not** go in the URL (a URL is stored and logged).
 
-## Sharing a catalogue
+## Sharing a module
 
-You can publish a **catalogue** — a list of modules others add in one place —
-by hosting a JSON file anywhere reachable:
-
-```json
-{ "version": 1, "modules": [
-  { "id": "tide", "name": "Tide times", "author": "you", "description": "…",
-    "icon": "🌊", "kind": "recipe", "recipe": { … } },
-  { "id": "energy", "name": "Energy", "author": "you", "description": "…",
-    "icon": "⚡", "kind": "service", "install": { "hint": "Run the container, then paste its address." } }
-]}
-```
-
-A household adds your catalogue's URL on **Add-ons → Browse → Catalogues**, and
-its entries appear beside the built-in ones. Two rules a remote catalogue is
-held to: every recipe is validated exactly as a hand-written one, and a recipe
-in a remote catalogue **may not set `allowLan`** — a community list may not ask
-a household's wall to reach their own network. A catalogue that does is refused
-whole.
+There is one store, and it is in this repository: one file per module under
+`apps/server/src/catalog/`, shipped to every household with the next release
+and working on a wall with no internet. To share a recipe, or a pointer to a
+service others can run, open a pull request there —
+[`adding-to-the-store.md`](./adding-to-the-store.md) has the steps. There is no
+way to add somebody else's list of modules by URL; that was removed so a
+household is only ever offered what was reviewed here.
 
 ## Versioning
 

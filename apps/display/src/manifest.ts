@@ -221,6 +221,12 @@ export interface Manifest {
     readonly daytimeStartsAt?: string;
     readonly daytimeEndsAt?: string;
     /**
+     * Day or night now, from a Home Assistant entity the household chose
+     * (plan item M8.7) — honoured only while this copy is fresh; see
+     * `daylightShowing`.
+     */
+    readonly daylightNow?: boolean;
+    /**
      * For a custom theme, the resolved token set to apply and the `data-theme`
      * shape to set. Built-in themes carry no tokens — this bundle owns them and
      * resolves them from the key. Absent on an older server, so both are

@@ -505,6 +505,13 @@
       "when": 1791813148406,
       "tag": "0071_layout_snapshots",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "6",
+      "when": 1791816208715,
+      "tag": "0072_daylight_source",
+      "breakpoints": true
     }
   ]
 }

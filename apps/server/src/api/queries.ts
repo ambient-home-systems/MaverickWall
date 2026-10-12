@@ -2415,3 +2415,32 @@ export function touchScreen(
 export function recordScreenViewport(db: SqliteDatabase, id: string, w: number, h: number): void {
   db.prepare('UPDATE screens SET report_w = ?, report_h = ? WHERE id = ?').run(w, h, id);
 }
+
+/** What switches a wall to its daylight theme (plan item M8.7); both null is the clock. */
+export interface DaylightChoice {
+  readonly source: 'sun' | 'entity' | null;
+  readonly entity: string | null;
+}
+
+export function readDaylightChoice(db: SqliteDatabase, screenId: string): DaylightChoice {
+  const row = db
+    .prepare('SELECT daylight_source AS source, daylight_entity AS entity FROM screens WHERE id = ?')
+    .get(screenId) as { source: string | null; entity: string | null } | undefined;
+  const source = row?.source === 'sun' || row?.source === 'entity' ? row.source : null;
+  return { source, entity: source === 'entity' ? (row?.entity ?? null) : null };
+}
+
+/**
+ * Write the choice, and forget the last reading when the entity changes: a
+ * reading belongs to the entity that gave it, and a new one is only believed
+ * once the poll has read it.
+ */
+export function writeDaylightChoice(db: SqliteDatabase, screenId: string, choice: DaylightChoice): void {
+  const before = readDaylightChoice(db, screenId);
+  const same = before.source === choice.source && before.entity === choice.entity;
+  db.prepare(
+    `UPDATE screens SET daylight_source = ?, daylight_entity = ?
+       ${same ? '' : ', daylight_state = NULL, daylight_read_at = NULL'}
+     WHERE id = ?`,
+  ).run(choice.source, choice.source === 'entity' ? choice.entity : null, screenId);
+}
