@@ -11422,6 +11422,12 @@ Each release is proved by the next request through the door that refused,
 not by the screen. Eleven mutations were checked and all eleven are red. One
 was first aimed at an attempt's email, which the record cannot hold, so it
 changed nothing; re-aimed at what is recorded, it is red.
+**5804 tests passing, 1 red and 2 skipped, over 429 files**: calendar 153 (1
+skipped) over 10 · core 314 over 9 · display 1060 over 68 · server 4277 (1
+skipped) over 342, measured with `pnpm test` and a real Chromium. Against
+M8.1–M8.2's 5792 over 428 that is +12 and +1, the new file's own count. The
+one red is `browser-glass`'s striped-picture case, red on a clean `main` in
+this container as before.
 **Still unproven where it counts:** nobody has released a real address from a
 real phone's browser.
 ---
