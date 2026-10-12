@@ -11061,7 +11061,12 @@ against the fake house (which can now list a sun) and the manifest.
 `theme.test.ts` gains 4, `module-docs.test.ts` is 5, and
 `browser-wall-chips.test.ts` (1) measures the frame, the canvas inside it and
 the bands at a 2560×1080 television and an 800×1280 tablet. Ten mutations were
-checked and all ten are red. COUNT_PLACEHOLDER
+checked and all ten are red. **5655 tests passing, 1 red and 2 skipped, over 415
+files**: calendar 153 (1 skipped) over 10 · core 314 over 9 · display 1038
+over 64 · server 4150 (1 skipped) over 332, measured with `pnpm test` and a
+real Chromium. Against M8.4–M8.6's 5636 over 412 that is +19 and +3, this
+change's own count. The one red is `browser-glass`'s striped-picture case, red
+on a clean `main` in this container as before.
 **Still unproven where it counts:** no real `sun.sun` has switched a kitchen
 wall at sunset.
 
