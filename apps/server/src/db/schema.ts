@@ -236,6 +236,20 @@ export const householdSettings = sqliteTable('household_settings', {
   /** False until the first-run wizard completes. */
   setupCompletedAt: integer('setup_completed_at', { mode: 'number' }),
 
+  /**
+   * The account a Home Assistant sidebar visitor is signed in as (plan item
+   * M8.1, decision MD12 / MQ6). With one account the supervisor's login stands
+   * in for it, as it always has; with several there is no telling which person
+   * opened the sidebar, so it is this one, or — null — nobody, and the sidebar
+   * asks for a password like any other browser. Fail closed, the way
+   * `isTrustedIngress` already does.
+   *
+   * No foreign key, so adding the column is one `ADD COLUMN` and not a
+   * recreate of the household's settings; removing an account clears it in
+   * the same transaction instead (`deleteAccount`).
+   */
+  ingressUserId: text('ingress_user_id'),
+
   ...timestamps,
 });
 
@@ -441,6 +455,22 @@ export const user = sqliteTable('user', {
   image: text('image'),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  /**
+   * What this account may do (plan item M8.1, decision MD12): `admin`, or
+   * `viewer` — look at everything, change nothing. Read on every request by
+   * the session gate rather than carried in the cookie, so a change of role
+   * takes effect on the next page.
+   *
+   * The default is `admin` because the default is what the migration hands
+   * every account that already exists, and every one of those could do
+   * everything until today. The only other doors that create a user are the
+   * wizard's first account, which is the household's admin, and the Accounts
+   * screen, which always writes a role (`createAccount`); public sign-up is
+   * refused once any account exists.
+   */
+  role: text('role', { enum: ['admin', 'viewer'] }).notNull().default('admin'),
+  /** Better Auth's two-factor plugin's own column (plan item M8.2). */
+  twoFactorEnabled: integer('two_factor_enabled', { mode: 'boolean' }).notNull().default(false),
 });
 
 export const session = sqliteTable(
@@ -484,6 +514,36 @@ export const account = sqliteTable(
   },
   (table) => ({
     byUser: index('account_user_idx').on(table.userId),
+  }),
+);
+
+/**
+ * Better Auth's two-factor plugin's table (plan item M8.2): one row per account
+ * that has started setting up a code app.
+ *
+ * `secret` is the plugin's own symmetric encryption of the TOTP secret under
+ * the session secret, which is derived from the master key, so a database on
+ * its own does not hand out the codes. `backup_codes` is **hashes**, not an
+ * encryption: `recoveryCodeStore` in `auth/two-factor.ts` keyed-hashes each
+ * code before it is written, so nothing — the key included — turns this
+ * column back into a code somebody could type.
+ */
+export const twoFactor = sqliteTable(
+  'two_factor',
+  {
+    id: text('id').primaryKey(),
+    secret: text('secret').notNull(),
+    backupCodes: text('backup_codes').notNull(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    verified: integer('verified', { mode: 'boolean' }).default(true),
+    failedVerificationCount: integer('failed_verification_count').default(0),
+    lockedUntil: integer('locked_until', { mode: 'timestamp_ms' }),
+  },
+  (table) => ({
+    byUser: index('two_factor_user_idx').on(table.userId),
+    bySecret: index('two_factor_secret_idx').on(table.secret),
   }),
 );
 

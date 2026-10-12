@@ -20,8 +20,10 @@ import { createDeviceFlowStore, type DeviceFlowStore } from '../auth/device-flow
 import { getConnInfo } from '@hono/node-server/conninfo';
 import {
   createAuth,
+  createPasswordAccount,
   createSessionResolver,
   CLIENT_IP_HEADER,
+  setAccountPassword,
   type AuthOptions,
 } from '../auth/better-auth.js';
 import {
@@ -29,10 +31,16 @@ import {
   refuseLateSignUp,
   requireSetupComplete,
   type GateDeps,
+  type SessionUser,
 } from '../auth/session.js';
 import { DEFAULT_AFTER_SIGN_IN, safeNextPath } from '../auth/next-path.js';
+import { ROLE_LABELS, VIEW_ONLY_REFUSAL, readUserRole, viewerMay } from '../auth/roles.js';
+import { recoveryCodeHash } from '../auth/two-factor.js';
+import { ingressAccount } from '../api/accounts.js';
+import { registerAccountRoutes } from './admin-accounts.js';
+import { selfHref } from './self.js';
 import { createSetupTokenHolder, registerSetupRoutes, type SetupTokenHolder } from './setup.js';
-import { registerAdminRoutes } from './admin.js';
+import { navModules, registerAdminRoutes } from './admin.js';
 import type { TodoistEndpoint } from '../modules/todoist/client.js';
 import type { OAuthEndpoints } from '../oauth/endpoints.js';
 import { registerCompanionRoutes } from './companion.js';
@@ -69,7 +77,18 @@ import { evaluateInterrupts } from '@maverick-wall/core';
 import { NOTIFICATIONS_BLOCK, bannersOf, tileFor, tilesOf } from '../api/notifications.js';
 import { dismissInterrupt, readDismissals, readRules } from '../api/rules.js';
 import { createLogBuffer, type LogBuffer } from '../logbuffer.js';
-import { ADMIN_STYLESHEET, ADMIN_STYLESHEET_ETAG, errorBlock, escapeHtml, page, textField } from './html.js';
+import {
+  ADMIN_STYLESHEET,
+  ADMIN_STYLESHEET_ETAG,
+  VIEW_ONLY_MARK,
+  WHO_CLOSE,
+  WHO_OPEN,
+  errorBlock,
+  escapeHtml,
+  noticeBlock,
+  page,
+  textField,
+} from './html.js';
 import { parse, text } from '../validation.js';
 import type { Fetcher } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
@@ -102,7 +121,6 @@ import {
   readSchemaVersion,
   readScreens,
   readSetupState,
-  readHouseholdUser,
   readShiftOverrides,
   readShiftPlans,
   readShiftTypes,
@@ -572,7 +590,7 @@ export function createApp(deps: AppDeps): Hono {
     setupState: () => readSetupState(deps.db),
     ingressUser: (c: Context) =>
       isTrustedIngress(c, clientAddress(c), { isAddon: ingressTrust.isAddon, sources: trustedSources })
-        ? readHouseholdUser(deps.db)
+        ? ingressAccount(deps.db)
         : undefined,
   };
 
@@ -2039,6 +2057,22 @@ export function createApp(deps: AppDeps): Hono {
   app.use('/api/auth/sign-up/email', refuseLateSignUp(gateDeps));
 
   /**
+   * A recovery code comes in by the sign-in page and by nothing else (M8.2).
+   * The column holds hashes, and the page's own handler hashes what was typed
+   * before asking the plugin — so this route, reached from outside, could only
+   * ever be asked with a raw code, which matches nothing, or with a hash, which
+   * nobody without the database has. Refusing it says so instead of failing
+   * quietly, and leaves one door to read. `authApi` calls the library's handler
+   * directly and never comes through here.
+   */
+  app.all('/api/auth/two-factor/verify-backup-code', (c: Context) =>
+    c.json(
+      { error: 'use-sign-in', message: 'Recovery codes are typed into the sign-in page.' },
+      404,
+    ),
+  );
+
+  /**
    * Everything else Better Auth handles itself: sign-in, sign-out, session
    * lookup, CSRF, rate limiting. Reimplementing any of that here would be the
    * mistake rule five exists to prevent.
@@ -2116,11 +2150,140 @@ export function createApp(deps: AppDeps): Hono {
     for (const cookie of response.headers.getSetCookie()) {
       c.header('set-cookie', cookie, { append: true });
     }
+    /*
+     * Two-step sign-in (M8.2): the password was right and the account asks
+     * for a code as well. Better Auth has set its own short-lived cookie
+     * saying so, carried above, and no session yet — so the destination rides
+     * on to the code page rather than being reached.
+     */
+    const answer = (await response.json().catch(() => undefined)) as { twoFactorRedirect?: unknown } | undefined;
+    if (answer?.twoFactorRedirect === true) return c.redirect(secondStepUrl('code', next), 302);
     return c.redirect(next, 302);
   });
 
+  /**
+   * The second step (M8.2): six digits from a code app, or a recovery code.
+   * Under `/admin/sign-in`, which the session gate leaves open, because there
+   * is no session yet — only Better Auth's own two-factor cookie, which
+   * `authApi` forwards and which is the whole proof that the password step
+   * happened. Without it the plugin refuses, and the page sends them back to
+   * the password.
+   */
+  app.get('/admin/sign-in/code', (c: Context) =>
+    c.html(secondStepPage('code', safeNextPath(c.req.query('next')))),
+  );
+  app.get('/admin/sign-in/recovery', (c: Context) =>
+    c.html(secondStepPage('recovery', safeNextPath(c.req.query('next')))),
+  );
+
+  const secondStep = (mode: 'code' | 'recovery') => async (c: Context): Promise<Response> => {
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const next = safeNextPath(body['next']);
+    const typed = typeof body['code'] === 'string' ? body['code'].replace(/\s+/g, '') : '';
+    const wellFormed = mode === 'code' ? /^\d{6}$/.test(typed) : /^[A-Za-z0-9]{5}-?[A-Za-z0-9]{5}$/.test(typed);
+    if (!wellFormed) {
+      return c.html(
+        secondStepPage(
+          mode,
+          next,
+          mode === 'code' ? 'Type the six digits from your code app.' : 'A recovery code is ten letters and numbers.',
+        ),
+        400,
+      );
+    }
+    // A recovery code is written `xxxxx-xxxxx`; one typed without the hyphen is the same code.
+    const code = mode === 'code' ? typed : recoveryCodeHash(deps.auth.secret, normaliseRecoveryCode(typed));
+    const response = await authApi(
+      c,
+      mode === 'code' ? '/api/auth/two-factor/verify-totp' : '/api/auth/two-factor/verify-backup-code',
+      { code },
+    );
+    if (response.status >= 400) {
+      const failure = (await response.json().catch(() => undefined)) as { code?: unknown } | undefined;
+      const expired = failure?.code === 'INVALID_TWO_FACTOR_COOKIE';
+      const message =
+        response.status === 429
+          ? 'Too many attempts. Wait a minute and try again.'
+          : expired
+            ? 'That took too long. Sign in with your password again.'
+            : mode === 'code'
+              ? 'That code did not match. Codes change every 30 seconds — type the one showing now.'
+              : 'That recovery code did not match, or it has been used already.';
+      return c.html(secondStepPage(mode, next, message, expired), response.status === 429 ? 429 : 401);
+    }
+    for (const cookie of response.headers.getSetCookie()) {
+      c.header('set-cookie', cookie, { append: true });
+    }
+    return c.redirect(next, 302);
+  };
+  app.post('/admin/sign-in/code', secondStep('code'));
+  app.post('/admin/sign-in/recovery', secondStep('recovery'));
+
   protectPrefix(app, '/api', gateDeps);
   protectPrefix(app, '/admin', gateDeps);
+
+  /**
+   * What the signed-in account may do, and who it is (M8.1).
+   *
+   * The role is read fresh on every request (`readUserRole`), never carried in
+   * the cookie, so making somebody an admin or taking it away takes effect on
+   * their next page. A view-only account is refused here, before any handler
+   * runs, by one table (`viewerMay`): every write but its own account's, and
+   * the few reads that hand out a key. One gate rather than a check in each of
+   * a hundred handlers, because a check that has to be remembered in each is a
+   * check one of them forgets.
+   *
+   * On the way out it fills the two markers `page()` leaves: the sidebar's
+   * name and role, and — for a view-only account — the line above every
+   * screen saying that what they change here is not kept.
+   */
+  const accountGate = async (c: Context, next: Next): Promise<Response | void> => {
+    const user = c.get('user') as SessionUser | undefined;
+    if (user === undefined) {
+      await next();
+      return;
+    }
+    const role = readUserRole(deps.db, user.id);
+    c.set('role', role);
+    if (role === 'viewer' && !viewerMay(c.req.method, c.req.path)) {
+      if (c.req.path.startsWith('/api/')) {
+        return c.json({ error: 'view-only', message: VIEW_ONLY_REFUSAL }, 403);
+      }
+      return c.html(viewOnlyPage(c), 403);
+    }
+    await next();
+    if (!(c.res.headers.get('content-type') ?? '').startsWith('text/html')) return;
+    const body = await c.res.text();
+    const who =
+      `<a href="admin/account" title="Your account"><b>${escapeHtml(user.name)}</b>` +
+      `<small>${escapeHtml(ROLE_LABELS[role])}</small></a>`;
+    const banner =
+      role === 'viewer'
+        ? noticeBlock(
+            'You are signed in with a view-only account.',
+            'You can look at everything here; nothing you change is kept.',
+          )
+        : '';
+    const patched = body
+      .replace(new RegExp(`${escapeRegExp(WHO_OPEN)}[\\s\\S]*?${escapeRegExp(WHO_CLOSE)}`), who)
+      .replace(VIEW_ONLY_MARK, banner);
+    c.res = new Response(patched, { status: c.res.status, headers: c.res.headers });
+  };
+  app.use('/api/*', accountGate);
+  app.use('/admin', accountGate);
+  app.use('/admin/*', accountGate);
+
+  const viewOnlyPage = (c: Context): string =>
+    page({
+      self: selfHref(c),
+      modules: navModules(deps.db),
+      nav: 'home',
+      title: 'View only — Maverick Wall',
+      heading: 'Not changed',
+      body:
+        errorBlock(VIEW_ONLY_REFUSAL) +
+        `<p><a class="link" href="admin">Back to the overview</a></p>`,
+    });
 
   registerAdminRoutes(app, {
     ...(deps.todoist === undefined ? {} : { todoist: deps.todoist }),
@@ -2165,6 +2328,14 @@ export function createApp(deps: AppDeps): Hono {
     dataDir: deps.dataDir,
     startedAt: deps.startedAt ?? now(),
     log: deps.log ?? createLogBuffer(),
+    ...(deps.now !== undefined ? { now: deps.now } : {}),
+  });
+
+  registerAccountRoutes(app, {
+    db: deps.db,
+    authApi: (c: Context, path: string, body?: unknown) => authApi(c, path, body),
+    createAccount: (input) => createPasswordAccount(auth, input),
+    setPassword: (userId: string, password: string) => setAccountPassword(auth, userId, password),
     ...(deps.now !== undefined ? { now: deps.now } : {}),
   });
 
@@ -2578,6 +2749,67 @@ export function createApp(deps: AppDeps): Hono {
   });
 
   return app;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** A recovery code as it was issued, `xxxxx-xxxxx`, from however it was typed. */
+function normaliseRecoveryCode(typed: string): string {
+  const bare = typed.replace(/-/g, '');
+  return `${bare.slice(0, 5)}-${bare.slice(5)}`;
+}
+
+/** Where the second step lives, carrying the destination the way `signInUrl` does. */
+function secondStepUrl(mode: 'code' | 'recovery', next: string): string {
+  const base = `/admin/sign-in/${mode}`;
+  return next === DEFAULT_AFTER_SIGN_IN ? base : `${base}?next=${encodeURIComponent(next)}`;
+}
+
+/**
+ * The second step of signing in (M8.2), script-free like the first: one field,
+ * and a link to the other way of answering it. "Start again" goes back to the
+ * password, which is the only thing that helps once the plugin's cookie has
+ * run out.
+ */
+function secondStepPage(
+  mode: 'code' | 'recovery',
+  next = DEFAULT_AFTER_SIGN_IN,
+  error?: string,
+  expired = false,
+): string {
+  const carry =
+    next === DEFAULT_AFTER_SIGN_IN ? '' : `<input type="hidden" name="next" value="${escapeHtml(next)}">`;
+  const other = secondStepUrl(mode === 'code' ? 'recovery' : 'code', next).replace(/^\//, '');
+  const again = next === DEFAULT_AFTER_SIGN_IN ? 'admin/sign-in' : `admin/sign-in?next=${encodeURIComponent(next)}`;
+  return page({
+    title: 'Sign in — Maverick Wall',
+    heading: mode === 'code' ? 'Type the code from your app' : 'Use a recovery code',
+    intro:
+      mode === 'code'
+        ? 'Your account asks for the six digits your code app shows for Maverick Wall.'
+        : 'Each recovery code signs you in once. Type one of the codes you were given when you turned on two-step sign-in.',
+    body:
+      (error === undefined ? '' : errorBlock(error)) +
+      (expired
+        ? `<p><a class="link" href="${escapeHtml(again)}">Sign in again</a></p>`
+        : `<form method="post" action="admin/sign-in/${mode}">` +
+          carry +
+          textField({
+            label: mode === 'code' ? 'Six-digit code' : 'Recovery code',
+            name: 'code',
+            required: true,
+            attrs:
+              mode === 'code'
+                ? 'inputmode="numeric" autocomplete="one-time-code" maxlength="7" autofocus'
+                : 'autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="12" autofocus',
+          }) +
+          `<button type="submit">Sign in</button></form>` +
+          `<p><a class="link" href="${escapeHtml(other)}">` +
+          (mode === 'code' ? 'Use a recovery code instead' : 'Use the code from your app instead') +
+          `</a></p>`),
+  });
 }
 
 function signInPage(error?: string, email = '', next = DEFAULT_AFTER_SIGN_IN): string {

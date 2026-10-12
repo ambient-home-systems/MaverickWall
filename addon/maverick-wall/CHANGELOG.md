@@ -16,6 +16,19 @@
 
 ## Unreleased
 
+**More than one account, and a second step at sign-in.** System › Accounts
+adds an account for each person, as an Admin, who can change everything, or
+View only, who can look at everything and change nothing. A view-only account
+cannot download the backup or the key, see a wall's pairing link, or use the
+phone token. There is always at least one admin. Home Assistant's sidebar
+signs in as the only account, as it always has; once there are several, it
+asks for a password unless you name the account it should use. Your account
+(under System, or your name at the foot of the menu) can turn on two-step
+sign-in: after your password, a code from an app such as Google Authenticator
+or 1Password. You get ten recovery codes, shown once, for the day you lose
+your phone, and an admin can turn it off for you. Every account you already
+have is an admin, with two-step sign-in off.
+
 **Now playing, and a Notifications widget.** The Home Assistant widget has a
 fourth look, Now playing: what a speaker is playing, with its sleeve, the
 title and artist, and a bar of how far through the song it is. Tick more than

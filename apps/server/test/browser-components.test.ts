@@ -248,19 +248,21 @@ describe.each(WIDTHS)('the converted screens on %s', (_label, viewport, mobile) 
           return { height: rect.height, title: (row.querySelector('b')?.textContent ?? '').trim(), hits };
         });
       });
-      // The planted short row, then Backup's two files, the link to the
-      // companion token and the diagnostics export — in the order the page
-      // draws them.
+      // The planted short row, then Backup's two files, the two account links,
+      // the link to the companion token and the diagnostics export — in the
+      // order the page draws them.
       expect(rows.map((r) => r.title)).toEqual([
         'Short',
         'Database',
         'Encryption key',
+        'Accounts',
+        'Your account',
         'Companion token',
         'Diagnostics export',
       ]);
       for (const row of rows) {
         expect(row.height, `"${row.title}" is ${Math.round(row.height)}px tall`).toBeGreaterThanOrEqual(48);
-        // Only the companion token's row navigates, and it has no control, so
+        // The account and companion rows navigate and have no control, so
         // what this asks is only that nothing *else* is over a control — the row's own padding, a trail wrapper
         // that swallowed it. Whether a control survives the stretched overlay
         // is asked next door, on a row that has both a link and a button, which

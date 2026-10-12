@@ -876,6 +876,36 @@ describe('upgrading a database that is already in use', () => {
     db.close();
   });
 
+  it('leaves the account that existed an admin, with two-step sign-in off and its sessions kept (0076)', () => {
+    // Plan items M8.1 and M8.2. Every install before this had one account, and
+    // it could change everything; it has to come out of the migration able to
+    // do exactly that, signed in where it was, and with no second step it never
+    // set up — a NOT NULL with no default here would refuse the boot, and a
+    // default of 'viewer' would lock the household out of its own wall.
+    const db = new Database(':memory:');
+    const stamp = 1_700_000_000_000;
+    for (const entry of journal()) {
+      apply(db, entry.tag);
+      if (entry.tag.startsWith('0000')) {
+        db.prepare(
+          `INSERT INTO user (id, name, email, email_verified, created_at, updated_at)
+           VALUES ('u-1', 'Sam', 'sam@home.local', 0, ?, ?)`,
+        ).run(stamp, stamp);
+        db.prepare(
+          `INSERT INTO session (id, expires_at, token, created_at, updated_at, user_id)
+           VALUES ('s-1', ?, 'tok', ?, ?, 'u-1')`,
+        ).run(stamp * 2, stamp, stamp);
+      }
+    }
+    expect(db.prepare(`SELECT role, two_factor_enabled AS twoStep FROM user WHERE id = 'u-1'`).get()).toEqual({
+      role: 'admin',
+      twoStep: 0,
+    });
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM session WHERE user_id = 'u-1'`).get()).toEqual({ n: 1 });
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM two_factor`).get()).toEqual({ n: 0 });
+    db.close();
+  });
+
   it('carries an existing custom theme through the shape column with no shape set (0046)', () => {
     // RFC 014 §4.3. The `shape` column is additive — one `ALTER TABLE ADD
     // COLUMN`, never a recreate — so a theme saved before it existed must come
