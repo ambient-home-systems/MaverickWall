@@ -11001,8 +11001,19 @@ mutations were checked and all thirteen are red. **Not done:** an uploaded
 picture's file does not travel in an export (only its name), and an e-paper
 panel has no versions, because it draws a frame rather than a canvas.
 
-**Still unproven where it counts:** nobody has restored a layout on a
-real kitchen wall.
+**One test was a flake of its own making, and the full run caught it.** It
+held a re-scoped block not to contain `c1`, the old id, and a random UUID
+can contain those two characters; it now looks for the old selector,
+`data-widget-id="c1"`.
+
+**5636 tests passing, 1 red and 2 skipped, over 412 files**: calendar 153 (1
+skipped) over 10 · core 314 over 9 · display 1034 over 64 · server 4135 (1
+skipped) over 329, measured with `pnpm test` and a real Chromium. The changelog
+test and the fixed file were re-run after fetching the tags. Against M4.9–M4.12's
+5626 over 411 that is +10 and +1, this change's own count. The one red is
+`browser-glass`'s striped-picture case, red on a clean `main` in this
+container as before. **Still unproven where it counts:** nobody has restored
+a layout on a real kitchen wall.
 
 ---
 

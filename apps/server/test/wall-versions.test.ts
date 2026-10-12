@@ -371,7 +371,7 @@ describe('a layout as a file (M8.5)', () => {
     const clock = two.find((w) => w.type === 'clock');
     expect(clock?.source).toBe('.clock { font-weight: 300 }');
     expect(clock?.scoped).toContain(`[data-widget-id="${clock?.id}"]`);
-    expect(clock?.scoped).not.toContain('c1');
+    expect(clock?.scoped).not.toContain('data-widget-id="c1"');
     const state = readWallState(h.db, 'w2');
     expect(state?.theme).toBe('almanac');
     expect(state?.gutter).toBe(2);
