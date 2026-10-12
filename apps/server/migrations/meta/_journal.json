@@ -498,6 +498,13 @@
       "when": 1791478768193,
       "tag": "0070_photo_shapes",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "6",
+      "when": 1791813148406,
+      "tag": "0071_layout_snapshots",
+      "breakpoints": true
     }
   ]
 }

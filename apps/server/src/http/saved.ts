@@ -219,6 +219,16 @@ export const SAVED_MESSAGES = {
   // has been read and written, so "picks it up" is a claim about a manifest
   // whose ETag has already moved.
   'wall-css': 'CSS saved. The wall picks it up within a minute.',
+  // A wall's versions and files (plan items M8.4, M8.5). Each is sent only
+  // after `applyWallState` has written, and chosen by its outcome, so the
+  // sentence about a theme or CSS left behind is never said of a wall that
+  // took everything.
+  'wall-restored': 'Version restored. How it looked before is kept above.',
+  'wall-restored-theme-kept': 'Version restored, except its theme, which has been removed since — the wall kept its own.',
+  'wall-restored-css-dropped': 'Version restored, except some CSS that is no longer allowed, which was left out.',
+  'wall-imported': 'Layout opened. How the wall looked before is kept above.',
+  'wall-imported-theme-kept': 'Layout opened. Its theme is not on this Maverick Wall, so the wall kept its own.',
+  'wall-imported-css-dropped': 'Layout opened, except some CSS that could not be used, which was left out.',
   // Themes
   'theme-created': 'Theme created.',
   'theme-generated': 'Theme generated.',

@@ -16,6 +16,24 @@
 
 ## Unreleased
 
+**Go back to an earlier layout.** Every time a wall's layout or look is
+saved, how it was just before is kept — the last twenty, under the wall's
+Advanced settings › Versions and copies. Restore puts back every layout, its
+hours, the theme, the backgrounds, the spacing and the custom CSS, and keeps
+how it looked first, so a restore can be undone too.
+
+**Save a layout as a file, and open it on another wall.** Download layout
+saves every layout on a wall and its look as one file. Open file replaces a
+wall's layouts with the ones in a file. A guest Wi-Fi password in a QR code is
+left out of the file, and so are uploaded pictures (only their names travel).
+A file that is not a layout, or that has anything in it a wall would refuse,
+is turned away whole and changes nothing.
+
+**Make a second wall like this one.** Duplicate wall makes a new wall with the
+same layouts, hours and look, and takes you straight to pairing it. The copy
+starts with nothing it may press — alerts, chores, to-do lists and the house
+are each switched on for it separately.
+
 ## 1.2.0
 
 **Two new starting layouts.** **Photo Frame** is the time, the weather and

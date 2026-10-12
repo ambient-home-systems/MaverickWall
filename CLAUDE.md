@@ -10943,6 +10943,78 @@ is `browser-glass`'s striped-picture case, which is red on a clean `main` in
 this container as recorded above. **Still unproven where it counts:** nobody
 has watched a fade on a kitchen wall.
 
+**A wall keeps its earlier versions, saves itself as a file, and can be
+duplicated (plan items M8.4–M8.6).** All three read and write one document,
+`api/wall-state.ts`'s `WallState`: every canvas (both orientations, the
+default and every named layout), each orientation's aspect and background,
+the hours, the theme and its daylight window, the gutter, the wall's style
+lane, the widget ground, Motion, the wall's and every widget's CSS **as
+typed**, the clock and the three calendar amounts. One document so the three
+cannot disagree about what a wall is. Left out on purpose: the name, the
+pairing, every `allow_*` switch (what may be pressed is a decision about a
+room) and every hardware fact (orientation, rotation, size, distance,
+timezone).
+
+- **Snapshots** (`layout_snapshots`, migration `0071`, one generated `CREATE
+  TABLE` and an index, read): `snapshotWall` runs before every write to a
+  browser wall's look — the editor's canvas, a timed layout removed, the
+  hours, a template, a copy, a reset, wall settings and the CSS page. The
+  editor's Save is several requests, so a snapshot within ten seconds of the
+  last is skipped, and a save that changed nothing takes none. The newest
+  twenty are kept, and `deleteScreen` sweeps them. A restore snapshots first,
+  forced past the ten seconds, so a restore is one more Restore from undone.
+- **Export and import**: the file is `{format, version: 1, name, exportedAt,
+  state}`. A QR code's `wifiPassword` is taken out on export, the one
+  credential a widget's config holds; the code then reads as a network with
+  no password, which the schema accepts. Import goes through `wallFileSchema`,
+  built from the save's own `layoutWidgetBody`, `backgroundSchema` and tree
+  rule, `.strict()` at every level, so an `iframe`, a stray key or hours for a
+  layout not in the file is a 400 and nothing is written. Every block of CSS
+  is put through the sanitiser before anything is written, and a refusal
+  refuses the file. A theme this install does not hold keeps the wall's own,
+  and the saved strip says so.
+- **Duplicate**: `createScreen` with "(copy)", the state applied with fresh
+  ids, and straight to the pair page through the same one-hop reveal as
+  adding a wall.
+
+**CSS is carried as source and re-scoped on the way in.** The scoped text
+names the widget's id, and an import and a duplicate mint new ids (a widget id
+is unique across the house), so `applyWallState` re-links each child to its
+group's new id and sanitises each block against the id the widget ends up
+with. A restore keeps the ids, and drops (and says so) any block a stricter
+sanitiser now refuses, rather than refusing the household their layout back.
+
+**The page is Advanced › Versions and copies**, its own page like Custom CSS,
+from `components.ts`. None of its actions asks "are you sure?": each snapshots
+first. The vocabulary crawl reaches it through the Advanced row, and was
+checked to: "screen" put into its copy turns `admin-vocabulary` red.
+
+**Measured.** `wall-versions.test.ts` (10) runs the real app and a temporary
+database: the burst and the dedupe, the twenty, a panel taking none, the sweep,
+a restore of a wall with a group, a timed layout and its hours, CSS and a look,
+back to the same rows; the export's headers and contents; an import onto
+another wall with fresh ids, re-linked groups and CSS scoped to them; seven
+ways a file is refused whole; a foreign theme; a duplicate with the same look,
+fresh ids, a new token and no switches; and every shipped template read back
+as a state the schema takes, so its snapshots can be restored. Thirteen
+mutations were checked and all thirteen are red. **Not done:** an uploaded
+picture's file does not travel in an export (only its name), and an e-paper
+panel has no versions, because it draws a frame rather than a canvas.
+
+**One test was a flake of its own making, and the full run caught it.** It
+held a re-scoped block not to contain `c1`, the old id, and a random UUID
+can contain those two characters; it now looks for the old selector,
+`data-widget-id="c1"`.
+
+**5636 tests passing, 1 red and 2 skipped, over 412 files**: calendar 153 (1
+skipped) over 10 · core 314 over 9 · display 1034 over 64 · server 4135 (1
+skipped) over 329, measured with `pnpm test` and a real Chromium. The changelog
+test and the fixed file were re-run after fetching the tags. Against M4.9–M4.12's
+5626 over 411 that is +10 and +1, this change's own count. The one red is
+`browser-glass`'s striped-picture case, red on a clean `main` in this
+container as before. **Still unproven where it counts:** nobody has restored
+a layout on a real kitchen wall.
+
 ---
 
 ## Open decisions

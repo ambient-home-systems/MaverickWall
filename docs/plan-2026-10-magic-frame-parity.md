@@ -180,9 +180,9 @@ The read-only items can start now. Items marked † follow RFC 018's phases (acc
 | M8.1 | **Multiple users with Admin and View-only roles.** | M | What View-only may do is MQ5; who an ingress visitor signs in as with several accounts is MQ6. |
 | M8.2 | **TOTP 2FA** with recovery codes. | M | Better Auth's two-factor plugin; a generated migration; recovery codes hashed. |
 | M8.3 | **Lockout panel**: recent sign-in attempts, release a lock. | S | Built on the existing in-app rate limiting; addresses only, no credentials. |
-| M8.4 | **Snapshot before every save**, with one-click restore. | M | Keep the last N per wall; a restore snapshots the current state first. |
-| M8.5 | **Export and import layouts** as JSON. | M | No credentials in the file; Zod on import; unknown widget types refused, not coerced. |
-| M8.6 | **Duplicate a wall**: canvases, named layouts, schedule, background, settings. | S | A new wall needs its own pairing. |
+| M8.4 | **Snapshot before every save**, with one-click restore. **Built**: the last 20 per wall, under Advanced › Versions and copies; one Save is one version, and a save that changed nothing is none. | M | Keep the last N per wall; a restore snapshots the current state first. |
+| M8.5 | **Export and import layouts** as JSON. **Built**: every layout, its hours and the look; a guest Wi-Fi password is left out, and a file is refused whole, CSS included. | M | No credentials in the file; Zod on import; unknown widget types refused, not coerced. |
+| M8.6 | **Duplicate a wall**: canvases, named layouts, schedule, background, settings. **Built**: straight to pairing; the copy may press nothing until allowed. | S | A new wall needs its own pairing. |
 | M8.7 | **Light/dark by the sun or an HA entity**, with the clock as fallback. | S | A state read of `sun.sun` or the chosen entity. |
 | M8.8 | **Connected-size chips** in the editor, previewing at each wall's real size. | S | Uses the viewport each wall already reports. |
 

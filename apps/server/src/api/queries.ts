@@ -1700,6 +1700,8 @@ export function deleteScreen(db: SqliteDatabase, id: string): boolean {
     // schedule that picked between them.
     db.prepare('DELETE FROM layout_widgets WHERE screen_id = ?').run(screenId);
     db.prepare('DELETE FROM layout_schedule WHERE screen_id = ?').run(screenId);
+    // Its earlier versions (plan item M8.4) are this wall's and nobody else's.
+    db.prepare('DELETE FROM layout_snapshots WHERE screen_id = ?').run(screenId);
     return db.prepare('DELETE FROM screens WHERE id = ?').run(screenId).changes > 0;
   });
   return remove(id);

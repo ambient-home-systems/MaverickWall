@@ -104,6 +104,7 @@ import {
 import { readTodoLists } from '../modules/todo/index.js';
 import { householdSetUp } from '../modules/index.js';
 import { placedWidgetsBody, backgroundSchema } from '../api/widget-schema.js';
+import { snapshotWall } from '../api/wall-state.js';
 import {
   applyTemplate,
   classicSeed,
@@ -673,6 +674,7 @@ import { registerThemeRoutes } from './admin-themes.js';
 import { registerEpaperRoutes } from './admin-epaper.js';
 import { displaysPage, registerWallsRoutes } from './admin-walls.js';
 import { cssAdvancedRow, registerCssRoutes } from './admin-css.js';
+import { registerWallVersionRoutes, versionsAdvancedRow } from './admin-wall-versions.js';
 import { offeredTimezones } from './setup.js';
 import { selfHref } from './self.js';
 import { CUSTOM_PREFIX, FALLBACK_THEME, FONTS, isValidThemeRef, readTheme, readThemes, resolveTheme } from '../api/themes.js';
@@ -1293,6 +1295,14 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * secret crosses a redirect rather than being printed in the POST's answer.
    */
   const reveals = createRevealStore<IssuedToken>();
+  /**
+   * Keep the wall as it is before a save changes it (plan item M8.4).
+   * `snapshotWall` takes nothing for a panel, a save that changed nothing, or
+   * the second request of one Save; see `wall-state.ts`.
+   */
+  const keepVersion = (owner: string, reason: string): void => {
+    snapshotWall(deps.db, owner, reason, now());
+  };
 
   registerHaRoutes(app, deps);
   registerAlertRoutes(app, deps);
@@ -2867,6 +2877,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   registerWallsRoutes(app, deps);
   // A wall's own CSS (RFC 014 §7) — admin-css.ts, beside the wall it belongs to.
   registerCssRoutes(app, deps);
+  registerWallVersionRoutes(app, deps, (id, issued) => reveals.put(id, issued, now()));
   /*
    * The browser wall's add page, one step behind the chooser (P2.2). Declared
    * ahead of the `/admin/walls/:id/…` family for the reason the approve route
@@ -3280,6 +3291,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     );
     if (!size.ok) return c.html(displayDetailPage(id, size.message, c), 400);
 
+    keepVersion(id, 'Before wall settings were saved');
     if (
       !writeScreenSettings(deps.db, id, {
         name,
@@ -3642,6 +3654,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         );
       }
     }
+    keepVersion(owner, 'Before a layout was saved');
     replaceLayout(
       deps.db,
       owner,
@@ -3677,6 +3690,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     if (owner === undefined) {
       return c.json({ ok: false, message: 'That wall is no longer there.' }, 404);
     }
+    keepVersion(owner, 'Before a timed layout was removed');
     deleteLayoutSlot(deps.db, owner, shaped.value.slot);
     return c.json({ ok: true });
   });
@@ -3721,6 +3735,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         400,
       );
     }
+    keepVersion(owner, 'Before the hours were saved');
     replaceLayoutSchedule(deps.db, owner, shaped.value.rules);
     return c.json({ ok: true });
   });
@@ -3803,6 +3818,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
      * it from the gallery has to hand over the same arrangement seeding would,
      * or the wall gets a hole the next boot would then quietly close.
      */
+    keepVersion(owner, `Before the ${template.name} template was applied`);
     applyTemplate(
       deps.db,
       owner,
@@ -3865,6 +3881,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         400,
       );
     }
+    keepVersion(to, 'Before another wall’s layout was copied');
     copyLayout(deps.db, from, to);
     return savedRedirect(c, layoutUrl(to), 'layout-copied');
   });
@@ -3880,6 +3897,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   app.post('/admin/displays/:id/reset-layout', (c: Context) => {
     const owner = resolveOwner(c.req.param('id'));
     if (owner === undefined) return c.redirect('/admin/walls', 302);
+    keepVersion(owner, 'Before the layout was reset');
     if (isEpaperOwner(owner)) clearLayout(deps.db, owner);
     // Classic as this household would be seeded with it today — so Reset is
     // also the way to pick up a location, a rota, or a panel size entered since,
@@ -5722,6 +5740,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       // widget and a live preview do not fit a category — and it is here rather
       // than under Look because it is the last option, not the first.
       cssAdvancedRow(screen.id) +
+      versionsAdvancedRow(screen.id) +
       `<div class="frow"><span>Wall id</span><code>${escapeHtml(screen.id)}</code></div>` +
       `</div>` +
       wsetGroup('Start over', `<div class="rows">` +
@@ -5759,7 +5778,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       wsetRow('content', 'Calendar amounts', 'Events, days and weeks shown', false) +
       wsetRow('device', 'Device and time', 'Name, mounting, size, motion, clock', false) +
       wsetRow('alerts', 'Touch controls', 'Dismiss alerts, tick things off, operate the house, clear timers', false) +
-      wsetRow('advanced', 'Advanced', 'Pairing, custom CSS, reset, unpair', false) +
+      wsetRow('advanced', 'Advanced', 'Pairing, custom CSS, versions, reset, unpair', false) +
       `</nav>` +
       `<div class="wset-panels">` +
       `<form method="post" action="${action}" class="wall-settings" data-settings>` +

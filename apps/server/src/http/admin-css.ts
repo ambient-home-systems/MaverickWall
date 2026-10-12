@@ -16,6 +16,7 @@ import {
   type ScreenCss,
   type WidgetCssRow,
 } from '../api/queries.js';
+import { snapshotWall } from '../api/wall-state.js';
 import { parse, z } from '../validation.js';
 import { navModules, type AdminDeps } from './admin.js';
 import { emptyState, section, tag } from './components.js';
@@ -311,6 +312,7 @@ export function registerCssRoutes(app: Hono, deps: AdminDeps): void {
         400,
       );
     }
+    snapshotWall(deps.db, found.wall.id, 'Before custom CSS was saved', (deps.now ?? Date.now)());
     writeCustomCss(deps.db, found.wall.id, { ...(wall === undefined ? {} : { wall }), widgets });
     return savedRedirect(c, `/admin/walls/${encodeURIComponent(found.wall.id)}/css`, 'wall-css');
   });
