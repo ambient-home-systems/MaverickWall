@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 1.6.0
+
 **A status card, and a line of the last day.** The Home Assistant widget has
 a third look, Status card: one thing the house is doing — the washer, the car
 charging — with its state large, how far along it is, and up to four readings
