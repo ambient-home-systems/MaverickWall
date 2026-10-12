@@ -382,6 +382,7 @@ analyse-titles [source-id]       which titles look like a work schedule
 enable-shift --from-calendar <source-id> [--person Name]
              --pattern <YYYY-MM-DD> [--person Name]
              --off
+reset-two-step <email> | --list  turn off an account's two-step sign-in
 ```
 
 **`DATA_DIR` must be absolute.** `pnpm --filter` runs scripts from the package
@@ -11286,6 +11287,86 @@ look). The one red is `browser-glass`'s striped-picture case, red on a clean
 
 **Still unproven where it counts:** no real speaker has been followed on a
 kitchen wall, and no real Home Assistant has answered the WebSocket read.
+
+**A household has more than one account now, as Admin or View only, and any
+of them can ask for a second step at sign-in (plan items M8.1 and M8.2).**
+Migration `0076` is generated and read: one `CREATE TABLE two_factor` and its
+two indexes, `user.role` (default `admin`, so every account that existed can
+still change everything), `user.two_factor_enabled` (default off) and
+`household_settings.ingress_user_id`. `migration-upgrade` walks an account
+and its session through it.
+
+**View only means MQ5 as written: look at everything, change nothing.** The
+role is read fresh from the row on every request (`readUserRole`, which
+answers `viewer` for anything it cannot read), so a change takes effect on the
+next click and not at the next sign-in. One gate, `accountGate`, sits after the
+session gate on `/admin` and `/api`. A viewer is refused every write except
+signing out and their own account's password and two-step sign-in
+(`viewerMay`). They are also refused four *reads*, because each one hands over
+a credential: the backup, the key, a wall's pairing link and the companion
+token's page. A refused page says so in a sentence and offers a way back. A
+view-only account's companion token is refused by the companion API too,
+since a phone shortcut is a write that never passes through `/admin`. There is
+always an admin: the last cannot be demoted or removed, and nobody removes the
+account they are signed in with. Removing one deletes its sessions, its
+two-step secret and its token in the same transaction.
+
+**The sidebar signs in as one account, chosen.** MQ6 says "a setting naming
+one account; with none set, the normal sign-in page". That is built with one
+reading kept from before: with none named and exactly **one** account, the
+sidebar signs in as it, because that is every install that existed and asking
+them for a password they may never have typed would be a regression. With
+several and none named, it is the sign-in page, which fails closed as
+`isTrustedIngress` always has. Removing the named account names nobody rather
+than falling back to whoever is left.
+
+**Recovery codes are kept as hashes, which the plugin does not do.** Better
+Auth's two-factor plugin stores its backup codes encrypted under the session
+secret, so the database and the key read every unused code back. It takes an
+`{encrypt, decrypt}` pair, and `recoveryCodeStore` gives it a keyed hash and the
+identity: the column holds hashes and the plugin compares hashes. That only
+works if what it is handed is a hash too, so the sign-in page's own handler
+hashes the typed code (with or without its hyphen) before asking, and the
+plugin's own route for it is refused from outside with a 404. A code typed
+there raw would match nothing anyway; refusing it means a later change to the
+store cannot quietly open a plaintext path. `encrypt` passes through a value
+that is already a hash, because the plugin re-encodes the remaining list after
+a code is used. Turning it on is the plugin's own enable-then-verify: the code
+app's address and the ten codes are held in memory for fifteen minutes and
+shown once, with the key written out for typing. Nothing is on until a code
+from the app is accepted.
+
+**Two ways back for somebody who has lost their phone and their codes.**
+Another admin turns their two-step sign-in off on their account page. For a
+plain `docker run`, `reset-two-step <email>` does it from a shell, which is the
+case where the only admin is the one locked out. On the add-on there is no
+shell and no need, because the sidebar does not ask for our password or our
+code: Home Assistant has already signed that person in.
+
+**Measured.** `accounts.test.ts` (19) drives the real app with a cookie jar per
+person and a different address per call, so the sign-in throttle cannot pass
+or fail anything. It computes TOTP codes per RFC 6238 from the key the setup
+page shows, and reads the stored codes back to check none is plaintext.
+Ten mutations were checked and all ten are red:
+
+- the viewer gate allowing everything;
+- the four credential reads allowed;
+- codes stored unhashed;
+- the plugin's route open;
+- the typed code not hashed;
+- the sidebar taking the first of several accounts;
+- the last admin demotable;
+- an admin removing themselves;
+- the sidebar setting kept when its account is removed;
+- the companion API ignoring the role.
+
+One was green at first: an admin removing themselves, because every check of
+it ran while that admin was also the last one, so the other guard refused it.
+It is asked again after a second admin is added. `browser-components` pins
+System's rows exactly and now names Accounts and Your account.
+**Still unproven where it counts:** nobody has scanned the setup code with a
+real phone's code app, and no second person has opened a real supervisor's
+sidebar.
 ---
 
 ## Open decisions

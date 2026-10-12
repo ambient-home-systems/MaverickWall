@@ -3,6 +3,7 @@ import type { Fetcher } from '@maverick-wall/core';
 
 import type { SqliteDatabase } from '../db/open.js';
 import type { Keyring } from '../secrets/keyring.js';
+import { VIEW_ONLY_REFUSAL, readUserRole } from '../auth/roles.js';
 import { authenticateCompanion, presentedCompanionToken, touchCompanionToken } from '../api/companion.js';
 import { addTodoItem, findTodoList, pollTodoList, pollTodoistList, todoListTitle } from '../modules/todo/index.js';
 import type { TodoistEndpoint } from '../modules/todoist/client.js';
@@ -221,7 +222,7 @@ export function registerCompanionRoutes(app: Hono, deps: CompanionDeps): void {
   const failures = new Map<string, Bucket>();
   const uses = new Map<string, Bucket>();
 
-  const answer = (c: Context, status: 200 | 400 | 401 | 404 | 409 | 429 | 502 | 503, body: object): Response => {
+  const answer = (c: Context, status: 200 | 400 | 401 | 403 | 404 | 409 | 429 | 502 | 503, body: object): Response => {
     // A response that says what was added must not sit in a cache between a
     // phone and this house.
     c.header('cache-control', 'no-store');
@@ -262,6 +263,15 @@ export function registerCompanionRoutes(app: Hono, deps: CompanionDeps): void {
         error: 'bad-token',
         message: 'That token is not valid. It may have been replaced — copy it again from System › Phone and automations.',
       });
+    }
+    /*
+     * Every route here changes something, and a view-only account changes
+     * nothing (M8.1) — through a phone as much as through a page. Its token,
+     * made while it was an admin, keeps its row but is refused, so making it an
+     * admin again brings the shortcut back without pasting a new one.
+     */
+    if (readUserRole(deps.db, userId) !== 'admin') {
+      return answer(c, 403, { ok: false, error: 'view-only', message: VIEW_ONLY_REFUSAL });
     }
     if (over(uses, userId, at, USE_WINDOW_MS, USE_MAX)) {
       c.header('retry-after', String(spent(uses, userId, at, USE_MAX) ?? 60));

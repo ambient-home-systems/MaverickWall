@@ -4550,6 +4550,21 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         ) +
 
         section(
+          'Accounts',
+          undefined,
+          listRow('', {
+            title: 'Accounts',
+            href: 'admin/accounts',
+            detail: 'Who can sign in, what each may change, and which one Home Assistant’s sidebar signs in as.',
+          }) +
+            listRow('', {
+              title: 'Your account',
+              href: 'admin/account',
+              detail: 'Your password and two-step sign-in.',
+            }),
+        ) +
+
+        section(
           'Phone and automations',
           undefined,
           listRow(

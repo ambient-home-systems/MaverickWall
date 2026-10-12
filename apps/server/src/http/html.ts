@@ -349,6 +349,8 @@ body.shell{display:grid;grid-template-columns:264px 1fr;min-height:100vh}
 .side-foot .who{min-width:0;flex:1}
 .side-foot .who b{font-size:var(--mw-t-label-size);font-weight:600;display:block;line-height:1.2}
 .side-foot .who small{font-size:var(--mw-t-label-xs-size);color:var(--mw-ink-muted)}
+.who a{display:block;color:inherit;text-decoration:none}
+.who a:hover b{text-decoration:underline}
 .side-foot form{margin:0;flex:0 0 auto}
 /* An icon button: 40px visual, 4px corner, and a 48px pointer target from the
  * shared ::after extension. */
@@ -3134,6 +3136,20 @@ const FAVICON = `data:image/svg+xml,${encodeURIComponent(MARK)}`;
  * strips this block on the way out. That is the same seam the `<base>` rewrite
  * uses, so `page()` and its dozen callers stay unaware ingress exists.
  */
+/**
+ * Who is signed in, and whether they may change anything (plan item M8.1).
+ *
+ * `page()` never knows the request — it is handed strings — so it leaves two
+ * markers and `app.ts`'s account gate, which does know, fills them on the way
+ * out: the sidebar's name and role, linking to Your account, and the line a
+ * view-only account reads above every screen. The `SIGNOUT_OPEN` arrangement
+ * one fact along. With nobody filling them (a test that renders a page
+ * directly) the first stands as "Signed in" and the second as nothing.
+ */
+export const WHO_OPEN = '<!--mw:who-->';
+export const WHO_CLOSE = '<!--/mw:who-->';
+export const VIEW_ONLY_MARK = '<!--mw:view-only-->';
+
 export const SIGNOUT_OPEN = '<!--mw:signout-->';
 export const SIGNOUT_CLOSE = '<!--/mw:signout-->';
 
@@ -3610,7 +3626,7 @@ export function page(options: PageOptions): string {
     navBar(options.nav, options.modules ?? []) +
     `<div class="side-foot">` +
     `<div class="side-foot-id"><div class="fmark">${MARK}</div>` +
-    `<div class="who"><b>Signed in</b><small>Maverick Wall</small></div>` +
+    `<div class="who">${WHO_OPEN}<b>Signed in</b><small>Maverick Wall</small>${WHO_CLOSE}</div>` +
     // Stripped under ingress by the ingress middleware; the only way out on a
     // plain docker install, so it is the default rather than an add-on.
     SIGNOUT_OPEN +
@@ -3663,6 +3679,7 @@ export function page(options: PageOptions): string {
      * noise beside the heading that already says what happened — and the
      * wizard is the one page that must stay as plain as it can be.
      */
+    VIEW_ONLY_MARK +
     (options.saved === undefined ? '' : savedStrip(options.saved)) +
     (options.intro === undefined ? '' : `<p class="note">${escapeHtml(options.intro)}</p>`) +
     options.body +

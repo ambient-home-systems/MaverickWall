@@ -1,9 +1,11 @@
 import { betterAuth } from 'better-auth';
+import { twoFactor } from 'better-auth/plugins';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import type { SqliteDatabase } from '../db/open.js';
 import type { SessionResolver, SessionUser } from './session.js';
 import * as schema from '../db/schema.js';
+import { RECOVERY_CODE_COUNT, TOTP_ISSUER, recoveryCodeStore } from './two-factor.js';
 
 /**
  * The Better Auth adapter.
@@ -58,8 +60,11 @@ export function createAuth(options: AuthOptions) {
         session: schema.session,
         account: schema.account,
         verification: schema.verification,
+        twoFactor: schema.twoFactor,
       },
     }),
+
+    appName: TOTP_ISSUER,
 
     secret: options.secret,
     baseURL: options.baseUrl,
@@ -130,6 +135,26 @@ export function createAuth(options: AuthOptions) {
       window: 60,
       max: 20,
     },
+
+    /*
+     * Two-step sign-in (plan item M8.2): a code app's six digits after the
+     * password, or a recovery code. Off for every account until that account
+     * turns it on, and turning it on is not finished until a code from the app
+     * has been typed back (`skipVerificationOnEnable` false), so a misread QR
+     * cannot lock a household out. Codes by app only: there is no mail server
+     * to send one with. The recovery codes are kept as hashes, not encrypted —
+     * see `auth/two-factor.ts`.
+     */
+    plugins: [
+      twoFactor({
+        issuer: TOTP_ISSUER,
+        skipVerificationOnEnable: false,
+        backupCodeOptions: {
+          amount: RECOVERY_CODE_COUNT,
+          storeBackupCodes: recoveryCodeStore(options.secret),
+        },
+      }),
+    ],
   });
 }
 
@@ -189,4 +214,64 @@ export function resolveBaseUrl(
   return ingressPath === null || ingressPath === ''
     ? { baseUrl: origin }
     : { baseUrl: origin, basePath: `${ingressPath}/api/auth` };
+}
+
+/** What creating or changing an account answered: done, or a sentence for the form. */
+export type AccountWrite = { readonly ok: true; readonly id: string } | { readonly ok: false; readonly message: string };
+
+/**
+ * Create an account with a password, for the Accounts screen (plan item M8.1).
+ *
+ * Not through the sign-up route, which is closed once any account exists and
+ * must stay closed — this is an admin acting, not a stranger registering. It
+ * does what that route does, through the library's own adapter: hash the
+ * password with the library's hasher, create the user, link the credential.
+ * No session is created, so the admin who made it stays who they are. The
+ * role is the caller's to write afterwards; the column's default is `admin`,
+ * so the caller is `createAccount` in `api/accounts.ts`, which always writes
+ * one.
+ */
+export async function createPasswordAccount(
+  auth: Auth,
+  input: { readonly name: string; readonly email: string; readonly password: string },
+): Promise<AccountWrite> {
+  try {
+    const context = await auth.$context;
+    const email = input.email.trim().toLowerCase();
+    if (await context.internalAdapter.findUserByEmail(email)) {
+      return { ok: false, message: 'There is already an account with that email address.' };
+    }
+    const hash = await context.password.hash(input.password);
+    const user = await context.internalAdapter.createUser(
+      { email, name: input.name, emailVerified: false },
+      { method: 'admin' },
+    );
+    await context.internalAdapter.linkAccount({
+      userId: user.id,
+      providerId: 'credential',
+      accountId: user.id,
+      password: hash,
+    });
+    return { ok: true, id: String(user.id) };
+  } catch {
+    return { ok: false, message: 'That account could not be created.' };
+  }
+}
+
+/**
+ * Give an account a new password, and sign it out everywhere: an admin setting
+ * somebody's password is usually because the old one is lost, or known to the
+ * wrong person, and a session that outlives the password it was made with
+ * keeps whoever has it.
+ */
+export async function setAccountPassword(auth: Auth, userId: string, password: string): Promise<AccountWrite> {
+  try {
+    const context = await auth.$context;
+    const hash = await context.password.hash(password);
+    await context.internalAdapter.updatePassword(userId, hash);
+    await context.internalAdapter.deleteUserSessions(userId);
+    return { ok: true, id: userId };
+  } catch {
+    return { ok: false, message: 'That password could not be set.' };
+  }
 }
