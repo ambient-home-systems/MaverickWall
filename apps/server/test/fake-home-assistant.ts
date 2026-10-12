@@ -380,6 +380,12 @@ export interface FakeHa {
    * sun — every test's house but the daylight one, so no other list changes.
    */
   sun: string | undefined;
+  /**
+   * Any other entity a test wants listed (plan items M6.4, M6.5, M6.7): a
+   * doorbell's `event`, a porch sensor, a `input_button` an automation
+   * presses — none until a test adds one, so no other test's house changes.
+   */
+  readonly others: Record<string, { state: string; lastChanged?: string; name?: string }>;
   /** Stand the fake down without reaching into a module-level array. */
   close(): Promise<void>;
 }
@@ -401,6 +407,7 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
     weather: {},
     artwork: ARTWORK,
     sun: undefined,
+    others: {},
     todo: {
       'todo.shopping': {
         items: [
@@ -493,7 +500,13 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
         state.sun === undefined
           ? []
           : [{ entity_id: 'sun.sun', state: state.sun, attributes: { friendly_name: 'Sun', elevation: 12.4 } }];
-      return json(JSON.stringify([...listed, ...weather, ...sun]));
+      const others = Object.entries(state.others).map(([entityId, one]) => ({
+        entity_id: entityId,
+        state: one.state,
+        attributes: { friendly_name: one.name ?? entityId },
+        ...(one.lastChanged === undefined ? {} : { last_changed: one.lastChanged, last_updated: one.lastChanged }),
+      }));
+      return json(JSON.stringify([...listed, ...weather, ...sun, ...others]));
     }
     if (url.startsWith('/api/states/weather.')) {
       const entityId = decodeURIComponent(url.slice('/api/states/'.length));

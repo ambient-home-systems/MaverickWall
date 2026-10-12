@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 
 import type { AlbumSlides } from './photo-albums.js';
 import { isHhmm, isSlotName, type ScheduleRow } from './layout-slots.js';
+import { showWhenOf, shownNow, type Conditions, type Shown } from './show-when.js';
 
 import {
   addDays,
@@ -404,6 +405,15 @@ export function displayConfig(
     const { whenEmpty: _resolved, ...rest } = out;
     out = rest;
   }
+  /*
+   * And `showWhen` (plan items M6.4, M6.5, M6.7), on the same argument and on
+   * rule 12 besides: it is resolved before the manifest is written, and what
+   * it carries is an entity id — which must never reach the wall.
+   */
+  if ('showWhen' in out) {
+    const { showWhen: _decided, ...rest } = out;
+    out = rest;
+  }
   out = withReadingHandles(out, index);
   if (type === 'image' && typeof out['nowPlaying'] === 'string') {
     const { nowPlaying: player, ...rest } = out;
@@ -468,6 +478,16 @@ export interface HouseholdSetUp {
    * widget on every wall, and a default is how that omission would come back.
    */
   readonly todoLists: readonly string[];
+  /**
+   * The house's state, for the widgets shown only while it says so (plan
+   * items M6.4, M6.5, M6.7). **Absent means every such widget shows**, and
+   * that is the safe default rather than a lazy one: the surfaces that leave
+   * it out are the ones asking where a widget *can* be drawn — the editor's
+   * "not on any wall" tags, the Readings screen's reach — and a widget the
+   * doorbell shows is on that wall. Only the two that put pixels on glass, the
+   * wall's manifest and a panel's frame, hand it over.
+   */
+  readonly conditions?: Conditions;
 }
 
 /**
@@ -570,7 +590,17 @@ export function fallbackOf(config: unknown): { readonly type: string; readonly c
 }
 
 /** A widget as it leaves the omission — itself, or its fallback wearing its box. */
-export type Resolved<T extends SetUpTarget> = T & { readonly substituted?: true };
+export type Resolved<T extends SetUpTarget> = T & {
+  readonly substituted?: true;
+  /**
+   * Shown for a while after something happened (plan item M6.5): the instant
+   * it goes, and what the box draws then — its fallback, or nothing. The wall
+   * makes the swap by its own clock, so a doorbell's camera leaves the glass
+   * on time with the server busy or gone.
+   */
+  readonly showUntil?: number;
+  readonly then?: Resolved<T>;
+};
 
 /**
  * Drop the widgets with nothing to say — unless that would leave nothing at all.
@@ -612,13 +642,46 @@ export function keepWidgetsWithSomethingToSay<T extends SetUpTarget>(
    * group on this canvas are dropped before anything is asked about them.
    */
   const tree = pruneWidgetTree(widgets);
-  const resolve = (widget: T): Resolved<T> | undefined => {
-    if (widgetIsSetUp(widget, setUp)) return widget;
+  const conditions = setUp.conditions;
+  /*
+   * Whether the house hides a box (plan items M6.4, M6.5, M6.7), asked before
+   * anything else about it. Hidden is the omission's own answer — the box
+   * draws its fallback or nothing, in the rectangle it was given — so a
+   * condition moves no rectangle and changes no other box's answer.
+   */
+  const shownOf = (widget: T): Shown => {
+    if (conditions === undefined) return { shown: true };
+    const rule = showWhenOf(widget.config);
+    return rule === undefined ? { shown: true } : shownNow(rule, conditions);
+  };
+  const substitute = (widget: T): Resolved<T> | undefined => {
     const fallback = fallbackOf(widget.config);
     if (fallback !== undefined && widgetIsSetUp(fallback, setUp)) {
       return { ...widget, type: fallback.type, config: fallback.config, substituted: true } as Resolved<T>;
     }
     return undefined;
+  };
+  const resolve = (widget: T): Resolved<T> | undefined => {
+    const shown = shownOf(widget);
+    if (!shown.shown) return substitute(widget);
+    if (!widgetIsSetUp(widget, setUp)) return substitute(widget);
+    if (shown.until === undefined) return widget;
+    const then = substitute(widget);
+    return { ...widget, showUntil: shown.until, ...(then === undefined ? {} : { then }) } as Resolved<T>;
+  };
+  /*
+   * A group the house hides goes whole, children with it — a group carries no
+   * fallback, its children are boxes inside it — and a group shown for a while
+   * takes its children down with it when the time is up, which is the wall's
+   * to do: each child carries its group's instant unless it has an earlier one.
+   */
+  const groupShown = new Map<string, Shown>();
+  for (const widget of tree) {
+    if (widget.type === 'group' && widget.id !== undefined) groupShown.set(widget.id, shownOf(widget));
+  }
+  const hidden = (widget: T): boolean => {
+    if (widget.type === 'group') return widget.id !== undefined && groupShown.get(widget.id)?.shown === false;
+    return widget.parentId !== undefined && groupShown.get(widget.parentId)?.shown === false;
   };
   /*
    * A group has something to say exactly when one of its children does. It
@@ -630,7 +693,14 @@ export function keepWidgetsWithSomethingToSay<T extends SetUpTarget>(
    */
   const resolved = new Map<T, Resolved<T> | undefined>();
   for (const widget of tree) {
-    if (widget.type !== 'group') resolved.set(widget, resolve(widget));
+    if (widget.type === 'group' || hidden(widget)) continue;
+    let answer = resolve(widget);
+    const group = widget.parentId === undefined ? undefined : groupShown.get(widget.parentId);
+    if (answer !== undefined && group?.shown === true && group.until !== undefined) {
+      const own = answer.showUntil;
+      if (own === undefined || group.until < own) answer = { ...answer, showUntil: group.until };
+    }
+    resolved.set(widget, answer);
   }
   const groupKept = new Set<string>();
   for (const widget of tree) {
@@ -639,14 +709,26 @@ export function keepWidgetsWithSomethingToSay<T extends SetUpTarget>(
   const kept: Resolved<T>[] = [];
   for (const widget of tree) {
     if (widget.type === 'group') {
-      if (widget.id !== undefined && groupKept.has(widget.id)) kept.push(widget);
+      if (widget.id === undefined || !groupKept.has(widget.id)) continue;
+      const shown = groupShown.get(widget.id);
+      kept.push(
+        shown?.shown === true && shown.until !== undefined ? ({ ...widget, showUntil: shown.until } as Resolved<T>) : widget,
+      );
       continue;
     }
     if (widget.parentId !== undefined && !groupKept.has(widget.parentId)) continue;
     const answer = resolved.get(widget);
     if (answer !== undefined) kept.push(answer);
   }
-  return kept.length === 0 ? tree : kept;
+  /*
+   * The guard hands back the arranged canvas — less every box the house is
+   * hiding. A wall whose only box is the doorbell camera draws an empty canvas
+   * while nobody is at the door: that box is hidden because the household
+   * asked for it to be, and drawing it anyway would be the one answer the
+   * setting exists to prevent.
+   */
+  if (kept.length > 0) return kept;
+  return conditions === undefined ? tree : tree.filter((widget) => !hidden(widget) && shownOf(widget).shown);
 }
 
 /**
@@ -783,33 +865,37 @@ function placeCanvas(
   // The tree is pruned inside `keepWidgetsWithSomethingToSay` — a group in a
   // group and a child with no group on this canvas are refused here a second
   // time after the boundary (RFC 014 §5.1).
+  const place = (widget: Resolved<PlacedWidgetRow>): ManifestPlacedWidget => ({
+    id: widget.id,
+    // A fallback drawing in this box (RFC 014 §5.3): the wall labels nothing
+    // and draws `type` as it draws any widget — the mark is for the editor
+    // and for anybody reading the manifest. Spread, so a box that is itself
+    // carries no key and no ETag churns.
+    ...(widget.substituted === true ? { substituted: true as const } : {}),
+    type: widget.type,
+    x: unit(widget.x, 0),
+    y: unit(widget.y, 0),
+    // A zero-size widget is invisible; fall back to a readable default.
+    w: unit(widget.w, 0.25) || 0.25,
+    h: unit(widget.h, 0.15) || 0.15,
+    z: Number.isFinite(widget.z) ? Math.trunc(widget.z) : 0,
+    // Untouched, except that the entity ids a to-do widget's list and a
+    // Home Assistant widget's readings name leave as handles.
+    config: displayConfig(widget.type, widget.config, readings, albums, playing, fallback),
+    // The style lane, resolved (RFC 014 §4.1) — absent for a widget that
+    // carries none, which is every widget until a household opens the tab.
+    ...widgetStyleFields(widget.type, widget.config, styling),
+    // The group this box sits inside (RFC 014 §5.1). Spread, so a canvas
+    // with no group serialises byte for byte as it did before the key.
+    ...(widget.parentId !== undefined ? { parentId: widget.parentId } : {}),
+    // The widget's own CSS, scoped (RFC 014 §7): spread on the same argument.
+    ...(widget.customCss !== undefined && widget.customCss !== '' ? { customCss: widget.customCss } : {}),
+    // A pulse (plan item M6.5): when it ends and what the box draws after.
+    ...(widget.showUntil !== undefined ? { showUntil: widget.showUntil } : {}),
+    ...(widget.then !== undefined ? { then: place(widget.then) } : {}),
+    });
   return keepWidgetsWithSomethingToSay(drawable, setUp)
-    .map((widget) => ({
-      id: widget.id,
-      // A fallback drawing in this box (RFC 014 §5.3): the wall labels nothing
-      // and draws `type` as it draws any widget — the mark is for the editor
-      // and for anybody reading the manifest. Spread, so a box that is itself
-      // carries no key and no ETag churns.
-      ...(widget.substituted === true ? { substituted: true as const } : {}),
-      type: widget.type,
-      x: unit(widget.x, 0),
-      y: unit(widget.y, 0),
-      // A zero-size widget is invisible; fall back to a readable default.
-      w: unit(widget.w, 0.25) || 0.25,
-      h: unit(widget.h, 0.15) || 0.15,
-      z: Number.isFinite(widget.z) ? Math.trunc(widget.z) : 0,
-      // Untouched, except that the entity ids a to-do widget's list and a
-      // Home Assistant widget's readings name leave as handles.
-      config: displayConfig(widget.type, widget.config, readings, albums, playing, fallback),
-      // The style lane, resolved (RFC 014 §4.1) — absent for a widget that
-      // carries none, which is every widget until a household opens the tab.
-      ...widgetStyleFields(widget.type, widget.config, styling),
-      // The group this box sits inside (RFC 014 §5.1). Spread, so a canvas
-      // with no group serialises byte for byte as it did before the key.
-      ...(widget.parentId !== undefined ? { parentId: widget.parentId } : {}),
-      // The widget's own CSS, scoped (RFC 014 §7): spread on the same argument.
-      ...(widget.customCss !== undefined && widget.customCss !== '' ? { customCss: widget.customCss } : {}),
-    }))
+    .map(place)
     // Parents before children, then by z — a child's z is relative to its
     // group, so the two scales are not sorted against each other.
     .sort((a, b) => Number(a.parentId !== undefined) - Number(b.parentId !== undefined) || a.z - b.z);
@@ -1109,11 +1195,18 @@ export function buildLayout(
   albums: readonly AlbumSlides[] = [],
   /* Album art playing now (plan item M3.4); none is safe. */
   playing: Readonly<Record<string, string>> = {},
+  /*
+   * The house's state, for the boxes shown only while it says so (plan items
+   * M6.4, M6.5, M6.7). Absent is every such box shown — the editor's preview,
+   * which must draw the box being arranged — see `HouseholdSetUp.conditions`.
+   */
+  conditions?: Conditions,
 ): Manifest['layout'] {
   const setUp: HouseholdSetUp = {
     modules: readyModules,
     shift: household.shiftEnabled === 1,
     todoLists: watchedTodoLists,
+    ...(conditions === undefined ? {} : { conditions }),
   };
   const portrait = placeCanvas(portraitWidgets, setUp, styling, readingIndex, albums, playing);
   const landscape = placeCanvas(landscapeWidgets, setUp, styling, readingIndex, albums, playing);
@@ -1716,6 +1809,14 @@ export interface ManifestPlacedWidget extends PlacedWidgetRow {
   readonly substituted?: true;
   readonly styleTokens?: Readonly<Record<string, string>>;
   readonly daytimeStyleTokens?: Readonly<Record<string, string>>;
+  /**
+   * Shown for a while after something in the house happened (plan item
+   * M6.5): the instant the box goes, by the wall's corrected clock, and what
+   * it draws then — the box's fallback, in the same rectangle — or nothing.
+   * Both spread, so a box with no pulse sends the row it always sent.
+   */
+  readonly showUntil?: number;
+  readonly then?: ManifestPlacedWidget;
 }
 
 export interface PersonRow {
@@ -1800,6 +1901,12 @@ export interface BuildManifestInput {
   readonly albums?: readonly AlbumSlides[];
   /** What each watched media player is playing, as a picture handle (plan item M3.4). */
   readonly playing?: Readonly<Record<string, string>>;
+  /**
+   * The house's state at this instant, for the boxes shown only while it says
+   * so (plan items M6.4, M6.5, M6.7). Absent shows every such box, which is
+   * what a preview wants; the wall's own manifest always carries it.
+   */
+  readonly conditions?: Conditions;
   /**
    * Interrupts already evaluated, for the same reason panels are already
    * collected: assembly is pure and reads no cache of its own.
@@ -2429,6 +2536,7 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       readingIndexOf(input.panels?.['home']),
       input.albums ?? [],
       input.playing ?? {},
+      input.conditions,
     ), onGlass),
     ...(input.layoutOverride === undefined
       ? {}
@@ -2451,6 +2559,7 @@ export function buildManifest(input: BuildManifestInput): Manifest {
               readingIndexOf(input.panels?.['home']),
               input.albums ?? [],
               input.playing ?? {},
+              input.conditions,
             ), onGlass),
           },
         }),

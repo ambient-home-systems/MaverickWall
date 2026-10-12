@@ -208,6 +208,14 @@ export interface ManifestWidget {
    * anything.
    */
   readonly customCss?: unknown;
+  /**
+   * Shown for a while after something in the house happened (plan item
+   * M6.5): the instant this box goes, by the wall's corrected clock, and what
+   * it draws then — its fallback in the same rectangle, or nothing. Both read
+   * defensively by `shownAt`; absent on every box with no pulse.
+   */
+  readonly showUntil?: unknown;
+  readonly then?: unknown;
 }
 
 export interface Manifest {

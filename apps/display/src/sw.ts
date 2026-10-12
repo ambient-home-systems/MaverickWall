@@ -82,6 +82,7 @@ const SHELL = [
   '/assets/qr-payload.js',
   '/assets/render.js',
   '/assets/shift-style.js',
+  '/assets/show-until.js',
   '/assets/slideshow.js',
   '/assets/photo-fallback.js',
   '/assets/glass-alpha.js',

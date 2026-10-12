@@ -21,6 +21,7 @@
  * is hidden" is a contradiction a reader can see.
  */
 
+import { showRuleOf } from './show-when.js';
 import { groupIsOrdered, parentIdOf } from './group-cells.js';
 import { inkOf } from './ink.js';
 import {
@@ -199,7 +200,13 @@ export function inspectorView(input: InspectorInput): InspectorView {
   const omission = omissionOf(widget, input.widgets, input.notDrawn, input.facts);
   const density = densityNote(widget, input.drawnTier);
   const chosen = fallbackOf(widget.config);
-  const offersFallback = input.notDrawn.has(widget.id) || chosen !== undefined;
+  // A box shown only while the house says so is a box that is sometimes
+  // hidden, and a hidden box draws its fallback (plan items M6.4, M6.5) — so
+  // the choice is offered on it too, except on a group, which has none.
+  const offersFallback =
+    input.notDrawn.has(widget.id) ||
+    chosen !== undefined ||
+    (widget.type !== 'group' && showRuleOf(widget.config) !== undefined);
   return {
     ...base,
     ...(omission === undefined

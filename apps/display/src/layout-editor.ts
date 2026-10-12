@@ -136,6 +136,20 @@ import { shiftStyle, shiftsShown } from './shift-style.js';
 import { drawsRows, monthLooks, type MonthLooks, type MonthTreatment } from './calendar-looks.js';
 import { PALETTE, SWATCH, describeWidget, describeWidgetIn, labelFor } from './widget-labels.js';
 import {
+  DEFAULT_PULSE,
+  NO_CONDITIONS,
+  PULSE_CHOICES,
+  defaultState,
+  isMomentId,
+  modeOfRule,
+  parseConditionChoices,
+  ruleFor,
+  showRuleOf,
+  showWhenHint,
+  type ConditionChoices,
+  type ShowMode,
+} from './show-when.js';
+import {
   HOUSE_FIELDS,
   SHIFT_FIELDS,
   WEATHER_FIELDS,
@@ -4233,6 +4247,7 @@ function boot(): void {
       note.textContent = view.note;
       configPanel.appendChild(note);
     }
+    buildShowWhenConfig(widget);
     if (view.fallback !== undefined) buildFallbackConfig(widget, view.fallback);
 
     /*
@@ -4288,6 +4303,178 @@ function boot(): void {
   }
 
   /**
+   * The house's entities a box may be shown by (plan items M6.4, M6.5, M6.7),
+   * asked of the server once, when the control first opens: listing the whole
+   * house on every draw of the page would make it as slow as the house.
+   */
+  let conditionChoices: Promise<ConditionChoices> | undefined;
+  let conditionLoaded: ConditionChoices | undefined;
+  function loadConditionChoices(): Promise<ConditionChoices> {
+    conditionChoices ??= fetch('admin/home-assistant/conditions.json', { credentials: 'same-origin' })
+      .then(async (response) => (response.ok ? parseConditionChoices(await response.json()) : NO_CONDITIONS))
+      .catch(() => NO_CONDITIONS)
+      .then((loaded) => {
+        conditionLoaded = loaded;
+        return loaded;
+      });
+    return conditionChoices;
+  }
+  /** The mode a box is being set to before an entity makes it a rule. */
+  const showModes = new Map<string, ShowMode>();
+
+  /**
+   * "Show this widget" (plan items M6.4, M6.5, M6.7): always, while an entity
+   * is in a state, except while it is, or for a while after something
+   * happens. One `showWhen` object through `setConfig`, written only once it
+   * is a rule the server would take — an entity chosen, and its state — so a
+   * mode chosen and not finished saves nothing rather than a refusal.
+   *
+   * Hidden is a substitution, never a moved rectangle: the box keeps its
+   * place and draws its fallback, which is why "When this is hidden" follows
+   * it. A group may carry one, and that is how Home Assistant shows a group.
+   */
+  function buildShowWhenConfig(widget: Widget): void {
+    const stored = showRuleOf(widget.config);
+    const mode: ShowMode = stored !== undefined ? modeOfRule(stored) : (showModes.get(widget.id) ?? 'always');
+    const section = document.createElement('div');
+    section.className = 'le-show-when';
+    section.appendChild(
+      segControl(
+        'Show this widget',
+        [
+          ['always', 'Always'],
+          ['while', 'While…'],
+          ['except', 'Except while…'],
+          ['after', 'After…'],
+        ],
+        mode,
+        (value) => {
+          const next = value as ShowMode;
+          showModes.set(widget.id, next);
+          if (next === 'always') {
+            setConfig(widget, 'showWhen', undefined);
+            return;
+          }
+          const current = showRuleOf(widget.config);
+          if (current === undefined) return;
+          const choice = conditionLoaded?.entities.find((one) => one.id === current.entity);
+          setConfig(widget, 'showWhen', ruleFor(next, current.entity, current.state, current.pulse, choice));
+        },
+      ),
+    );
+    configPanel.appendChild(section);
+    if (mode === 'always') return;
+
+    const status = document.createElement('p');
+    status.className = 'hint le-show-when-status';
+    status.textContent = 'Asking Home Assistant for its entities…';
+    section.appendChild(status);
+    const body = document.createElement('div');
+    section.appendChild(body);
+    const forWidget = widget.id;
+
+    void loadConditionChoices().then((loaded) => {
+      if (primary() !== forWidget || !section.isConnected) return;
+      status.remove();
+      drawShowWhenFields(widget, mode, loaded, body);
+    });
+  }
+
+  function drawShowWhenFields(widget: Widget, mode: ShowMode, loaded: ConditionChoices, body: HTMLElement): void {
+    const stored = showRuleOf(widget.config);
+    const write = (entity: string, state: string | undefined, pulse: number | undefined): void => {
+      const choice = loaded.entities.find((one) => one.id === entity);
+      setConfig(widget, 'showWhen', ruleFor(mode, entity, state, pulse, choice));
+    };
+    if (!loaded.connected && stored === undefined) {
+      const none = document.createElement('p');
+      none.className = 'hint';
+      none.textContent = 'Connect Home Assistant to show this widget only when something in the house says so.';
+      body.appendChild(none);
+      return;
+    }
+    const offered = loaded.entities.filter((one) => (mode === 'after' ? true : !one.moment));
+    const entityField = cfgField(mode === 'after' ? 'When this happens' : 'Entity');
+    const select = document.createElement('select');
+    select.className = 'le-show-entity';
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = 'Choose…';
+    select.appendChild(blank);
+    for (const one of offered) {
+      const option = document.createElement('option');
+      option.value = one.id;
+      option.textContent = one.name === one.id ? one.id : `${one.name} (${one.id})`;
+      select.appendChild(option);
+    }
+    if (stored !== undefined && !offered.some((one) => one.id === stored.entity)) {
+      const option = document.createElement('option');
+      option.value = stored.entity;
+      option.textContent = `${stored.entity} (not found)`;
+      select.appendChild(option);
+    }
+    select.value = stored?.entity ?? '';
+    select.addEventListener('change', () => {
+      if (select.value === '') {
+        setConfig(widget, 'showWhen', undefined);
+        renderConfigPanel();
+        return;
+      }
+      const choice = loaded.entities.find((one) => one.id === select.value);
+      write(select.value, defaultState(choice), stored?.pulse);
+      renderConfigPanel();
+    });
+    entityField.appendChild(select);
+    body.appendChild(entityField);
+    if (stored === undefined) return;
+
+    const choice = loaded.entities.find((one) => one.id === stored.entity);
+    const moment = choice?.moment ?? isMomentId(stored.entity);
+    if (!moment) {
+      const stateField = cfgField(mode === 'after' ? 'Becomes' : 'Is');
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'le-show-state';
+      input.maxLength = 64;
+      input.value = stored.state ?? '';
+      const listId = `le-show-states-${widget.id}`;
+      input.setAttribute('list', listId);
+      const list = document.createElement('datalist');
+      list.id = listId;
+      for (const state of choice?.states ?? []) {
+        const option = document.createElement('option');
+        option.value = state;
+        list.appendChild(option);
+      }
+      input.addEventListener('change', () => {
+        const value = input.value.trim();
+        if (value !== '') write(stored.entity, value, stored.pulse);
+      });
+      stateField.append(input, list);
+      body.appendChild(stateField);
+    }
+    if (mode === 'after') {
+      const pulseField = cfgField('Show it for');
+      const pulse = document.createElement('select');
+      pulse.className = 'le-show-pulse';
+      for (const [seconds, words] of PULSE_CHOICES) {
+        const option = document.createElement('option');
+        option.value = String(seconds);
+        option.textContent = words;
+        pulse.appendChild(option);
+      }
+      pulse.value = String(stored.pulse ?? DEFAULT_PULSE);
+      pulse.addEventListener('change', () => write(stored.entity, stored.state, Number(pulse.value)));
+      pulseField.appendChild(pulse);
+      body.appendChild(pulseField);
+    }
+    const hint = document.createElement('p');
+    hint.className = 'hint';
+    hint.textContent = showWhenHint(mode, moment);
+    body.appendChild(hint);
+  }
+
+  /**
    * "When this has nothing to show" (RFC 014 §5.3): leave the box empty, as it
    * always was, or show another widget in its rectangle.
    *
@@ -4326,7 +4513,7 @@ function boot(): void {
     section.className = 'le-fallback';
     section.appendChild(
       segControl(
-        'When this has nothing to show',
+        showRuleOf(widget.config) === undefined ? 'When this has nothing to show' : 'When this is hidden',
         first === undefined
           ? [['empty', 'Leave the box empty']]
           : [['empty', 'Leave the box empty'], ['other', 'Show another widget']],

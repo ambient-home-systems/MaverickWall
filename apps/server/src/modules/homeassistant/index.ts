@@ -3,6 +3,7 @@ import type { ModuleContext, PanelModule } from '../registry.js';
 import type { Signal } from '@maverick-wall/core';
 import { z } from '../../validation.js';
 import { daylightFromState } from '../../api/daylight.js';
+import { conditionEntities, readConditionStates, writeConditionStates } from './conditions.js';
 import { call, resolveConnection } from './client.js';
 import { wallActionsFor } from './services.js';
 import { parseCalendarList, type CalendarEntity } from './calendars.js';
@@ -347,7 +348,13 @@ export const haModule: PanelModule = {
             .all() as { entityId: string }[]
         ).map((row) => row.entityId),
       );
-      if (wanted.size === 0 && daylight.size === 0) return;
+      // And the entities a widget is shown by (plan items M6.4, M6.5, M6.7).
+      const conditions = conditionEntities(context.db);
+      if (wanted.size === 0 && daylight.size === 0 && conditions.size === 0) {
+        // Nothing to read; forget any state no widget names any more.
+        context.db.prepare('DELETE FROM ha_condition_states').run();
+        return;
+      }
 
       const resolved = resolveConnection(context.db, context.keyring);
       if (!resolved.ok) {
@@ -380,7 +387,10 @@ export const haModule: PanelModule = {
           WHERE daylight_source = 'entity' AND daylight_entity = ?`,
       );
 
+      const conditionStates = readConditionStates(response.body, conditions, at);
+
       const write = context.db.transaction(() => {
+        writeConditionStates(context.db, conditionStates, conditions);
         // An entity Home Assistant no longer lists is no reading: the wall
         // falls back to its hours once the last one goes stale.
         for (const [entityId, day] of daylightStates) writeDaylight.run(day, at, entityId);
