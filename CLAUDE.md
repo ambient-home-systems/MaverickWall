@@ -11070,6 +11070,68 @@ on a clean `main` in this container as before.
 **Still unproven where it counts:** no real `sun.sun` has switched a kitchen
 wall at sunset.
 
+**A widget can be shown only while the house says so (plan items M6.4, M6.5
+and M6.7).** "Show this widget" closes a box's Content tab: Always, While…
+(an entity in a state), Except while…, and After… (for a set time from the
+moment it happens). `showWhen` on the config names the entity; any type may
+carry one, a group included, which is how an automation pressing an
+`input_button` shows a group for five minutes.
+
+**It is resolved in the omission, so hidden is a substitution.** `shownNow`
+(`api/show-when.ts`, pure) answers whether a box is shown and, for a pulse,
+until when, and `keepWidgetsWithSomethingToSay` treats a hidden box exactly
+as one with nothing to say: its `whenEmpty` fallback in its own rectangle, or
+nothing. A hidden group goes whole. The never-empty guard hands back the
+arranged canvas *less* the hidden boxes, because drawing a box the household
+asked to hide is the one answer the setting exists to prevent.
+`HouseholdSetUp.conditions` is optional on purpose: absent shows every such
+box, which is what the editor's preview and the "not on any wall" reach want;
+only the wall's manifest and a panel's frame hand the house's state over.
+
+- **The state** is `ha_condition_states` (migration `0073`, one generated
+  `CREATE TABLE`, read): the entities a stored widget names, read out of the
+  `/api/states` body the Home Assistant poll already fetches, with Home
+  Assistant's own `last_changed`. A row no widget names is deleted on the
+  next poll.
+- **A pulse is timed from Home Assistant's instant**, not from a per-wall
+  memory in `main.ts` as the plan's note proposed: the change to the state,
+  or an `event`/`button`/`input_button` entity's own timestamp, which is its
+  state. So two walls agree and a reload does not restart it. The manifest
+  carries `showUntil` and the box's `then` (its fallback, placed by the same
+  mapper), and `shownAt` in the display swaps them by the wall's corrected
+  clock, so the box comes down on time with the server gone.
+- **A reading five minutes old is no reading**: While… hides, Except while…
+  shows. A moment's timestamp is believed however old the poll.
+- **Rule 12**: `displayConfig` drops `showWhen`, and the tests read the
+  manifest text and the page for the entity ids.
+- **A panel** honours the rule (`showWhen` is in every row of `PANEL_HONOURS`,
+  proved by `epaper-ink`'s probes under a house that has said nothing) and
+  never draws a pulse, because its picture stays up for an hour.
+- **Latency is the poll's**: thirty seconds, plus the push hub's five-second
+  tick to a connected wall. A sensor on for a second between polls is missed;
+  the editor's hint points at a doorbell's `event` entity, which records when.
+
+The editor lists the house's entities from `GET
+/admin/home-assistant/conditions.json`, asked when the control opens (a short
+wait, `connected: false` otherwise), and writes a rule only once the server
+would take it. A box with a rule is offered "When this is hidden".
+
+**Measured.** `show-when.test.ts` (17) covers the rule, the schema, the
+omission, the poll against the fake house (which now lists any entity a test
+adds) and the manifest and frame. `browser-show-when.test.ts` (2) lets a pulse
+expire on a real wall with the manifest refused, and drives the editor.
+`show-until.test.ts` (4) and `show-when.test.ts` (6) are on the display. 14
+mutations were checked and all 14 are red. Nine of them failed to build the
+first time and were re-aimed before they counted. The first full run found
+the section on the Style tab ahead of the clock's Look (`browser-clock-variants`),
+and it moved to the Content tab. **5685 tests passing, 1 red and 2 skipped,
+over 419 files**: calendar 153 (1 skipped) over 10 · core 314 over 9 · display
+1049 over 66 · server 4169 (1 skipped) over 334, measured with `pnpm test` and
+a real Chromium, with the two changed files re-run after the fix. The one red
+is `browser-glass`'s striped-picture case, red on a clean `main` in this
+container as before. **Still unproven where it counts:** no real doorbell has
+put a box on a kitchen wall.
+
 ---
 
 ## Open decisions
