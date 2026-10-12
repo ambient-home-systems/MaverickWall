@@ -1,6 +1,6 @@
 # Plan: parity with Magic Frame
 
-**Status: in progress.** RFC 018 (M6.0) is built, and so are the companion token, its Home Assistant to-do add, timers and messages, and refreshing walls and showing one wall's layout on the others (M1.1–M1.5, M2.1, M2.2, M2.3, M3.1–M3.8, M4.1–M4.12, M5.1–M5.12, M6.12, M6.13, M7.1, M8.4–M8.8); everything else is planned. On 2026-10-05 the owner asked for a
+**Status: in progress.** RFC 018 (M6.0) is built, and so are the companion token, its Home Assistant to-do add, timers and messages, and refreshing walls and showing one wall's layout on the others (M1.1–M1.5, M2.1, M2.2, M2.3, M3.1–M3.8, M4.1–M4.12, M5.1–M5.12, M6.4, M6.5, M6.7, M6.12, M6.13, M7.1, M8.4–M8.8); everything else is planned. On 2026-10-05 the owner asked for a
 competitive review of [Magic Frame](https://github.com/jeremiaa/magic-frame)
 against Maverick Wall, then a deeper look at its custom widgets and its
 backgrounds. This document is that review, the decisions taken on it, and the
@@ -162,10 +162,10 @@ The read-only items can start now. Items marked † follow RFC 018's phases (acc
 | M6.1 | **Camera snapshot tile.** | M | RFC 007's opaque handle and frame hub. Must survive the 15 s rebuild without reconnecting. |
 | M6.2 | **Camera live stream** (MJPEG/WebRTC through HA or go2rtc). | L | RFC 007. |
 | M6.3 | **Doorbell pop-up**: a camera covers the wall when an entity triggers, then returns. | M | Built as an interrupt action, so it shares dismissal, night hours and source scope with alerts. |
-| M6.4 | **Show a widget while an entity has a state.** | M | Hidden is a substitution, never a moved rectangle (the reflow-stability contract). |
-| M6.5 | **Pulse / auto-hide timer** for momentary triggers. | S | State kept per widget in `main.ts`, like the to-do sentence map. |
+| M6.4 | **Show a widget while an entity has a state.** **Built**: "Show this widget" in the inspector — always, while an entity is in a state, or except while it is. Resolved server-side in the omission, so a hidden box draws its fallback in its own rectangle on the wall and on a panel; the wall is told whether, never by which entity. | M | Hidden is a substitution, never a moved rectangle (the reflow-stability contract). |
+| M6.5 | **Pulse / auto-hide timer** for momentary triggers. **Built** as "After…": shown for a set time from Home Assistant's own instant — the change to a state, or an `event`/`button`/`input_button` entity's timestamp — and taken down by the wall's own clock (`showUntil`), so it ends on time with the server gone. A panel never draws one. | S | Built from Home Assistant's instant rather than per-wall state in `main.ts`, so two walls agree and a reload does not restart it. |
 | M6.6 | **Stacked widgets with a swap button.** | M | A local tap, no server write. Survives the rebuild as model state. |
-| M6.7 | **HA presses a button**: an entity shows or hides a group. | S | The same mechanism as M6.4. |
+| M6.7 | **HA presses a button**: an entity shows or hides a group. **Built**: a group carries the same rule, and an `input_button` pressed by an automation shows it for a while. | S | The same mechanism as M6.4. |
 | M6.8 | **Status card**: washer, car charging; picture, details, progress, loud "finished". | M | Builds on the tile look (P5.3); picture via a proxied handle. |
 | M6.9 | **Now-playing card**; playback controls only †. | M | Cover art proxied by the server. |
 | M6.10 | **Sensor sparklines** from HA history. | M | A history read, not a service call. Fixed-height series, so no reflow. |

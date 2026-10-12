@@ -221,7 +221,15 @@ const MODEL = buildEpaperModel(M);
  * little is set up, so every other key is probed against exactly the frame it
  * always was.
  */
-const NOTHING_SET_UP: HouseholdSetUp = { modules: [], shift: false, todoLists: [] };
+const NOTHING_SET_UP: HouseholdSetUp = {
+  modules: [],
+  shift: false,
+  todoLists: [],
+  // A house that has said nothing (plan items M6.4, M6.5, M6.7): a box shown
+  // only while an entity is in a state is hidden, as on a real panel, and no
+  // box without a `showWhen` is touched by it.
+  conditions: { readings: {}, now: 0, panel: true },
+};
 
 /**
  * A group's children, for the one type whose keys move ink only through
@@ -493,6 +501,12 @@ const PROBES: Readonly<Record<string, readonly unknown[]>> = {
    * else, which is what keeps it off a clock's row of `PANEL_HONOURS`.
    */
   whenEmpty: [{ type: 'notes', config: { text: 'Instead of the forecast' } }],
+  /*
+   * Shown only while the house says so (plan items M6.4, M6.5): under a
+   * house that has said nothing the box is hidden, which moves ink on every
+   * type — a group included — and a pulse is never drawn on a panel at all.
+   */
+  showWhen: [{ entity: 'binary_sensor.porch', state: 'on' }, { entity: 'event.doorbell', pulse: 30 }],
 };
 
 /**

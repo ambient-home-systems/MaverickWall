@@ -73,7 +73,18 @@ const STYLE_INSET = 'style.inset';
  */
 const WHEN_EMPTY = 'whenEmpty';
 
-export const PANEL_HONOURS: Readonly<Record<string, readonly string[]>> = {
+/*
+ * **`showWhen` is honoured by every type** (plan items M6.4, M6.5, M6.7),
+ * and it is added to every row below rather than written into each: it is
+ * resolved before either renderer, in `keepWidgetsWithSomethingToSay`, and
+ * any box — a group included — can be hidden by it. A panel hides a box the
+ * house says to hide exactly where the wall does; a box shown *for a while*
+ * it never draws, because one picture can stay up for an hour, and that is
+ * still ink moving, so the key is honoured rather than ignored.
+ */
+const SHOW_WHEN = 'showWhen';
+
+const OWN_HONOURS: Readonly<Record<string, readonly string[]>> = {
   clock: ['title', 'showTitle', 'align', 'clockFormat', 'showDate', 'variant', STYLE_INSET],
   // `showShifts` since plan item P5.4: the rota's short code beside the day
   // number, in one bit, whichever look the wall wears — so the switch moves
@@ -145,6 +156,10 @@ export const PANEL_HONOURS: Readonly<Record<string, readonly string[]>> = {
    */
   group: ['title', 'showTitle', 'layout', 'columns', STYLE_INSET],
 };
+
+export const PANEL_HONOURS: Readonly<Record<string, readonly string[]>> = Object.fromEntries(
+  Object.entries(OWN_HONOURS).map(([type, keys]) => [type, [...keys, SHOW_WHEN]]),
+);
 
 /**
  * What the ink lane offers, per type: density and shape, never identity.

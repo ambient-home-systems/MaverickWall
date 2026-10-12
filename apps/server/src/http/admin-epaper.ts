@@ -23,6 +23,7 @@ import { epaperOrientation, renderScreenFrame } from '../epaper/frame.js';
 import { toEpaperWidgets } from '../epaper/widgets.js';
 import { encodePng1bit } from '../epaper/png.js';
 import { householdSetUp } from '../modules/index.js';
+import { readConditions } from '../modules/homeassistant/conditions.js';
 import { checkbox, optionalText, parse, quarterTurn, text, z } from '../validation.js';
 import {
   layoutEditorMount,
@@ -1102,7 +1103,12 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
       const widgets =
         authored === undefined
           ? undefined
-          : toEpaperWidgets(keepWidgetsWithSomethingToSay(authored, householdSetUp(deps.db)));
+          : toEpaperWidgets(
+              keepWidgetsWithSomethingToSay(authored, {
+                ...householdSetUp(deps.db),
+                conditions: readConditions(deps.db, now(), true),
+              }),
+            );
       const frame = renderScreenFrame(deps.previewManifest(id) as Manifest, screen, widgets);
       c.header('cache-control', 'no-store');
       return c.body(bytesOf(Buffer.from(encodePng1bit(frame.fb))), 200, { 'content-type': 'image/png' });

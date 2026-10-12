@@ -2,6 +2,7 @@ import { currentPicture, upcomingPicture } from './wallpaper.js';
 import { UPDATE_RELOAD_KEY, pageVersion, reloadAllowed, reloadFresh, staggerMs, updateDue } from './update.js';
 import { pushUrl, startPush } from './push.js';
 import { activeLayout, refreshDue } from './wall-commands.js';
+import { shownAt } from './show-until.js';
 import { scheduledSlot, slotWidgets } from './canvas-schedule.js';
 import { createClock } from './clock.js';
 import {
@@ -416,7 +417,9 @@ function start(): void {
     // so a wall never swaps its canvas and its colours on different ticks.
     // Another wall's layout while one is being shown here, until its time is
     // up by this wall's own clock (plan item M1.3); this wall's own otherwise.
-    const canvas = pickCanvas(activeLayout(manifest, now), geo.layout, local);
+    const picked = pickCanvas(activeLayout(manifest, now), geo.layout, local);
+    // Less any box shown for a while whose time is up (plan item M6.5).
+    const canvas = { ...picked, widgets: shownAt(picked.widgets, now) };
     // Which theme is on the glass decides which resolution of a style lane
     // the boxes wear (RFC 014 §4.1) — the same `day` the root was just themed by.
     /*

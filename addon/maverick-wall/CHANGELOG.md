@@ -16,6 +16,19 @@
 
 ## Unreleased
 
+**Show a widget only when the house says so.** Every widget, and every group,
+now has "Show this widget" at the end of its Content settings in the layout editor:
+always, while a Home Assistant entity is in a state (the porch camera while the
+porch sensor is on), except while it is (the week view, except while the
+television is playing), or for a while after something happens (the front door
+for a minute after the doorbell rings, or a group for five minutes after an
+automation presses a button). A hidden widget keeps its place: choose "When
+this is hidden" to show another widget there instead. The wall follows Home
+Assistant within about a minute, and a widget shown for a while comes down on
+time even if the wall has lost its connection. An e-paper panel shows or hides
+a widget the same way, but never shows one "for a while", because its picture
+stays up too long.
+
 ## 1.4.0
 
 **The daytime theme can follow the sun.** Under the daytime theme on a wall's

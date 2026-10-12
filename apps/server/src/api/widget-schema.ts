@@ -6,6 +6,7 @@ import { GLYPH_KEYS } from '../glyphs.js';
 import { ROTATION_COLLECTIONS, isWallpaperId, rotationPictures, type RotationCollection } from '../wallpapers.js';
 import { ROTATION_EVERY } from './picture-rotation.js';
 import { QR_MAX_BYTES, qrBytes, qrKind, qrPayload, wifiSecurity } from './qr-payload.js';
+import { CONDITION_ENTITY_PATTERN, PULSE_MAX_S, PULSE_MIN_S, isMomentEntity } from './show-when.js';
 
 /**
  * A stored image's own name — 64 hex plus a known extension, the shape
@@ -708,8 +709,51 @@ export const whenEmptyBody = z
   .object({ type: z.enum(WIDGET_TYPES), config: whenEmptyConfigBody.optional() })
   .strict();
 
+/** The sentences a `showWhen` that cannot work is refused with (plan items M6.4, M6.5, M6.7). */
+export const SHOW_WHEN_NEEDS_STATE = 'Choose the state that shows this widget.';
+export const SHOW_WHEN_NEEDS_PULSE = 'Choose how long this widget shows after it happens.';
+export const SHOW_WHEN_NOT_PULSE = 'A widget hidden while something is true cannot also show for a while.';
+
+/**
+ * Show this box only while something in the house says so (plan items M6.4,
+ * M6.5 and M6.7) — see `show-when.ts`, which owns the reading.
+ *
+ * Beside `whenEmpty` rather than in the lanes, for the same two reasons: a
+ * panel's ink lane cannot override when a wall's box is there, and a fallback
+ * is what a hidden box draws, so a fallback with a condition of its own would
+ * be a box hidden behind a box hidden. Any type may carry one, a group
+ * included, which is what lets Home Assistant show or hide a whole group.
+ *
+ * An `event`, `button` or `input_button` entity's state is the instant it
+ * happened, so it takes a pulse and nothing else; every other entity names a
+ * state, and may be shown for a while after entering it, or hidden while it
+ * is in it — but not both, because "hide for a minute after" is not a thing
+ * anybody has asked a wall to do.
+ */
+const showWhenBody = z
+  .object({
+    entity: z.string().regex(CONDITION_ENTITY_PATTERN, 'Choose a Home Assistant entity from the list.'),
+    state: z.string().trim().min(1).max(64).optional(),
+    not: z.literal(true).optional(),
+    pulse: z.number().int().min(PULSE_MIN_S).max(PULSE_MAX_S).optional(),
+  })
+  .strict()
+  .superRefine((rule, ctx) => {
+    if (isMomentEntity(rule.entity)) {
+      if (rule.pulse === undefined) ctx.addIssue({ code: 'custom', path: ['pulse'], message: SHOW_WHEN_NEEDS_PULSE });
+      if (rule.state !== undefined || rule.not !== undefined) {
+        ctx.addIssue({ code: 'custom', path: ['state'], message: 'This entity reports when it happened, not a state.' });
+      }
+      return;
+    }
+    if (rule.state === undefined) ctx.addIssue({ code: 'custom', path: ['state'], message: SHOW_WHEN_NEEDS_STATE });
+    if (rule.not === true && rule.pulse !== undefined) {
+      ctx.addIssue({ code: 'custom', path: ['pulse'], message: SHOW_WHEN_NOT_PULSE });
+    }
+  });
+
 export const widgetConfigBody = laneConfigFields
-  .extend({ whenEmpty: whenEmptyBody.optional() })
+  .extend({ whenEmpty: whenEmptyBody.optional(), showWhen: showWhenBody.optional() })
   .strict()
   .superRefine(wholeConfig);
 

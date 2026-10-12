@@ -56,6 +56,7 @@ import { FORWARDED_FOR_HEADER, isFromHomeNetwork, resolveFrameSource } from './l
 import { readImage } from '../api/media.js';
 import { collectPanels, collectSignals } from '../modules/registry.js';
 import { allModules, householdSetUp, MODULES } from '../modules/index.js';
+import { readConditions } from '../modules/homeassistant/conditions.js';
 import {
   readTodoItemHandle,
   setTodoItemStatus,
@@ -1375,6 +1376,9 @@ export function createApp(deps: AppDeps): Hono {
       watchedTodoLists: setUp.todoLists,
       albums: readAlbumSlides(deps.db),
       playing: nowPlayingArt(deps.db),
+      // The house's state at this instant, for the boxes shown only while it
+      // says so (plan items M6.4, M6.5, M6.7).
+      conditions: readConditions(deps.db, at),
       /*
        * Evaluated per poll, from stored signals and stored rules — every wall
        * reads the same document, including which interrupts have been cleared.
@@ -1942,7 +1946,9 @@ export function createApp(deps: AppDeps): Hono {
         : toEpaperWidgets(
             keepWidgetsWithSomethingToSay(
               readLayoutWidgets(deps.db, canvasOwner, epaperOrientation(screen)),
-              householdSetUp(deps.db),
+              // A panel honours a box shown while the house says so, and never
+              // draws one shown for a while (plan items M6.4, M6.5).
+              { ...householdSetUp(deps.db), conditions: readConditions(deps.db, now(), true) },
             ),
           );
 

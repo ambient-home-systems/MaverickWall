@@ -39,6 +39,7 @@ import {
   type WatchedRow,
 } from '../modules/homeassistant/store.js';
 import { householdSetUp } from '../modules/index.js';
+import { conditionChoices } from '../modules/homeassistant/conditions.js';
 import { HOME_BLOCK as HOME_MODULE } from '../modules/homeassistant/index.js';
 import { COVER_CLASSES, wallActionsFor } from '../modules/homeassistant/services.js';
 import { checkScene, readWallActions } from '../modules/homeassistant/control.js';
@@ -762,6 +763,25 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       return c.redirect(`/admin/home-assistant/alerts/new?template=${encodeURIComponent(template)}`, 302);
     }
     return renderHub(c);
+  });
+
+  /**
+   * The entities a widget may be shown by, for the layout editor's "Show this
+   * widget" control (plan items M6.4, M6.5, M6.7).
+   *
+   * JSON, fetched by the editor when the control opens rather than carried in
+   * its bootstrap: asking Home Assistant for the whole house on every draw of
+   * a wall's page would make the page as slow as the house, for a control most
+   * households never open. A short wait, and an answer either way — no
+   * connection, or one that did not answer, is `connected: false` and the
+   * editor says so beside the control.
+   */
+  app.get('/admin/home-assistant/conditions.json', async (c: Context) => {
+    const resolved = resolveConnection(deps.db, deps.keyring);
+    if (!resolved.ok) return c.json({ connected: false, entities: [] });
+    const answer = await call(deps.fetcher, resolved.connection, '/states', 5_000);
+    if (!answer.ok) return c.json({ connected: false, entities: [] });
+    return c.json({ connected: true, entities: conditionChoices(answer.body) });
   });
 
   app.get('/admin/home-assistant/connection', async (c: Context) => renderConnection(c));

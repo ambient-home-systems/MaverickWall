@@ -2060,6 +2060,27 @@ export const haEntityCache = sqliteTable(
 );
 
 /**
+ * The state of each entity a widget is shown by (plan items M6.4, M6.5 and
+ * M6.7): `showWhen.entity` on a widget's config.
+ *
+ * Apart from `ha_entity_cache` because these are not readings: a doorbell's
+ * `event` entity or an `input_button` is no line anybody wants drawn, and
+ * what the omission needs of one is its state and when it last changed. The
+ * Home Assistant poll keeps exactly the entities a stored widget names and
+ * deletes the rest, so nothing here outlives the widget that asked for it.
+ *
+ * Read by the server only. The wall is told whether a box is shown, and until
+ * when; it is never told which entity decided it (rule 12).
+ */
+export const haConditionStates = sqliteTable('ha_condition_states', {
+  entityId: text('entity_id').primaryKey(),
+  state: text('state').notNull(),
+  /** Home Assistant's own `last_changed`, so a pulse is timed from the change and not from our poll. */
+  changedAt: integer('changed_at', { mode: 'number' }).notNull(),
+  readAt: integer('read_at', { mode: 'number' }).notNull(),
+});
+
+/**
  * What walls did to the house, for the last fourteen days (RFC 018 §7.4).
  *
  * One row per press Home Assistant was asked about — accepted by it or refused
