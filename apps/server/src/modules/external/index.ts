@@ -17,7 +17,10 @@ import {
 } from '../../api/external-modules.js';
 import { panelDataSchema } from './panel-data.js';
 import { signalDataSchema } from './signal-data.js';
+import { readBody, type SourceFormat } from './source-formats.js';
 import {
+  houseBody,
+  houseRequests,
   normaliseConfig,
   recipePolicy,
   recipeSchema,
@@ -29,6 +32,8 @@ import {
   runRecipeSignals,
   widgetConfig,
   withReadingValues,
+  type HouseRequest,
+  type HouseValue,
   type Recipe,
   type RecipeConfig,
   type RecipeSecrets,
@@ -186,25 +191,59 @@ async function pollRecipe(
     return row?.state ?? undefined;
   };
   const resolved = (config: RecipeConfig): RecipeConfig => withReadingValues(recipe, config, readingValue);
+  // A house source's readings (plan item M7.9): what the household calls each,
+  // what it says, its unit and when it last changed — and still only a reading
+  // the household watches. The entity id stays here.
+  const houseValue = (entityId: string): HouseValue | undefined => {
+    const row = db
+      .prepare(
+        `SELECT state, label, friendly_name, unit_of_measurement, last_changed_at
+           FROM ha_entity_cache WHERE entity_id = ? AND watched = 1`,
+      )
+      .get(entityId) as
+      | {
+          state: string | null;
+          label: string | null;
+          friendly_name: string | null;
+          unit_of_measurement: string | null;
+          last_changed_at: number | null;
+        }
+      | undefined;
+    if (row === undefined) return undefined;
+    const name = row.label ?? row.friendly_name;
+    return {
+      ...(name !== null ? { name } : {}),
+      ...(row.state !== null ? { state: row.state } : {}),
+      ...(row.unit_of_measurement !== null ? { unit: row.unit_of_measurement } : {}),
+      ...(row.last_changed_at !== null ? { changed: new Date(row.last_changed_at).toISOString() } : {}),
+    };
+  };
 
   interface Request {
     readonly config: RecipeConfig;
+    readonly house: HouseRequest[];
     install: boolean;
     readonly variants: string[];
   }
   const requests = new Map<string, Request>();
-  const join = (config: RecipeConfig, add: (request: Request) => void): void => {
-    const key = requestKey(recipe, config);
-    const request = requests.get(key) ?? { config, install: false, variants: [] };
+  // Two sets of settings share a read when they build the same requests and
+  // name the same readings for the house sources. The readings are compared by
+  // entity, from the settings as stored: by the time an address is built they
+  // have been turned into values, and two readings can say the same thing.
+  const join = (stored: RecipeConfig, add: (request: Request) => void): void => {
+    const config = resolved(stored);
+    const house = houseRequests(recipe, stored);
+    const key = house.length === 0 ? requestKey(recipe, config) : JSON.stringify([requestKey(recipe, config), house]);
+    const request = requests.get(key) ?? { config, house, install: false, variants: [] };
     add(request);
     requests.set(key, request);
   };
-  join(resolved(normaliseConfig(recipe, install)), (request) => {
+  join(normaliseConfig(recipe, install), (request) => {
     request.install = true;
   });
   const wanted = readModuleWidgetSettings(db, module.id);
   for (const [key, settings] of wanted) {
-    join(resolved(widgetConfig(recipe, install, settings)), (request) => request.variants.push(key));
+    join(widgetConfig(recipe, install, settings), (request) => request.variants.push(key));
   }
   pruneModuleVariants(db, module.id, new Set(wanted.keys()));
   const polled = new Map(readModuleVariants(db, module.id).map((row) => [row.variantKey, row.lastPolledAt]));
@@ -213,7 +252,7 @@ async function pollRecipe(
     const isDue =
       (request.install && due(module.lastPolledAt)) || request.variants.some((key) => due(polled.get(key) ?? 0));
     if (!isDue) continue;
-    const outcome = await readRequest(fetcher, keyring, module, recipe, request.config, now, timezone);
+    const outcome = await readRequest(fetcher, keyring, module, recipe, request, houseValue, now, timezone);
     if (request.install) {
       if (outcome.ok) writeExternalModulePanel(db, module.id, outcome.panel);
       else writeExternalModuleError(db, module.id, outcome.error);
@@ -243,53 +282,60 @@ async function readRequest(
   keyring: Keyring,
   module: ExternalModuleRow,
   recipe: Recipe,
-  config: RecipeConfig,
+  request: { readonly config: RecipeConfig; readonly house: readonly HouseRequest[] },
+  houseValue: (entityId: string) => HouseValue | undefined,
   now: number,
   timezone: string,
 ): Promise<
   | { ok: true; panel: unknown; body: unknown; sources: Record<string, unknown> }
   | { ok: false; error: string; body?: unknown; sources?: Record<string, unknown> }
 > {
+  const config = request.config;
   const url = resolveFetchUrl(recipe, config);
   // Decrypt the recipe's secrets here and nowhere else — they exist in memory
   // only for the length of this request, and only inside the headers.
   const secrets = decryptSecrets(keyring, module.secretsEnvelope);
   const headers = resolveHeaders(recipe, config, secrets);
-  const read = async (address: string, with_: Record<string, string>): Promise<{ ok: true; body: unknown } | { ok: false; why: 'answer' | 'json' }> => {
+  const read = async (
+    address: string,
+    with_: Record<string, string>,
+    format: SourceFormat,
+  ): Promise<{ ok: true; body: unknown } | { ok: false; why: string }> => {
+    // A feed or a document is whatever type its server calls it — RSS alone is
+    // served under five — so only JSON is held to its own; what it is is then
+    // decided by reading it.
     const response = await fetcher.fetch({
       url: address,
       policy: recipePolicy(recipe),
-      maxBytes: FETCH_LIMITS.json,
-      acceptContentTypes: ['application/json'],
+      maxBytes: format === 'json' ? FETCH_LIMITS.json : FETCH_LIMITS.feed,
+      ...(format === 'json' ? { acceptContentTypes: ['application/json'] } : {}),
       timeoutMs: 10_000,
       ...(Object.keys(with_).length > 0 ? { headers: with_ } : {}),
     });
-    if (response.status !== 'ok') return { ok: false, why: 'answer' };
-    try {
-      return { ok: true, body: JSON.parse(response.body) as unknown };
-    } catch {
-      return { ok: false, why: 'json' };
-    }
+    if (response.status !== 'ok') return { ok: false, why: 'did not answer' };
+    const body = readBody(format, response.body);
+    return body.ok ? { ok: true, body: body.body } : { ok: false, why: body.why };
   };
-  const main = await read(url, headers);
-  if (!main.ok) {
-    return { ok: false, error: main.why === 'answer' ? 'The recipe’s source did not answer.' : 'The source did not return JSON.' };
-  }
+  const main = await read(url, headers, recipe.fetch.format);
+  if (!main.ok) return { ok: false, error: `The recipe’s source ${main.why}.` };
   const body = main.body;
   // A recipe's further sources (plan item M7.7), each read the same way and
   // under the same policy. One that fails fails the read: a panel built from
   // half its data would draw a confident answer to a question it never asked.
   const sources: Record<string, unknown> = {};
   for (const source of resolveSources(recipe, config, secrets)) {
-    const got = await read(source.url, source.headers);
+    const got = await read(source.url, source.headers, source.format);
     if (!got.ok) {
-      const error = got.why === 'answer' ? `The recipe’s source “${source.name}” did not answer.` : `The source “${source.name}” did not return JSON.`;
+      const error = `The recipe’s source “${source.name}” ${got.why}.`;
       // No body either: a signal reading a source that did not answer would be
       // judged on nothing, so the last good signals stand.
       return { ok: false, error };
     }
     sources[source.name] = got.body;
   }
+  // The house's own sources ask nobody: they are what the last Home Assistant
+  // poll stored, read now.
+  for (const house of request.house) sources[house.name] = houseBody(house, houseValue);
   const panel = runRecipePanel(recipe, body, now, sources, timezone);
   return panel.ok ? { ok: true, panel: panel.panel, body, sources } : { ok: false, error: panel.error, body, sources };
 }

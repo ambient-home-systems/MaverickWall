@@ -16,6 +16,13 @@
 
 ## Unreleased
 
+**Recipes can read news feeds, XML and your house.** A recipe can now read an
+RSS or Atom news feed, or any XML document, as well as JSON, such as headlines
+beside the day's bin collection from your council's own XML. And it can read
+the Home Assistant readings you pick in its settings, so one widget can say
+what a feed says beside what your house says. The recipe only ever sees what a
+reading says, never which device it is, and only for readings you watch.
+
 **Recipes can colour their rows and write times your way.** A recipe can now
 turn what a feed says into its own words, so "on" reads "Running", and colour a
 row by it: green when something is running, the alert colour when it wants

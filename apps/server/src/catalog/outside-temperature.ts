@@ -28,6 +28,7 @@ export const entry: CatalogEntry = {
       url: 'https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m',
       intervalSeconds: 900,
       allowLan: false,
+      format: 'json',
     },
     panel: {
       kind: 'stat',
