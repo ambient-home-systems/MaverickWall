@@ -6077,10 +6077,9 @@ function boot(): void {
           ['stream', 'Live'],
         ],
         live ? 'stream' : 'snapshot',
-        (value) => {
-          setConfig(widget, 'cameraMode', value === 'stream' ? 'stream' : undefined);
-          refresh.hidden = value === 'stream';
-        },
+        // A segment's change rebuilds the panel, so the refresh below is shown
+        // or hidden by the line that builds it.
+        (value) => setConfig(widget, 'cameraMode', value === 'stream' ? 'stream' : undefined),
         'cameraMode',
       ),
     );
