@@ -46,6 +46,13 @@ const tone = z.enum(['active', 'alert', 'idle']);
  */
 const progress = z.number().finite().min(0).max(100);
 
+/**
+ * A short run of numbers (plan item M7.4), drawn as a sparkline: from 2 to 48
+ * of them, oldest first, and `null` for a gap the line breaks at. Finite or a
+ * gap and nothing else — a line through infinity is no picture of anything.
+ */
+const series = z.array(z.number().finite().nullable()).min(2).max(48);
+
 const reading = z
   .object({
     label: str(60),
@@ -54,18 +61,26 @@ const reading = z
     icon: str(4).optional(),
     tone: tone.optional(),
     progress: progress.optional(),
+    series: series.optional(),
   })
   .strict()
-  .transform(({ label, value, glyph, tone: rowTone, progress: rowProgress }) => ({
+  .transform(({ label, value, glyph, tone: rowTone, progress: rowProgress, series: rowSeries }) => ({
     label,
     value,
     ...(isGlyphKey(glyph) ? { glyph } : {}),
     ...(rowTone === undefined ? {} : { tone: rowTone }),
     ...(rowProgress === undefined ? {} : { progress: rowProgress }),
+    ...(rowSeries === undefined ? {} : { series: rowSeries }),
   }));
 
 const tile = z
-  .object({ label: str(60), value: str(60), tone: tone.optional(), progress: progress.optional() })
+  .object({
+    label: str(60),
+    value: str(60),
+    tone: tone.optional(),
+    progress: progress.optional(),
+    series: series.optional(),
+  })
   .strict();
 
 export const panelDataSchema = z.discriminatedUnion('kind', [
@@ -112,6 +127,23 @@ export const panelDataSchema = z.discriminatedUnion('kind', [
       tone: tone.optional(),
     })
     .strict(),
+  /*
+   * A small table (plan item M7.4): one to four named columns and up to twelve
+   * rows, every row exactly as many cells as there are columns. Fixed columns,
+   * so the wall can lay them out from the column count alone and a box too
+   * short for every row gives up whole rows, never a cell.
+   */
+  z
+    .object({
+      kind: z.literal('table'),
+      title: str(60).optional(),
+      columns: z.array(str(24)).min(1).max(4),
+      rows: z.array(z.array(str(40)).min(1).max(4)).min(1).max(12),
+    })
+    .strict()
+    .refine((table) => table.rows.every((row) => row.length === table.columns.length), {
+      message: 'Every row of a table has one cell for each column.',
+    }),
 ]);
 
 export type PanelData = z.infer<typeof panelDataSchema>;

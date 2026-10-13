@@ -134,4 +134,32 @@ describe('panelFrom', () => {
     expect(panelFrom({ kind: 'gauge', label: 'Full', value: '72%' })).toBeNull();
     expect(panelFrom({ kind: 'gauge', label: 'Full', value: '72%', progress: -3 })).toBeNull();
   });
+
+  it('keeps a row’s series it can draw, and drops one it cannot (M7.4)', () => {
+    expect(
+      panelFrom({
+        kind: 'readings',
+        items: [
+          { label: 'Temp', value: '21', series: [18, null, 21] },
+          { label: 'Rain', value: '0', series: [1] },
+          { label: 'Wind', value: '3', series: [1, 'gust'] },
+        ],
+      }),
+    ).toEqual({
+      kind: 'readings',
+      items: [
+        { label: 'Temp', value: '21', series: [18, null, 21] },
+        { label: 'Rain', value: '0' },
+        { label: 'Wind', value: '3' },
+      ],
+    });
+  });
+
+  it('shapes a table, dropping a ragged row and drawing nothing for one with no rows (M7.4)', () => {
+    expect(
+      panelFrom({ kind: 'table', title: 'Trains', columns: ['To', 'Due'], rows: [['Brighton', '08:20'], ['Lewes'], ['London', '08:12']] }),
+    ).toEqual({ kind: 'table', title: 'Trains', columns: ['To', 'Due'], rows: [['Brighton', '08:20'], ['London', '08:12']] });
+    expect(panelFrom({ kind: 'table', columns: ['To'], rows: [['a', 'b']] })).toBeNull();
+    expect(panelFrom({ kind: 'table', columns: [], rows: [] })).toBeNull();
+  });
 });

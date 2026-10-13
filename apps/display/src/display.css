@@ -5088,6 +5088,29 @@ img.wxi { display: block; object-fit: contain; }
  * side and capped at the clock's cap against the event text (decision D1):
  * the largest thing a module may draw is never larger than a clock may be.
  */
+/*
+ * A module row's line of numbers (plan item M7.4): the Home Assistant list's
+ * fixed slot, so values end at one edge whether or not a row sent numbers.
+ */
+.gp-spark { display: inline-block; flex: 0 0 auto; width: 4.5rem; height: 1.3rem; align-self: center; }
+/*
+ * A module's small table (plan item M7.4). Each row is a grid of the same
+ * fixed columns — the first twice the others — so the cells line up with no
+ * measuring; a heading row in the label's ink; a hairline between rows, the
+ * readings' own separation. A long cell wraps at a word rather than being cut.
+ */
+.gp-table { display: flex; flex-direction: column; font-size: 2rem; line-height: 1.15; }
+.gp-thead,
+.gp-trow {
+  display: grid;
+  grid-template-columns: var(--gp-template, minmax(0, 1fr));
+  gap: var(--s3);
+  padding: var(--s2) 0;
+}
+.gp-trow { border-top: 1px solid var(--rule); color: var(--ink); }
+.gp-thead { color: var(--muted); font-size: 0.8em; font-weight: 600; }
+.gp-cell { min-width: 0; overflow-wrap: break-word; }
+.gp-cell + .gp-cell { text-align: right; }
 .gp.gp-gauge { height: 100%; }
 .gp-dial {
   display: flex;

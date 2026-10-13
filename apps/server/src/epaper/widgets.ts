@@ -2548,8 +2548,99 @@ function drawPanel(
     return;
   }
   const fits = Math.max(1, Math.floor(box.h / lineH));
-  const lines = panelLines(panel, rows === undefined ? fits : Math.min(fits, rows)).map(asciiTitle);
+  const max = rows === undefined ? fits : Math.min(fits, rows);
+  /*
+   * A module's table (plan item M7.4): the column names, then a line a row,
+   * each cell at its column's own left edge — the first column twice the
+   * others, as on the wall — and cut to its own width so a long cell never
+   * runs into the next. The heading takes a line, so the rows are what is
+   * left; a box too short for a row draws the rows it has room for.
+   */
+  const table = panelTable(panel);
+  if (table !== undefined) {
+    const shares = table.columns.map((_, i) => (i === 0 ? 2 : 1));
+    const total = shares.reduce((sum, share) => sum + share, 0);
+    const gap = m.widget.inset;
+    const lefts: number[] = [];
+    const widths: number[] = [];
+    let x = box.x;
+    for (const share of shares) {
+      const w = Math.floor(((box.w - gap * (shares.length - 1)) * share) / total);
+      lefts.push(x);
+      widths.push(w);
+      x += w + gap;
+    }
+    const lines = [table.columns, ...table.rows.slice(0, Math.max(0, max - 1))];
+    let y = box.y;
+    for (const cells of lines) {
+      if (y + m.body.height > box.y + box.h) break;
+      cells.forEach((cell, i) => {
+        drawText(fb, lefts[i] ?? box.x, y, fit(asciiTitle(cell), widths[i] ?? 0, { rung: m.body }), { rung: m.body });
+      });
+      y += lineH;
+    }
+    return;
+  }
+  /*
+   * A row's line of numbers (plan item M7.4), in a slot of one width at the
+   * right of every row once any row has one — the Home Assistant list's rule —
+   * so every row's words end at one edge, and drawn by the same one-bit line.
+   */
+  const lined = panelRowSeries(panel);
+  if (lined !== undefined) {
+    const sparkW = Math.min(Math.floor(box.w / 3), measureText('000000', { rung: m.body }));
+    const textBox = { ...box, w: Math.max(1, box.w - sparkW - m.widget.inset) };
+    const shown = lined.slice(0, max);
+    drawLines(fb, m, shown.map((row) => asciiTitle(row.line)), textBox, m.body, 'left');
+    shown.forEach((row, i) => {
+      const y = box.y + i * lineH;
+      if (y + m.body.height <= box.y + box.h) drawSpark(fb, box.x + box.w - sparkW, y, sparkW, m.body.height, row.series);
+    });
+    return;
+  }
+  const lines = panelLines(panel, max).map(asciiTitle);
   drawLines(fb, m, lines.length > 0 ? lines : [empty], box, m.body, 'left');
+}
+
+/** A module panel's table, read tolerantly, or nothing when it is not one. */
+function panelTable(panel: unknown): { columns: string[]; rows: string[][] } | undefined {
+  if (panel === null || typeof panel !== 'object') return undefined;
+  const obj = panel as Record<string, unknown>;
+  if (obj.kind !== 'table' || !Array.isArray(obj.columns) || !Array.isArray(obj.rows)) return undefined;
+  const columns = obj.columns.filter((c): c is string => typeof c === 'string').slice(0, 4);
+  if (columns.length === 0) return undefined;
+  const rows = obj.rows.filter(
+    (row): row is string[] =>
+      Array.isArray(row) && row.length === columns.length && row.every((cell) => typeof cell === 'string'),
+  );
+  return { columns, rows };
+}
+
+/**
+ * A module panel's rows with their lines of numbers, or nothing when no row has
+ * one — so a panel whose module sends none draws exactly what it drew before.
+ */
+function panelRowSeries(
+  panel: unknown,
+): { line: string; series: readonly (number | null)[] | undefined }[] | undefined {
+  if (panel === null || typeof panel !== 'object') return undefined;
+  const items = (panel as Record<string, unknown>).items;
+  if (!Array.isArray(items)) return undefined;
+  const rows: { line: string; series: readonly (number | null)[] | undefined }[] = [];
+  let any = false;
+  for (const entry of items) {
+    if (entry === null || typeof entry !== 'object') continue;
+    const o = entry as Record<string, unknown>;
+    const label = typeof o.label === 'string' ? o.label : '';
+    const value = typeof o.value === 'string' ? o.value : '';
+    const words = [label, value].filter((p) => p !== '').join(': ');
+    if (words === '') continue;
+    const line = o.tone === 'alert' ? `! ${words}` : words;
+    const series = Array.isArray(o.series) ? (o.series as (number | null)[]) : undefined;
+    if (series !== undefined) any = true;
+    rows.push({ line, series });
+  }
+  return any ? rows : undefined;
 }
 
 /** A module panel's gauge, read tolerantly, or nothing when it is not one this panel can draw. */

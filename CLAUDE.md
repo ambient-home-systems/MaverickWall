@@ -11788,6 +11788,45 @@ the panel's gauge drawing removed, the fallback printed the panel's fields,
 and the ink counts happened to land in range; the test now looks for the
 bar's full-width rows.
 
+**A module can draw a line of numbers and a small table (plan item M7.4).**
+A `readings` or `tiles` row may carry `series`, 2 to 48 finite numbers or
+`null` gaps, oldest first. The wall draws it with the Home Assistant
+sparkline (`sparkNode`, M6.10), in the list look's fixed slot at the end of the
+row. Once any row has one, every row gets the slot, empty where no numbers came,
+so every value ends at one edge and a row keeps its place when its module
+sends nothing this time. `sparkNode` now takes what a screen reader is told the
+line runs from, because a module's line is not "the last day". A new `table`
+panel has 1 to 4 named columns and up to 12 rows, each exactly one cell per
+column: the schema refuses a ragged row, and the wall's reader drops one rather
+than padding it. Each row is a grid of the same fixed columns, the first twice
+the others, built as a custom property by the renderer because a `repeat()`
+count cannot be a `calc()`. So cells line up without measuring anything. A long
+cell wraps at a word and is never cut, and the belt gives up whole rows in a
+box too short for every row. A panel draws the line with the one-bit
+`drawSpark` in a slot at the right of every row, once any row has one, and the
+table as columns at the same 2:1 shares, each cell cut to its column. A panel
+whose rows send no numbers draws exactly the frame it drew. Recipes cannot make
+either until they can make numbers and arrays (M7.7).
+
+**Measured.** `browser-module-tone.test.ts` grew a third test on the same wall,
+now with a table and a too-short table beside the rest. It checks:
+- the slot is on every row at one left edge and one width, and values end at
+  one edge;
+- the soil's line breaks at its gap into two runs, and a row with no numbers
+  draws none;
+- the table's cells line up at both edges in every column, and the first column
+  is twice the others;
+- the 37-character cell wraps uncut;
+- the short box hides whole rows and draws none past its foot.
+
+Its fixtures are now held to `panelDataSchema` before they are stored. The
+first draft wrote a 42-character cell straight to the database, past the poll
+that would have refused it, and the wall's reader cut it to 40, which read as a
+wrapping fault. `panel-data.test.ts` and the display's `panel.test.ts` gain two
+tests each. `epaper-proportional.test.ts` gains three: the line is in its slot
+and follows the numbers, a panel without numbers is unchanged, and the table
+draws at its column edges. Ten mutations were checked and all ten are red.
+
 ---
 
 ## Open decisions

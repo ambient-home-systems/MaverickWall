@@ -1348,6 +1348,8 @@ export interface PanelReading {
   readonly tone?: PanelTone;
   /** How far along it is, 0–100 (plan item M7.3): a bar along the row's foot. */
   readonly progress?: number;
+  /** A short run of numbers, oldest first (plan item M7.4): a sparkline. */
+  readonly series?: readonly (number | null)[];
 }
 export type PanelTone = 'active' | 'alert' | 'idle';
 export interface PanelTile {
@@ -1355,6 +1357,7 @@ export interface PanelTile {
   readonly value: string;
   readonly tone?: PanelTone;
   readonly progress?: number;
+  readonly series?: readonly (number | null)[];
 }
 export type PanelData =
   | { readonly kind: 'readings'; readonly title?: string; readonly items: readonly PanelReading[] }
@@ -1368,7 +1371,48 @@ export type PanelData =
       readonly value: string;
       readonly progress: number;
       readonly tone?: PanelTone;
+    }
+  | {
+      readonly kind: 'table';
+      readonly title?: string;
+      readonly columns: readonly string[];
+      readonly rows: readonly (readonly string[])[];
     };
+
+/**
+ * A run of numbers this bundle can draw as a line, or nothing: 2 to 48 of
+ * them, each finite or a gap. Anything else drops the line and keeps the row.
+ */
+function seriesOf(raw: unknown): (number | null)[] | undefined {
+  if (!Array.isArray(raw) || raw.length < 2 || raw.length > 48) return undefined;
+  const out: (number | null)[] = [];
+  for (const point of raw) {
+    if (point === null) out.push(null);
+    else if (typeof point === 'number' && Number.isFinite(point)) out.push(point);
+    else return undefined;
+  }
+  return out;
+}
+
+/** A table's cells, read as untrusted: a row with the wrong number of cells is dropped, not padded. */
+function tableOf(rawColumns: unknown, rawRows: unknown): { columns: string[]; rows: string[][] } | undefined {
+  if (!Array.isArray(rawColumns) || !Array.isArray(rawRows)) return undefined;
+  const columns: string[] = [];
+  for (const column of rawColumns.slice(0, 4)) {
+    const name = text(column, 24);
+    if (name === undefined) return undefined;
+    columns.push(name);
+  }
+  if (columns.length === 0) return undefined;
+  const rows: string[][] = [];
+  for (const raw of rawRows.slice(0, 12)) {
+    if (!Array.isArray(raw) || raw.length !== columns.length) continue;
+    const cells = raw.map((cell) => (typeof cell === 'string' ? text(cell, 40) ?? '' : undefined));
+    if (cells.some((cell) => cell === undefined)) continue;
+    rows.push(cells as string[]);
+  }
+  return rows.length === 0 ? undefined : { columns, rows };
+}
 
 /** A percentage this bundle can draw, or nothing: a bar past its end is a bar saying something else. */
 function percentOf(raw: unknown): number | undefined {
@@ -1393,12 +1437,14 @@ function readPanelItems(raw: unknown, withGlyph: boolean): PanelReading[] {
     // name a fourth, and an unknown tone draws as the row it always was.
     const tone = toneOf(row['tone']);
     const progress = percentOf(row['progress']);
+    const series = seriesOf(row['series']);
     items.push({
       label,
       value,
       ...(glyph === undefined ? {} : { glyph }),
       ...(tone === undefined ? {} : { tone }),
       ...(progress === undefined ? {} : { progress }),
+      ...(series === undefined ? {} : { series }),
     });
   }
   return items;
@@ -1450,6 +1496,10 @@ export function panelFrom(raw: unknown): PanelData | null {
       if (label === undefined || value === undefined || progress === undefined) return null;
       const tone = toneOf(panel['tone']);
       return { kind: 'gauge', label, value, progress, ...(tone === undefined ? {} : { tone }), ...base } as PanelData;
+    }
+    case 'table': {
+      const table = tableOf(panel['columns'], panel['rows']);
+      return table === undefined ? null : ({ kind: 'table', ...table, ...base } as PanelData);
     }
     default:
       return null;
