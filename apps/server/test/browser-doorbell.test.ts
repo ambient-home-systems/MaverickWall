@@ -36,12 +36,15 @@ const facts = (page: Page) =>
     return {
       takeover: document.querySelector('#wall .screen-alert.has-camera') !== null,
       canvas: document.querySelector('#wall .canvas') !== null,
-      line: document.querySelector('#wall .alert-line')?.textContent ?? '',
+      words: document.querySelector('#wall .alert-line')?.textContent ?? '',
       layerShown: document.getElementById('camera-layer')?.hidden === false,
       live: document.querySelector('#camera-layer .camera-pic.is-live canvas') !== null,
       picture: r(pic),
       box: r(document.querySelector('#wall .alert-camera')),
       ack: r(document.querySelector('#wall .alert-ack')),
+      line: r(document.querySelector('#wall .alert-line')),
+      width: window.innerWidth,
+      height: window.innerHeight,
     };
   });
 
@@ -77,7 +80,32 @@ describe('a doorbell on a wall', () => {
       app.db.prepare(`UPDATE screens SET allow_dismiss = 1 WHERE kind IS NOT 'epaper'`).run();
 
       // The calendar first, with nothing ringing.
-      const opened = await loadWallSettled(screen, { width: 1080, height: 1920 }, { clock: 'installed' });
+      /*
+       * The wall's own clock offset, as it takes it: the server's time off
+       * each manifest's header against the device clock the moment the answer
+       * arrives (`clock.ts`). Recorded in the page rather than estimated by a
+       * second request, which the harness holds for the fonts by a different
+       * amount and so reads a different offset by up to seconds.
+       */
+      const opened = await loadWallSettled(
+        screen,
+        { width: 1080, height: 1920 },
+        {
+          clock: 'installed',
+          beforeLoad: (context) =>
+            context.addInitScript(() => {
+              const original = window.fetch.bind(window);
+              window.fetch = async (...args: Parameters<typeof fetch>) => {
+                const response = await original(...args);
+                const server = Number(response.headers.get('x-server-time'));
+                if (String(args[0]).includes('/d/manifest') && Number.isFinite(server) && server > 0) {
+                  (window as unknown as { __offset: number }).__offset = server - Date.now();
+                }
+                return response;
+              };
+            }),
+        },
+      );
       try {
         const page = opened.page;
         const asked: string[] = [];
@@ -108,16 +136,15 @@ describe('a doorbell on a wall', () => {
          * this test moves, so what is left is counted in what it moves.
          */
         const left = await page.evaluate(async () => {
-          const response = await fetch('/d/manifest');
-          const server = Number(response.headers.get('x-server-time'));
-          const offset = server - Date.now();
-          const body = (await response.json()) as { interrupts: { until?: number }[] };
-          return (body.interrupts[0]?.until ?? 0) - (Date.now() + offset);
+          const offset = (window as unknown as { __offset: number }).__offset;
+          const wallNow = Date.now() + offset;
+          const body = (await (await fetch('/d/manifest')).json()) as { interrupts: { until?: number }[] };
+          return (body.interrupts[0]?.until ?? 0) - wallNow;
         });
         expect(left).toBeGreaterThan(40_000);
         const up = await facts(page);
         expect(up.takeover).toBe(true);
-        expect(up.line).toBe('Front door');
+        expect(up.words).toBe('Front door');
         expect(up.layerShown).toBe(true);
         // The picture covers the takeover's own box, exactly, and stops above the OK.
         expect(up.picture).toEqual(up.box);
@@ -125,6 +152,13 @@ describe('a doorbell on a wall', () => {
         expect(up.ack).toBeDefined();
         const [, ackY = 0] = up.ack ?? [];
         expect(picY + picH).toBeLessThanOrEqual(ackY);
+        // Above the words and across the wall, never squeezed in beside them.
+        const [, lineY = 0] = up.line ?? [];
+        expect(picY + picH).toBeLessThanOrEqual(lineY);
+        const [, , picW = 0] = up.picture ?? [];
+        expect(picW).toBeGreaterThan(up.width * 0.85);
+        // And most of the wall's height: the door is what the wall is for now.
+        expect(picH).toBeGreaterThan(up.height * 0.5);
 
         // A rebuild keeps the one stream.
         const before = asked.length;

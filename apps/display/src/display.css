@@ -563,7 +563,8 @@ body {
  * the words, which keep the event's line and the OK. The picture is drawn on
  * the camera layer over `.alert-camera`, so the OK below it is never covered.
  */
-.screen-alert.has-camera { flex-direction: column; align-items: stretch; gap: 1.5rem; padding: 1.5rem; }
+/* `.screen` is already a column, so the camera sits above the words. */
+.screen-alert.has-camera { align-items: stretch; gap: 1.5rem; padding: 1.5rem; }
 .screen-alert.has-camera .alert-camera {
   flex: 1 1 0; min-height: 0; width: 100%; height: auto;
   border-radius: var(--radius); background: var(--panel);
