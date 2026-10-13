@@ -3681,6 +3681,58 @@ img.wxi { display: block; object-fit: contain; }
 }
 
 /*
+ * A stack's swap button (plan item M6.6): a row of dots in the group's
+ * bottom-right corner, one per widget in the stack, the one showing filled.
+ *
+ * Out of flow, so it costs the widget beneath it no row and moves no
+ * rectangle — the rule a current-time hairline and a progress bar already
+ * keep. It sits on the theme's `--panel` with a hairline, so the dots read
+ * over whatever the widget draws in that corner, and is sized in the
+ * scaffold role rather than in pixels, so it is the same angle at the
+ * reader's eye on every panel. Both focus selectors, for `.td-tick`'s reason:
+ * a wall has no cursor, and the ring is the only thing that says where the OK
+ * key will land.
+ */
+.fw-stack-swap {
+  position: absolute;
+  right: var(--s2);
+  bottom: var(--s2);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  margin: 0;
+  padding: 0.45em 0.6em;
+  font: inherit;
+  font-size: var(--t-wall-scaffold, 1.25rem);
+  line-height: 1;
+  color: var(--ink-scaffold);
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 1em;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+/* A target a fingertip can find, grown behind the dots rather than by making
+   them larger: the button is a label on the widget, not the widget. */
+.fw-stack-swap::after {
+  content: "";
+  position: absolute;
+  inset: -0.6em;
+}
+.fw-stack-dot {
+  display: block;
+  width: 0.5em;
+  height: 0.5em;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+}
+.fw-stack-dot.on { background: var(--accent); border-color: var(--accent); }
+.fw-stack-swap:focus,
+.fw-stack-swap:focus-visible { outline: 0.2rem solid var(--accent); outline-offset: 0.15rem; }
+
+/*
  * The widget ground (plan item P6.3): the theme's own `--panel` behind each
  * widget, over a wallpaper or anywhere the household asks for it.
  *

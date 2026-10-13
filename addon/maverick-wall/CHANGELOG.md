@@ -26,6 +26,13 @@ by itself; Release lets it try again at once. An account locked out of its
 codes is now told it is fifteen minutes, not a minute, and that another admin
 can release it.
 
+**Two widgets can share a box and take turns.** Group them and choose
+**Stack** under the group's Arrange: each one fills the box, the wall shows
+the first, and a tap on the dots in the corner shows the next. It is a look
+at that wall and nothing else: it changes no other wall, survives the wall's
+own redraw, and a reload shows the first again. An e-paper panel shows the
+first.
+
 ## 1.7.0
 
 **More than one account, and a second step at sign-in.** System › Accounts

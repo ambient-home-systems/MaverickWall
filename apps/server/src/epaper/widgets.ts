@@ -70,7 +70,7 @@ import { calendarsOf } from './calendar-filter.js';
 import { variantOf } from './variants.js';
 import { mediaFollowed, sparkHeights, sparkRuns, statusParts } from '../api/status-card.js';
 import { withInk } from './honours.js';
-import { childCells, groupChildren, topLevelWidgets } from './group-cells.js';
+import { childCells, drawnChildren, groupChildren, topLevelWidgets } from './group-cells.js';
 import { clockLabel, type EpaperModel } from './viewmodel.js';
 import { drawAnalogueFace } from './clock-face.js';
 import { encodeQr } from '../http/qr.js';
@@ -3358,9 +3358,12 @@ export function renderFreeformEpaper(
     }
     const members = widget.id === undefined ? [] : (children.get(widget.id) ?? []);
     const cells = childCells(config, members);
+    // A stack draws its front widget (plan item M6.6): a panel cannot be
+    // tapped, so it never has another to show.
+    const drawn = new Set(drawnChildren(config, members));
     members.forEach((child, index) => {
       const cell = cells[index];
-      if (cell === undefined) return;
+      if (cell === undefined || !drawn.has(child)) return;
       const childBox = cellBox(inner, cell);
       recordRegion(regions, `child:${position}:${index}`, childBox);
       if (childBox.w < 16 || childBox.h < 16) return;

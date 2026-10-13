@@ -45,7 +45,7 @@ import {
   solveGlassAlpha,
   type Backdrop,
 } from './glass-alpha.js';
-import { childCells, groupChildren, topLevelWidgets } from './group-cells.js';
+import { childCells, drawnChildren, groupChildren, groupLayoutOf, nextInStack, topLevelWidgets } from './group-cells.js';
 import { applyStyleTokens, styleTokensOf } from './widget-style.js';
 import { encodeQr } from './qr.js';
 import { qrCaption, qrKind, qrPasswordLine, qrPayload } from './qr-payload.js';
@@ -6146,6 +6146,37 @@ function agendaEventsAt(
 }
 
 /**
+ * A stack's swap button (plan item M6.6): one dot per widget in the stack,
+ * the one showing filled, and a press shows the next — round to the front
+ * after the last. A real `<button>`, so a finger, a remote's OK key and a
+ * keyboard all reach it; out of flow in the group's corner, so it costs no
+ * child a row and moves no rectangle. Nothing for a stack of one, which has
+ * nothing to swap to. What it shows is this browser's alone: no server is
+ * told, and a reload puts the front back.
+ */
+function stackSwap(
+  groupId: string,
+  members: readonly { readonly id: string }[],
+  shown: string | undefined,
+): HTMLElement | undefined {
+  const next = nextInStack(members, shown);
+  if (next === undefined) return undefined;
+  const at = Math.max(0, members.findIndex((child) => child.id === shown));
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'fw-stack-swap';
+  button.setAttribute('data-stack-swap', groupId);
+  button.setAttribute('data-stack-next', next.id);
+  button.setAttribute('aria-label', `Show the next widget (${at + 1} of ${members.length} showing)`);
+  members.forEach((_, index) => {
+    const dot = el('span', index === at ? 'fw-stack-dot on' : 'fw-stack-dot');
+    dot.setAttribute('aria-hidden', 'true');
+    button.appendChild(dot);
+  });
+  return button;
+}
+
+/**
  * The most events an agenda will ever be asked to draw.
  *
  * The same 50 the household's own `count` is clamped to, so the box cannot ask
@@ -6477,9 +6508,13 @@ export function renderFreeform(
       // From the order for a row, a column or a grid; from each child's own
       // stored fractions for a `free` group — the same table on both media.
       const cells = childCells(widget.config, members);
+      // A stack draws one of them (plan item M6.6): the one a tap chose, else
+      // the front. Its cell is the whole inner box whichever it is.
+      const shown = model.stacks[widget.id];
+      const drawn = new Set(drawnChildren(widget.config, members, shown));
       members.forEach((child, index) => {
         const cell = cells[index];
-        if (cell === undefined) return;
+        if (cell === undefined || !drawn.has(child)) return;
         const childBox = buildBox(
           child,
           { left: pct(cell.x), top: pct(cell.y), width: pct(cell.w), height: pct(cell.h) },
@@ -6500,6 +6535,10 @@ export function renderFreeform(
         inner.appendChild(el('div', 'fw-empty', 'Nothing to show yet.'));
       }
       box.appendChild(contentWithTitle(inner, widget.config));
+      if (groupLayoutOf(widget.config) === 'stack') {
+        const swap = stackSwap(widget.id, members, shown);
+        if (swap !== undefined) box.appendChild(swap);
+      }
     } else {
       fillBox(box, widget);
     }
