@@ -184,6 +184,20 @@ describe('a camera’s live stream', () => {
     await hall.stop();
   });
 
+  it('hands a wall joining a quiet camera the latest frame at once', async () => {
+    const h = await harness();
+    const k = frames(await h.wall('kitchen', `/d/camera/${h.handle}/stream`));
+    await until(() => k.got.length >= 2);
+    // The camera stops sending: a wall joining now has only the hub's latest frame to start from.
+    h.ha.streamQuiet = true;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const hall = frames(await h.wall('hall', `/d/camera/${h.handle}/stream`));
+    await until(() => hall.got.length >= 1, 300);
+    expect(sameAs(hall.got[0], CAMERA_FRAMES.a) || sameAs(hall.got[0], CAMERA_FRAMES.b)).toBe(true);
+    await k.stop();
+    await hall.stop();
+  });
+
   it('keeps a fast wall flowing while another reads nothing, on one socket', async () => {
     const h = await harness();
     // The hall opens a stream and never reads a byte of it.
@@ -216,7 +230,9 @@ describe('a camera’s live stream', () => {
     const k = frames(await h.wall('kitchen', `/d/camera/${h.handle}/stream`));
     await until(() => k.got.length >= 2);
     h.ha.streamQuiet = true;
-    await until(() => h.ha.streamOpens >= 2, 5_000);
+    // The third open is the one that matters: the second socket said nothing
+    // from its first byte, and only the idle limit taken at the open can close it.
+    await until(() => h.ha.streamOpens >= 3, 5_000);
     h.ha.streamQuiet = false;
     const seen = k.got.length;
     await until(() => k.got.length > seen + 2, 5_000);
