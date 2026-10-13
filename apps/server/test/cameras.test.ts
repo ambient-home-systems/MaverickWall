@@ -231,19 +231,24 @@ describe('what a wall is given', () => {
   it('leaves out a widget whose camera was removed, and keeps one with none chosen yet', async () => {
     const h = await harness();
     const handle = await addDoor(h);
+    // A second camera stays, so the module is still ready and only the removed
+    // handle can be what leaves the box out.
+    const kept = watchCamera(h.db, { entityId: 'camera.garden', name: 'Garden' }, Date.now());
+    if (!kept.ok) throw new Error(kept.message);
     h.place({ id: 'cam-1', screen: 'kitchen', config: { camera: handle } });
+    h.place({ id: 'cam-kept', screen: 'kitchen', config: { camera: kept.handle } });
     h.place({ id: 'cam-none', screen: 'kitchen', config: {} });
     h.place({ id: 'note', screen: 'kitchen', type: 'notes', config: { text: 'Hello' } });
     const ids = async (): Promise<string[]> =>
       ((await (await h.wall('kitchen', '/d/manifest')).json()) as { layout: { portrait: { widgets: { id: string }[] } } }).layout.portrait.widgets.map(
         (widget) => widget.id,
       );
-    expect(await ids()).toEqual(expect.arrayContaining(['cam-1', 'cam-none', 'note']));
+    expect(await ids()).toEqual(expect.arrayContaining(['cam-1', 'cam-kept', 'cam-none', 'note']));
     const removed = await h.form(`/admin/home-assistant/cameras/${handle}/remove`, {});
     expect(removed.headers.get('location')).toContain('saved=ha-camera-removed');
     const after = await ids();
     expect(after).not.toContain('cam-1');
-    expect(after).toEqual(expect.arrayContaining(['cam-none', 'note']));
+    expect(after).toEqual(expect.arrayContaining(['cam-kept', 'cam-none', 'note']));
   });
 });
 
