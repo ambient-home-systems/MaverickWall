@@ -12030,6 +12030,49 @@ moved the code under them. Counted from this change against M7.5's 5982 over
 **Still unproven where it counts:** no real feed has been filtered on a kitchen
 wall.
 
+**A recipe can turn a feed's words into its own, colour a row by them, and
+write numbers and times the way the wall does (plan item M7.8).**
+
+- **`lookups`** is up to eight tables of up to fifty entries each. `map:TABLE`
+  reads a value through one, and `*` is the entry for a value the table does
+  not name. Without a `*`, such a value is said as itself. Entries are words,
+  never templates, so a table cannot reach into the feed. A `map:` naming a
+  table the recipe does not declare is refused at parse.
+  `placeholderFormats` walks the panel and the signals the way
+  `selectorPaths` does.
+- **A list's and a timeline's rows take `tone: { from, map, default }`.** The
+  map's words are a Zod enum of the three tones. A value neither the map nor
+  `default` names gives a row with no tone, which is the plain row. It is a
+  lookup and not a comparison, for the reason a condition is one.
+- **Four formatters** join the closed allowlist:
+  - `number:N` groups thousands to 0 to 6 places;
+  - `duration:UNIT` writes the wall's own countdown words, from `ms`, `s`,
+    `min` or `h`;
+  - `time` is the clock time in the **household's zone**, `time:12` for
+    twelve hours;
+  - `plural:WORD` or `plural:WORD,WORDS`, where one is singular and nought is
+    plural.
+
+  A formatter's third argument is now a context (`now`, `timezone`, the
+  recipe's `lookups`) rather than `now` alone. `pollRecipe` reads
+  `household_settings.timezone` and hands it to the panel and the signals.
+  Without a row, the zone is `DEFAULT_TIMEZONE`, and a zone this runtime does
+  not know falls back to UTC rather than throwing.
+
+**Measured.** `recipe-formatters.test.ts` (13) covers the schema's edges, each
+formatter's words, signals, and tones on readings, tiles and timelines. It also
+polls a real recipe through the real job and fetcher at a loopback feed that
+speaks UTC, with the household in London. 21 mutations were checked and all 21
+are red. Nine of them first failed to build because they left a variable
+unread, and were re-aimed to keep it read. **6005 tests passing, 1 red and 2
+skipped, over 452 files**: calendar 153 (1 skipped) over 10 · core 327 over
+9 · display 1101 over 72 · server 4424 (1 skipped) over 361, measured with
+`pnpm test` and a real Chromium. Against M7.7's 5992 over 451, which was
+counted rather than measured, that is +13 and +1, this change's own count.
+The one red is `browser-glass`'s striped-picture case, red on a clean `main`
+in this container as before. **Still unproven where it counts:** no real feed
+has been coloured on a kitchen wall.
+
 ---
 
 ## Open decisions

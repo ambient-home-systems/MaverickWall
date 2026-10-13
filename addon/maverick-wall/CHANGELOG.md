@@ -16,6 +16,14 @@
 
 ## Unreleased
 
+**Recipes can colour their rows and write times your way.** A recipe can now
+turn what a feed says into its own words, so "on" reads "Running", and colour a
+row by it: green when something is running, the alert colour when it wants
+somebody. Numbers can have their thousands grouped ("12,345"), a length of time
+reads the way the wall's own countdowns do ("1 h 20 min"), a count carries its
+noun ("3 trains"), and a time from a feed that speaks UTC is shown in your own
+timezone.
+
 **Recipes can choose their rows and read more than one feed.** A recipe can now
 draw only the rows that match, such as the trains that are not cancelled or the
 readings over a level. It can put them in order and keep the first few, and when

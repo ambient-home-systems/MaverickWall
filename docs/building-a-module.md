@@ -406,8 +406,9 @@ lets Maverick Wall run it in-process safely.
   `bitcoin.gbp`, `results.items[0].name`. Traversal only.
 - **Formatters** are a fixed set: `upper`, `lower`, `trim`, `round:N`, `int`,
   `currency:GBP` (also USD/EUR/JPY), `truncate:N`, `date:relative`,
-  `date:short`, `default:TEXT`. A formatter this list does not have is a
-  rejected recipe, not a broken panel.
+  `date:short`, `default:TEXT`, `number:N`, `duration:UNIT`, `time`,
+  `plural:WORD` and `map:TABLE` (see below). A formatter this list does not
+  have is a rejected recipe, not a broken panel.
 - **`config`** (optional) declares fields a household fills in; reference them in
   the URL as `{key}`:
   ```json
@@ -518,6 +519,58 @@ does: in a template, in a `for`, in a condition and in a signal's `when`.
 not declare is rejected. When any of its feeds does not answer, the whole read
 fails with that source's name in the error, and the wall keeps its last good
 panel. The install page names every host the recipe asks.
+
+### Words and colours from what the feed says
+
+Four formatters write numbers and times the way the wall does:
+
+- **`number:N`** groups thousands to `N` places: `12345.6` is `12,345.60` with
+  `number:2`. `N` is 0 to 6, and 0 when left out.
+- **`duration:UNIT`** says a length of time in the wall's own words: "45 s",
+  "12 min", "1 h 20 min", "3 days". `UNIT` is what the feed counts in: `ms`,
+  `s` (the default), `min` or `h`. A length has no direction, so a negative one
+  is said as its size; "ago" or "left" is yours to write.
+- **`time`** is the clock time of an instant in the **household's own zone**,
+  so a feed that speaks UTC reads like the kitchen clock: `14:05`, or `2:05 pm`
+  with `time:12`.
+- **`plural:WORD`** writes a count with its noun: "1 train", "3 trains".
+  `plural:child,children` is for a noun that does not take an s. One is
+  singular and every other count plural, nought included.
+
+A recipe may declare up to eight **lookup tables** under `lookups`, and
+`map:TABLE` turns a value into that table's words. A list's rows can take a
+**`tone`** the same way, so a row is coloured by what the thing is doing:
+
+```json
+{
+  "name": "Plant room",
+  "contract": 1,
+  "fetch": { "url": "https://plant.example.com/status" },
+  "lookups": { "status": { "on": "Running", "off": "Stopped", "*": "Needs a look" } },
+  "panel": {
+    "kind": "readings",
+    "items": {
+      "for": "machines",
+      "label": "{name}",
+      "value": "{state | map:status} since {since | time}",
+      "tone": { "from": "state", "map": { "on": "active", "fault": "alert" }, "default": "idle" }
+    }
+  }
+}
+```
+
+- A table holds 1 to 50 entries, each a value's words. Words, not templates: a
+  table cannot reach into the feed. `*` is the entry for a value the table does
+  not name; with no `*`, such a value is said as itself. A `map:` naming a
+  table the recipe does not declare is a rejected recipe.
+- A row's `tone` looks the value at `from` up in `map`, whose words can only be
+  `active`, `alert` or `idle`. `default` is the tone of a value the map does
+  not name; with no `default`, that row has no tone and is drawn plain. A
+  timeline's items take a `tone` too. See [A row's `tone`](#a-rows-tone) for
+  what each looks like.
+
+A lookup is a table and never a comparison, for the reason a condition is one:
+`on → active` cannot grow into code.
 
 ### A recipe can raise an alert
 
