@@ -1,4 +1,5 @@
 import type { Context, Hono } from 'hono';
+import { editorModules } from './module-settings.js';
 import { immichPhoto } from '../modules/immich/store.js';
 import { folderPhoto } from '../modules/folder/store.js';
 import { artworkPhoto } from '../modules/homeassistant/artwork.js';
@@ -702,7 +703,7 @@ import {
   themeName,
   THEMES,
 } from './theme-cards.js';
-import { readEnabledExternalModules, readExternalModules } from '../api/external-modules.js';
+import { readExternalModules, widgetSettings } from '../api/external-modules.js';
 import { readHaSettings, watchedReadingChoices } from '../modules/homeassistant/store.js';
 import { resolveConnection } from '../modules/homeassistant/client.js';
 import { fetchCalendarEntities } from '../modules/homeassistant/index.js';
@@ -3735,6 +3736,12 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       },
       slot,
     );
+    // A Module widget that sets its own settings (plan item M7.6) is read on
+    // the module's next poll; bring it forward, so the box the household just
+    // set up does not wait five minutes to say anything.
+    if (shaped.value.widgets.some((w) => w.type === 'external' && widgetSettings(w.config) !== null)) {
+      deps.db.prepare(`UPDATE job_state SET next_run_at = 0 WHERE kind = 'external-modules'`).run();
+    }
     return c.json({ ok: true });
   });
 
@@ -6241,7 +6248,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       calendars: readAdminSources(deps.db).map((s) => ({ id: s.id, name: s.name })),
       readings: readingChoices,
       // The registered modules, for the External widget's module picker.
-      modules: readEnabledExternalModules(deps.db).map((m) => ({ id: m.id, name: m.name })),
+      modules: editorModules(deps.db),
       // The household, for the Shift widget's "whose rota" picker.
       people: readPeopleAdmin(deps.db).map((p) => ({ id: p.id, name: p.name })),
       // The viewport this screen last reported, so the editor can offer "match

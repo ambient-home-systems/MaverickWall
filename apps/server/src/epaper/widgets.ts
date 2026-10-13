@@ -70,6 +70,7 @@ import { calendarsOf } from './calendar-filter.js';
 import { variantOf } from './variants.js';
 import { mediaFollowed, sparkHeights, sparkRuns, statusParts } from '../api/status-card.js';
 import { withInk } from './honours.js';
+import { moduleVariantKey, variantBlockKey, widgetSettings } from '../api/module-variant.js';
 import { childCells, drawnChildren, groupChildren, topLevelWidgets } from './group-cells.js';
 import { clockLabel, type EpaperModel } from './viewmodel.js';
 import { drawAnalogueFace } from './clock-face.js';
@@ -3278,8 +3279,17 @@ export function panelInput(type: string, manifest: Manifest, config: Config): Pa
       return look === 'list' ? { kind: 'panel', panel: slice } : { kind: 'panel', panel: slice, look };
     }
     case 'external': {
+      /*
+       * Under the key the manifest carries it: `ext:<id>`, or the variant's
+       * own when the widget sets its settings (plan item M7.6). This read the
+       * bare id until M7.6, which no manifest has ever keyed a module by, so a
+       * Module widget on a real panel drew "No data yet" whatever its module said.
+       */
       const mod = str(config, 'module');
-      return { kind: 'panel', panel: mod !== undefined ? panels[mod] : undefined };
+      if (mod === undefined) return { kind: 'panel', panel: undefined };
+      const settings = widgetSettings(config);
+      const key = settings === null ? `ext:${mod}` : variantBlockKey(mod, moduleVariantKey(mod, settings));
+      return { kind: 'panel', panel: panels[key] };
     }
     default:
       return NO_INPUT;

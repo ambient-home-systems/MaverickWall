@@ -16,6 +16,17 @@
 
 ## Unreleased
 
+**One module, different settings on different widgets.** A module installed
+from the Store can now offer proper controls for its settings — a list to
+choose from, a number, an on/off switch, or one of your Home Assistant
+readings — and each Module widget can change them for itself: the same
+weather module showing York in the kitchen and Leeds in the hall, from one
+install. A setting you leave alone follows the install. However many widgets
+ask for the same thing, it is fetched once. When a setting is a Home Assistant
+reading, only that reading's current value is sent, and the page says where to
+before you choose one. This also fixes a Module widget on an e-paper panel,
+which always said "No data yet".
+
 **A Home Assistant camera on the wall.** Add one under Home Assistant ›
 Cameras, then put a Camera widget where you want it: it shows the camera's
 latest picture, fetched every few seconds (every three unless you choose 1,

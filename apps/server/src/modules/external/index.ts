@@ -4,10 +4,15 @@ import type { SqliteDatabase } from '../../db/open.js';
 import type { ModuleContext, PanelModule } from '../registry.js';
 import {
   clearExternalModuleSignals,
+  pruneModuleVariants,
   readEnabledExternalModules,
+  readModuleVariants,
+  readModuleWidgetSettings,
   writeExternalModuleError,
   writeExternalModulePanel,
   writeExternalModuleSignals,
+  writeModuleVariantError,
+  writeModuleVariantPanel,
 } from '../../api/external-modules.js';
 import { panelDataSchema } from './panel-data.js';
 import { signalDataSchema } from './signal-data.js';
@@ -15,10 +20,14 @@ import {
   normaliseConfig,
   recipePolicy,
   recipeSchema,
+  requestKey,
   resolveFetchUrl,
   resolveHeaders,
   runRecipePanel,
   runRecipeSignals,
+  widgetConfig,
+  withReadingValues,
+  type Recipe,
   type RecipeConfig,
   type RecipeSecrets,
 } from './recipe.js';
@@ -128,9 +137,19 @@ export async function pollExternalModules(
 }
 
 /**
- * Run one recipe: resolve its URL from config, fetch through the SSRF guard
- * (public https only unless the recipe opted into the LAN), and interpret the
- * body into Panel Data validated against the same schema a service answers with.
+ * Run one recipe for its install and for every widget that sets its own
+ * settings (plan item M7.6).
+ *
+ * Each set of settings resolves to a request — the address and the headers —
+ * and the requests are read once each, however many widgets ask for them: two
+ * widgets on the same city cost one fetch, and a widget whose settings come to
+ * what the install already asks costs none. Each request keeps the recipe's own
+ * interval, because the shared job runs more often than most recipes want and
+ * hammering a stranger's API is our manners to keep, since we make the request.
+ *
+ * Signals come from the install's own request only. A rule is armed per
+ * module, and one module raising the same alert once per widget would be a
+ * wall telling a household the same thing several times.
  */
 async function pollRecipe(
   db: SqliteDatabase,
@@ -145,24 +164,83 @@ async function pollRecipe(
   }
   const recipe = parsed.data;
   const now = Date.now();
-  // Honour the recipe's own polling interval — the shared job runs more often
-  // than most recipes want, and hammering a stranger's API is our manners to
-  // keep, since we make the request.
-  if (module.lastPolledAt !== 0 && now < module.lastPolledAt + recipe.fetch.intervalSeconds * 1000) {
-    return;
-  }
+  const due = (polledAt: number): boolean => polledAt === 0 || now >= polledAt + recipe.fetch.intervalSeconds * 1000;
 
-  const config = normaliseConfig(
-    recipe,
-    module.config !== null && typeof module.config === 'object'
-      ? (module.config as RecipeConfig)
-      : {},
-  );
+  const install: RecipeConfig =
+    module.config !== null && typeof module.config === 'object' ? (module.config as RecipeConfig) : {};
+  // What a Home Assistant reading says now: its value, never its entity id,
+  // and only a reading the household watches.
+  const readingValue = (entityId: string): string | undefined => {
+    const row = db
+      .prepare(`SELECT state FROM ha_entity_cache WHERE entity_id = ? AND watched = 1`)
+      .get(entityId) as { state: string | null } | undefined;
+    return row?.state ?? undefined;
+  };
+  const resolved = (config: RecipeConfig): RecipeConfig => withReadingValues(recipe, config, readingValue);
+
+  interface Request {
+    readonly config: RecipeConfig;
+    install: boolean;
+    readonly variants: string[];
+  }
+  const requests = new Map<string, Request>();
+  const join = (config: RecipeConfig, add: (request: Request) => void): void => {
+    const key = requestKey(recipe, config);
+    const request = requests.get(key) ?? { config, install: false, variants: [] };
+    add(request);
+    requests.set(key, request);
+  };
+  join(resolved(normaliseConfig(recipe, install)), (request) => {
+    request.install = true;
+  });
+  const wanted = readModuleWidgetSettings(db, module.id);
+  for (const [key, settings] of wanted) {
+    join(resolved(widgetConfig(recipe, install, settings)), (request) => request.variants.push(key));
+  }
+  pruneModuleVariants(db, module.id, new Set(wanted.keys()));
+  const polled = new Map(readModuleVariants(db, module.id).map((row) => [row.variantKey, row.lastPolledAt]));
+
+  for (const request of requests.values()) {
+    const isDue =
+      (request.install && due(module.lastPolledAt)) || request.variants.some((key) => due(polled.get(key) ?? 0));
+    if (!isDue) continue;
+    const outcome = await readRequest(fetcher, keyring, module, recipe, request.config, now);
+    if (request.install) {
+      if (outcome.ok) writeExternalModulePanel(db, module.id, outcome.panel);
+      else writeExternalModuleError(db, module.id, outcome.error);
+      // Signals come from the same body, and go to the same column a service's
+      // `/signals` fills — so arming, source scoping and dismissal are all the
+      // unchanged Phase 2b path. An authoritative replace: a signal whose
+      // `when` stopped holding drops out, and its interrupt clears.
+      if (outcome.body !== undefined && recipe.signals.length > 0) {
+        const signals = runRecipeSignals(recipe, outcome.body, now);
+        if (signals.ok) writeExternalModuleSignals(db, module.id, signals.signals);
+      }
+    }
+    for (const key of request.variants) {
+      if (outcome.ok) writeModuleVariantPanel(db, module.id, key, outcome.panel, now);
+      else writeModuleVariantError(db, module.id, key, outcome.error, now);
+    }
+  }
+}
+
+/**
+ * One request: the address built from these settings, fetched through the SSRF
+ * guard (public https only unless the recipe opted into the LAN), and the body
+ * read into Panel Data validated against the schema a service answers with.
+ */
+async function readRequest(
+  fetcher: Fetcher,
+  keyring: Keyring,
+  module: ExternalModuleRow,
+  recipe: Recipe,
+  config: RecipeConfig,
+  now: number,
+): Promise<{ ok: true; panel: unknown; body: unknown } | { ok: false; error: string; body?: unknown }> {
   const url = resolveFetchUrl(recipe, config);
   // Decrypt the recipe's secrets here and nowhere else — they exist in memory
   // only for the length of this request, and only inside the headers.
   const headers = resolveHeaders(recipe, config, decryptSecrets(keyring, module.secretsEnvelope));
-
   const response = await fetcher.fetch({
     url,
     policy: recipePolicy(recipe),
@@ -171,31 +249,15 @@ async function pollRecipe(
     timeoutMs: 10_000,
     ...(Object.keys(headers).length > 0 ? { headers } : {}),
   });
-  if (response.status !== 'ok') {
-    writeExternalModuleError(db, module.id, 'The recipe’s source did not answer.');
-    return;
-  }
-
+  if (response.status !== 'ok') return { ok: false, error: 'The recipe’s source did not answer.' };
   let body: unknown;
   try {
     body = JSON.parse(response.body);
   } catch {
-    writeExternalModuleError(db, module.id, 'The source did not return JSON.');
-    return;
+    return { ok: false, error: 'The source did not return JSON.' };
   }
-
-  const panelOutcome = runRecipePanel(recipe, body, now);
-  if (panelOutcome.ok) writeExternalModulePanel(db, module.id, panelOutcome.panel);
-  else writeExternalModuleError(db, module.id, panelOutcome.error);
-
-  // Signals come from the same body, and go to the same column a service's
-  // `/signals` fills — so arming, source scoping and dismissal are all the
-  // unchanged Phase 2b path. An authoritative replace: a signal whose `when`
-  // stopped holding drops out, and its interrupt clears.
-  if (recipe.signals.length > 0) {
-    const signals = runRecipeSignals(recipe, body, now);
-    if (signals.ok) writeExternalModuleSignals(db, module.id, signals.signals);
-  }
+  const panel = runRecipePanel(recipe, body, now);
+  return panel.ok ? { ok: true, panel: panel.panel, body } : { ok: false, error: panel.error, body };
 }
 
 /**

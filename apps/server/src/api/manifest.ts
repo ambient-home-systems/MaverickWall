@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { moduleVariantKey, widgetSettings } from './module-variant.js';
 
 import type { AlbumSlides } from './photo-albums.js';
 import { isHhmm, isSlotName, type ScheduleRow } from './layout-slots.js';
@@ -436,6 +437,20 @@ export function displayConfig(
   if ('showWhen' in out) {
     const { showWhen: _decided, ...rest } = out;
     out = rest;
+  }
+  /*
+   * A Module widget's own settings (plan item M7.6) leave as the handle of the
+   * panel they build, and never as themselves: a setting may be an entity id
+   * (rule 12), and none is the wall's business. A widget with none, or one on
+   * any other type, sends what it always sent.
+   */
+  if ('settings' in out) {
+    const settings = type === 'external' ? widgetSettings(out) : null;
+    const { settings: _built, ...rest } = out;
+    out = rest;
+    if (settings !== null && typeof out['module'] === 'string') {
+      out = { ...out, variant: moduleVariantKey(out['module'], settings) };
+    }
   }
   out = withReadingHandles(out, index);
   if (type === 'image' && typeof out['nowPlaying'] === 'string') {

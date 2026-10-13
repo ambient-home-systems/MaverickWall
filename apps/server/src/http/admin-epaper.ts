@@ -1,4 +1,5 @@
 import type { Context, Hono } from 'hono';
+import { editorModules } from './module-settings.js';
 import { randomBytes } from 'node:crypto';
 
 import {
@@ -13,7 +14,6 @@ import {
   setScreenLanOnly,
   type AdminScreenRow,
 } from '../api/queries.js';
-import { readEnabledExternalModules } from '../api/external-modules.js';
 import { keepWidgetsWithSomethingToSay, type Manifest, type PlacedWidgetRow } from '../api/manifest.js';
 import { placedWidgetsBody } from '../api/widget-schema.js';
 import { applyTemplate, panelPixelAspects } from '../api/templates.js';
@@ -1275,7 +1275,7 @@ export function registerEpaperRoutes(app: Hono, deps: AdminDeps, reveals: Reveal
       // whole), so those pickers start empty; the module picker is real.
       calendars: [],
       readings: [],
-      modules: readEnabledExternalModules(deps.db).map((m) => ({ id: m.id, name: m.name })),
+      modules: editorModules(deps.db),
       // The Shift widget's "whose rota" is real here: a panel filters by person
       // exactly as the wall does, and draws a line each when several are on.
       people: readPeopleAdmin(deps.db).map((p) => ({ id: p.id, name: p.name })),

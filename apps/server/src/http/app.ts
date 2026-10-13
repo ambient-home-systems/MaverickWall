@@ -148,6 +148,7 @@ import {
 } from '../api/queries.js';
 import type { SqliteDatabase } from '../db/open.js';
 import { resolveDaylight } from '../api/daylight.js';
+import { readVariantPanels } from '../api/external-modules.js';
 
 /**
  * The HTTP surface.
@@ -1564,6 +1565,10 @@ export function createApp(deps: AppDeps): Hono {
     }).active;
     const tiles = tilesOf(firing, rules);
     const panels = collectPanels(modules, moduleContext);
+    // A recipe's panel as a widget's own settings build it (plan item M7.6),
+    // beside the install's. None until a widget sets one, so a household that
+    // never does sends the panels it always sent.
+    Object.assign(panels, readVariantPanels(deps.db));
     if (tiles.length > 0) {
       panels[NOTIFICATIONS_BLOCK] = { ...((panels[NOTIFICATIONS_BLOCK] as object | undefined) ?? {}), tiles };
     }
