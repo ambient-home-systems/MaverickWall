@@ -16,6 +16,14 @@
 
 ## Unreleased
 
+**Recipes can choose their rows and read more than one feed.** A recipe can now
+draw only the rows that match, such as the trains that are not cancelled or the
+readings over a level. It can put them in order and keep the first few, and when
+nothing matches it says so in words rather than going on showing the last rows
+it had. A recipe can also read up to three more feeds and draw from all of them
+at once, such as departures with the line's status as the heading. The install
+page names every site the recipe asks.
+
 **Modules can show a QR code, a countdown, a schedule or a picture.** A module
 you install, or one you build yourself, can now put any of four new things in a
 Module widget. A QR code a phone can scan, such as your guest Wi-Fi. A

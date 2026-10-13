@@ -443,6 +443,82 @@ lets Maverick Wall run it in-process safely.
   at a service on your own network, add `"allowLan": true` — then it may reach
   the LAN, loopback and plain http.
 
+### Choosing rows, and reading more than one feed
+
+A list's `items` can say which rows of the array to draw, in what order, and how
+many:
+
+```json
+{
+  "name": "Departures",
+  "contract": 1,
+  "fetch": { "url": "https://api.example.com/departures/LEW" },
+  "panel": {
+    "kind": "readings",
+    "title": "Next trains",
+    "items": {
+      "for": "services",
+      "label": "{destination}",
+      "value": "{expected}",
+      "where": ["live", { "path": "cancelled", "notEquals": true }],
+      "sort": { "by": "expected", "as": "time" },
+      "limit": 4,
+      "empty": "No more trains today"
+    }
+  }
+}
+```
+
+- **`where`** is up to four conditions, and a row is drawn only when **all** of
+  them hold. A condition is a selector, which holds when the value there is
+  set, or `{ "path", "equals" }`, `{ "path", "notEquals" }`, `{ "path",
+  "above" }` or `{ "path", "below" }`. `equals` compares as text, so `3` and
+  `"3"` are equal. `above` and `below` compare as numbers, and a row with no
+  number there fails them. There is no "or", no arithmetic and nothing nested;
+  a path like `late > 3` is a rejected recipe, refused at parse.
+- **`sort`** is `{ "by", "order", "as" }`. `order` is `asc` (the default) or
+  `desc`. `as` is `number`, `text` or `time`; left out, it is `number` when
+  every value is one and `text` otherwise. Rows with no value for the key go
+  last whichever way it runs, and rows it cannot tell apart keep the feed's
+  order.
+- **`limit`** is how many rows to keep, from 1 to 12, taken after the order.
+- **`empty`** is what to say when the array is empty or the conditions leave no
+  rows, drawn as a line of text. It defaults to "Nothing to show.": no rows is
+  an answer, and the wall says it rather than going on drawing the last rows it
+  had. A `for` that finds no array at all is different: the feed has changed
+  shape, so the read fails and the wall keeps its last good panel.
+
+A `timeline` takes `where`, `limit` and `empty`, but no `sort`: it is always in
+time order, so its `limit` is "the next so many".
+
+A recipe can read up to three more feeds, named under `sources`, and reach each
+one as `@name`:
+
+```json
+{
+  "name": "Line status",
+  "contract": 1,
+  "config": [{ "key": "line", "label": "Line", "default": "southern" }],
+  "fetch": { "url": "https://api.example.com/departures/LEW" },
+  "sources": { "status": { "url": "https://status.example.com/lines/{line}" } },
+  "panel": {
+    "kind": "readings",
+    "title": "{@status.summary}",
+    "items": { "for": "services", "label": "{destination}", "value": "{expected}" }
+  }
+}
+```
+
+A source has its own `url` and `headers`, with the same placeholders and the
+same rules as `fetch`: settings in the address, secrets only in a header. It
+shares the recipe's interval and its `allowLan`, so one recipe asks for the
+network once and is read as one thing. `@name.path` works anywhere a selector
+does: in a template, in a `for`, in a condition and in a signal's `when`.
+`@name` alone is the whole answer. A recipe that reaches for a source it does
+not declare is rejected. When any of its feeds does not answer, the whole read
+fails with that source's name in the error, and the wall keeps its last good
+panel. The install page names every host the recipe asks.
+
 ### A recipe can raise an alert
 
 A recipe may also declare `signals` — the same alerts an add-on module can raise

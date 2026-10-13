@@ -23,6 +23,7 @@ import {
   requestKey,
   resolveFetchUrl,
   resolveHeaders,
+  resolveSources,
   runRecipePanel,
   runRecipeSignals,
   widgetConfig,
@@ -215,7 +216,7 @@ async function pollRecipe(
       // unchanged Phase 2b path. An authoritative replace: a signal whose
       // `when` stopped holding drops out, and its interrupt clears.
       if (outcome.body !== undefined && recipe.signals.length > 0) {
-        const signals = runRecipeSignals(recipe, outcome.body, now);
+        const signals = runRecipeSignals(recipe, outcome.body, now, outcome.sources ?? {});
         if (signals.ok) writeExternalModuleSignals(db, module.id, signals.signals);
       }
     }
@@ -238,28 +239,52 @@ async function readRequest(
   recipe: Recipe,
   config: RecipeConfig,
   now: number,
-): Promise<{ ok: true; panel: unknown; body: unknown } | { ok: false; error: string; body?: unknown }> {
+): Promise<
+  | { ok: true; panel: unknown; body: unknown; sources: Record<string, unknown> }
+  | { ok: false; error: string; body?: unknown; sources?: Record<string, unknown> }
+> {
   const url = resolveFetchUrl(recipe, config);
   // Decrypt the recipe's secrets here and nowhere else — they exist in memory
   // only for the length of this request, and only inside the headers.
-  const headers = resolveHeaders(recipe, config, decryptSecrets(keyring, module.secretsEnvelope));
-  const response = await fetcher.fetch({
-    url,
-    policy: recipePolicy(recipe),
-    maxBytes: FETCH_LIMITS.json,
-    acceptContentTypes: ['application/json'],
-    timeoutMs: 10_000,
-    ...(Object.keys(headers).length > 0 ? { headers } : {}),
-  });
-  if (response.status !== 'ok') return { ok: false, error: 'The recipe’s source did not answer.' };
-  let body: unknown;
-  try {
-    body = JSON.parse(response.body);
-  } catch {
-    return { ok: false, error: 'The source did not return JSON.' };
+  const secrets = decryptSecrets(keyring, module.secretsEnvelope);
+  const headers = resolveHeaders(recipe, config, secrets);
+  const read = async (address: string, with_: Record<string, string>): Promise<{ ok: true; body: unknown } | { ok: false; why: 'answer' | 'json' }> => {
+    const response = await fetcher.fetch({
+      url: address,
+      policy: recipePolicy(recipe),
+      maxBytes: FETCH_LIMITS.json,
+      acceptContentTypes: ['application/json'],
+      timeoutMs: 10_000,
+      ...(Object.keys(with_).length > 0 ? { headers: with_ } : {}),
+    });
+    if (response.status !== 'ok') return { ok: false, why: 'answer' };
+    try {
+      return { ok: true, body: JSON.parse(response.body) as unknown };
+    } catch {
+      return { ok: false, why: 'json' };
+    }
+  };
+  const main = await read(url, headers);
+  if (!main.ok) {
+    return { ok: false, error: main.why === 'answer' ? 'The recipe’s source did not answer.' : 'The source did not return JSON.' };
   }
-  const panel = runRecipePanel(recipe, body, now);
-  return panel.ok ? { ok: true, panel: panel.panel, body } : { ok: false, error: panel.error, body };
+  const body = main.body;
+  // A recipe's further sources (plan item M7.7), each read the same way and
+  // under the same policy. One that fails fails the read: a panel built from
+  // half its data would draw a confident answer to a question it never asked.
+  const sources: Record<string, unknown> = {};
+  for (const source of resolveSources(recipe, config, secrets)) {
+    const got = await read(source.url, source.headers);
+    if (!got.ok) {
+      const error = got.why === 'answer' ? `The recipe’s source “${source.name}” did not answer.` : `The source “${source.name}” did not return JSON.`;
+      // No body either: a signal reading a source that did not answer would be
+      // judged on nothing, so the last good signals stand.
+      return { ok: false, error };
+    }
+    sources[source.name] = got.body;
+  }
+  const panel = runRecipePanel(recipe, body, now, sources);
+  return panel.ok ? { ok: true, panel: panel.panel, body, sources } : { ok: false, error: panel.error, body, sources };
 }
 
 /**
