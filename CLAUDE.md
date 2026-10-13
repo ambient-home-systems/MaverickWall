@@ -306,6 +306,7 @@ useful thing in this document:
 | A ladder row dragged upwards landing at the bottom | Dragging one, and finding the drag measuring a list its own first write had detached |
 | A Corners control that rounded nothing on a widget with no background | The same screenshot: Rounded pressed on a forecast, and nothing on the wall moving |
 | **Every QR code from version 7 up drawn with no version information, and unreadable** | Decoding a Wi-Fi code with an independent reader, rather than checking the finders |
+| **A session gate that opened any path spelt like `/admin/sign-in`** | Naming a new screen `/admin/sign-ins`, and reading the gate before trusting it |
 
 None of those were found by typechecking. Several were found *while tests were
 green*. The link-local one is the sharpest: a unit test asserted
@@ -11373,6 +11374,62 @@ case, red on a clean `main` in this container as before.
 **Still unproven where it counts:** nobody has scanned the setup code with a
 real phone's code app, and no second person has opened a real supervisor's
 sidebar.
+**System › Lockouts shows who has been trying to sign in, and lets an admin
+release an address that was told to wait (plan item M8.3).** It adds no limit
+of its own. It reads the ones the app already kept, and lifts them:
+
+- **Signing in** is Better Auth's own limit: three tries in ten seconds per
+  address, and the same on the two-step routes. The library kept its counts in
+  a module-global map nothing could read, so `createSignInLimits` is that
+  storage written out with the library's own semantics. A refused request does
+  not move the window, and a window that has passed starts again at one. It is
+  handed over as `rateLimit.customStorage`, per app instance.
+- **Pairing codes, a wall starting to pair, and wrong phone tokens** were three
+  private copies of one fixed window. They are one `createFixedWindow` now,
+  owned by the app.
+- **Two-step codes** lock the account, not the address, for fifteen minutes
+  after ten wrong in a row. That lock is the plugin's own, on the account's
+  `two_factor` row, and Release clears it with the count. The plugin also
+  stops one sign-in after five codes, so ten wrong is two password sign-ins;
+  the test walks exactly that. The page that refuses a locked account used to
+  say "wait a minute"; it now says fifteen minutes and names the screen.
+
+The attempt log is the last hundred sign-in attempts of the past day, in
+memory, so a restart clears it, and the screen says so. Each entry is an
+address, a step (password, code or recovery code) and a result. **Never the
+email typed**: a screen listing who tried to sign in is the first page an
+attacker holding an admin's password reads, and the one a household
+screenshots into a forum post. A view-only account can see the screen, and
+its Release is refused by the one gate every write goes through.
+
+**Building it found a hole in the session gate, before anything could fall
+into it.** `ALWAYS_OPEN` matched by prefix, so `/admin/sign-in` opened every
+path starting with those letters. The first name chosen for this screen was
+`/admin/sign-ins`, which would have been served to anybody who could reach the
+port. No route was ever named that way, so nothing shipped open, but the next
+route might have been. An entry now opens itself and what sits under it as
+whole path segments, and the test asks for `/admin/sign-ins` signed out.
+
+**Measured.** `lockouts.test.ts` (12) runs the real app and the real Better
+Auth, and reaches every lock the way a household meets it:
+
+- wrong passwords at the sign-in form;
+- twenty wrong pairing codes;
+- twenty wrong phone tokens, after which the right one is refused too;
+- ten wrong codes over two sign-ins.
+
+Each release is proved by the next request through the door that refused,
+not by the screen. Eleven mutations were checked and all eleven are red. One
+was first aimed at an attempt's email, which the record cannot hold, so it
+changed nothing; re-aimed at what is recorded, it is red.
+**5804 tests passing, 1 red and 2 skipped, over 429 files**: calendar 153 (1
+skipped) over 10 · core 314 over 9 · display 1060 over 68 · server 4277 (1
+skipped) over 342, measured with `pnpm test` and a real Chromium. Against
+M8.1–M8.2's 5792 over 428 that is +12 and +1, the new file's own count. The
+one red is `browser-glass`'s striped-picture case, red on a clean `main` in
+this container as before.
+**Still unproven where it counts:** nobody has released a real address from a
+real phone's browser.
 ---
 
 ## Open decisions

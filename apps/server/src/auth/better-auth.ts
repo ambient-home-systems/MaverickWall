@@ -5,6 +5,7 @@ import { drizzle } from 'drizzle-orm/better-sqlite3';
 import type { SqliteDatabase } from '../db/open.js';
 import type { SessionResolver, SessionUser } from './session.js';
 import * as schema from '../db/schema.js';
+import type { SignInLimits } from './lockouts.js';
 import { RECOVERY_CODE_COUNT, TOTP_ISSUER, recoveryCodeStore } from './two-factor.js';
 
 /**
@@ -49,6 +50,12 @@ export interface AuthOptions {
    */
   readonly baseUrl: string;
   readonly basePath?: string;
+  /**
+   * Where the sign-in limit keeps its counts (plan item M8.3), so the
+   * Lockouts screen can list and lift them. Without one the library keeps
+   * them in its own module-global map, which nothing here can read.
+   */
+  readonly rateLimitStorage?: SignInLimits;
 }
 
 export function createAuth(options: AuthOptions) {
@@ -134,6 +141,7 @@ export function createAuth(options: AuthOptions) {
       enabled: true,
       window: 60,
       max: 20,
+      ...(options.rateLimitStorage === undefined ? {} : { customStorage: options.rateLimitStorage }),
     },
 
     /*

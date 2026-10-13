@@ -133,7 +133,12 @@ describe('a box the house shows and hides', () => {
       // A box sometimes hidden is offered what stands in for it.
       await expect.poll(() => page.locator('.le-fallback').textContent()).toContain('When this is hidden');
 
+      // Save writes the layout and then submits the wall's settings, which
+      // reloads the page with nothing selected. Wait for that reload: the row
+      // below is written before it, so polling the database alone races it.
+      const reloaded = page.waitForURL(/[?&]saved=/);
       await page.locator('[data-action="save"]').click();
+      await reloaded;
       await expect
         .poll(() => {
           const row = wall.db
@@ -144,7 +149,7 @@ describe('a box the house shows and hides', () => {
         .toEqual({ entity: 'binary_sensor.porch', state: 'on' });
 
       // "After…" offers the doorbell, and a pulse.
-      if ((await show.count()) === 0) await page.locator(`.le-overlay .le-widget[data-id="${widgetId}"]`).click();
+      await page.locator(`.le-overlay .le-widget[data-id="${widgetId}"]`).click();
       await show.getByRole('button', { name: 'After…', exact: true }).click();
       await entity.waitFor();
       await entity.selectOption('event.doorbell');

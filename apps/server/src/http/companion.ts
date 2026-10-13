@@ -1,6 +1,7 @@
 import type { Context, Hono } from 'hono';
 import type { Fetcher } from '@maverick-wall/core';
 
+import { createFixedWindow, NO_ADDRESS, type FixedWindow } from '../auth/lockouts.js';
 import type { SqliteDatabase } from '../db/open.js';
 import type { Keyring } from '../secrets/keyring.js';
 import { VIEW_ONLY_REFUSAL, readUserRole } from '../auth/roles.js';
@@ -46,8 +47,8 @@ import {
  */
 
 /** Wrong tokens from one address before it is told to wait. Twenty in five minutes, `/pair`'s budget. */
-const FAILED_WINDOW_MS = 5 * 60_000;
-const FAILED_MAX = 20;
+export const PHONE_TOKEN_WINDOW_MS = 5 * 60_000;
+export const PHONE_TOKEN_MAX = 20;
 /**
  * Calls per account per minute. Thirty is far more than a person dictating a
  * shopping list and far fewer than an automation stuck in a loop would make —
@@ -92,28 +93,11 @@ export interface CompanionDeps {
   readonly clientAddress: (c: Context) => string | undefined;
   /** Where Todoist is — set only by a test (plan item M5.7). */
   readonly todoist?: TodoistEndpoint;
-}
-
-interface Bucket {
-  count: number;
-  resetAt: number;
-}
-
-/** Count one more against a fixed window. True when the window is already spent. */
-function over(buckets: Map<string, Bucket>, key: string, at: number, windowMs: number, max: number): boolean {
-  const bucket = buckets.get(key);
-  if (bucket === undefined || at > bucket.resetAt) {
-    buckets.set(key, { count: 1, resetAt: at + windowMs });
-    return false;
-  }
-  bucket.count += 1;
-  return bucket.count > max;
-}
-
-function spent(buckets: Map<string, Bucket>, key: string, at: number, max: number): number | undefined {
-  const bucket = buckets.get(key);
-  if (bucket === undefined || at > bucket.resetAt || bucket.count < max) return undefined;
-  return Math.max(1, Math.ceil((bucket.resetAt - at) / 1000));
+  /**
+   * Wrong tokens per address, which the Lockouts screen lists and can lift
+   * (M8.3). Owned by the app, so that screen and this door read one count.
+   */
+  readonly wrongTokens: FixedWindow;
 }
 
 /** A whole number, from JSON or from a form field, where it arrives as digits. Never anything else. */
@@ -219,8 +203,8 @@ export function durationWords(ms: number): string {
 export function registerCompanionRoutes(app: Hono, deps: CompanionDeps): void {
   // Per app instance, not module-global, for the reason the pairing limit is:
   // tests keyed to one address stay independent.
-  const failures = new Map<string, Bucket>();
-  const uses = new Map<string, Bucket>();
+  const failures = deps.wrongTokens;
+  const uses = createFixedWindow(USE_WINDOW_MS, USE_MAX);
 
   const answer = (c: Context, status: 200 | 400 | 401 | 403 | 404 | 409 | 429 | 502 | 503, body: object): Response => {
     // A response that says what was added must not sit in a cache between a
@@ -239,9 +223,9 @@ export function registerCompanionRoutes(app: Hono, deps: CompanionDeps): void {
     c: Context,
   ): Promise<{ readonly userId: string; readonly at: number; readonly raw: unknown } | Response> => {
     const at = deps.now();
-    const address = deps.clientAddress(c) ?? 'shared';
+    const address = deps.clientAddress(c) ?? NO_ADDRESS;
 
-    const wait = spent(failures, address, at, FAILED_MAX);
+    const wait = failures.wait(address, at);
     if (wait !== undefined) {
       c.header('retry-after', String(wait));
       return answer(c, 429, { ok: false, error: 'rate-limited', message: 'Too many wrong tokens. Wait a few minutes.' });
@@ -257,7 +241,7 @@ export function registerCompanionRoutes(app: Hono, deps: CompanionDeps): void {
     }
     const userId = authenticateCompanion(deps.db, presented.token);
     if (userId === undefined) {
-      over(failures, address, at, FAILED_WINDOW_MS, FAILED_MAX);
+      failures.hit(address, at);
       return answer(c, 401, {
         ok: false,
         error: 'bad-token',
@@ -273,8 +257,8 @@ export function registerCompanionRoutes(app: Hono, deps: CompanionDeps): void {
     if (readUserRole(deps.db, userId) !== 'admin') {
       return answer(c, 403, { ok: false, error: 'view-only', message: VIEW_ONLY_REFUSAL });
     }
-    if (over(uses, userId, at, USE_WINDOW_MS, USE_MAX)) {
-      c.header('retry-after', String(spent(uses, userId, at, USE_MAX) ?? 60));
+    if (uses.hit(userId, at)) {
+      c.header('retry-after', String(uses.wait(userId, at) ?? 60));
       return answer(c, 429, { ok: false, error: 'rate-limited', message: 'Too many at once. Wait a minute.' });
     }
 

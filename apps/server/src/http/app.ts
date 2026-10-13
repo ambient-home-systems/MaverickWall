@@ -38,12 +38,20 @@ import { ROLE_LABELS, VIEW_ONLY_REFUSAL, readUserRole, viewerMay } from '../auth
 import { recoveryCodeHash } from '../auth/two-factor.js';
 import { ingressAccount } from '../api/accounts.js';
 import { registerAccountRoutes } from './admin-accounts.js';
+import { registerLockoutRoutes } from './admin-lockouts.js';
 import { selfHref } from './self.js';
 import { createSetupTokenHolder, registerSetupRoutes, type SetupTokenHolder } from './setup.js';
 import { navModules, registerAdminRoutes } from './admin.js';
 import type { TodoistEndpoint } from '../modules/todoist/client.js';
 import type { OAuthEndpoints } from '../oauth/endpoints.js';
-import { registerCompanionRoutes } from './companion.js';
+import { PHONE_TOKEN_MAX, PHONE_TOKEN_WINDOW_MS, registerCompanionRoutes } from './companion.js';
+import {
+  createFixedWindow,
+  createSignInLimits,
+  createSignInLog,
+  NO_ADDRESS,
+  type Lockouts,
+} from '../auth/lockouts.js';
 import { readLayoutOverride } from '../api/wall-commands.js';
 import { versionedShell } from './shell-version.js';
 import { TIMER_ID, clearDoneTimer } from '../modules/timers/index.js';
@@ -482,7 +490,24 @@ export function createApp(deps: AppDeps): Hono {
     line: createStaticFiles(join(meteoconsDir, 'line')),
   } as const;
 
-  const auth = createAuth({ db: deps.db, secret: deps.auth.secret, baseUrl: deps.auth.baseUrl });
+  /*
+   * Every in-app rate limit, in one place the Lockouts screen reads (M8.3).
+   * Per app instance, so tests keyed to one address stay independent.
+   */
+  const lockouts: Lockouts = {
+    signIn: createSignInLimits(now),
+    pairing: createFixedWindow(PAIR_WINDOW_MS, PAIR_MAX_ATTEMPTS),
+    wallStart: createFixedWindow(PAIR_WINDOW_MS, PAIR_MAX_ATTEMPTS),
+    phoneToken: createFixedWindow(PHONE_TOKEN_WINDOW_MS, PHONE_TOKEN_MAX),
+    log: createSignInLog(),
+  };
+
+  const auth = createAuth({
+    db: deps.db,
+    secret: deps.auth.secret,
+    baseUrl: deps.auth.baseUrl,
+    rateLimitStorage: lockouts.signIn,
+  });
 
   /*
    * The real socket peer, for every decision that must not trust a header:
@@ -511,17 +536,8 @@ export function createApp(deps: AppDeps): Hono {
    * search the space. Per app instance, not module-global, so tests keyed to
    * one address stay independent — the same reason the auth counters are.
    */
-  const pairAttempts = new Map<string, { count: number; resetAt: number }>();
-  const pairRateLimited = (address: string | undefined, at: number): boolean => {
-    const key = address ?? 'shared';
-    const bucket = pairAttempts.get(key);
-    if (bucket === undefined || at > bucket.resetAt) {
-      pairAttempts.set(key, { count: 1, resetAt: at + PAIR_WINDOW_MS });
-      return false;
-    }
-    bucket.count += 1;
-    return bucket.count > PAIR_MAX_ATTEMPTS;
-  };
+  const pairRateLimited = (address: string | undefined, at: number): boolean =>
+    lockouts.pairing.hit(address ?? NO_ADDRESS, at);
 
   /*
    * The device-authorization pairing store, and a separate rate limit on
@@ -534,17 +550,8 @@ export function createApp(deps: AppDeps): Hono {
    * one pairing see the same pending entry.
    */
   const deviceFlow: DeviceFlowStore = createDeviceFlowStore();
-  const deviceStartAttempts = new Map<string, { count: number; resetAt: number }>();
-  const deviceStartRateLimited = (address: string | undefined, at: number): boolean => {
-    const key = address ?? 'shared';
-    const bucket = deviceStartAttempts.get(key);
-    if (bucket === undefined || at > bucket.resetAt) {
-      deviceStartAttempts.set(key, { count: 1, resetAt: at + PAIR_WINDOW_MS });
-      return false;
-    }
-    bucket.count += 1;
-    return bucket.count > PAIR_MAX_ATTEMPTS;
-  };
+  const deviceStartRateLimited = (address: string | undefined, at: number): boolean =>
+    lockouts.wallStart.hit(address ?? NO_ADDRESS, at);
 
   /*
    * When to accept a Home Assistant login in place of ours. Off unless we are
@@ -1215,6 +1222,7 @@ export function createApp(deps: AppDeps): Hono {
     fetcher: deps.fetcher,
     now,
     clientAddress,
+    wrongTokens: lockouts.phoneToken,
     ...(deps.todoist === undefined ? {} : { todoist: deps.todoist }),
   });
 
@@ -2135,8 +2143,15 @@ export function createApp(deps: AppDeps): Hono {
     const next = safeNextPath(body['next']);
 
     const response = await authApi(c, '/api/auth/sign-in/email', { email, password });
+    const signedInAt = now();
 
     if (response.status >= 400) {
+      lockouts.log.record({
+        at: signedInAt,
+        address: clientAddress(c),
+        step: 'password',
+        outcome: response.status === 429 ? 'too-many' : 'refused',
+      });
       // Deliberately the same message for an unknown address and a wrong
       // password. Distinguishing them tells anyone who can reach the port
       // which email address is the household's.
@@ -2157,7 +2172,14 @@ export function createApp(deps: AppDeps): Hono {
      * on to the code page rather than being reached.
      */
     const answer = (await response.json().catch(() => undefined)) as { twoFactorRedirect?: unknown } | undefined;
-    if (answer?.twoFactorRedirect === true) return c.redirect(secondStepUrl('code', next), 302);
+    const asked = answer?.twoFactorRedirect === true;
+    lockouts.log.record({
+      at: signedInAt,
+      address: clientAddress(c),
+      step: 'password',
+      outcome: asked ? 'code-asked' : 'signed-in',
+    });
+    if (asked) return c.redirect(secondStepUrl('code', next), 302);
     return c.redirect(next, 302);
   });
 
@@ -2198,11 +2220,21 @@ export function createApp(deps: AppDeps): Hono {
       mode === 'code' ? '/api/auth/two-factor/verify-totp' : '/api/auth/two-factor/verify-backup-code',
       { code },
     );
+    lockouts.log.record({
+      at: now(),
+      address: clientAddress(c),
+      step: mode,
+      outcome: response.status === 429 ? 'too-many' : response.status >= 400 ? 'refused' : 'signed-in',
+    });
     if (response.status >= 400) {
       const failure = (await response.json().catch(() => undefined)) as { code?: unknown } | undefined;
       const expired = failure?.code === 'INVALID_TWO_FACTOR_COOKIE';
-      const message =
-        response.status === 429
+      // Ten wrong codes in a row lock the account for fifteen minutes, from any
+      // address — not the minute a busy address waits — and an admin can lift it.
+      const accountLocked = failure?.code === 'ACCOUNT_TEMPORARILY_LOCKED';
+      const message = accountLocked
+        ? 'Too many wrong codes for this account. Try again in 15 minutes, or ask another admin to release it under System › Lockouts.'
+        : response.status === 429
           ? 'Too many attempts. Wait a minute and try again.'
           : expired
             ? 'That took too long. Sign in with your password again.'
@@ -2338,6 +2370,7 @@ export function createApp(deps: AppDeps): Hono {
     setPassword: (userId: string, password: string) => setAccountPassword(auth, userId, password),
     ...(deps.now !== undefined ? { now: deps.now } : {}),
   });
+  registerLockoutRoutes(app, { db: deps.db, now, lockouts });
 
   /**
    * Pairing. The QR code on the admin screen points here.

@@ -211,6 +211,9 @@ export const SAVED_MESSAGES = {
   'account-password-changed': 'Password changed. You are signed out everywhere else.',
   'account-two-step-on': 'Two-step sign-in is on. Signing in asks for a code from your app.',
   'account-two-step-off': 'Two-step sign-in is off. Your password alone signs you in.',
+  // The Lockouts screen (plan item M8.3).
+  'lockout-released': 'Released. Its next try is counted as its first.',
+  'lockout-already-free': 'That was no longer locked. Nothing needed releasing.',
   'ha-calendar-added': 'Calendar added.',
   'ha-rule-added': 'Rule added.',
   'ha-rule-removed': 'Rule removed.',
