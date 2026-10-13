@@ -5,6 +5,7 @@ import {
   evaluateInterrupts,
   evaluateRules,
   resolveConflicts,
+  settledDismissals,
   withinWindow,
   type Interrupt,
   type InterruptRule,
@@ -515,5 +516,71 @@ describe('a held rule: the doorbell (plan item M6.3)', () => {
     expect(interrupt).not.toHaveProperty('camera');
     const earlier = { [alert().key]: NOW - 120_000 };
     expect(evaluateRules({ ...base, rules: [plain], signals: [alert()], dismissedAt: earlier })).toHaveLength(0);
+  });
+});
+
+describe('settled acknowledgements', () => {
+  const DOOR = 'binary_sensor.back_door';
+  const doorRule = (over: Partial<InterruptRule> = {}): InterruptRule =>
+    rule({
+      id: 'door',
+      source: 'homeassistant',
+      match: { entityId: DOOR, condition: { kind: 'equals', value: 'on', between: null } },
+      ...over,
+    });
+  const door = (state: string): Signal => ({ source: 'homeassistant', key: DOOR, title: 'Back door', state, since: NOW - 60_000 });
+  const settled = (rules: InterruptRule[], signals: Signal[], dismissed = [DOOR]): string[] =>
+    settledDismissals({ rules, signals, now: NOW, source: 'homeassistant', dismissed });
+
+  it('keeps an OK while the door is still open, and settles it once the door closes', () => {
+    expect(settled([doorRule()], [door('on')])).toEqual([]);
+    expect(settled([doorRule()], [door('off')])).toEqual([DOOR]);
+  });
+
+  it('settles an OK whose thing has gone, or whose every rule has', () => {
+    expect(settled([doorRule()], [])).toEqual([DOOR]);
+    expect(settled([], [door('on')])).toEqual([DOOR]);
+    expect(settled([doorRule({ enabled: false })], [door('on')])).toEqual([DOOR]);
+    expect(settled([doorRule({ action: 'none' })], [door('on')])).toEqual([DOOR]);
+  });
+
+  it('keeps an OK about a door Home Assistant cannot read', () => {
+    for (const state of ['unavailable', 'unknown']) expect(settled([doorRule()], [door(state)])).toEqual([]);
+  });
+
+  it('asks neither the rule’s hours nor its dwell', () => {
+    const night = doorRule({
+      minDwellSec: 600,
+      match: { entityId: DOOR, condition: { kind: 'equals', value: 'on', between: { from: '23:00', to: '06:00' } } },
+    });
+    // Midday, open a minute: neither in the hours nor past the dwell, and still the same open door.
+    expect(settled([night], [door('on')])).toEqual([]);
+  });
+
+  it('answers only for its own source, and only about the keys it was given', () => {
+    const storm = alert();
+    expect(
+      settledDismissals({ rules: [doorRule()], signals: [door('off'), storm], now: NOW, source: 'homeassistant', dismissed: [DOOR] }),
+    ).toEqual([DOOR]);
+    // A rule of another source matching the same key is not this source's rule.
+    expect(settled([doorRule({ source: 'nws' })], [door('on')])).toEqual([DOOR]);
+    expect(settled([doorRule()], [door('off')], [])).toEqual([]);
+  });
+
+  it('keeps a doorbell’s OK, which is about one ring and is judged at the next', () => {
+    const bell = rule({
+      id: 'bell',
+      source: 'homeassistant',
+      match: { entityId: 'event.front_door_ring', condition: { kind: 'happened', value: '', between: null } },
+      holdSec: 60,
+    });
+    const rang: Signal = {
+      source: 'homeassistant',
+      key: 'event.front_door_ring',
+      title: 'Front door',
+      state: new Date(NOW - 3_600_000).toISOString(),
+      since: NOW - 3_600_000,
+    };
+    expect(settled([bell], [rang], ['event.front_door_ring'])).toEqual([]);
   });
 });

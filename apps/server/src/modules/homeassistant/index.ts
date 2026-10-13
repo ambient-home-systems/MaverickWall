@@ -3,6 +3,7 @@ import type { ModuleContext, PanelModule } from '../registry.js';
 import type { Signal } from '@maverick-wall/core';
 import { z } from '../../validation.js';
 import { daylightFromState } from '../../api/daylight.js';
+import { pruneSettledDismissals } from '../../api/rules.js';
 import { conditionEntities, momentSignals, readConditionStates, writeConditionStates } from './conditions.js';
 import { readCameras, writeCameraStates } from '../cameras/index.js';
 import { historyPath, historyWindowEnd, mediaEntities, parseHistory, seriesFrom, sparklineEntities, storedSeries } from './history.js';
@@ -219,6 +220,37 @@ export interface HomePanel {
   readonly note: string | null;
 }
 
+function haSignals(db: SqliteDatabase): Signal[] {
+  const rows = db
+    .prepare(
+      `SELECT entity_id AS entityId, label, state, friendly_name AS friendlyName,
+              unit_of_measurement AS unit, last_changed_at AS lastChangedAt,
+              fetched_at AS fetchedAt, attributes, display_mode AS displayMode,
+              sort_order AS sortOrder
+         FROM ha_entity_cache`,
+    )
+    .all() as WatchRow[];
+
+  const readings: Signal[] = rows.map((row) => {
+    const state = stateFrom(row);
+    const asNumber = Number(state.state);
+    return {
+      source: 'homeassistant' as const,
+      key: row.entityId,
+      // The household's own name for it if they gave one, then Home
+      // Assistant's. An entity id never reaches the wall.
+      title: row.label ?? state.friendlyName,
+      // What a person would say. `readState` is the same function the panel
+      // uses, so a door reads "Open" in both places rather than "on" in one.
+      headline: readState(state),
+      state: state.state,
+      numeric: state.state.trim() !== '' && Number.isFinite(asNumber) ? asNumber : null,
+      since: row.lastChangedAt,
+    };
+  });
+  return [...readings, ...momentSignals(db)];
+}
+
 export const haModule: PanelModule = {
   key: HOME_BLOCK,
   label: 'The house',
@@ -294,34 +326,7 @@ export const haModule: PanelModule = {
    * when it has been open five minutes.
    */
   signals(context: ModuleContext): readonly Signal[] {
-    const rows = context.db
-      .prepare(
-        `SELECT entity_id AS entityId, label, state, friendly_name AS friendlyName,
-                unit_of_measurement AS unit, last_changed_at AS lastChangedAt,
-                fetched_at AS fetchedAt, attributes, display_mode AS displayMode,
-                sort_order AS sortOrder
-           FROM ha_entity_cache`,
-      )
-      .all() as WatchRow[];
-
-    const readings: Signal[] = rows.map((row) => {
-      const state = stateFrom(row);
-      const asNumber = Number(state.state);
-      return {
-        source: 'homeassistant' as const,
-        key: row.entityId,
-        // The household's own name for it if they gave one, then Home
-        // Assistant's. An entity id never reaches the wall.
-        title: row.label ?? state.friendlyName,
-        // What a person would say. `readState` is the same function the panel
-        // uses, so a door reads "Open" in both places rather than "on" in one.
-        headline: readState(state),
-        state: state.state,
-        numeric: state.state.trim() !== '' && Number.isFinite(asNumber) ? asNumber : null,
-        since: row.lastChangedAt,
-      };
-    });
-    return [...readings, ...momentSignals(context.db)];
+    return haSignals(context.db);
   },
 
   job: {
@@ -451,6 +456,10 @@ export const haModule: PanelModule = {
           .run(at, at);
       });
       write();
+      // The read worked, so what is open and what has closed is known: an OK
+      // about a door that has since closed is forgotten, and its next opening
+      // covers the wall again.
+      pruneSettledDismissals(context.db, 'homeassistant', haSignals(context.db), at);
 
       await refreshHistory(context, resolved.connection);
       // And Home Assistant's own notifications, while a widget shows them (M6.11).

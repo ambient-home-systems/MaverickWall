@@ -44,6 +44,14 @@ on it, and an e-paper panel never does. OK clears one ring, not the doorbell,
 so the next ring shows again. Any rule can now take itself down after a set
 time, too.
 
+**OK on a Home Assistant alert is about this time, not for ever.** Pressing OK
+on a "Tell me when…" banner or takeover used to silence that rule for good:
+close the freezer door, leave it open again the next day, and the wall said
+nothing. Now the OK lasts while the thing is still happening, and is forgotten
+once it stops — the door closes, or the reading comes back under the line —
+so the next time covers the wall again. A reading that only moves further over
+the line does not bring it back, and nor does Home Assistant restarting.
+
 **See who is trying to sign in, and let a locked address back in.** System ›
 Lockouts lists the recent sign-in attempts — where each came from and what
 happened, never the email address typed — and anything currently told to

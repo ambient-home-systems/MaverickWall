@@ -11648,7 +11648,8 @@ until the door closes. Measured rather than read: with a banner rule on a
 freezer door, an OK, the door closed, then opened again an hour later, the
 wall shows nothing. Only `pruneDismissals` deletes an acknowledgement, and
 only the NWS job calls it. A held rule is the only kind this change fixes
-that for.
+that for. *(The second is fixed now; the paragraph after the measurements
+says how.)*
 
 **Measured.** `doorbell.test.ts` (9) runs the real app, a real
 poll of the stand-in house and a clock the test moves.
@@ -11672,6 +11673,46 @@ row. **5897 tests passing, 1 red and 2 skipped, over 439 files**: calendar
 The one red is `browser-glass`'s striped-picture case, red on a clean `main`
 in this container as before.
 **Still unproven where it counts:** no real doorbell has rung a real wall.
+
+**An OK on a Home Assistant alert is about this time, not about the thing for
+ever.** That was the second finding above, and it had shipped with Home
+Assistant rules: a door's signal is the same key for as long as the door
+exists, and only the weather job ever pruned an acknowledgement, so one OK on
+"the back door is open" silenced that rule until somebody deleted it. The
+door closed, was left open the next evening, and the wall said nothing.
+`settledDismissals` in core answers which of a source's acknowledgements are
+about a thing that has stopped: no enabled rule of that source still matches
+the signal, or the signal is gone. `pruneSettledDismissals` forgets them, and
+the Home Assistant poll calls it after a read that worked, which is the moment
+the house is known. Three choices are written at the function:
+- **Only after a read that worked.** A house that cannot be read has not
+  closed its door.
+- **`unavailable` and `unknown` have not stopped.** They cannot be read, so a
+  Home Assistant restart does not bring every acknowledged alert back.
+- **Neither the rule's hours nor its dwell are asked.** A door acknowledged at
+  23:30 under a 23:00–06:00 rule and left open all day is the same open door
+  the next night. That needed `matches` to take no clock, which skips the
+  window.
+
+So "settled" is the condition, not the state moving: a freezer reading that
+goes from −8 to −6 over a −10 line is still over it, and the OK lasts; it is
+forgotten when the reading comes back under. A doorbell's OK is kept, because
+a `happened` rule always matches its moment, and M6.3's per-ring check is
+what lets the next ring through.
+
+**Measured.** `ha-acknowledgement.test.ts` (6) runs the real app, a real
+poll of the stand-in house and a clock the test moves: the door closed and
+opened again covers the wall; a failed read keeps the OK; `unavailable` keeps
+it; the hours are not asked; a reading over a line keeps it while it rises and
+loses it when it falls back; a deleted rule's OK goes, and a weather OK is
+left alone. Core gains 6 tests. Nine mutations were checked and all nine are
+red. Two were green at first and were too weak to say anything: a prune after
+a failed read that still read the cached states, and a deleted rule's OK
+pruned across sources, which the read's own source scope already stops. The
+delete's own `AND source = ?` could never matter, since the key is unique and
+only this source's keys are read, so it is gone, and the read's scope is what
+is mutated. An overlapped mutation run also restored one file over another;
+it was caught by `git diff --stat` before anything was measured on it.
 
 ---
 
