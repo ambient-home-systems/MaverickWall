@@ -141,17 +141,32 @@ describe('a camera on a wall', () => {
         // Its own thirty seconds come round, and it asks once, with a new address.
         await page.clock.runFor(6_000);
         await expect.poll(() => asked.length, { timeout: 10_000 }).toBe(before + 1);
+        // And has landed: the next timer is set from the load, so the clock
+        // must not move on until it has (a loaded runner is slower than the poll).
+        await page.waitForFunction(
+          () => {
+            const img = document.querySelector<HTMLImageElement>('#camera-layer img');
+            return img !== null && img.complete && img.naturalWidth > 0 && /n=2$/.test(img.src);
+          },
+          undefined,
+          { timeout: 15_000 },
+        );
         expect(new Set(asked).size).toBe(asked.length);
         expect(asked.every((url) => /\/d\/camera\/[A-Za-z0-9_-]{43}\/still\?n=\d+$/.test(url))).toBe(true);
 
         // The camera stops answering: the box says so, and nothing else on the wall moves.
         ha.cameraFails = true;
-        await page.clock.runFor(31_000);
-        await page.waitForFunction(
-          () => document.querySelector('#wall .fw-camera')?.textContent?.includes('No picture from this camera just now.') === true,
-          undefined,
-          { timeout: 15_000 },
-        );
+        // Past its next refresh, a step at a time, so a slow fetch cannot
+        // leave its follow-up scheduled beyond a single jump of the clock.
+        const said = (): Promise<boolean> =>
+          page.evaluate(
+            () => document.querySelector('#wall .fw-camera')?.textContent?.includes('No picture from this camera just now.') === true,
+          );
+        for (let step = 0; step < 20 && !(await said()); step++) {
+          await page.clock.runFor(5_000);
+          await page.waitForTimeout(250);
+        }
+        expect(await said()).toBe(true);
         const failed = await pictureFacts(page);
         expect(failed.visible).toBe('hidden');
         expect(failed.calendar).toEqual(first.calendar);
