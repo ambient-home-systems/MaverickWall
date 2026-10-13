@@ -176,7 +176,7 @@ async function harness(): Promise<Harness> {
     `INSERT INTO screens (id, name, token_hash, theme, token_issued_at, layout_mode, created_at, updated_at)
      VALUES ('kitchen', 'Kitchen', ?, 'panels', ?, 'freeform', ?, ?)`,
   ).run(issued.tokenHash, stamp, stamp, stamp);
-  const call = (path: string): Promise<Response> =>
+  const call = async (path: string): Promise<Response> =>
     app.fetch(new Request(`http://localhost${path}`, { headers: { authorization: `Bearer ${issued.token}` } }));
   return {
     db,
