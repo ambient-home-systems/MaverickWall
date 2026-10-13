@@ -81,7 +81,7 @@ function conditionHolds(
   condition: EntityCondition,
   signal: Signal,
   now: number,
-  localHhmm: string,
+  localHhmm: string | null,
   held: boolean,
 ): boolean {
   const state = signal.state ?? '';
@@ -134,12 +134,16 @@ function conditionHolds(
     if (since === null || since === undefined || now - since > EDGE_WINDOW_MS) return false;
   }
 
-  if (condition.between !== null && !withinWindow(condition.between, localHhmm)) return false;
+  // No clock is a question about the thing rather than about the rule's hours
+  // (`settledDismissals`), so the window is not asked.
+  if (condition.between !== null && localHhmm !== null && !withinWindow(condition.between, localHhmm)) {
+    return false;
+  }
 
   return true;
 }
 
-function matches(match: RuleMatch, signal: Signal, now: number, localHhmm: string, held: boolean): boolean {
+function matches(match: RuleMatch, signal: Signal, now: number, localHhmm: string | null, held: boolean): boolean {
   if (match.entityId !== undefined && match.entityId !== signal.key) return false;
 
   if (match.eventTypes !== undefined) {
@@ -288,6 +292,58 @@ export function evaluateRules(input: EvaluateInput): Interrupt[] {
   }
 
   return firing;
+}
+
+export interface SettledInput {
+  readonly rules: readonly InterruptRule[];
+  /** Every signal of `source` there is now. */
+  readonly signals: readonly Signal[];
+  readonly now: number;
+  /** The source the caller knows the whole of. */
+  readonly source: string;
+  /** The keys of that source's acknowledgements. */
+  readonly dismissed: readonly string[];
+}
+
+/**
+ * The acknowledgements of `source` whose thing has stopped, so the next time
+ * it starts is a new thing to tell somebody about.
+ *
+ * "Yes, I know" about a freezer door is about this time it was left open. It
+ * lasts while the door stays open, and a door closed and opened again an hour
+ * later has to cover the wall again. `evaluateRules` cannot tell those apart
+ * on its own: Home Assistant's door is the same signal, under the same key,
+ * for ever. So whoever knows the whole of a source's signals asks this after
+ * each read and forgets what it answers, the way the weather job forgets a
+ * warning that has gone.
+ *
+ * Settled means no enabled rule of the source still matches the signal, or the
+ * signal is gone. Two things are deliberately not asked. The rule's hours: a
+ * door acknowledged at 23:30 under a 23:00–06:00 rule and left open all day is
+ * the same open door at 23:00 the next night, and an OK is about the door, not
+ * about the night. And a dwell: a door just closed and opened again is a new
+ * opening, whether or not it has been open long enough to fire yet. A signal
+ * Home Assistant calls `unavailable` or `unknown` has not stopped — it cannot
+ * be read — so its acknowledgement is kept rather than lost on every restart.
+ */
+export function settledDismissals(input: SettledInput): string[] {
+  const rules = input.rules.filter(
+    (rule) => rule.enabled && rule.action !== 'none' && rule.source === input.source,
+  );
+  const settled: string[] = [];
+  for (const key of input.dismissed) {
+    const signal = input.signals.find((one) => one.source === input.source && one.key === key);
+    if (signal === undefined) {
+      settled.push(key);
+      continue;
+    }
+    if (signal.state === 'unavailable' || signal.state === 'unknown') continue;
+    const live = rules.some((rule) =>
+      matches(rule.match, signal, input.now, null, rule.holdSec !== undefined),
+    );
+    if (!live) settled.push(key);
+  }
+  return settled;
 }
 
 export interface Resolution {

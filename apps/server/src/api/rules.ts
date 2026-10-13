@@ -4,6 +4,8 @@ import {
   type InterruptRule,
   type InterruptSource,
   type RuleMatch,
+  type Signal,
+  settledDismissals,
 } from '@maverick-wall/core';
 import type { SqliteDatabase } from '../db/open.js';
 import { parseOr, z } from '../validation.js';
@@ -514,4 +516,34 @@ export function pruneDismissals(db: SqliteDatabase, source: string, liveKeys: re
     }
   });
   prune();
+}
+
+/**
+ * Forget the acknowledgements of `source` whose thing has stopped
+ * (`settledDismissals`), so the next time the freezer door is left open it
+ * covers the wall again.
+ *
+ * `pruneDismissals` is the weather job's version, which knows the live set as
+ * a list of keys. A Home Assistant entity's key is there for ever, so what is
+ * live is whether a rule still matches it, and that is core's question.
+ * Called by the Home Assistant poll after a read that worked, which is the
+ * moment its signals are known; a failed read keeps every acknowledgement,
+ * because a house that cannot be read has not closed its door.
+ */
+export function pruneSettledDismissals(
+  db: SqliteDatabase,
+  source: string,
+  signals: readonly Signal[],
+  now: number,
+): void {
+  const dismissed = (
+    db.prepare('SELECT key FROM interrupt_dismissals WHERE source = ?').all(source) as { key: string }[]
+  ).map((row) => row.key);
+  if (dismissed.length === 0) return;
+  const settled = settledDismissals({ rules: readRules(db), signals, now, source, dismissed });
+  if (settled.length === 0) return;
+  const remove = db.prepare('DELETE FROM interrupt_dismissals WHERE key = ?');
+  db.transaction(() => {
+    for (const key of settled) remove.run(key);
+  })();
 }
