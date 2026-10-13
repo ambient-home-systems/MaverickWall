@@ -74,7 +74,7 @@ import {
   ungroupWidget,
 } from './grouping.js';
 import { MARQUEE_MIN, enclosedBy, marqueeBetween, toggleSelected } from './selection.js';
-import { GROUP_LAYOUTS, groupChildren, groupIsOrdered, parentIdOf, topLevelWidgets } from './group-cells.js';
+import { GROUP_LAYOUTS, groupChildren, groupIsOrdered, groupLayoutOf, parentIdOf, topLevelWidgets } from './group-cells.js';
 import { markTabs, wireTabs } from './tabs.js';
 import {
   type EditedRule,
@@ -2566,6 +2566,19 @@ function boot(): void {
     }
   })();
 
+  /** The stacks the preview shows something other than the front of. */
+  function previewStacks(): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const id of selection) {
+      const widget = state.widgets.find((one) => one.id === id);
+      const parentId = widget === undefined ? undefined : parentIdOf(widget);
+      if (widget === undefined || parentId === undefined) continue;
+      const parent = state.widgets.find((one) => one.id === parentId);
+      if (parent !== undefined && groupLayoutOf(parent.config) === 'stack') out[parentId] = widget.id;
+    }
+    return out;
+  }
+
   function renderPreview(): void {
     // On a panel the preview is the panel's own frame, not the wall's.
     if (epaperHost) {
@@ -2613,8 +2626,12 @@ function boot(): void {
     const drawn = previewWidgets();
     const drawnBackground = state.background === undefined ? undefined : previewBackground(state.background);
     // A widget ground chosen but not yet saved is drawn as the wall will draw it.
+    // A widget selected inside a stack is the one its preview shows (M6.6),
+    // so choosing it in Layers shows what is being edited.
+    const stacked = previewStacks();
     const drawnModel = {
       ...model,
+      ...(Object.keys(stacked).length > 0 ? { stacks: stacked } : {}),
       ...(groundChoice !== undefined ? { widgetGround: groundChoice } : {}),
       ...(gutterChoice !== undefined ? { layoutGutter: gutterChoice } : {}),
     };
@@ -4177,9 +4194,13 @@ function boot(): void {
    * focus, which is right for a tap and wrong for a nudge.
    */
   function selectWidget(id: string, keepFocus = false): void {
+    const stacksBefore = JSON.stringify(previewStacks());
     selection = [id];
     markSelection();
     renderConfigPanel(keepFocus);
+    // Choosing another widget in a stack turns the preview to it (M6.6); any
+    // other selection leaves the preview alone, as it always has.
+    if (JSON.stringify(previewStacks()) !== stacksBefore) renderPreview();
   }
 
   function renderConfigPanel(keepFocus = false): void {
@@ -4704,14 +4725,16 @@ function boot(): void {
    * drops both there until that table says otherwise.
    */
   function buildGroupConfig(widget: Widget, cfg: Record<string, unknown>): void {
-    const layoutNames: Readonly<Record<string, string>> = { free: 'Free', row: 'Row', column: 'Column', grid: 'Grid' };
+    const layoutNames: Readonly<Record<string, string>> = {
+      free: 'Free', row: 'Row', column: 'Column', grid: 'Grid', stack: 'Stack',
+    };
     const current = typeof cfg['layout'] === 'string' && (GROUP_LAYOUTS as readonly string[]).includes(cfg['layout'] as string)
       ? (cfg['layout'] as string)
       : 'row';
     configPanel.appendChild(
       segControl(
         'Arrange the widgets in it',
-        ['free', 'row', 'column', 'grid'].map((layout) => [layout, layoutNames[layout] ?? layout] as const),
+        ['free', 'row', 'column', 'grid', 'stack'].map((layout) => [layout, layoutNames[layout] ?? layout] as const),
         current,
         (value) => setConfig(widget, 'layout', value),
         'layout',
@@ -4728,6 +4751,14 @@ function boot(): void {
           'columns',
         ),
       );
+    }
+    if (current === 'stack') {
+      // What a stack does on the glass, said where it is chosen (plan item M6.6).
+      const stackHint = document.createElement('p');
+      stackHint.className = 'hint';
+      stackHint.textContent =
+        'Each widget fills the group and the wall shows one at a time, starting with the first in Layers. Dots in the corner show the next one when tapped, on that wall only; a reload shows the first again. A panel always shows the first.';
+      configPanel.appendChild(stackHint);
     }
     const hint = document.createElement('p');
     hint.className = 'hint';

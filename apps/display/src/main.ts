@@ -239,6 +239,13 @@ function start(): void {
   const holdSelector = (widgetId: string, reading: string): string =>
     `.fw[data-widget-id="${widgetId}"] [data-ha-hold][data-ha-act="${reading}"]`;
   let controlPanel: { widgetId: string; reading: string; touchedAt: number } | undefined;
+  /*
+   * Which child each stacked group is showing (plan item M6.6), by the
+   * group's id. Model state for `todoNotices`' reason — the rebuild has to be
+   * told — and never sent anywhere: a swap is a look at the wall, not a
+   * change to it, so it needs no switch and a reload puts the front back.
+   */
+  const stacks = new Map<string, string>();
   let panelJustOpened = false;
   let sliderHeld = false;
   let drawWhenReleased = false;
@@ -382,6 +389,7 @@ function start(): void {
       ...(controlPanel === undefined
         ? {}
         : { controlPanel: { widgetId: controlPanel.widgetId, reading: controlPanel.reading } }),
+      stacks: Object.fromEntries(stacks),
       oneShots,
     });
     // Events nothing has asked about for an hour are forgotten, on the clock
@@ -874,8 +882,8 @@ function start(): void {
      * click on Enter is one the OK key must leave alone, and a second handler
      * with its own copy of this rule is how the two would come to disagree.
      */
-    if (document.activeElement?.closest?.('[data-chore], [data-todo], [data-ha-act], [data-timer-clear], [data-message-clear], [data-tile-dismiss], .hc-panel') !== null &&
-        document.activeElement?.closest?.('[data-chore], [data-todo], [data-ha-act], [data-timer-clear], [data-message-clear], [data-tile-dismiss], .hc-panel') !== undefined) {
+    if (document.activeElement?.closest?.('[data-chore], [data-todo], [data-ha-act], [data-timer-clear], [data-message-clear], [data-tile-dismiss], [data-stack-swap], .hc-panel') !== null &&
+        document.activeElement?.closest?.('[data-chore], [data-todo], [data-ha-act], [data-timer-clear], [data-message-clear], [data-tile-dismiss], [data-stack-swap], .hc-panel') !== undefined) {
       return;
     }
     const key = dismissTarget();
@@ -1216,6 +1224,19 @@ function start(): void {
         return;
       }
       void actOnReading(widgetId, reading, action);
+      return;
+    }
+
+    // A stack's swap button (plan item M6.6): show the next one, draw, and
+    // hand focus to the button the draw put back, so the OK key can go on.
+    const swap = target?.closest?.('[data-stack-swap]');
+    if (swap !== null && swap !== undefined) {
+      const group = swap.getAttribute('data-stack-swap') ?? '';
+      const next = swap.getAttribute('data-stack-next') ?? '';
+      if (group === '' || next === '') return;
+      stacks.set(group, next);
+      draw();
+      root.querySelector<HTMLElement>(`[data-stack-swap="${group}"]`)?.focus();
       return;
     }
 

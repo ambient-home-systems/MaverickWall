@@ -11430,6 +11430,55 @@ one red is `browser-glass`'s striped-picture case, red on a clean `main` in
 this container as before.
 **Still unproven where it counts:** nobody has released a real address from a
 real phone's browser.
+
+**Two widgets can share a box and take turns (plan item M6.6).** A stack is a
+fifth group layout, `stack`, beside row, column, grid and free. Every child
+gets the group's **whole** inner box (`groupCells`), and the wall draws one at
+a time (`drawnChildren`): the one a tap chose, else the front, which is the
+first in `z` order. Which one shows is never a cell, so every child's
+rectangle is the same full box whichever is up. Swapping moves nothing, and
+the stability contract holds as it does for the other four.
+
+- **The swap is a look at one wall.** `stacks` in `main.ts` holds the shown
+  child by the group's id and hands it to the model on every draw, the way
+  `controlPanel` is handed over. No request is made and no switch is needed,
+  because nothing is changed for anybody else. A reload shows the front
+  again, and a child that has gone since falls back to the front.
+- **The button is a row of dots**, one per child with the showing one
+  filled, in the group's bottom-right corner. It is a real `<button>`,
+  absolutely positioned, so it costs the child no row. It sits on `--panel`
+  with a hairline and is sized in the scaffold role. Its focus ring uses both
+  selectors, and the OK key's global handler leaves it alone, as it does a
+  tick box. A stack of one draws no button. After a swap, focus goes back to
+  the button the draw put back, so the OK key can keep going round.
+- **A panel draws the front of every stack**, since nothing can tap it.
+  `drawnChildren` is in the transcribed block of `group-cells.ts`, so both
+  media ask one function.
+- **The editor** offers Stack under the group's Arrange, with a hint saying
+  what it does. The inspector gives a stacked child its own placement note.
+  Selecting a child in Layers turns the preview to it (`previewStacks`, and
+  `selectWidget` redraws when that changes). Overlay boxes overlap, as the
+  children do, so Layers is the way to reach the one underneath.
+
+**Measured.** `group-cells.test.ts` gains 4 tests (display). `epaper-stack.test.ts`
+(4) compares bits: a stack of two draws exactly the frame of the same group
+holding only its front child, chosen by `z` rather than by arrival.
+`browser-stack.test.ts` (2) uses a real paired wall and a real editor. On the
+wall it covers the tap, the rectangle held equal to the stack's inner box,
+two rebuilds, the OK key, and no request other than a GET. In the editor it
+covers choosing Stack, the preview following Layers, and Save. Twelve
+mutations were checked and all twelve are red. Five failed to build at first,
+because the mutation left a variable unread, and were re-aimed to keep it
+read. **Not checked:** the OK key's exemption for the swap button. A test
+needs a banner up to tell it apart, and there was none here.
+
+**5814 tests passing, 1 red and 2 skipped, over 431 files**: calendar 153 (1
+skipped) over 10 · core 314 over 9 · display 1064 over 68 · server 4283 (1
+skipped) over 344, measured with `pnpm test` and a real Chromium. Against
+M8.3's 5804 over 429 that is +10 and +2, this change's own count. The one red
+is `browser-glass`'s striped-picture case, red on a clean `main` in this
+container as before. **Still unproven where it counts:** nobody has tapped a
+stack on a kitchen tablet.
 ---
 
 ## Open decisions

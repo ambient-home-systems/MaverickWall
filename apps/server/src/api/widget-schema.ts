@@ -288,12 +288,16 @@ const widgetConfigFields = z
      * of the events: `reflow-stability.test.ts` holds two walls with the same
      * arrangement and different events to identical child rectangles.
      *
+     * A `stack` (plan item M6.6) is ordered too, and gives every child the
+     * whole box: the wall draws one at a time and a tap swaps which, as model
+     * state that is never written here, and a panel draws the first.
+     *
      * Only a `group` reads either key; on any other type both are "not for
      * me", exactly as `variant` is. A group carries no `whenEmpty` of its own —
      * its children are boxes and each resolves its own — and is dropped whole
      * when none of them has anything to say (`keepWidgetsWithSomethingToSay`).
      */
-    layout: z.enum(['row', 'column', 'grid', 'free']).optional(),
+    layout: z.enum(['row', 'column', 'grid', 'free', 'stack']).optional(),
     columns: z.number().int().min(2).max(4).optional(),
     /*
      * Weather. `count` is shared with the calendar's agenda above — one strict

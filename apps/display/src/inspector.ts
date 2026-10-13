@@ -22,7 +22,7 @@
  */
 
 import { showRuleOf } from './show-when.js';
-import { groupIsOrdered, parentIdOf } from './group-cells.js';
+import { groupIsOrdered, groupLayoutOf, parentIdOf } from './group-cells.js';
 import { inkOf } from './ink.js';
 import {
   fallbackChoices,
@@ -166,6 +166,13 @@ export type InspectorView = EmptyInspector | WidgetInspector | MultiInspector;
 export const ORDERED_CHILD_NOTE =
   'This box takes its place from the group’s order. Drag it past a neighbour, or use the arrow keys, to reorder.';
 
+/**
+ * A stack's children all fill it (plan item M6.6), so there is no neighbour to
+ * drag past; the order is the one a tap on the wall goes through.
+ */
+export const STACKED_CHILD_NOTE =
+  'This widget fills its stack. The wall shows one at a time, from the first in Layers, and a tap on the dots in the corner shows the next. Use the arrow keys to change its place in the stack. A panel shows the first.';
+
 export function inspectorView(input: InspectorInput): InspectorView {
   const several = (input.selection ?? []).filter((id) => input.widgets.some((one) => one.id === id));
   if (several.length > 1) {
@@ -227,7 +234,9 @@ export function inspectorView(input: InspectorInput): InspectorView {
         }
       : {}),
     ...(density === undefined ? {} : { density }),
-    ...(ordered ? { placement: ORDERED_CHILD_NOTE } : {}),
+    ...(ordered
+      ? { placement: groupLayoutOf(parent?.config) === 'stack' ? STACKED_CHILD_NOTE : ORDERED_CHILD_NOTE }
+      : {}),
     tab: input.tab,
   };
 }

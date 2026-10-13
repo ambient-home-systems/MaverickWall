@@ -639,6 +639,13 @@ export interface DisplayModel {
    */
   readonly controlPanel: { readonly widgetId: string; readonly reading: string } | undefined;
   /**
+   * Which child each stacked group is showing, by the group's id (plan item
+   * M6.6) — or nothing, for the front one. Model state for `todoNotices`'
+   * reason: a tap on the wall chose it, no server knows it, and the
+   * fifteen-second rebuild has to be told rather than put the front back.
+   */
+  readonly stacks: Readonly<Record<string, string>>;
+  /**
    * When each widget's one-shot effects fired, by widget id and event (plan
    * P4.3) — the confetti on a countdown's day, a page flipping at midnight.
    *
@@ -2105,6 +2112,8 @@ export interface BuildOptions {
   readonly houseNotices?: Readonly<Record<string, string>>;
   /** The reading whose controls are open, from `main.ts`; absent everywhere else. */
   readonly controlPanel?: { readonly widgetId: string; readonly reading: string };
+  /** Which child each stack is showing, from `main.ts`; absent everywhere else. */
+  readonly stacks?: Readonly<Record<string, string>>;
   /**
    * The wall's one-shot memory (plan P4.3). Optional and defaulted to none, on
    * `todoNotices`' argument: it is what this page has already shown, which no
@@ -2323,6 +2332,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
     todoNotices: options.todoNotices ?? {},
     houseNotices: options.houseNotices ?? {},
     controlPanel: options.controlPanel,
+    stacks: options.stacks ?? {},
     oneShots: options.oneShots ?? NO_ONE_SHOTS,
     notices: manifest.notices.map((notice) => ({ level: notice.level, message: notice.message })),
     staleness,

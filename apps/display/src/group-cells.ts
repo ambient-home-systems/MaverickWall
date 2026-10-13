@@ -1,8 +1,8 @@
 /**
  * Where a group puts its children (RFC 014 §5.1).
  *
- * A group is a box that holds other boxes. It lays them out in one of four
- * ways. Three are *ordered* — a `row` across, a `column` down, or a `grid` of
+ * A group is a box that holds other boxes. It lays them out in one of five
+ * ways (the fifth, `stack`, is described at `GROUP_LAYOUTS`). Three are *ordered* — a `row` across, a `column` down, or a `grid` of
  * `columns` across and as many rows as the children need — and divide its own
  * inner box **equally among the children in `z` order**, reading nothing
  * else: not a child's own stored fractions, and never what a child draws. The
@@ -30,11 +30,18 @@
 /* ---- transcribed, and nothing else ------------------------------------ */
 
 /**
- * The layouts a group offers, in the order the schema names them. `free` is
- * last so nothing that indexed the first three moves; the editor's Group
- * action writes it out, because an absent layout means `row` (below).
+ * The layouts a group offers, in the order the schema names them. `free` and
+ * then `stack` come last so nothing that indexed the first three moves; the
+ * editor's Group action writes `free` out, because an absent layout means
+ * `row` (below).
+ *
+ * A `stack` (plan item M6.6) gives every child the **whole** inner box and
+ * draws one at a time: the front one, or the one a tap on the wall chose.
+ * Which is drawn is never a cell — every child's rectangle is the same full
+ * box whichever is showing — so swapping moves nothing, and the stability
+ * contract holds exactly as it does for the other four.
  */
-export const GROUP_LAYOUTS = ['row', 'column', 'grid', 'free'] as const;
+export const GROUP_LAYOUTS = ['row', 'column', 'grid', 'free', 'stack'] as const;
 export type GroupLayout = (typeof GROUP_LAYOUTS)[number];
 
 /** A grid's width in cells when the household has not said; the schema's own bounds. */
@@ -58,7 +65,7 @@ export interface GroupCell {
 export function groupLayoutOf(config: unknown): GroupLayout {
   const raw =
     typeof config === 'object' && config !== null ? (config as Record<string, unknown>)['layout'] : undefined;
-  return raw === 'column' || raw === 'grid' || raw === 'free' ? raw : 'row';
+  return raw === 'column' || raw === 'grid' || raw === 'free' || raw === 'stack' ? raw : 'row';
 }
 
 /** Whether a group's children take their place from the group's order. */
@@ -94,6 +101,7 @@ export function groupCells(config: unknown, count: number): GroupCell[] {
   const n = Math.max(0, Math.trunc(count));
   if (n === 0) return [];
   const layout = groupLayoutOf(config);
+  if (layout === 'stack') return Array.from({ length: n }, () => ({ x: 0, y: 0, w: 1, h: 1 }));
   if (layout === 'row') {
     return Array.from({ length: n }, (_, i) => ({ x: i / n, y: 0, w: 1 / n, h: 1 }));
   }
@@ -135,6 +143,35 @@ function insideUnit(box: GroupCell): GroupCell {
 export function childCells(config: unknown, children: readonly GroupCell[]): GroupCell[] {
   if (groupLayoutOf(config) !== 'free') return groupCells(config, children.length);
   return children.map(insideUnit);
+}
+
+/**
+ * Which of a group's children are drawn, in `z` order. Every child, for every
+ * layout but `stack`; for a stack, the one `shown` names, and the front one —
+ * the first in `z` order — when it names nothing or a child that is no longer
+ * there (left out since, or removed by a save). A panel never names one: it
+ * cannot be tapped, so it draws the front of every stack.
+ */
+export function drawnChildren<T extends { readonly id?: string }>(
+  config: unknown,
+  children: readonly T[],
+  shown?: string,
+): T[] {
+  if (groupLayoutOf(config) !== 'stack') return [...children];
+  const chosen = shown === undefined ? undefined : children.find((child) => child.id === shown);
+  const front = chosen ?? children[0];
+  return front === undefined ? [] : [front];
+}
+
+/**
+ * The child a tap on a stack shows next: the one after `shown` in `z` order,
+ * round to the front after the last. Nothing for a stack of one or none,
+ * which has nothing to swap to and draws no button.
+ */
+export function nextInStack<T extends { readonly id?: string }>(children: readonly T[], shown?: string): T | undefined {
+  if (children.length < 2) return undefined;
+  const at = Math.max(0, children.findIndex((child) => child.id === shown));
+  return children[(at + 1) % children.length];
 }
 
 /** A widget that sits inside a group, read defensively off any document. */

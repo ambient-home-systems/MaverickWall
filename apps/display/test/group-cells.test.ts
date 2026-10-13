@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   GROUP_COLUMNS_DEFAULT,
   childCells,
+  drawnChildren,
+  nextInStack,
   groupCells,
   groupIsOrdered,
   groupChildren,
@@ -139,5 +141,39 @@ describe('a free group', () => {
     expect(childCells({ layout: 'row' }, children)).toEqual(groupCells({ layout: 'row' }, 2));
     expect(childCells({}, children)).toEqual(groupCells({}, 2));
     expect(childCells({ layout: 'grid', columns: 2 }, children)).toEqual(groupCells({ layout: 'grid', columns: 2 }, 2));
+  });
+});
+
+describe('a stack (plan item M6.6)', () => {
+  const kids = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+
+  it('gives every child the whole inner box, whatever its own fractions', () => {
+    expect(groupLayoutOf({ layout: 'stack' })).toBe('stack');
+    expect(groupIsOrdered({ layout: 'stack' })).toBe(true);
+    const whole = { x: 0, y: 0, w: 1, h: 1 };
+    expect(groupCells({ layout: 'stack' }, 3)).toEqual([whole, whole, whole]);
+    expect(childCells({ layout: 'stack' }, [{ x: 0.5, y: 0.5, w: 0.1, h: 0.1 }])).toEqual([whole]);
+  });
+
+  it('draws the front child, or the one a tap chose while it is still there', () => {
+    expect(drawnChildren({ layout: 'stack' }, kids)).toEqual([{ id: 'a' }]);
+    expect(drawnChildren({ layout: 'stack' }, kids, 'b')).toEqual([{ id: 'b' }]);
+    expect(drawnChildren({ layout: 'stack' }, kids, 'gone')).toEqual([{ id: 'a' }]);
+    expect(drawnChildren({ layout: 'stack' }, [])).toEqual([]);
+  });
+
+  it('draws every child for every other layout, whatever a tap chose', () => {
+    for (const layout of ['row', 'column', 'grid', 'free']) {
+      expect(drawnChildren({ layout }, kids, 'b')).toEqual(kids);
+    }
+  });
+
+  it('shows the next one round to the front, and has nothing to swap to with one', () => {
+    expect(nextInStack(kids)).toEqual({ id: 'b' });
+    expect(nextInStack(kids, 'b')).toEqual({ id: 'c' });
+    expect(nextInStack(kids, 'c')).toEqual({ id: 'a' });
+    expect(nextInStack(kids, 'gone')).toEqual({ id: 'b' });
+    expect(nextInStack([{ id: 'a' }])).toBeUndefined();
+    expect(nextInStack([])).toBeUndefined();
   });
 });
