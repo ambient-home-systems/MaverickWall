@@ -109,7 +109,8 @@ const OWN_HONOURS: Readonly<Record<string, readonly string[]>> = {
     'title', 'showTitle', 'count', 'fields', 'readings', 'variant', 'tileLayout', 'hideState', 'showBar',
     'sparkline', 'subject', 'progress', 'doneState', STYLE_INSET, WHEN_EMPTY,
   ],
-  external: ['title', 'showTitle', 'count', 'module', STYLE_INSET],
+  // M7.6: `settings` names a different panel (the variant its settings build).
+  external: ['title', 'showTitle', 'count', 'module', 'settings', STYLE_INSET],
   // `variant` and `unitWords` since P5.2: `page`, `ticket`, `progress` and
   // `month` are drawn as still frames, and "sleeps" is words. `PANEL_LOOKS`
   // says which looks. `from` is the start a progress bar counts from.

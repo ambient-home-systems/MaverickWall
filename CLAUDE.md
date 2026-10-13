@@ -11827,6 +11827,64 @@ tests each. `epaper-proportional.test.ts` gains three: the line is in its slot
 and follows the numbers, a panel without numbers is unchanged, and the table
 draws at its column edges. Ten mutations were checked and all ten are red.
 
+**One install serves many Module widgets, each with its own settings (plan
+item M7.6).** A recipe's `config` field may name a `type`: `string` (the
+absence, so every recipe that existed reads as before), `number` with
+`min`/`max`/`step`, `boolean`, `select` with `options`, or `ha_reading`. A
+value is still the string `{key}` puts in the address, and `fieldValue` takes
+it only in its field's shape: a number as typed and in range, `true` or
+`false`, a listed choice, an entity id's shape. It refuses, never coerces, and
+a recipe whose own default is not its field's shape is a rejected recipe. The
+install page draws a control per type (`http/module-settings.ts`), script-free,
+and refuses a bad value by name with what was typed echoed. The pasted-recipe
+form refuses the same way. The Module widget's inspector draws the same five
+controls from the bootstrap's `modules`, now `{id, name, fields, values}`.
+
+**A widget stores only the settings it changes** (`nextSettings`, pure, in the
+display), so a setting left at the install's value follows the install. On the
+way to a wall `displayConfig` replaces `settings` with `variant`, a 16-hex hash
+of the module id and the sorted settings (`moduleVariantKey`), because a
+setting may be an entity id (rule 12). The manifest carries that variant's
+panel as `ext:<id>~<key>`. The wall finds it by the handle it was given, and
+until the variant's first read it says "Waiting for the first reading with
+these settings." rather than drawing the install's city under York's box.
+`external_module_variants` (migration `0079`, one generated `CREATE TABLE`
+with a cascading key on the module, read) holds each variant's last good panel
+and its error.
+
+**The poll groups by request, not by widget.** `requestKey` is the resolved
+address and headers, with every secret left as its placeholder, so two widgets
+whose settings come to one request share one fetch whatever they called them,
+and a setting the address does not use costs nothing. The install and every
+variant join that map, each request is fetched once when any member is due,
+and its answer is written to every member. Signals come only from the install's
+own request. A variant no widget names any more is pruned on the next poll.
+Saving a layout with module settings brings the job forward. An `ha_reading`
+setting sends that reading's current value, read from the cache and only for a
+watched reading, never its id. Service modules have no settings; a service
+answers one `/panel`.
+
+**Building it found that a Module widget had never drawn on an e-paper
+panel.** The panel looked up `panels[id]` while the manifest keys every module
+`ext:<id>`, so every Module widget on a real panel said "No data yet". Three
+test files had keyed their fixture panels by the bare id, which is how the
+fault stayed green. The panel now reads the manifest's own key, or the
+variant's, and `module-variants.test.ts` draws a frame from a real manifest
+rather than a fixture.
+
+**Measured.** `module-variants.test.ts` (6) polls the real job through the real
+fetcher at a loopback feed that counts what it is asked. Six widgets with five
+sets of settings cost three fetches, and a second poll costs none. It also
+checks the handle in the manifest and no settings there, a reading's value at
+the feed with neither entity id anywhere, the prune and the cascade, four
+pasted refusals, and a panel frame. `recipe-settings.test.ts` (13) covers the
+schema, the values, the request key and the install page's controls.
+`browser-module-settings.test.ts` (2) drives the editor's controls through to
+Save, including a setting put back that saves none. It also loads a real wall
+before and after its variant's panel exists. The display's
+`module-settings.test.ts` (5) covers what a control writes. Mutations and the full
+count are still being taken.
+
 ---
 
 ## Open decisions

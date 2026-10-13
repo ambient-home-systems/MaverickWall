@@ -542,6 +542,16 @@ const widgetConfigFields = z
     rotateSeconds: z.union([z.literal(30), z.literal(60), z.literal(300)]).optional(),
     // External module widget — which registered module's panel to draw (its id).
     module: z.string().max(64).optional(),
+    // And the recipe's settings this widget sets for itself (plan item M7.6),
+    // as the strings they substitute: at most a recipe's eight, under keys a
+    // recipe could declare. Whether each value is one its field takes is the
+    // recipe's question, asked by the poll; a value it would not take is no
+    // value, and the install's stands in. Never sent to a wall: it leaves the
+    // manifest as a handle (`displayConfig`), because one may be an entity id.
+    settings: z
+      .record(z.string().regex(/^[a-z0-9_]+$/).max(40), z.string().max(280))
+      .refine((value) => Object.keys(value).length <= 8, 'at most eight settings')
+      .optional(),
     // Image widget — a stored image's own name (RFC 005 Phase 3b). Served from
     // the household's media store, never an external URL (rule three).
     image: storedImageName.optional(),

@@ -10,6 +10,7 @@ import {
 import { inkOverrideBody, widgetConfigBody } from '../src/api/widget-schema.js';
 import { widgetStyleBody } from '../src/api/widget-style.js';
 import { haReadingHandle } from '../src/api/manifest.js';
+import { moduleVariantKey, variantBlockKey } from '../src/api/module-variant.js';
 import type { Framebuffer } from '../src/epaper/framebuffer.js';
 import {
   INK_KEYS,
@@ -164,7 +165,12 @@ function manifest(): Manifest {
         ],
         fetchedAt: 1,
       },
-      mymod: { items: [{ label: 'Bins', value: 'Tuesday' }, { label: 'Tide', value: 'High' }] },
+      'ext:mymod': { items: [{ label: 'Bins', value: 'Tuesday' }, { label: 'Tide', value: 'High' }] },
+      // The panel a widget's own settings build (plan item M7.6), under the
+      // key the manifest carries it by, so `settings` can be seen to move ink.
+      [variantBlockKey('mymod', moduleVariantKey('mymod', { city: 'york' }))]: {
+        items: [{ label: 'Bins', value: 'Friday' }, { label: 'Tide', value: 'Low' }],
+      },
       /*
        * A watched to-do list (RFC 012), keyed the way the module keys it — by
        * the handle the manifest mints from the entity id — with one completed
@@ -398,6 +404,7 @@ const KEY_BASES: Readonly<Record<string, Readonly<Record<string, readonly Record
 
 /** Values that would visibly change a widget that reads the key at all. */
 const PROBES: Readonly<Record<string, readonly unknown[]>> = {
+  settings: [{ city: 'york' }],
   title: ['A different title'],
   showTitle: [false],
   align: ['center', 'right'],

@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { check, index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { check, index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 /**
  * One household. One database. No tenancy.
@@ -2025,6 +2025,34 @@ export const externalModules = sqliteTable('external_modules', {
   lastError: text('last_error'),
   ...timestamps,
 });
+
+/**
+ * A recipe's panel as one widget's own settings build it (plan item M7.6).
+ *
+ * A Module widget may set a recipe's settings for itself — a second city, a
+ * second station — so one install serves many widgets. Each distinct set of
+ * settings a placed widget names is a variant, keyed by a hash of the module
+ * and those settings (`moduleVariantKey`), and its panel is kept here. The
+ * install's own settings stay on `external_modules`, so a household that never
+ * sets one has no row here and sends the manifest it always sent.
+ *
+ * Created whole, so its cascade is real: removing a module removes its
+ * variants. The poll deletes a variant no placed widget names any more.
+ */
+export const externalModuleVariants = sqliteTable(
+  'external_module_variants',
+  {
+    moduleId: text('module_id')
+      .notNull()
+      .references(() => externalModules.id, { onDelete: 'cascade' }),
+    variantKey: text('variant_key').notNull(),
+    /** Last validated Panel Data for these settings, as JSON this process wrote. */
+    panel: text('panel', { mode: 'json' }).$type<unknown>(),
+    lastPolledAt: integer('last_polled_at', { mode: 'number' }).notNull().default(0),
+    lastError: text('last_error'),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.moduleId, t.variantKey] }) }),
+);
 
 // The `catalog_sources` table (remote community catalogues, 0.13.0) was removed
 // when the store became a single in-repo catalogue. Migration 0020 drops it.

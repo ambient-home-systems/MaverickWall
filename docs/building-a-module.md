@@ -343,6 +343,31 @@ lets Maverick Wall run it in-process safely.
   "config": [{ "key": "station", "label": "Station id" }],
   "fetch": { "url": "https://api.example.com/fuel/{station}" }
   ```
+  A field may name a `type`, which decides the control the household gets and
+  what it will take. With no `type` it is text, as it always was.
+  ```json
+  "config": [
+    { "key": "city", "label": "City", "type": "select",
+      "options": [{ "value": "london", "label": "London" }, { "value": "york", "label": "York" }],
+      "default": "london" },
+    { "key": "days", "label": "Days", "type": "number", "min": 1, "max": 7, "default": "3" },
+    { "key": "metric", "label": "Metric units", "type": "boolean", "default": "true" },
+    { "key": "outside", "label": "Outside temperature", "type": "ha_reading" }
+  ]
+  ```
+  Every value is a string, and is what `{key}` puts in the URL: a number as
+  typed, a switch as `true` or `false`, a choice as its `value`. A value that is
+  not its field's shape is refused, never coerced; a recipe whose own default
+  is not its field's shape is a rejected recipe. An `ha_reading` field offers
+  the readings the household watches, and what reaches your URL is that
+  reading's **current value**, never its Home Assistant id. It has no default.
+
+  **Each Module widget can set these for itself.** One install serves every
+  widget; a widget that changes a setting is read with it, and one that leaves
+  it alone follows the install. Widgets whose settings come to the same request
+  (the same address and headers) share one fetch, so a setting your URL does
+  not use costs nothing. Signals are raised from the install's own settings
+  only.
 - **`fetch`** reaches the **public internet over https only**. To point a recipe
   at a service on your own network, add `"allowLan": true` — then it may reach
   the LAN, loopback and plain http.

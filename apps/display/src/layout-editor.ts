@@ -17,6 +17,7 @@
  */
 
 import { renderFreeform } from './render.js';
+import { effectiveSetting, moduleFields, nextSettings, storedSettings, type ModuleField } from './module-settings.js';
 import { ROOMY_STEP, pictureWantsRoom } from './gutter.js';
 import { ADMIN_WALLPAPER_BASE, currentPicture, wallpaperPosition, widgetGroundFor, type WidgetGround } from './wallpaper.js';
 import { useAdminIconBase } from './weather-icons.js';
@@ -211,7 +212,16 @@ interface LayoutState {
    */
   readings: readonly { readonly id: string; readonly name: string; readonly key: string }[];
   /** The registered modules, for the External widget's "which module". */
-  modules: readonly { readonly id: string; readonly name: string }[];
+  /**
+   * The installed modules, and for a recipe its settings and the install's
+   * values for them (plan item M7.6), so a Module widget can set its own.
+   */
+  modules: readonly {
+    readonly id: string;
+    readonly name: string;
+    readonly fields: readonly ModuleField[];
+    readonly values: Readonly<Record<string, string>>;
+  }[];
   /** The household, for the Shift and Chores widgets' "whose" pickers. */
   people: readonly { readonly id: string; readonly name: string }[];
   /**
@@ -724,7 +734,20 @@ function boot(): void {
               typeof (one as { key?: unknown }).key === 'string',
           )
         : [],
-      modules: Array.isArray(parsed.modules) ? (parsed.modules as LayoutState['modules']) : [],
+      modules: Array.isArray(parsed.modules)
+        ? (parsed.modules as unknown[]).flatMap((one) => {
+            if (one === null || typeof one !== 'object') return [];
+            const m = one as Record<string, unknown>;
+            if (typeof m['id'] !== 'string' || typeof m['name'] !== 'string') return [];
+            const values: Record<string, string> = {};
+            if (m['values'] !== null && typeof m['values'] === 'object') {
+              for (const [k, v] of Object.entries(m['values'] as Record<string, unknown>)) {
+                if (typeof v === 'string') values[k] = v;
+              }
+            }
+            return [{ id: m['id'], name: m['name'], fields: moduleFields(m['fields']), values }];
+          })
+        : [],
       people: Array.isArray(parsed.people) ? (parsed.people as LayoutState['people']) : [],
       todoLists: Array.isArray(parsed.todoLists)
         ? (parsed.todoLists as unknown[]).filter(
@@ -4973,9 +4996,16 @@ function boot(): void {
       if (cfg['module'] === module.id) opt.selected = true;
       select.appendChild(opt);
     }
-    select.addEventListener('change', () => setConfig(widget, 'module', select.value || undefined));
+    select.addEventListener('change', () => {
+      // Another module's settings mean nothing to this one, so they go with it.
+      if (storedSettings(cfg) !== undefined) setConfig(widget, 'settings', undefined);
+      setConfig(widget, 'module', select.value || undefined);
+      renderConfigPanel();
+    });
     field.appendChild(select);
     configPanel.appendChild(field);
+    const chosen = state.modules.find((module) => module.id === cfg['module']);
+    if (chosen !== undefined && chosen.fields.length > 0) buildModuleSettings(widget, cfg, chosen);
 
     /*
      * How many of the module's rows to draw.
@@ -5002,6 +5032,85 @@ function boot(): void {
     note.textContent = 'Only applies to a module that sends a list.';
     note.dataset['cfgKey'] = 'count';
     configPanel.appendChild(note);
+  }
+
+  /**
+   * This widget's own settings for its module (plan item M7.6): one control
+   * per setting the recipe declares, each showing what this widget will ask
+   * for — its own value, else the install's. A value put back to the install's
+   * is no setting (`nextSettings`), so the widget follows the install again.
+   * Read on the module's next poll, so the preview shows it after a save.
+   */
+  function buildModuleSettings(
+    widget: Widget,
+    cfg: Record<string, unknown>,
+    module: LayoutState['modules'][number],
+  ): void {
+    const lead = document.createElement('p');
+    lead.className = 'hint';
+    lead.dataset['moduleSettingsLead'] = '';
+    lead.textContent =
+      'This widget’s own settings start as the module’s. Change one and this widget is read with it, from the module’s next read after you save.';
+    configPanel.appendChild(lead);
+    const settings = storedSettings(cfg);
+    const write = (key: string, value: string): void =>
+      setConfig(widget, 'settings', nextSettings(storedSettings(laneConfig(widget)), module.values, key, value));
+    for (const setting of module.fields) {
+      const now = effectiveSetting(setting.key, module.values, settings);
+      const hintOf = (extra?: string): void => {
+        const words = [setting.hint, extra].filter((w): w is string => w !== undefined && w !== '').join(' ');
+        if (words === '') return;
+        const note = document.createElement('p');
+        note.className = 'hint';
+        note.textContent = words;
+        configPanel.appendChild(note);
+      };
+      if (setting.type === 'boolean') {
+        configPanel.appendChild(switchRow(setting.label, setting.hint ?? '', now === 'true', (on) => write(setting.key, on ? 'true' : 'false')));
+        continue;
+      }
+      const field = cfgField(setting.label);
+      field.dataset['moduleSetting'] = setting.key;
+      if (setting.type === 'select' || setting.type === 'ha_reading') {
+        const select = document.createElement('select');
+        const choices =
+          setting.type === 'select'
+            ? setting.options
+            : [{ value: '', label: 'None' }, ...state.readings.map((r) => ({ value: r.id, label: r.name }))];
+        for (const choice of choices) {
+          const opt = document.createElement('option');
+          opt.value = choice.value;
+          opt.textContent = choice.label;
+          if (choice.value === now) opt.selected = true;
+          select.appendChild(opt);
+        }
+        select.addEventListener('change', () => write(setting.key, select.value));
+        field.appendChild(select);
+        configPanel.appendChild(field);
+        hintOf(setting.type === 'ha_reading' ? 'Sends this reading’s current value to the module’s source.' : undefined);
+        continue;
+      }
+      const input = document.createElement('input');
+      input.type = setting.type === 'number' ? 'number' : 'text';
+      if (setting.type === 'number') {
+        if (setting.min !== undefined) input.min = String(setting.min);
+        if (setting.max !== undefined) input.max = String(setting.max);
+        input.step = setting.step !== undefined ? String(setting.step) : 'any';
+      } else {
+        input.maxLength = 280;
+      }
+      input.value = settings?.[setting.key] ?? '';
+      input.placeholder = module.values[setting.key] ?? '';
+      input.addEventListener('change', () => {
+        // A number the recipe would not take is no setting: the field says so
+        // by its own validity and the widget keeps the install's.
+        if (setting.type === 'number' && !input.checkValidity()) return;
+        write(setting.key, input.value.trim());
+      });
+      field.appendChild(input);
+      configPanel.appendChild(field);
+      hintOf();
+    }
   }
 
   function buildCountdownConfig(widget: Widget, cfg: Record<string, unknown>): void {

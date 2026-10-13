@@ -213,14 +213,119 @@ const tpl = (max: number) =>
     .max(max)
     .refine(templateIsValid, 'a template names an unknown formatter or a bad selector');
 
-const configField = z
-  .object({
-    key: z.string().min(1).max(40).regex(/^[a-z0-9_]+$/, 'lower-case, digits and underscore only'),
-    label: z.string().min(1).max(60),
-    type: z.literal('string').default('string'), // B1 config is text only
-    default: z.string().max(280).optional(),
-  })
-  .strict();
+/*
+ * A setting the household fills in (plan item M7.6): text, a number, a switch,
+ * one of a list, or one of their Home Assistant readings. Each is drawn as its
+ * own control on the install page and in a Module widget's settings, and each
+ * value is kept as the string it substitutes into the address, so a recipe
+ * written before the types existed reads exactly as it did.
+ *
+ * A Home Assistant reading substitutes the reading's *value* at fetch time and
+ * never its entity id, so what leaves the house is the number the household
+ * chose to send, and the address of nothing.
+ */
+const fieldBase = {
+  key: z.string().min(1).max(40).regex(/^[a-z0-9_]+$/, 'lower-case, digits and underscore only'),
+  label: z.string().min(1).max(60),
+  /** A line under the control, for what the value means. */
+  hint: z.string().min(1).max(160).optional(),
+};
+/** A number as a recipe writes it: plain decimal, no exponent, no spaces. */
+const NUMBER_TEXT = /^-?\d+(\.\d+)?$/;
+const OPTION_VALUE = /^[^{}]{1,80}$/;
+
+const configField = z.preprocess(
+  // `type` was optional when every field was text, and a recipe that leaves it
+  // out still means text.
+  (raw) =>
+    raw !== null && typeof raw === 'object' && !('type' in raw) ? { ...(raw as object), type: 'string' } : raw,
+  z
+    .discriminatedUnion('type', [
+      z.object({ ...fieldBase, type: z.literal('string'), default: z.string().max(280).optional() }).strict(),
+      z
+        .object({
+          ...fieldBase,
+          type: z.literal('number'),
+          min: z.number().finite().optional(),
+          max: z.number().finite().optional(),
+          step: z.number().finite().positive().optional(),
+          default: z.string().regex(NUMBER_TEXT, 'a number written plainly').optional(),
+        })
+        .strict(),
+      z
+        .object({ ...fieldBase, type: z.literal('boolean'), default: z.enum(['true', 'false']).optional() })
+        .strict(),
+      z
+        .object({
+          ...fieldBase,
+          type: z.literal('select'),
+          options: z
+            .array(z.object({ value: z.string().regex(OPTION_VALUE, 'a value'), label: z.string().min(1).max(60) }).strict())
+            .min(1)
+            .max(20),
+          default: z.string().max(80).optional(),
+        })
+        .strict(),
+      z.object({ ...fieldBase, type: z.literal('ha_reading') }).strict(),
+    ])
+    .superRefine((field, ctx) => {
+      if (field.type === 'number') {
+        if (field.min !== undefined && field.max !== undefined && field.min > field.max) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['max'], message: 'max is below min' });
+        }
+        if (field.default !== undefined && fieldValue(field, field.default) === undefined) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['default'], message: 'the default is outside min and max' });
+        }
+      }
+      if (field.type === 'select') {
+        const values = field.options.map((o) => o.value);
+        if (new Set(values).size !== values.length) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['options'], message: 'two options share a value' });
+        }
+        if (field.default !== undefined && !values.includes(field.default)) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['default'], message: 'the default is not one of the options' });
+        }
+      }
+    }),
+);
+
+export type ConfigField = z.infer<typeof configField>;
+
+/** An entity id, as Home Assistant writes one. */
+const ENTITY_ID = /^[a-z_]+\.[a-z0-9_]+$/;
+
+/**
+ * A value for a setting, as the string it substitutes, or `undefined` when it
+ * is not one this field takes. Refused rather than coerced (rule five): "12.0"
+ * stays "12.0", a number out of its range is no value, and a choice not on the
+ * list is no choice. Text is the one type that takes anything under its cap,
+ * which is what a text field always took.
+ */
+export function fieldValue(field: ConfigField, raw: string): string | undefined {
+  switch (field.type) {
+    case 'string':
+      return raw.length <= 280 ? raw : undefined;
+    case 'number': {
+      if (!NUMBER_TEXT.test(raw)) return undefined;
+      const n = Number(raw);
+      if (!Number.isFinite(n)) return undefined;
+      if (field.min !== undefined && n < field.min) return undefined;
+      if (field.max !== undefined && n > field.max) return undefined;
+      return raw;
+    }
+    case 'boolean':
+      return raw === 'true' || raw === 'false' ? raw : undefined;
+    case 'select':
+      return field.options.some((o) => o.value === raw) ? raw : undefined;
+    case 'ha_reading':
+      return ENTITY_ID.test(raw) ? raw : undefined;
+  }
+}
+
+/** The fields whose value is a Home Assistant reading's, read at fetch time. */
+export function readingFields(recipe: Recipe): string[] {
+  return recipe.config.filter((f) => f.type === 'ha_reading').map((f) => f.key);
+}
 
 const itemsSpec = z
   .object({
@@ -518,12 +623,71 @@ export function runRecipeSignals(
   return { ok: true, signals: parsed.data };
 }
 
-/** Fill in any config defaults the household did not supply, and drop unknown keys. */
+/**
+ * Fill in any config defaults the household did not supply, and drop unknown
+ * keys. A stored value this field does not take — a choice a newer recipe took
+ * off its list, a number now out of range — is no value, and the default
+ * stands in: what reaches the address is always one the recipe declared.
+ */
 export function normaliseConfig(recipe: Recipe, supplied: RecipeConfig): RecipeConfig {
   const config: RecipeConfig = {};
   for (const field of recipe.config) {
-    const value = supplied[field.key];
-    config[field.key] = value !== undefined && value !== '' ? value : field.default ?? '';
+    const raw = supplied[field.key];
+    const value = typeof raw === 'string' && raw !== '' ? fieldValue(field, raw) : undefined;
+    config[field.key] = value ?? (field.type === 'ha_reading' ? '' : (field.default ?? ''));
   }
   return config;
+}
+
+/**
+ * The install's settings with one widget's on top (plan item M7.6): what that
+ * widget's fetch is built from. A widget's value that this field does not take
+ * falls back to the install's, never to a stranger's default.
+ */
+export function widgetConfig(recipe: Recipe, install: RecipeConfig, settings: RecipeConfig): RecipeConfig {
+  const base = normaliseConfig(recipe, install);
+  const out: RecipeConfig = { ...base };
+  for (const field of recipe.config) {
+    const raw = settings[field.key];
+    const value = typeof raw === 'string' && raw !== '' ? fieldValue(field, raw) : undefined;
+    if (value !== undefined) out[field.key] = value;
+  }
+  return out;
+}
+
+/**
+ * What a fetch is, for telling two of them apart (plan item M7.6): the
+ * address and the headers, built from the settings, with every secret left as
+ * its placeholder. Two widgets whose settings build the same request share one
+ * fetch, whatever they called their settings; a secret is the install's own and
+ * the same for both, so leaving it unresolved costs nothing and keeps it out of
+ * a key that is held in memory beside the others.
+ */
+export function requestKey(recipe: Recipe, config: RecipeConfig): string {
+  const placeholders: RecipeSecrets = {};
+  for (const secret of recipe.secrets) placeholders[secret.key] = `{secret:${secret.key}}`;
+  const headers = Object.entries(resolveHeaders(recipe, config, placeholders)).sort(([a], [b]) =>
+    a < b ? -1 : a > b ? 1 : 0,
+  );
+  return JSON.stringify([resolveFetchUrl(recipe, config), headers]);
+}
+
+/**
+ * The settings with each Home Assistant reading's value in place of its entity
+ * id, read from what the house last told us. A reading the cache does not have
+ * is empty, which is what an unfilled text field has always sent.
+ */
+export function withReadingValues(
+  recipe: Recipe,
+  config: RecipeConfig,
+  valueOf: (entityId: string) => string | undefined,
+): RecipeConfig {
+  const keys = readingFields(recipe);
+  if (keys.length === 0) return config;
+  const out: RecipeConfig = { ...config };
+  for (const key of keys) {
+    const entity = out[key] ?? '';
+    out[key] = entity === '' ? '' : (valueOf(entity) ?? '');
+  }
+  return out;
 }

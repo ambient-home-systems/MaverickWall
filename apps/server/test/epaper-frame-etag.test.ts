@@ -139,7 +139,7 @@ function baseManifest(): Manifest {
         today: '2026-09-24',
         days: [{ date: '2026-09-24', items: [{ name: 'Bins', person: 'Amy', personId: 'p1', done: false }] }],
       },
-      mymod: { items: [{ label: 'Tide', value: 'High' }, { label: 'Bins', value: 'Tuesday' }] },
+      'ext:mymod': { items: [{ label: 'Tide', value: 'High' }, { label: 'Bins', value: 'Tuesday' }] },
     },
   } as unknown as Manifest;
 }
@@ -371,7 +371,7 @@ const PROBES: readonly {
   { name: 'weather', widgets: STRIP, reads: ['weather:days', 'weather:glyph'] },
   { name: 'weather, today', widgets: [at('weather', { variant: 'today' })], reads: ['weather:days', 'weather:current'] },
   { name: 'house', widgets: [at('homeassistant')], reads: ['home'] },
-  { name: 'a module', widgets: [at('external', { module: 'mymod' })], reads: ['mymod'] },
+  { name: 'a module', widgets: [at('external', { module: 'mymod' })], reads: ['ext:mymod'] },
 ];
 
 /**
@@ -450,9 +450,9 @@ const MUTATIONS: readonly { name: string; touches: string; manifest: Manifest }[
   },
   {
     name: 'the tide turned',
-    touches: 'mymod',
+    touches: 'ext:mymod',
     manifest: edit(BASE, (panels) => {
-      (panels['mymod']!['items'] as Record<string, unknown>[])[0]!['value'] = 'Low';
+      (panels['ext:mymod']!['items'] as Record<string, unknown>[])[0]!['value'] = 'Low';
     }),
   },
   // No probe reads these, and that is the point: they are the wall's calendar

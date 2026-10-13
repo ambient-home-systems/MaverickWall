@@ -3808,11 +3808,25 @@ function todoNoticeNode(message: string): HTMLElement {
  * disabled, or not polled) says so rather than drawing an empty box.
  */
 function renderExternalWidget(model: DisplayModel, config: unknown): HTMLElement {
-  const id = widgetConfig(config)['module'];
+  const cfg = widgetConfig(config);
+  const id = cfg['module'];
+  // The panel this widget's own settings build (plan item M7.6), by the handle
+  // the server sent in their place, else the install's.
+  const variant = typeof cfg['variant'] === 'string' && VARIANT_KEY.test(cfg['variant']) ? cfg['variant'] : undefined;
+  if (typeof id === 'string' && variant !== undefined) {
+    const own = model.externalPanels[`ext:${id}~${variant}`];
+    // Waiting for the first read with these settings, which is not the
+    // install's panel: that would be another city's weather under this one's box.
+    if (own === undefined) return el('div', 'cd-empty', 'Waiting for the first reading with these settings.');
+    return renderGenericPanel(own, panelRowLimit(config));
+  }
   const panel = typeof id === 'string' ? model.externalPanels[`ext:${id}`] : undefined;
   if (panel === undefined) return el('div', 'cd-empty', 'Pick a module in this widget’s options.');
   return renderGenericPanel(panel, panelRowLimit(config));
 }
+
+/** A variant's handle, as the server mints it (`moduleVariantKey`). */
+const VARIANT_KEY = /^[0-9a-f]{16}$/;
 
 /**
  * A widget's stored options, read defensively.

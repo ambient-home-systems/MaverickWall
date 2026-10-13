@@ -573,7 +573,7 @@ function widgetManifest(): Manifest {
         ],
         fetchedAt: 1,
       },
-      mymod: {
+      'ext:mymod': {
         items: [
           { label: 'Bins', value: 'Tuesday' }, { label: 'Tide', value: 'High' },
           { label: 'Bus', value: '7 min' }, { label: 'Post', value: 'Collected' },
@@ -887,7 +887,7 @@ describe('a module panel counts the rows it actually draws', () => {
   const readings = Array.from({ length: 12 }, (_, i) => ({ label: `Row ${i + 1}`, value: `v${i + 1}` }));
   const withModule = {
     ...WIDGET_MANIFEST,
-    panels: { ...WIDGET_MANIFEST.panels, many: { items: readings } },
+    panels: { ...WIDGET_MANIFEST.panels, 'ext:many': { items: readings } },
   } as unknown as Manifest;
 
   /** Lines of text drawn inside the widget's border, counted as ink bands. */
@@ -947,7 +947,7 @@ describe('a module row’s tone on a panel (plan item M7.2)', () => {
     ];
     const manifest = {
       ...WIDGET_MANIFEST,
-      panels: { ...WIDGET_MANIFEST.panels, garden: { kind: 'readings', items: rows } },
+      panels: { ...WIDGET_MANIFEST.panels, 'ext:garden': { kind: 'readings', items: rows } },
     } as unknown as Manifest;
     const panel = { width: 800, height: 480 } as const;
     const widget: PlacedEpaperWidget = {
@@ -968,7 +968,7 @@ describe('a module’s progress and gauge on a panel (plan item M7.3)', () => {
   const panelFrame = (panel: unknown, h = 0.4): string => {
     const manifest = {
       ...WIDGET_MANIFEST,
-      panels: { ...WIDGET_MANIFEST.panels, garden: panel },
+      panels: { ...WIDGET_MANIFEST.panels, 'ext:garden': panel },
     } as unknown as Manifest;
     const widget: PlacedEpaperWidget = {
       type: 'external', x: 0.05, y: 0.05, w: 0.9, h, z: 0, config: { module: 'garden' },
@@ -1020,7 +1020,7 @@ describe('a module’s series and table on a panel (plan item M7.4)', () => {
   const panelFrame = (panel: unknown, h = 0.4): string => {
     const manifest = {
       ...WIDGET_MANIFEST,
-      panels: { ...WIDGET_MANIFEST.panels, garden: panel },
+      panels: { ...WIDGET_MANIFEST.panels, 'ext:garden': panel },
     } as unknown as Manifest;
     const widget: PlacedEpaperWidget = {
       type: 'external', x: 0.05, y: 0.05, w: 0.9, h, z: 0, config: { module: 'garden' },

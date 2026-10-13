@@ -32,6 +32,7 @@ import { parse, text, z } from '../validation.js';
 import { readSaved, savedRedirect } from './saved.js';
 import { selfHref } from './self.js';
 import { householdSetUp } from '../modules/index.js';
+import { invalidSetting, readSettingsForm, settingsControls, watchedReadingChoices } from './module-settings.js';
 import { shownOnTag, wallsAndWhatTheyDraw, wallsShowingModule, type WallDrawing } from './wall-reach.js';
 
 /**
@@ -93,12 +94,11 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
     // `key`. Everything else about the recipe is fixed by the catalogue entry —
     // the household is choosing values, not authoring a recipe.
     const body = (await c.req.parseBody()) as Record<string, unknown>;
-    const supplied: RecipeConfig = {};
-    for (const field of entry.recipe.config) {
-      const raw = body[`cfg_${field.key}`];
-      if (typeof raw === 'string') supplied[field.key] = raw;
+    const read = readSettingsForm(entry.recipe.config, body);
+    if (read.error !== undefined) {
+      return c.html(installRecipePage(c, entry, { values: read.values, error: read.error }), 400);
     }
-    const config = normaliseConfig(entry.recipe, supplied);
+    const config = normaliseConfig(entry.recipe, read.values);
 
     const id = randomBytes(6).toString('hex');
     const name = (typeof body['name'] === 'string' && body['name'].trim()) || entry.name;
@@ -173,6 +173,8 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
     }
     const supplied =
       configJson !== null && typeof configJson === 'object' ? (configJson as RecipeConfig) : {};
+    const refused = invalidSetting(recipe.config, supplied);
+    if (refused !== undefined) return back(refused);
     const config = normaliseConfig(recipe, supplied);
 
     // Secrets, if the recipe declares any: a JSON object of {key: value},
@@ -675,18 +677,12 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
    * input per `recipe.config` field, its default pre-filled. A recipe with no
    * config is just a confirm.
    */
-  function installRecipePage(c: Context, entry: RecipeEntry): string {
-    const fields = entry.recipe.config
-      .map(
-        (field) =>
-          textField({
-            label: field.label,
-            name: `cfg_${field.key}`,
-            value: field.default ?? '',
-            attrs: 'maxlength="280"',
-          }),
-      )
-      .join('');
+  function installRecipePage(
+    c: Context,
+    entry: RecipeEntry,
+    echo?: { readonly values: RecipeConfig; readonly error: string },
+  ): string {
+    const fields = settingsControls(entry.recipe.config, echo?.values, watchedReadingChoices(deps.db), recipeFetchHost(entry.recipe));
     // Secrets are password inputs, never pre-filled, and the household is told
     // exactly where the value will be sent before they type it.
     const secretFields = entry.recipe.secrets
@@ -726,6 +722,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
           value: entry.name,
           attrs: 'maxlength="60"',
         }) +
+        (echo === undefined ? '' : errorBlock(echo.error)) +
         (fields === ''
           ? secretFields === ''
             ? `<p class="hint">This recipe needs no settings.</p>`
@@ -737,7 +734,11 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
         `<button type="submit" style="margin-top:16px">Install</button></form>` +
         `<p class="hint">A recipe is data, never code. It reads a web feed and shows ` +
         `a value from it — it never runs anything, and never receives anything ` +
-        `about your household.</p>`,
+        `about your household${
+          entry.recipe.config.some((f) => f.type === 'ha_reading')
+            ? ' but the value of a reading you choose for it above'
+            : ''
+        }.</p>`,
     });
   }
 

@@ -1,4 +1,7 @@
 import type { SqliteDatabase } from '../db/open.js';
+import { moduleVariantKey, variantBlockKey, widgetSettings } from './module-variant.js';
+
+export { moduleVariantKey, variantBlockKey, widgetSettings };
 
 /**
  * Registered third-party modules (docs/rfc-001-module-framework.md).
@@ -273,4 +276,112 @@ export function setExternalModuleAlertsAction(
     Date.now(),
     id,
   );
+}
+
+// ---------------------------------------------------------------------------
+// A widget's own settings (plan item M7.6)
+// ---------------------------------------------------------------------------
+
+/**
+ * Every distinct set of settings a placed widget gives this module, on any
+ * wall, either orientation, any named layout. A panel following a wall reads
+ * the same rows, so a panel's variants are among these.
+ */
+export function readModuleWidgetSettings(db: SqliteDatabase, moduleId: string): Map<string, Record<string, string>> {
+  const rows = db.prepare(`SELECT config FROM layout_widgets WHERE type = 'external'`).all() as {
+    config: string | null;
+  }[];
+  const out = new Map<string, Record<string, string>>();
+  for (const row of rows) {
+    const config = parseJson(row.config);
+    if (config === null || typeof config !== 'object') continue;
+    if ((config as Record<string, unknown>)['module'] !== moduleId) continue;
+    const settings = widgetSettings(config);
+    if (settings !== null) out.set(moduleVariantKey(moduleId, settings), settings);
+  }
+  return out;
+}
+
+export interface ModuleVariantRow {
+  readonly moduleId: string;
+  readonly variantKey: string;
+  readonly panel: unknown;
+  readonly lastPolledAt: number;
+  readonly lastError: string | null;
+}
+
+export function readModuleVariants(db: SqliteDatabase, moduleId: string): ModuleVariantRow[] {
+  return (
+    db
+      .prepare(
+        `SELECT module_id, variant_key, panel, last_polled_at, last_error
+         FROM external_module_variants WHERE module_id = ? ORDER BY variant_key`,
+      )
+      .all(moduleId) as {
+      module_id: string;
+      variant_key: string;
+      panel: string | null;
+      last_polled_at: number;
+      last_error: string | null;
+    }[]
+  ).map((row) => ({
+    moduleId: row.module_id,
+    variantKey: row.variant_key,
+    panel: parseJson(row.panel),
+    lastPolledAt: row.last_polled_at,
+    lastError: row.last_error,
+  }));
+}
+
+/**
+ * Every enabled module's variant panels, keyed as the manifest carries them.
+ * A variant not yet read has no panel and is not sent: its widget waits, as a
+ * freshly installed module's does.
+ */
+export function readVariantPanels(db: SqliteDatabase): Record<string, unknown> {
+  const rows = db
+    .prepare(
+      `SELECT v.module_id, v.variant_key, v.panel FROM external_module_variants v
+       JOIN external_modules m ON m.id = v.module_id
+       WHERE m.enabled = 1 AND v.panel IS NOT NULL ORDER BY v.module_id, v.variant_key`,
+    )
+    .all() as { module_id: string; variant_key: string; panel: string }[];
+  const out: Record<string, unknown> = {};
+  for (const row of rows) {
+    const panel = parseJson(row.panel);
+    if (panel !== null) out[variantBlockKey(row.module_id, row.variant_key)] = panel;
+  }
+  return out;
+}
+
+/** A good read of a variant: its panel, and the error cleared. */
+export function writeModuleVariantPanel(db: SqliteDatabase, moduleId: string, key: string, panel: unknown, at: number): void {
+  db.prepare(
+    `INSERT INTO external_module_variants (module_id, variant_key, panel, last_polled_at, last_error)
+     VALUES (?, ?, ?, ?, NULL)
+     ON CONFLICT (module_id, variant_key) DO UPDATE SET panel = excluded.panel,
+       last_polled_at = excluded.last_polled_at, last_error = NULL`,
+  ).run(moduleId, key, JSON.stringify(panel), at);
+}
+
+/** A failed read of a variant: the error, and its last good panel kept. */
+export function writeModuleVariantError(db: SqliteDatabase, moduleId: string, key: string, error: string, at: number): void {
+  db.prepare(
+    `INSERT INTO external_module_variants (module_id, variant_key, panel, last_polled_at, last_error)
+     VALUES (?, ?, NULL, ?, ?)
+     ON CONFLICT (module_id, variant_key) DO UPDATE SET last_polled_at = excluded.last_polled_at,
+       last_error = excluded.last_error`,
+  ).run(moduleId, key, at, error);
+}
+
+/** Forget the variants no placed widget names any more. */
+export function pruneModuleVariants(db: SqliteDatabase, moduleId: string, keep: ReadonlySet<string>): void {
+  for (const row of readModuleVariants(db, moduleId)) {
+    if (!keep.has(row.variantKey)) {
+      db.prepare(`DELETE FROM external_module_variants WHERE module_id = ? AND variant_key = ?`).run(
+        moduleId,
+        row.variantKey,
+      );
+    }
+  }
 }
