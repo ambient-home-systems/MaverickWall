@@ -128,7 +128,17 @@ function toEpochMs(value: unknown): number | undefined {
 // Selectors — dotted / indexed path resolution. Traversal only.
 // ---------------------------------------------------------------------------
 
-const PATH = /^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+|\[\d+\])*$/;
+/*
+ * A selector: a dotted / indexed path into the primary fetch's body, or, with
+ * `@name` in front, into one of the recipe's named `sources` (plan item M7.7)
+ * — `@name` alone is that source's whole body. Traversal only: a path can say
+ * where a value is and nothing about what to do with it.
+ */
+const PATH = /^(?:@[a-z][a-z0-9_]{0,19}(?:\.[A-Za-z0-9_]+|\[\d+\])*|[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+|\[\d+\])*)$/;
+const SOURCE_REF = /^@([a-z][a-z0-9_]{0,19})(.*)$/;
+
+/** The bodies of a recipe's named sources, by name, for `@name` selectors. */
+export type RecipeSources = Readonly<Record<string, unknown>>;
 
 function parsePath(path: string): (string | number)[] {
   const segments: (string | number)[] = [];
@@ -140,9 +150,16 @@ function parsePath(path: string): (string | number)[] {
   return segments;
 }
 
-function resolvePath(root: unknown, path: string): unknown {
+function resolvePath(root: unknown, path: string, sources: RecipeSources = {}): unknown {
   let current = root;
-  for (const segment of parsePath(path)) {
+  let rest = path;
+  const source = SOURCE_REF.exec(path);
+  if (source !== null) {
+    const name = source[1] as string;
+    current = Object.prototype.hasOwnProperty.call(sources, name) ? sources[name] : undefined;
+    rest = (source[2] ?? '').replace(/^\./, '');
+  }
+  for (const segment of parsePath(rest)) {
     if (current === null || current === undefined) return undefined;
     if (typeof segment === 'number') {
       if (!Array.isArray(current)) return undefined;
@@ -191,11 +208,11 @@ function templateIsValid(template: string): boolean {
   return true;
 }
 
-function renderTemplate(template: string, scope: unknown, now: number): string {
+function renderTemplate(template: string, scope: unknown, now: number, sources: RecipeSources = {}): string {
   return template.replace(PLACEHOLDER, (_whole, body: string) => {
     const parsed = parsePlaceholder(body);
     if (parsed === null) return '';
-    const value = resolvePath(scope, parsed.path);
+    const value = resolvePath(scope, parsed.path, sources);
     if (parsed.formatter === undefined) return asString(value);
     return FORMATTERS[parsed.formatter]!(value, parsed.arg, now);
   });
@@ -327,21 +344,58 @@ export function readingFields(recipe: Recipe): string[] {
   return recipe.config.filter((f) => f.type === 'ha_reading').map((f) => f.key);
 }
 
+/*
+ * Choosing which rows of an array a panel draws (plan item M7.7): keep the
+ * rows every condition holds for, put them in an order, and take the first so
+ * many. Each condition is a path and at most one comparison against a literal,
+ * and the conditions are all required — there is no "or", no arithmetic and
+ * nothing nested, because the moment a filter can say `a > b + 1` a recipe is
+ * code again. A path is the same selector a template uses, so `price > 3` or
+ * `a + b` is refused by the selector's own pattern at parse, not at fetch.
+ */
+const selector = z.string().regex(PATH, 'a selector path');
+const literal = z.union([z.string().max(200), z.number().finite(), z.boolean()]);
+const condition = z.union([
+  selector,
+  z.object({ path: selector, equals: literal }).strict(),
+  z.object({ path: selector, notEquals: literal }).strict(),
+  z.object({ path: selector, above: z.number().finite() }).strict(),
+  z.object({ path: selector, below: z.number().finite() }).strict(),
+]);
+const whereSpec = z.array(condition).min(1).max(4);
+const sortSpec = z
+  .object({
+    by: selector,
+    order: z.enum(['asc', 'desc']).default('asc'),
+    /** How the values compare; absent, numbers when every value is one and text otherwise. */
+    as: z.enum(['number', 'text', 'time']).optional(),
+  })
+  .strict();
+const limitSpec = z.number().int().min(1).max(12);
+
 const itemsSpec = z
   .object({
-    for: z.string().regex(PATH, 'a selector path'),
+    for: selector,
     label: tpl(120),
     value: tpl(120),
     icon: tpl(8).optional(),
+    where: whereSpec.optional(),
+    sort: sortSpec.optional(),
+    limit: limitSpec.optional(),
+    empty: tpl(120).optional(),
   })
   .strict();
 
+/* A timeline is always in time order, so it takes no `sort` of its own. */
 const timelineSpec = z
   .object({
-    for: z.string().regex(PATH, 'a selector path'),
+    for: selector,
     at: tpl(120),
     label: tpl(120),
     detail: tpl(120).optional(),
+    where: whereSpec.optional(),
+    limit: limitSpec.optional(),
+    empty: tpl(120).optional(),
   })
   .strict();
 
@@ -366,8 +420,8 @@ const panelSpec = z.discriminatedUnion('kind', [
  * it does not. "Compare to a config value" and the like are for later, if ever.
  */
 const whenSpec = z.union([
-  z.string().regex(PATH, 'a selector path'),
-  z.object({ path: z.string().regex(PATH, 'a selector path'), equals: z.string().max(200) }).strict(),
+  selector,
+  z.object({ path: selector, equals: z.string().max(200) }).strict(),
 ]);
 
 /**
@@ -431,6 +485,41 @@ const fetchSpec = z
   })
   .strict();
 
+/*
+ * A further request a recipe makes (plan item M7.7), named so its body can be
+ * reached as `@name`. Its own address and headers, built from the same
+ * settings and secrets the main fetch's are; the interval and the network
+ * switch are the main fetch's, so a recipe asks for the LAN once and is polled
+ * as one thing. At most three, so one recipe is at most four requests.
+ */
+const sourceName = z.string().regex(/^[a-z][a-z0-9_]{0,19}$/, 'a lower-case name');
+const sourceSpec = z
+  .object({
+    url: z.string().min(1).max(2048),
+    headers: z.record(headerName, headerValue).optional(),
+  })
+  .strict();
+const MAX_SOURCES = 3;
+
+/** Every selector path a recipe's panel and signals use: the `for`s, the conditions, the sort keys and every placeholder. */
+function selectorPaths(value: unknown, key = ''): string[] {
+  if (typeof value === 'string') {
+    if (key === 'for' || key === 'path' || key === 'by') return [value];
+    if (key === 'when' || key === 'where') return [value];
+    const out: string[] = [];
+    for (const match of value.matchAll(PLACEHOLDER)) {
+      const parsed = parsePlaceholder(match[1] ?? '');
+      if (parsed !== null) out.push(parsed.path);
+    }
+    return out;
+  }
+  if (Array.isArray(value)) return value.flatMap((entry) => selectorPaths(entry, key));
+  if (value !== null && typeof value === 'object') {
+    return Object.entries(value).flatMap(([k, v]) => selectorPaths(v, k));
+  }
+  return [];
+}
+
 export const recipeSchema = z
   .object({
     name: z.string().min(1).max(60),
@@ -438,6 +527,12 @@ export const recipeSchema = z
     config: z.array(configField).max(8).default([]),
     secrets: z.array(secretField).max(8).default([]),
     fetch: fetchSpec,
+    sources: z
+      .record(sourceName, sourceSpec)
+      .refine((sources) => Object.keys(sources).length <= MAX_SOURCES, {
+        message: `a recipe has at most ${MAX_SOURCES} more sources`,
+      })
+      .optional(),
     panel: panelSpec,
     // Optional. A panel-only recipe omits it; the cap matches signalDataSchema.
     signals: z.array(signalSpec).max(12).default([]),
@@ -447,46 +542,70 @@ export const recipeSchema = z
     const config = new Set(recipe.config.map((f) => f.key));
     const secrets = new Set(recipe.secrets.map((f) => f.key));
 
-    // Every `{placeholder}` in the fetch URL must name a declared config key —
-    // the URL is built before there is any fetched data to reference, and a
-    // secret may never appear in it.
-    for (const match of recipe.fetch.url.matchAll(PLACEHOLDER)) {
-      const key = (match[1] ?? '').trim();
-      if (SECRET_REF.test(key)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['fetch', 'url'],
-          message: 'a secret may not appear in the address — put it in a header',
-        });
-      } else if (!config.has(key)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['fetch', 'url'],
-          message: `the URL references {${key}}, which is not a config field`,
-        });
+    // Every request — the main fetch and each named source — is checked the
+    // same way.
+    const requests: [readonly (string | number)[], { url: string; headers?: Record<string, string> | undefined }][] = [
+      [['fetch'], recipe.fetch],
+      ...Object.entries(recipe.sources ?? {}).map(
+        ([name, source]) => [['sources', name], source] as [readonly (string | number)[], typeof source],
+      ),
+    ];
+    for (const [at, request] of requests) {
+      // Every `{placeholder}` in an address must name a declared config key —
+      // the address is built before there is any fetched data to reference,
+      // and a secret may never appear in it.
+      for (const match of request.url.matchAll(PLACEHOLDER)) {
+        const key = (match[1] ?? '').trim();
+        if (SECRET_REF.test(key)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [...at, 'url'],
+            message: 'a secret may not appear in the address — put it in a header',
+          });
+        } else if (!config.has(key)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [...at, 'url'],
+            message: `the URL references {${key}}, which is not a config field`,
+          });
+        }
+      }
+
+      // Every `{placeholder}` in a header must name a declared secret or config key.
+      for (const [name, template] of Object.entries(request.headers ?? {})) {
+        for (const match of template.matchAll(PLACEHOLDER)) {
+          const body = (match[1] ?? '').trim();
+          const secret = SECRET_REF.exec(body);
+          if (secret !== null) {
+            if (!secrets.has(secret[1] as string)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: [...at, 'headers', name],
+                message: `references {secret:${secret[1]}}, which is not a declared secret`,
+              });
+            }
+          } else if (!config.has(body)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [...at, 'headers', name],
+              message: `references {${body}}, which is not a config field`,
+            });
+          }
+        }
       }
     }
 
-    // Every `{placeholder}` in a header must name a declared secret or config key.
-    for (const [name, template] of Object.entries(recipe.fetch.headers ?? {})) {
-      for (const match of template.matchAll(PLACEHOLDER)) {
-        const body = (match[1] ?? '').trim();
-        const secret = SECRET_REF.exec(body);
-        if (secret !== null) {
-          if (!secrets.has(secret[1] as string)) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              path: ['fetch', 'headers', name],
-              message: `references {secret:${secret[1]}}, which is not a declared secret`,
-            });
-          }
-        } else if (!config.has(body)) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ['fetch', 'headers', name],
-            message: `references {${body}}, which is not a config field`,
-          });
-        }
+    // Every `@name` a selector reaches for is a source the recipe declares: a
+    // panel that would draw from nothing is a rejected recipe, not an empty one.
+    const declared = new Set(Object.keys(recipe.sources ?? {}));
+    for (const path of selectorPaths({ panel: recipe.panel, signals: recipe.signals })) {
+      const source = SOURCE_REF.exec(path);
+      if (source !== null && !declared.has(source[1] as string)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['sources'],
+          message: `a selector reaches for @${source[1]}, which is not a declared source`,
+        });
       }
     }
   });
@@ -501,9 +620,27 @@ export type RecipeSecrets = Record<string, string>;
 
 /** Substitute `{config_key}` in the fetch URL. Config only — there is no data yet. */
 export function resolveFetchUrl(recipe: Recipe, config: RecipeConfig): string {
-  return recipe.fetch.url.replace(PLACEHOLDER, (_whole, key: string) =>
-    encodeURIComponent(config[key.trim()] ?? ''),
-  );
+  return resolveUrl(recipe.fetch.url, config);
+}
+
+function resolveUrl(template: string, config: RecipeConfig): string {
+  return template.replace(PLACEHOLDER, (_whole, key: string) => encodeURIComponent(config[key.trim()] ?? ''));
+}
+
+/** A named source's request (plan item M7.7): its address and headers, built as the main fetch's are. */
+export interface SourceRequest {
+  readonly name: string;
+  readonly url: string;
+  readonly headers: Record<string, string>;
+}
+
+/** Every named source's request, in the recipe's own order. */
+export function resolveSources(recipe: Recipe, config: RecipeConfig, secrets: RecipeSecrets): SourceRequest[] {
+  return Object.entries(recipe.sources ?? {}).map(([name, source]) => ({
+    name,
+    url: resolveUrl(source.url, config),
+    headers: headersFrom(source.headers, config, secrets),
+  }));
 }
 
 /**
@@ -518,8 +655,16 @@ export function resolveHeaders(
   config: RecipeConfig,
   secrets: RecipeSecrets,
 ): Record<string, string> {
+  return headersFrom(recipe.fetch.headers, config, secrets);
+}
+
+function headersFrom(
+  templates: Record<string, string> | undefined,
+  config: RecipeConfig,
+  secrets: RecipeSecrets,
+): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const [name, template] of Object.entries(recipe.fetch.headers ?? {})) {
+  for (const [name, template] of Object.entries(templates ?? {})) {
     out[name] = template.replace(PLACEHOLDER, (_whole, body: string) => {
       const trimmed = body.trim();
       const secret = SECRET_REF.exec(trimmed);
@@ -532,12 +677,21 @@ export function resolveHeaders(
 
 /** The host a recipe's fetch (and any secret in a header) is sent to, for the install page. */
 export function recipeFetchHost(recipe: Recipe): string {
-  try {
-    // Placeholders stand in as a dummy so the URL parses; only the host matters.
-    return new URL(recipe.fetch.url.replace(PLACEHOLDER, 'x')).host;
-  } catch {
-    return 'the recipe’s address';
+  // Every host a recipe asks, its sources' too (plan item M7.7): the install
+  // page names where a setting or a secret goes, and that is all of them.
+  const hosts: string[] = [];
+  for (const url of [recipe.fetch.url, ...Object.values(recipe.sources ?? {}).map((source) => source.url)]) {
+    let host: string;
+    try {
+      // Placeholders stand in as a dummy so the URL parses; only the host matters.
+      host = new URL(url.replace(PLACEHOLDER, 'x')).host;
+    } catch {
+      host = 'the recipe’s address';
+    }
+    if (!hosts.includes(host)) hosts.push(host);
   }
+  if (hosts.length === 1) return hosts[0] as string;
+  return `${hosts.slice(0, -1).join(', ')} and ${hosts[hosts.length - 1] as string}`;
 }
 
 /** The SSRF policy for a recipe: public https only, unless it opts into the LAN. */
@@ -551,10 +705,85 @@ export function recipePolicy(recipe: Recipe): {
 }
 
 /** Build the Panel Data a recipe describes from the fetched JSON. */
-function buildPanel(recipe: Recipe, root: unknown, now: number): unknown {
-  const r = (template: string, scope: unknown = root): string => renderTemplate(template, scope, now);
+/** The most rows of a source's array a recipe looks at: enough for any real list, and a bound on the work. */
+const MAX_ROWS_READ = 500;
+
+/** Does one `where` condition hold for a row? A value that is missing fails every comparison. */
+type Condition = z.infer<typeof condition>;
+function conditionHolds(
+  condition: Condition,
+  row: unknown,
+  sources: RecipeSources,
+): boolean {
+  if (typeof condition === 'string') return truthy(resolvePath(row, condition, sources));
+  const value = resolvePath(row, condition.path, sources);
+  if ('equals' in condition) return value !== undefined && asString(value) === String(condition.equals);
+  if ('notEquals' in condition) return asString(value) !== String(condition.notEquals);
+  const n = asNumber(value);
+  if (n === undefined) return false;
+  return 'above' in condition ? n > condition.above : n < condition.below;
+}
+
+/**
+ * The rows of an array a panel draws (plan item M7.7): those every `where`
+ * condition holds for, in `sort`'s order, the first `limit` of them. Sorting
+ * keeps rows with no value for the key at the end whichever way it runs, and
+ * is stable, so rows the key cannot tell apart keep the source's own order.
+ */
+function selectRows(
+  spec: { for: string; where?: z.infer<typeof whereSpec> | undefined; sort?: z.infer<typeof sortSpec> | undefined },
+  root: unknown,
+  sources: RecipeSources,
+): unknown[] | undefined {
+  const selected = resolvePath(root, spec.for, sources);
+  // Not an array at all is a feed that has changed shape, not one that has
+  // nothing to say: the read fails, and the wall keeps its last good panel.
+  if (!Array.isArray(selected)) return undefined;
+  let rows = selected.slice(0, MAX_ROWS_READ);
+  const where = spec.where;
+  if (where !== undefined) rows = rows.filter((row) => where.every((one) => conditionHolds(one, row, sources)));
+  const sort = spec.sort;
+  if (sort !== undefined) {
+    const raw = rows.map((row) => resolvePath(row, sort.by, sources));
+    const as = sort.as ?? (raw.every((v) => v === undefined || v === null || asNumber(v) !== undefined) ? 'number' : 'text');
+    const key = (v: unknown): number | string | undefined =>
+      v === undefined || v === null
+        ? undefined
+        : as === 'number'
+          ? asNumber(v)
+          : as === 'time'
+            ? toEpochMs(v)
+            : asString(v).toLowerCase();
+    const keyed = rows.map((row, i) => ({ row, key: key(raw[i]) }));
+    const sign = sort.order === 'desc' ? -1 : 1;
+    keyed.sort((a, b) => {
+      if (a.key === undefined || b.key === undefined) return a.key === b.key ? 0 : a.key === undefined ? 1 : -1;
+      if (typeof a.key === 'number' && typeof b.key === 'number') return sign * (a.key - b.key);
+      return sign * String(a.key).localeCompare(String(b.key));
+    });
+    rows = keyed.map((entry) => entry.row);
+  }
+  return rows;
+}
+
+/** What a list says when its conditions leave no rows, unless the recipe says otherwise. */
+const NOTHING_TO_SHOW = 'Nothing to show.';
+
+function buildPanel(recipe: Recipe, root: unknown, now: number, sources: RecipeSources): unknown {
+  const r = (template: string, scope: unknown = root): string => renderTemplate(template, scope, now, sources);
   const spec = recipe.panel;
   const title = 'title' in spec && spec.title !== undefined ? { title: r(spec.title) } : {};
+  /*
+   * A list that is empty, or that its conditions leave empty, is a true
+   * answer — no disruptions, no trains — and says so in words (plan item
+   * M7.7). One whose selector finds no array at all is not: that is refused. Built as a list of nothing
+   * it would be refused, and the wall would go on drawing the last rows it had
+   * as though they were still so.
+   */
+  const nothing = (empty: string | undefined): unknown => {
+    const words = empty === undefined ? '' : r(empty);
+    return { kind: 'text', ...title, text: words === '' ? NOTHING_TO_SHOW : words };
+  };
 
   if (spec.kind === 'stat') {
     return {
@@ -577,9 +806,10 @@ function buildPanel(recipe: Recipe, root: unknown, now: number): unknown {
     return { kind: 'image', ...title, url: r(spec.url), ...(spec.caption !== undefined ? { caption: r(spec.caption) } : {}) };
   }
   if (spec.kind === 'timeline') {
-    const selected = resolvePath(root, spec.items.for);
-    const array = Array.isArray(selected) ? selected : [];
-    const items = array.slice(0, 12).map((element) => {
+    const chosen = selectRows(spec.items, root, sources);
+    if (chosen === undefined) return { kind: 'timeline', ...title, items: [] };
+    if (chosen.length === 0) return nothing(spec.items.empty);
+    const items = chosen.map((element) => {
       const detail = spec.items.detail === undefined ? '' : r(spec.items.detail, element);
       return {
         at: r(spec.items.at, element),
@@ -596,12 +826,15 @@ function buildPanel(recipe: Recipe, root: unknown, now: number): unknown {
       return Number.isFinite(ms) ? ms : Number.POSITIVE_INFINITY;
     };
     items.sort((a, b) => time(a.at) - time(b.at));
-    return { kind: 'timeline', ...title, items };
+    // The limit after the order, so "the next five" is the next five.
+    return { kind: 'timeline', ...title, items: items.slice(0, Math.min(12, spec.items.limit ?? 12)) };
   }
   // readings | tiles: map the selected array to rows.
-  const selected = resolvePath(root, spec.items.for);
-  const array = Array.isArray(selected) ? selected : [];
-  const items = array.slice(0, 12).map((element) => ({
+  const chosen = selectRows(spec.items, root, sources);
+  if (chosen === undefined) return { kind: spec.kind, ...title, items: [] };
+  const rows = chosen.slice(0, Math.min(12, spec.items.limit ?? 12));
+  if (rows.length === 0) return nothing(spec.items.empty);
+  const items = rows.map((element) => ({
     label: r(spec.items.label, element),
     value: r(spec.items.value, element),
     ...(spec.items.icon !== undefined ? { icon: r(spec.items.icon, element) } : {}),
@@ -620,8 +853,9 @@ export function runRecipePanel(
   recipe: Recipe,
   body: unknown,
   now: number,
+  sources: RecipeSources = {},
 ): { ok: true; panel: unknown } | { ok: false; error: string } {
-  const built = buildPanel(recipe, body, now);
+  const built = buildPanel(recipe, body, now, sources);
   const parsed = panelDataSchema.safeParse(built);
   if (!parsed.success) {
     return { ok: false, error: 'The recipe produced something the wall cannot draw.' };
@@ -635,9 +869,9 @@ function truthy(value: unknown): boolean {
 }
 
 /** Does a recipe signal's `when` predicate hold against the fetched body? */
-function whenHolds(when: Recipe['signals'][number]['when'], body: unknown): boolean {
-  if (typeof when === 'string') return truthy(resolvePath(body, when));
-  return asString(resolvePath(body, when.path)) === when.equals;
+function whenHolds(when: Recipe['signals'][number]['when'], body: unknown, sources: RecipeSources): boolean {
+  if (typeof when === 'string') return truthy(resolvePath(body, when, sources));
+  return asString(resolvePath(body, when.path, sources)) === when.equals;
 }
 
 /**
@@ -653,12 +887,13 @@ export function runRecipeSignals(
   recipe: Recipe,
   body: unknown,
   now: number,
+  sources: RecipeSources = {},
 ): { ok: true; signals: unknown } | { ok: false; error: string } {
   const built = recipe.signals
-    .filter((spec) => whenHolds(spec.when, body))
+    .filter((spec) => whenHolds(spec.when, body, sources))
     .map((spec) => ({
-      key: renderTemplate(spec.key, body, now),
-      title: renderTemplate(spec.title, body, now),
+      key: renderTemplate(spec.key, body, now, sources),
+      title: renderTemplate(spec.title, body, now, sources),
       ...(spec.severity !== undefined ? { severity: spec.severity } : {}),
     }));
   const parsed = signalDataSchema.safeParse({ signals: built });
@@ -714,7 +949,12 @@ export function requestKey(recipe: Recipe, config: RecipeConfig): string {
   const headers = Object.entries(resolveHeaders(recipe, config, placeholders)).sort(([a], [b]) =>
     a < b ? -1 : a > b ? 1 : 0,
   );
-  return JSON.stringify([resolveFetchUrl(recipe, config), headers]);
+  const sorted = (h: Record<string, string>): [string, string][] =>
+    Object.entries(h).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  // A recipe's sources are part of what it asks (plan item M7.7): two widgets
+  // share a fetch only when every one of its requests is the same.
+  const sources = resolveSources(recipe, config, placeholders).map((source) => [source.name, source.url, sorted(source.headers)]);
+  return JSON.stringify(sources.length === 0 ? [resolveFetchUrl(recipe, config), headers] : [resolveFetchUrl(recipe, config), headers, sources]);
 }
 
 /**

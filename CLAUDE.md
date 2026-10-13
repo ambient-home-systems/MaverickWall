@@ -11972,6 +11972,64 @@ from this change against M7.6's measured 5958 over 446, it is **5982 tests over
 **Still unproven where it counts:** no real module has put a picture or a
 countdown on a kitchen wall.
 
+**A recipe can read several feeds, and choose which rows of a list it draws
+(plan item M7.7).** Both are still data, never code.
+
+**`sources`** is up to three more named requests. Each has its own address and
+headers, with the same placeholders and the same refusals as `fetch`: a setting
+in the address, a secret only in a header. One loop in the schema's
+`superRefine` now checks the main fetch and every source.
+
+A selector reaches a source as `@name`, and `@name` alone is its whole body.
+This works in a template, a `for`, a condition and a signal's `when`. A recipe
+that reaches for a source it does not declare is refused, and `selectorPaths`
+walks every selector the panel and signals use to find out.
+
+Sources share the recipe's interval and `allowLan`, so a recipe asks for the
+network once. `recipeFetchHost` names every host it asks, for the install page.
+`requestKey` includes every request, so two widgets share a fetch only when all
+of it is the same. When a source does not answer, the read fails with that
+source's name in the error, and the last good panel and the last good signals
+stay. A signal judged on a source that did not answer would be judged on
+nothing.
+
+**A list's `items` can take four fields, applied in this order:**
+
+- **`where`** is up to four conditions, all required. Each is a selector that
+  holds when the value is set, or one comparison against a literal (`equals`,
+  `notEquals`, `above`, `below`). There is no "or", no arithmetic and nothing
+  nested. Because a condition's path is the same selector a template uses,
+  `late > 3` and `a + b` are refused by the selector's own pattern, at parse.
+- **`sort`** is `by`, `order`, and optionally `as`. Without `as`, values sort as
+  numbers when every one is a number, and as text otherwise. Rows with no value
+  go last either way, and ties keep the feed's order.
+- **`limit`** keeps the first so many, after the order. A timeline takes no
+  `sort`, because it is always in time order, so its `limit` is "the next so
+  many".
+- **`empty`** is what to say when there are no rows.
+
+**Writing the tests found a design fault.** A filter that left no rows built a
+list of nothing, which the panel schema refuses. So the read failed, and the
+wall went on drawing the last rows it had, which could be a disruption long
+since cleared. An empty array, or one its conditions empty, is now a text panel
+in the recipe's `empty` words or "Nothing to show.". The existing
+`recipe.test.ts` then caught the distinction the first version blurred: a `for`
+that finds no array at all is a feed that changed shape, not one with nothing to
+say, so it is still refused, and that test is unchanged.
+
+**Measured.** `recipe-sources.test.ts` (10) holds the schema's edges, each
+refusal beside a shape it takes, and the choosing row by row. It also runs a
+real recipe through the real job and fetcher against a loopback server: one
+panel and one signal built from two answers, then the source failing by name
+with the last good panel kept. Nineteen mutations were checked and all are red.
+One first failed to build, because it left a variable unread; it was re-aimed so
+it kept the variable read. Two more were re-run after the empty-array change
+moved the code under them. Counted from this change against M7.5's 5982 over
+450, it is **5992 tests over 451 files**: this change adds server +10 over 1.
+
+**Still unproven where it counts:** no real feed has been filtered on a kitchen
+wall.
+
 ---
 
 ## Open decisions
