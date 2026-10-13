@@ -36,7 +36,7 @@ interface Setup {
   readonly screen: string;
 }
 
-async function setUp(options: { rotation?: number } = {}): Promise<Setup> {
+async function setUp(options: { rotation?: number; config?: Record<string, unknown> } = {}): Promise<Setup> {
   const app = await install({});
   installations.push(app);
   const ha = await fakeHomeAssistant();
@@ -59,7 +59,13 @@ async function setUp(options: { rotation?: number } = {}): Promise<Setup> {
       )
       .run(id, screen, type, box[0], box[1], box[2], box[3], JSON.stringify(config), at, at);
   };
-  place('cam', 'camera', [0.05, 0.05, 0.6, 0.3], { camera: added.handle, cameraRefreshSec: 30, title: 'Front door', showTitle: true });
+  place('cam', 'camera', [0.05, 0.05, 0.6, 0.3], {
+    camera: added.handle,
+    cameraRefreshSec: 30,
+    title: 'Front door',
+    showTitle: true,
+    ...options.config,
+  });
   place('cal', 'calendar', [0.05, 0.4, 0.9, 0.55], {});
   return { app, ha, handle: added.handle, link, screen };
 }
@@ -224,6 +230,79 @@ describe('a camera on a wall', () => {
   );
 });
 
+describe('a live camera on a wall', () => {
+  it(
+    'draws the camera’s frames as they come, on one socket across every rebuild, and says so when the stream stops',
+    async () => {
+      const { app, ha, link, handle } = await setUp({ config: { cameraMode: 'stream' } });
+      const opened = await loadWallSettled(link, { width: 1080, height: 1920 }, { clock: 'installed' });
+      try {
+        const page = opened.page;
+        const asked: string[] = [];
+        page.on('request', (request) => {
+          if (request.url().includes('/d/camera/')) asked.push(request.url());
+        });
+        await page.waitForFunction(
+          () => document.querySelector('#camera-layer .camera-pic.is-live canvas') !== null,
+          undefined,
+          { timeout: 25_000 },
+        );
+        // Both of the camera's frames reach the glass: it is moving.
+        const colour = (): Promise<string> =>
+          page.evaluate(() => {
+            const canvas = document.querySelector<HTMLCanvasElement>('#camera-layer canvas');
+            const pixel = canvas?.getContext('2d')?.getImageData(200, 200, 1, 1).data;
+            if (pixel === undefined) return 'none';
+            const [r = 0, , b = 0] = pixel;
+            return r > 150 && b < 100 ? 'red' : b > 150 && r < 100 ? 'blue' : 'other';
+          });
+        const seen = new Set<string>();
+        for (let i = 0; i < 40 && seen.size < 2; i++) {
+          seen.add(await colour());
+          await page.waitForTimeout(100);
+        }
+        expect([...seen].sort()).toEqual(['blue', 'red']);
+        const first = await pictureFacts(page);
+        expect(first.picture).toEqual(first.box);
+
+        // Two rebuilds: the same canvas, the same one request, the same socket into the house.
+        await page.evaluate(() => {
+          (document.querySelector('#camera-layer canvas') as HTMLCanvasElement & { __tagged?: boolean }).__tagged = true;
+        });
+        const before = asked.length;
+        await page.clock.runFor(15_500);
+        await page.clock.runFor(15_500);
+        await page.waitForTimeout(300);
+        expect(
+          await page.evaluate(
+            () => (document.querySelector('#camera-layer canvas') as (HTMLCanvasElement & { __tagged?: boolean }) | null)?.__tagged === true,
+          ),
+        ).toBe(true);
+        expect(asked.length).toBe(before);
+        expect(asked.every((url) => /\/d\/camera\/[A-Za-z0-9_-]{43}\/stream\?n=\d+$/.test(url))).toBe(true);
+        expect(ha.streamOpens).toBe(1);
+
+        // The camera goes: the server ends the wall's stream within a second, the
+        // wall asks again and is refused, and the box says so.
+        app.db.prepare('UPDATE ha_cameras SET available = 0 WHERE handle = ?').run(handle);
+        const said = (): Promise<boolean> =>
+          page.evaluate(
+            () => document.querySelector('#wall .fw-camera')?.textContent?.includes('No picture from this camera just now.') === true,
+          );
+        for (let step = 0; step < 30 && !(await said()); step++) {
+          await page.clock.runFor(2_000);
+          await page.waitForTimeout(250);
+        }
+        expect(await said()).toBe(true);
+        expect((await pictureFacts(page)).visible).toBe('hidden');
+      } finally {
+        await opened.close();
+      }
+    },
+    SLOW,
+  );
+});
+
 describe('a camera in the editor', () => {
   it(
     'is offered by name, saved by handle, and the page carries no entity id',
@@ -245,6 +324,11 @@ describe('a camera in the editor', () => {
         await select.waitFor({ timeout: 10_000 });
         expect(await select.locator('option').allTextContents()).toEqual(['Choose a camera', 'Front door']);
         await select.selectOption(handle);
+        // Live hides the refresh, which a stream has no use for.
+        const refresh = page.locator('.le-cfg-field[data-cfg-key="cameraRefreshSec"]');
+        expect(await refresh.isVisible()).toBe(true);
+        await page.locator('.le-cfg-field[data-cfg-key="cameraMode"] .seg button', { hasText: 'Live' }).click();
+        await expect.poll(() => refresh.isVisible()).toBe(false);
         // The preview draws the box and says where the picture goes.
         await expect
           .poll(() =>
@@ -261,11 +345,14 @@ describe('a camera in the editor', () => {
               const rows = app.db
                 .prepare(`SELECT config FROM layout_widgets WHERE screen_id = ? AND type = 'camera'`)
                 .all(screen) as { config: string }[];
-              return rows.map((row) => (JSON.parse(row.config) as Record<string, unknown>)['camera']);
+              return rows.map((row) => {
+                const config = JSON.parse(row.config) as Record<string, unknown>;
+                return [config['camera'], config['cameraMode']];
+              });
             },
             { timeout: 10_000 },
           )
-          .toEqual([handle]);
+          .toEqual([[handle, 'stream']]);
       } finally {
         await context.close();
       }

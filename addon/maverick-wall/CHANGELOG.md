@@ -23,8 +23,15 @@ latest picture, fetched every few seconds (every three unless you choose 1,
 Assistant address, its token or the camera's name in Home Assistant — only a
 name this server made up for it — and a wall can fetch only the cameras on its
 own layout. When a camera stops answering the box says so, and nothing else on
-the wall moves. It is a picture every few seconds, not live video; that comes
-later. An e-paper panel shows the box without the picture.
+the wall moves. An e-paper panel shows the box without the picture.
+
+**Live camera video on the wall.** Set a Camera widget's Picture to Live and it
+plays the camera's video rather than a picture every few seconds. However many
+walls are watching, this server opens one connection to Home Assistant for
+that camera, and closes it a few seconds after the last wall stops. A tablet
+that falls behind skips frames rather than slowing the others down. If the
+camera stops sending, the wall keeps its last frame and says how old it is.
+If the camera stays gone, the box says so.
 
 **See who is trying to sign in, and let a locked address back in.** System ›
 Lockouts lists the recent sign-in attempts — where each came from and what

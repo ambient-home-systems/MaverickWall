@@ -1,4 +1,4 @@
-import { cameraContains, cameraHandleOf, cameraNote, cameraWanted, refreshSeconds } from './camera.js';
+import { cameraContains, cameraHandleOf, cameraIsLive, cameraNote, cameraWanted, refreshSeconds } from './camera.js';
 import type {
   ChoreItemModel,
   WeatherDayModel,
@@ -3362,6 +3362,7 @@ function renderCameraWidget(model: DisplayModel, config: unknown, widgetId: stri
     box.setAttribute('data-camera', handle);
     box.setAttribute('data-camera-refresh', String(refreshSeconds(config)));
     if (cameraContains(config)) box.setAttribute('data-camera-contain', '');
+    if (cameraIsLive(config)) box.setAttribute('data-camera-live', '');
     if (cameraWanted(model.cameras, handle)) box.setAttribute('data-camera-wanted', '');
   }
   const content = contentWithTitle(box, config);

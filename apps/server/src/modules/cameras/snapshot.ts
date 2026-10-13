@@ -46,6 +46,12 @@ export interface SnapshotContext {
   readonly keyring: Keyring;
   readonly fetcher: Fetcher;
   readonly now: () => number;
+  /**
+   * The latest frame of a camera whose live stream is open (plan item M6.2):
+   * a snapshot of a streaming camera is that frame, and costs Home Assistant
+   * nothing (RFC 007 §5.4).
+   */
+  readonly latest?: (handle: string) => Uint8Array | undefined;
 }
 
 /** One cache per app, so two test apps in one process do not share a picture. */
@@ -84,6 +90,12 @@ export function createSnapshots(context: SnapshotContext): {
       }
       if (!camera.available) {
         return { ok: false, status: 503, message: 'This camera is not answering Home Assistant at the moment.' };
+      }
+      const streaming = context.latest?.(handle);
+      if (streaming !== undefined) {
+        const bytes = Buffer.from(streaming);
+        const kind = sniffImage(bytes);
+        if (kind !== undefined) return { ok: true, bytes, contentType: CONTENT_TYPES[kind] };
       }
       const at = context.now();
       const held = flights.get(handle);

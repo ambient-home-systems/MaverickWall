@@ -52,6 +52,11 @@ export function refreshSeconds(config: unknown): number {
   return typeof raw === 'number' && Number.isInteger(raw) && raw >= 1 && raw <= 60 ? raw : DEFAULT_REFRESH_SEC;
 }
 
+/** Whether the box shows the camera's live stream rather than a picture every few seconds (plan item M6.2). */
+export function cameraIsLive(config: unknown): boolean {
+  return typeof config === 'object' && config !== null && (config as Record<string, unknown>)['cameraMode'] === 'stream';
+}
+
 /** Whether the picture sits whole in its box rather than filling it (cropped). */
 export function cameraContains(config: unknown): boolean {
   if (typeof config !== 'object' || config === null) return false;
@@ -101,4 +106,95 @@ export function retryDelayMs(failures: number): number {
  */
 export function pictureIsStale(lastLoadedAt: number | undefined, now: number, refreshSec: number): boolean {
   return lastLoadedAt !== undefined && now - lastLoadedAt > 3 * refreshSec * 1000;
+}
+
+/**
+ * Seconds without a new frame before a live picture is called old: three
+ * times the hub's quiet reopen, less a margin (plan item M6.2).
+ */
+export const LIVE_STALE_SEC = 10;
+
+/** The boundary the server writes every frame under (`modules/cameras/multipart.ts`). */
+export const CAMERA_BOUNDARY = 'mw-camera-frame';
+
+/**
+ * Whole frames out of the server's own live stream (plan item M6.2).
+ *
+ * The server re-frames every picture under its own boundary with a
+ * `Content-Length`, so unlike a camera's stream this one can be read by its
+ * headers: find a part's header, read its length, take that many bytes. A part
+ * whose header is not ours, or whose length is not a number, is skipped to the
+ * next boundary rather than trusted. Bytes in, frames out, no page.
+ */
+export interface PartReader {
+  push(chunk: Uint8Array): Uint8Array[];
+}
+
+export function createPartReader(maxFrameBytes = 4 * 1024 * 1024): PartReader {
+  // One growing buffer rather than a copy per chunk: a large frame in small
+  // pieces would otherwise be copied once per piece.
+  let buffer = new Uint8Array(64 * 1024);
+  let length = 0;
+  /** Where the next unread part starts. */
+  let at = 0;
+  const marker = `--${CAMERA_BOUNDARY}`;
+  const ascii = (from: number, to: number): string => {
+    let text = '';
+    for (let i = from; i < to; i++) text += String.fromCharCode(buffer[i] as number);
+    return text;
+  };
+  const find = (needle: string, from: number): number => {
+    outer: for (let i = from; i + needle.length <= length; i++) {
+      for (let j = 0; j < needle.length; j++) if (buffer[i + j] !== needle.charCodeAt(j)) continue outer;
+      return i;
+    }
+    return -1;
+  };
+  const compact = (): void => {
+    if (at === 0) return;
+    buffer.copyWithin(0, at, length);
+    length -= at;
+    at = 0;
+  };
+  return {
+    push(chunk: Uint8Array): Uint8Array[] {
+      compact();
+      if (length + chunk.length > buffer.length) {
+        let size = buffer.length;
+        while (size < length + chunk.length) size *= 2;
+        const grown = new Uint8Array(size);
+        grown.set(buffer.subarray(0, length));
+        buffer = grown;
+      }
+      buffer.set(chunk, length);
+      length += chunk.length;
+      const frames: Uint8Array[] = [];
+      for (;;) {
+        const part = find(marker, at);
+        if (part < 0) {
+          // Keep a tail that may be the start of the next boundary.
+          at = Math.max(at, length - marker.length);
+          return frames;
+        }
+        const headEnd = find('\r\n\r\n', part);
+        if (headEnd < 0) {
+          at = part;
+          return frames;
+        }
+        const header = /content-length:\s*(\d+)/i.exec(ascii(part, headEnd));
+        const size = header === null ? NaN : Number(header[1]);
+        if (!Number.isInteger(size) || size <= 0 || size > maxFrameBytes) {
+          at = part + marker.length;
+          continue;
+        }
+        const start = headEnd + 4;
+        if (length < start + size) {
+          at = part;
+          return frames;
+        }
+        frames.push(buffer.slice(start, start + size));
+        at = start + size;
+      }
+    },
+  };
 }

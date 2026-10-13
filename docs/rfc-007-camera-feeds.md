@@ -1,6 +1,6 @@
 # RFC 007 — Camera feeds on the wall
 
-Status: **Tier A built (plan item M6.1); the hub and Tier B not yet** · Owner: — · First
+Status: **Tiers A and B built (plan items M6.1 and M6.2); Tier C not yet** · Owner: — · First
 drafted 2026-08-13 · Rewritten 2026-09-09 · Relates to
 `apps/server/src/modules/homeassistant/`, `packages/core/src/ports/fetcher.ts`,
 `apps/server/src/net/fetcher.ts`, `apps/server/src/api/widget-schema.ts`,
@@ -58,6 +58,26 @@ drafted 2026-08-13 · Rewritten 2026-09-09 · Relates to
 > - **A camera inside a stack** has the stack's dots under its picture, since
 >   the layer is above the whole wall. The dots still take the tap, because the
 >   layer takes none. This is §7.2's stated limit, one case of it.
+
+> **The hub and Tier B were built on 2026-10-13 (plan item M6.2), and three
+> things differ from the text below.**
+>
+> - **The wall does not use an `<img>` for the stream.** In Chromium an
+>   `<img>` on a `multipart/x-mixed-replace` stream fires `load` once and
+>   then nothing at all when the stream ends, so a wall could not tell a
+>   stream that stopped from one that is still. The wall reads the stream
+>   with `fetch`, takes each part by its `Content-Length`, decodes it with
+>   `createImageBitmap` (latest frame wins), and draws it on a `<canvas>` on
+>   the camera layer. A browser without those falls back to the `<img>`
+>   §7.1 describes.
+> - **The parser does not read the upstream's boundary.** Cameras and
+>   integrations disagree about it, so a frame is found by the JPEG's own
+>   structure: segments walked by their lengths, so an EXIF thumbnail is
+>   never taken for the frame. Our own boundary is a constant, and it is the
+>   only one the wall reads.
+> - **Revocation is checked once a second on every open stream**, together
+>   with removal, availability and placement, rather than signalled from
+>   the revoke handler. One check covers all four.
 
 ## 1. Summary
 

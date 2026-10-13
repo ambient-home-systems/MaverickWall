@@ -24,6 +24,8 @@ import {
   type PostJsonRequest,
   type SocketOutcome,
   type SocketRequest,
+  type StreamOutcome,
+  type StreamRequest,
   type UrlPolicy,
   type ValidatedUrl,
 } from '@maverick-wall/core';
@@ -954,6 +956,117 @@ export function createFetcher(): Fetcher {
           'network-error',
           error instanceof Error ? networkErrorMessage(error) : 'unknown error',
         ) as PostJsonOutcome;
+      }
+    },
+
+    /**
+     * One response that never ends (plan item M6.2): a camera's MJPEG stream.
+     *
+     * The same guard as every request here — the address validated, the name
+     * resolved and every answer checked, the socket pinned to the address that
+     * was checked — and **no redirect followed**, `postJson`'s rule, because
+     * the one caller sends the house's token and with no hop the token cannot
+     * reach anywhere but the address the guard approved. `connectTimeoutMs`
+     * bounds the wait for the headers and nothing after: once the body flows
+     * the caller's own timers decide, because a camera pointed at an empty
+     * porch may legitimately say nothing for a while. No byte ceiling either,
+     * for the same reason — the caller caps each *frame*, which is the unit a
+     * stream can be wrong in.
+     */
+    async stream(request: StreamRequest): Promise<StreamOutcome> {
+      try {
+        const validated = validateOutboundUrl(request.url, request.policy);
+        if (!validated.ok) return { status: 'rejected', code: 'url-rejected', message: validated.error.message };
+        const target = validated.value;
+        const resolved = await resolveAndCheck(target.hostname, request.policy);
+        if (!resolved.ok) {
+          const outcome = resolved.outcome;
+          return outcome.status === 'rejected'
+            ? { status: 'rejected', code: outcome.code, message: outcome.message }
+            : { status: 'failed', code: 'network-error', message: 'The address could not be checked.' };
+        }
+        const timeoutMs = request.connectTimeoutMs ?? DEFAULT_TIMEOUT_MS;
+        const send = target.protocol === 'https:' ? httpsRequest : httpRequest;
+        const url = new URL(target.href);
+        const headers: Record<string, string> = {
+          'user-agent': DEFAULT_USER_AGENT,
+          ...Object.fromEntries(Object.entries(request.headers ?? {}).map(([key, value]) => [key.toLowerCase(), value])),
+          accept: request.acceptContentTypes.join(', '),
+        };
+        return await new Promise<StreamOutcome>((resolve) => {
+          let settled = false;
+          const finish = (outcome: StreamOutcome): void => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            resolve(outcome);
+          };
+          const clientRequest = send(
+            {
+              protocol: target.protocol,
+              hostname: target.hostname,
+              port: target.port === '' ? undefined : Number(target.port),
+              path: `${url.pathname}${url.search}`,
+              method: 'GET',
+              headers,
+              // The pin.
+              lookup: pinnedLookup(resolved.addresses) as never,
+            },
+            (response) => {
+              const status = response.statusCode ?? 0;
+              if (status >= 300 && status < 400) {
+                response.destroy();
+                finish({ status: 'rejected', code: 'redirect-rejected', message: `The server answered ${status} with a redirect. A stream is never followed elsewhere.` });
+                return;
+              }
+              if (status < 200 || status >= 300) {
+                response.destroy();
+                finish({ status: 'failed', code: 'http-error', message: `The server answered ${status}.`, httpStatus: status });
+                return;
+              }
+              const contentType = headerValue(response.headers['content-type']) ?? '';
+              if (!request.acceptContentTypes.includes(mediaType(contentType))) {
+                response.destroy();
+                finish({
+                  status: 'failed',
+                  code: 'unacceptable-content-type',
+                  message: `Expected ${request.acceptContentTypes.join(' or ')} but the server sent ${mediaType(contentType) || 'nothing'}.`,
+                });
+                return;
+              }
+              // An error after the hand-over ends the iteration; this listener
+              // keeps one from being thrown at nobody.
+              response.on('error', () => undefined);
+              finish({
+                status: 'ok',
+                contentType,
+                chunks: (async function* chunks(): AsyncGenerator<Uint8Array> {
+                  try {
+                    for await (const chunk of response) yield chunk as Buffer;
+                  } catch {
+                    // A dropped connection is the end of the stream, not an exception.
+                  }
+                })(),
+                close: () => {
+                  response.destroy();
+                  clientRequest.destroy();
+                },
+              });
+            },
+          );
+          const timer = setTimeout(() => {
+            clientRequest.destroy();
+            finish({ status: 'failed', code: 'timeout', message: `No answer within ${Math.round(timeoutMs / 1000)} seconds.` });
+          }, timeoutMs);
+          clientRequest.on('error', (error) => finish({ status: 'failed', code: 'network-error', message: networkErrorMessage(error) }));
+          clientRequest.end();
+        });
+      } catch (error) {
+        return {
+          status: 'failed',
+          code: 'network-error',
+          message: error instanceof Error ? networkErrorMessage(error) : 'unknown error',
+        };
       }
     },
 
