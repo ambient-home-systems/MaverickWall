@@ -5026,9 +5026,15 @@ img.wxi { display: block; object-fit: contain; }
  * taller than its words make it.
  */
 .gp-reading.gp-toned { align-items: center; }
-.gp-reading[data-tone="active"] { --gp-tone: var(--state-active); }
-.gp-reading[data-tone="alert"] { --gp-tone: var(--state-alert); }
-.gp-reading[data-tone="idle"] { --gp-tone: var(--state-idle); }
+.gp-reading[data-tone="active"] {
+  --gp-tone: var(--state-active);
+}
+.gp-reading[data-tone="alert"] {
+  --gp-tone: var(--state-alert);
+}
+.gp-reading[data-tone="idle"] {
+  --gp-tone: var(--state-idle);
+}
 .gp-circle {
   display: flex;
   align-items: center;
