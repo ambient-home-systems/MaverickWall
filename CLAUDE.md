@@ -11882,8 +11882,15 @@ schema, the values, the request key and the install page's controls.
 `browser-module-settings.test.ts` (2) drives the editor's controls through to
 Save, including a setting put back that saves none. It also loads a real wall
 before and after its variant's panel exists. The display's
-`module-settings.test.ts` (5) covers what a control writes. Mutations and the full
-count are still being taken.
+`module-settings.test.ts` (5) covers what a control writes. Twelve mutations were checked,
+each on a rebuilt bundle, and all twelve are red. Seven failed to build at
+first because they left a variable unread, and were re-aimed so they built.
+**5960 tests passing, 1 red and 2 skipped, over 446 files**: calendar 153 (1
+skipped) over 10 · core 327 over 9 · display 1091 over 71 · server 4387 (1
+skipped) over 356, measured with `pnpm test` and a real Chromium. The one red
+is `browser-glass`'s striped-picture case, red on a clean `main` in this
+container as before. **Still unproven where it counts:** no real household has
+set two widgets of one module to two cities.
 
 ---
 
