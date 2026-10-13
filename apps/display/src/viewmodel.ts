@@ -1346,18 +1346,38 @@ export interface PanelReading {
   readonly glyph?: GlyphKey;
   /** What the row is doing (plan item M7.2): the tone its circle is coloured by. */
   readonly tone?: PanelTone;
+  /** How far along it is, 0–100 (plan item M7.3): a bar along the row's foot. */
+  readonly progress?: number;
 }
 export type PanelTone = 'active' | 'alert' | 'idle';
 export interface PanelTile {
   readonly label: string;
   readonly value: string;
   readonly tone?: PanelTone;
+  readonly progress?: number;
 }
 export type PanelData =
   | { readonly kind: 'readings'; readonly title?: string; readonly items: readonly PanelReading[] }
   | { readonly kind: 'stat'; readonly title?: string; readonly value: string; readonly caption?: string }
   | { readonly kind: 'tiles'; readonly title?: string; readonly items: readonly PanelTile[] }
-  | { readonly kind: 'text'; readonly title?: string; readonly text: string };
+  | { readonly kind: 'text'; readonly title?: string; readonly text: string }
+  | {
+      readonly kind: 'gauge';
+      readonly title?: string;
+      readonly label: string;
+      readonly value: string;
+      readonly progress: number;
+      readonly tone?: PanelTone;
+    };
+
+/** A percentage this bundle can draw, or nothing: a bar past its end is a bar saying something else. */
+function percentOf(raw: unknown): number | undefined {
+  return typeof raw === 'number' && Number.isFinite(raw) && raw >= 0 && raw <= 100 ? raw : undefined;
+}
+
+function toneOf(raw: unknown): PanelTone | undefined {
+  return raw === 'active' || raw === 'alert' || raw === 'idle' ? raw : undefined;
+}
 
 function readPanelItems(raw: unknown, withGlyph: boolean): PanelReading[] {
   if (!Array.isArray(raw)) return [];
@@ -1371,12 +1391,14 @@ function readPanelItems(raw: unknown, withGlyph: boolean): PanelReading[] {
     const glyph = withGlyph && isGlyphKey(row['glyph']) ? row['glyph'] : undefined;
     // A word this bundle knows or no tone at all: a server a version ahead may
     // name a fourth, and an unknown tone draws as the row it always was.
-    const tone = row['tone'] === 'active' || row['tone'] === 'alert' || row['tone'] === 'idle' ? row['tone'] : undefined;
+    const tone = toneOf(row['tone']);
+    const progress = percentOf(row['progress']);
     items.push({
       label,
       value,
       ...(glyph === undefined ? {} : { glyph }),
       ...(tone === undefined ? {} : { tone }),
+      ...(progress === undefined ? {} : { progress }),
     });
   }
   return items;
@@ -1420,6 +1442,14 @@ export function panelFrom(raw: unknown): PanelData | null {
     case 'text': {
       const body = text(panel['text'], 280);
       return body === undefined ? null : ({ kind: 'text', text: body, ...base } as PanelData);
+    }
+    case 'gauge': {
+      const label = text(panel['label'], 60);
+      const value = text(panel['value'], 60);
+      const progress = percentOf(panel['progress']);
+      if (label === undefined || value === undefined || progress === undefined) return null;
+      const tone = toneOf(panel['tone']);
+      return { kind: 'gauge', label, value, progress, ...(tone === undefined ? {} : { tone }), ...base } as PanelData;
     }
     default:
       return null;

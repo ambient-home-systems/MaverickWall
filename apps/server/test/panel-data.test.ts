@@ -61,4 +61,27 @@ describe('panelDataSchema', () => {
     expect(panelDataSchema.safeParse({ kind: 'tiles', items: [{ label: 'a', value: 'b', tone: 'idle' }] }).success).toBe(true);
     expect(panelDataSchema.safeParse({ kind: 'tiles', items: [{ label: 'a', value: 'b', tone: 'loud' }] }).success).toBe(false);
   });
+
+  it('keeps a row’s progress from 0 to 100, and refuses one outside it (M7.3)', () => {
+    expect(
+      panelDataSchema.parse({ kind: 'readings', items: [{ label: 'Backup', value: '45%', progress: 45 }] }),
+    ).toEqual({ kind: 'readings', items: [{ label: 'Backup', value: '45%', progress: 45 }] });
+    for (const progress of [0, 100, 12.5]) {
+      expect(panelDataSchema.safeParse({ kind: 'readings', items: [{ label: 'a', value: 'b', progress }] }).success).toBe(true);
+    }
+    for (const progress of [-1, 100.1, Number.NaN, Number.POSITIVE_INFINITY, '45', '45%']) {
+      expect(panelDataSchema.safeParse({ kind: 'readings', items: [{ label: 'a', value: 'b', progress }] }).success).toBe(false);
+    }
+    expect(panelDataSchema.safeParse({ kind: 'tiles', items: [{ label: 'a', value: 'b', progress: 50 }] }).success).toBe(true);
+  });
+
+  it('accepts one gauge, and refuses one with no progress, a progress out of range or a stray key (M7.3)', () => {
+    const gauge = { kind: 'gauge', title: 'Water butt', label: 'Full', value: '72%', progress: 72, tone: 'idle' };
+    expect(panelDataSchema.parse(gauge)).toEqual(gauge);
+    expect(panelDataSchema.safeParse({ kind: 'gauge', label: 'Full', value: '72%' }).success).toBe(false);
+    expect(panelDataSchema.safeParse({ ...gauge, progress: 150 }).success).toBe(false);
+    expect(panelDataSchema.safeParse({ ...gauge, tone: 'red' }).success).toBe(false);
+    expect(panelDataSchema.safeParse({ ...gauge, colour: '#f00' }).success).toBe(false);
+    expect(panelDataSchema.safeParse({ ...gauge, label: undefined }).success).toBe(false);
+  });
 });

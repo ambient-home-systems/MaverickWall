@@ -963,3 +963,55 @@ describe('a module row’s tone on a panel (plan item M7.2)', () => {
     expect(frame('idle')).toBe(plain);
   });
 });
+
+describe('a module’s progress and gauge on a panel (plan item M7.3)', () => {
+  const panelFrame = (panel: unknown, h = 0.4): string => {
+    const manifest = {
+      ...WIDGET_MANIFEST,
+      panels: { ...WIDGET_MANIFEST.panels, garden: panel },
+    } as unknown as Manifest;
+    const widget: PlacedEpaperWidget = {
+      type: 'external', x: 0.05, y: 0.05, w: 0.9, h, z: 0, config: { module: 'garden' },
+    };
+    return bitString(renderFreeformEpaper(buildEpaperModel(manifest), manifest, [widget], { width: 800, height: 480 }));
+  };
+
+  it('draws a row’s line and not its bar', () => {
+    const row = { label: 'Backup', value: '45%' };
+    expect(panelFrame({ kind: 'readings', items: [{ ...row, progress: 45 }] })).toBe(
+      panelFrame({ kind: 'readings', items: [row] }),
+    );
+  });
+
+  it('draws a gauge as its line with a bar filled to its progress', () => {
+    const at = (progress: number): string =>
+      panelFrame({ kind: 'gauge', label: 'Full', value: '72%', progress });
+    const inked = (frame: string): number => frame.split('').filter((bit) => bit === '1').length;
+    const empty = at(0);
+    const half = at(50);
+    const full = at(100);
+    // More ink the further along, and half way is half way: the fill grows
+    // with the number rather than merely appearing.
+    expect(inked(half)).toBeGreaterThan(inked(empty));
+    expect(inked(full)).toBeGreaterThan(inked(half));
+    const fillHalf = inked(half) - inked(empty);
+    const fillFull = inked(full) - inked(empty);
+    expect(fillHalf / fillFull).toBeGreaterThan(0.47);
+    expect(fillHalf / fillFull).toBeLessThan(0.53);
+    // And it is a bar: rows of ink running most of the box's width — the
+    // outline's top and bottom at nothing, and every row of the fill at full.
+    const wideRows = (frame: string): number => {
+      let rows = 0;
+      for (let y = 0; y < 480; y++) {
+        const row = frame.slice(y * 800, (y + 1) * 800);
+        const longest = Math.max(...row.split('0').map((run) => run.length));
+        if (longest >= 0.8 * 0.9 * 800) rows++;
+      }
+      return rows;
+    };
+    expect(wideRows(empty)).toBeGreaterThanOrEqual(2);
+    expect(wideRows(full)).toBeGreaterThan(wideRows(empty) + 2);
+    // And the words are on it, not a dump of the panel's fields.
+    expect(at(50)).not.toBe(panelFrame({ kind: 'gauge', label: 'Empty', value: '72%', progress: 50 }));
+  });
+});
