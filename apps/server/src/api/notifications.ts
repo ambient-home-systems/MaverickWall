@@ -54,6 +54,29 @@ export function bannersOf(active: readonly Interrupt[]): Interrupt[] {
   return active.filter((interrupt) => interrupt.action !== 'tile');
 }
 
+/**
+ * A Home Assistant rule's banner or takeover, in the household's own words.
+ *
+ * The rule form asks "What to say" and calls it the sentence the wall shows;
+ * the evaluator titles an interrupt with its signal's, which for an entity is
+ * its name, so a rule written as "The freezer door is open" drew "Freezer
+ * door". The household's sentence leads, and what it is about follows as the
+ * tile's detail does — "Freezer door · Open". Only Home Assistant's rules: a
+ * weather rule's name is a rung of the ladder ("Severe warnings") and the
+ * warning's own name is what a wall should say, and a calendar's is the
+ * event's.
+ */
+export function inHouseholdWords(active: readonly Interrupt[], rules: readonly InterruptRule[]): Interrupt[] {
+  const names = new Map(rules.map((rule) => [rule.id, rule.name]));
+  return active.map((interrupt) => {
+    if (interrupt.source !== 'homeassistant') return interrupt;
+    const name = names.get(interrupt.ruleId)?.trim();
+    if (name === undefined || name === '' || name === interrupt.title) return interrupt;
+    const detail = interrupt.headline === undefined ? interrupt.title : `${interrupt.title} · ${interrupt.headline}`;
+    return { ...interrupt, title: name, headline: detail };
+  });
+}
+
 /** The tiles, in the evaluator's own order (loudest first), with the rule's own words. */
 export function tilesOf(active: readonly Interrupt[], rules: readonly InterruptRule[]): NotificationTile[] {
   const names = new Map(rules.map((rule) => [rule.id, rule.name]));
