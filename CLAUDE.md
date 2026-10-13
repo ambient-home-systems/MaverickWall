@@ -11479,6 +11479,66 @@ M8.3's 5804 over 429 that is +10 and +2, this change's own count. The one red
 is `browser-glass`'s striped-picture case, red on a clean `main` in this
 container as before. **Still unproven where it counts:** nobody has tapped a
 stack on a kitchen tablet.
+**A Home Assistant camera's latest picture is on the wall (plan item M6.1, RFC
+007 Tier A).** Cameras are their own list under Home Assistant › Cameras
+(migration `0077`, `ha_cameras`: one generated `CREATE TABLE`, read), never
+readings, because a camera's state on a wall is `calendar`'s old mistake. Each
+is named to a wall by a **handle** minted when it is added, and the entity id,
+Home Assistant's address and every token stay on the server; the manifest
+carries a `cameras` panel of handles and whether each is there, spread only
+when a camera exists. Availability is read out of the `/api/states` body the
+thirty-second poll already fetches, so a camera costs no request until a wall
+asks for its picture.
+
+**`GET /d/camera/:handle/still` answers only a wall whose canvases place the
+camera**: either orientation, a group, a timed layout, or a layout another
+wall is lending (`cameraPlacedOn`). Anything else is a `404` that says nothing
+about whether the handle is real. A camera the poll found missing is a `503`
+and Home Assistant is never asked; a picture that did not come is a `502`.
+Both carry a sentence and no entity id. The picture comes through
+`callPicture`, single-flighted per camera for a second, so three walls cost
+the house one fetch. It is sniffed, served `no-store`, and kept in memory
+only. The frame hub RFC 007 put first waits for M6.2, the first thing that
+holds a stream open; the RFC's head records that and the other departures.
+
+**On the wall the picture is not in the drawn tree.** The fifteen-second
+rebuild clears `#wall`, so a picture there would be fetched again and flash on
+every draw. `camera-layer.ts` keeps the pictures on a layer beside `#wall`,
+with the same frame and rotation, made once and never cleared. After every
+draw it reconciles: a picture over every camera box the draw left, none
+anywhere else, each refreshed on its own timer (3 s unless the widget says 1,
+10 or 30). It is hidden under a takeover or a control panel. The box under the
+picture always says something true, from model state `main.ts` hands the
+draw: "Waiting for the first picture", "No picture from this camera just
+now", "This camera is not answering", or, in the editor's preview, which
+fetches nothing, where the picture goes.
+
+**The picture is placed from the box the renderer drew**, read back as a
+client rectangle and turned back through the frame's quarter turns. Offsets
+were tried first and are whole pixels; the browser test caught a half-pixel
+hairline with them. A camera inside a stack has the stack's dots under its
+picture, which RFC 007 §7.2 states as the layer's limit; the dots still take
+the tap. An e-paper panel draws the box and a note, never a picture, and every
+camera key is in the panel tables, probed by `epaper-ink`.
+
+**One test was green over a real bug.** "A removed camera's widget is left
+out" removed the household's only camera, which turned the whole cameras
+module off and dropped the widget for that reason; the omission's own camera
+check could be deleted and the test stayed green. With a second camera kept,
+the test went red on the shipped code: `buildLayout` built its own set-up and
+never passed the camera list, so on a real wall a removed camera's box stayed.
+It is read off the cameras panel now. 21 mutations were checked and all are
+red; seven first failed to compile and were re-aimed so they built.
+
+**4310 server tests passing, 1 red and 1 skipped, over 346 files; display
+1074 over 69.** The server figure is a full run with a real Chromium taken
+before the two new files existed (4293 over 344) plus those files' 17, each
+run on its own afterwards; calendar and core were not re-run. The one red is
+`browser-glass`'s striped-picture case, red on a clean `main` in this
+container as before. **Still unproven where it counts:** no real camera has
+been shown on a kitchen wall, and nobody has watched the picture survive a
+night of rebuilds on a real tablet.
+
 ---
 
 ## Open decisions

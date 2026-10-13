@@ -396,6 +396,16 @@ export interface FakeHa {
    */
   readonly others: Record<string, { state: string; lastChanged?: string; name?: string }>;
   /**
+   * Cameras (plan item M6.1), none until a test adds one: listed in
+   * `/api/states` with Home Assistant's own camera states (`idle`,
+   * `unavailable`), and answered at `/api/camera_proxy/<id>` with
+   * `cameraFrame` — or a 500, the way a camera that is not answering is, while
+   * `cameraFails` is set.
+   */
+  readonly cameras: Record<string, { state: string; name: string }>;
+  cameraFrame: Buffer;
+  cameraFails: boolean;
+  /**
    * Each entity's recorded changes, as `/api/history/period` answers them
    * (plan item M6.10): a list per entity asked for, the first in full and the
    * rest as a state and an instant. None until a test records some.
@@ -430,6 +440,9 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
     artwork: ARTWORK,
     sun: undefined,
     others: {},
+    cameras: {},
+    cameraFrame: ARTWORK,
+    cameraFails: false,
     history: {},
     notifications: [],
     wsReceived: [],
@@ -531,7 +544,12 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
         attributes: { friendly_name: one.name ?? entityId },
         ...(one.lastChanged === undefined ? {} : { last_changed: one.lastChanged, last_updated: one.lastChanged }),
       }));
-      return json(JSON.stringify([...listed, ...weather, ...sun, ...others]));
+      const cameras = Object.entries(state.cameras).map(([entityId, one]) => ({
+        entity_id: entityId,
+        state: one.state,
+        attributes: { friendly_name: one.name, access_token: 'camera-token-that-must-not-travel' },
+      }));
+      return json(JSON.stringify([...listed, ...weather, ...sun, ...others, ...cameras]));
     }
     if (url.startsWith('/api/states/weather.')) {
       const entityId = decodeURIComponent(url.slice('/api/states/'.length));
@@ -581,6 +599,25 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
         return;
       }
       return json(JSON.stringify(listed));
+    }
+    // A camera's latest picture (plan item M6.1), the way Home Assistant's
+    // camera proxy answers: the bytes, for a camera the house has.
+    if (url.startsWith('/api/camera_proxy/')) {
+      const entityId = decodeURIComponent(url.slice('/api/camera_proxy/'.length).split('?')[0] ?? '');
+      const camera = state.cameras[entityId];
+      if (camera === undefined) {
+        response.writeHead(404, { 'content-type': 'application/json' });
+        response.end('{"message":"Entity not found."}');
+        return;
+      }
+      if (state.cameraFails || camera.state === 'unavailable') {
+        response.writeHead(500, { 'content-type': 'text/plain' });
+        response.end('500: Internal Server Error');
+        return;
+      }
+      response.writeHead(200, { 'content-type': 'image/jpeg' });
+      response.end(state.cameraFrame);
+      return;
     }
     // A media player's artwork (plan item M3.4), the way Home Assistant's own
     // proxy answers: the picture's bytes, for a player the house has.

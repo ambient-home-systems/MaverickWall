@@ -1,3 +1,4 @@
+import { camerasFrom, type CameraLoad, type CameraModel } from './camera.js';
 import type {
   CivilDate,
   Manifest,
@@ -645,6 +646,14 @@ export interface DisplayModel {
    * fifteen-second rebuild has to be told rather than put the front back.
    */
   readonly stacks: Readonly<Record<string, string>>;
+  /** The household's cameras, by handle, and whether each is there (plan item M6.1). */
+  readonly cameras: readonly CameraModel[];
+  /**
+   * What each camera widget's picture last did in this browser, by widget id
+   * (plan item M6.1) — the words under a picture say "waiting" or "no
+   * picture" from it. `stacks`' reason: no manifest can know it.
+   */
+  readonly cameraLoads: Readonly<Record<string, CameraLoad>> | undefined;
   /**
    * When each widget's one-shot effects fired, by widget id and event (plan
    * P4.3) — the confetti on a countdown's day, a page flipping at midnight.
@@ -2114,6 +2123,8 @@ export interface BuildOptions {
   readonly controlPanel?: { readonly widgetId: string; readonly reading: string };
   /** Which child each stack is showing, from `main.ts`; absent everywhere else. */
   readonly stacks?: Readonly<Record<string, string>>;
+  /** What each camera widget's picture last did, from `main.ts`'s camera layer; absent everywhere else. */
+  readonly cameraLoads?: Readonly<Record<string, CameraLoad>>;
   /**
    * The wall's one-shot memory (plan P4.3). Optional and defaulted to none, on
    * `todoNotices`' argument: it is what this page has already shown, which no
@@ -2333,6 +2344,8 @@ export function buildModel(options: BuildOptions): DisplayModel {
     houseNotices: options.houseNotices ?? {},
     controlPanel: options.controlPanel,
     stacks: options.stacks ?? {},
+    cameras: camerasFrom(manifest.panels?.['cameras']),
+    cameraLoads: options.cameraLoads,
     oneShots: options.oneShots ?? NO_ONE_SHOTS,
     notices: manifest.notices.map((notice) => ({ level: notice.level, message: notice.message })),
     staleness,

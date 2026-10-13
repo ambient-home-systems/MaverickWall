@@ -2,6 +2,9 @@ import { Hono, type Context, type Next } from 'hono';
 import { immichPhoto } from '../modules/immich/store.js';
 import { folderPhoto } from '../modules/folder/store.js';
 import { artworkPhoto, nowPlayingArt } from '../modules/homeassistant/artwork.js';
+import { CAMERA_HANDLE } from '../modules/cameras/index.js';
+import { cameraPlacedOn } from '../modules/cameras/placement.js';
+import { createSnapshots } from '../modules/cameras/snapshot.js';
 import { readAlbumSlides } from '../api/photo-albums.js';
 import { join } from 'node:path';
 import { localDateOf } from '@maverick-wall/calendar';
@@ -841,6 +844,37 @@ export function createApp(deps: AppDeps): Hono {
     c.header('x-content-type-options', 'nosniff');
     c.header('cache-control', 'public, max-age=86400');
     return c.body(bytesOf(image.bytes));
+  });
+
+  /**
+   * A camera's latest picture (plan item M6.1, RFC 007 §6.4), by the handle
+   * the manifest gave the wall — never the entity id, which is resolved here
+   * and goes no further.
+   *
+   * In order: the screen gate above (`401`); the camera placed on a canvas
+   * this wall can draw, or a `404` that says nothing about whether the handle
+   * is real; then the picture, single-flighted per camera so three walls
+   * refreshing one doorbell cost Home Assistant one fetch. A camera the poll
+   * found missing, or a house not connected, is a `503` with a sentence and
+   * no entity id; a fetch that failed is a `502`. The wall answers every one of
+   * those with its own labelled placeholder and tries again later.
+   *
+   * `no-store`, unlike `/d/media`'s day-long cache: a snapshot out of a
+   * browser's cache is a picture of the past presented as now.
+   */
+  const snapshots = createSnapshots({ db: deps.db, keyring: deps.keyring, fetcher: deps.fetcher, now });
+  app.get('/d/camera/:handle/still', async (c: Context) => {
+    const screen = c.get('screen') as ScreenRow;
+    const handle = c.req.param('handle') ?? '';
+    c.header('cache-control', 'no-store');
+    if (!CAMERA_HANDLE.test(handle) || !cameraPlacedOn(deps.db, screen, handle, now())) {
+      return c.json({ error: 'not-found' }, 404);
+    }
+    const shot = await snapshots.take(handle);
+    if (!shot.ok) return c.json({ error: 'no-picture', message: shot.message }, shot.status);
+    c.header('content-type', shot.contentType);
+    c.header('x-content-type-options', 'nosniff');
+    return c.body(bytesOf(shot.bytes));
   });
 
   /**

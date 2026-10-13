@@ -1,3 +1,4 @@
+import { cameraContains, cameraHandleOf, cameraNote, cameraWanted, refreshSeconds } from './camera.js';
 import type {
   ChoreItemModel,
   WeatherDayModel,
@@ -3052,6 +3053,8 @@ export function renderWidget(
       return renderChoresWidget(model, config);
     case 'image':
       return renderImageWidget(config, mediaBase, model.now, false, wallpaperBase);
+    case 'camera':
+      return renderCameraWidget(model, config, widgetId);
     case 'qr':
       return renderQrWidget(config);
     case 'heading':
@@ -3337,6 +3340,35 @@ function renderQrWidget(config: unknown): HTMLElement {
  * loads. With `slideMotion` set the swap is a crossfade, and with zoom a slow
  * zoom too (plan item M3.6), scheduled on the wall clock by `crossfadeBox`.
  */
+/**
+ * A camera's box (plan item M6.1, RFC 007 §7.2): the title, if asked, and the
+ * words the box says while there is no picture. The picture itself is not
+ * here — it is on the camera layer, which the rebuild never clears, placed
+ * over this box after every draw (`camera-layer.ts`). The attributes are
+ * what the layer reads: which widget, which camera, how often, and how the
+ * picture sits. Only a camera the manifest lists as there is marked wanted,
+ * so a missing one is never asked for.
+ */
+function renderCameraWidget(model: DisplayModel, config: unknown, widgetId: string | undefined): HTMLElement {
+  const handle = cameraHandleOf(config);
+  // No record of loads is a draw with no camera layer behind it: the editor's preview.
+  const loads = model.cameraLoads;
+  const load = widgetId === undefined || loads === undefined ? undefined : loads[widgetId];
+  const box = el('div', 'fw-camera');
+  const note = cameraNote(model.cameras, handle, load, loads !== undefined);
+  if (note !== '') box.appendChild(el('div', 'fw-camera-note', note));
+  if (handle !== undefined && widgetId !== undefined) {
+    box.setAttribute('data-camera-widget', widgetId);
+    box.setAttribute('data-camera', handle);
+    box.setAttribute('data-camera-refresh', String(refreshSeconds(config)));
+    if (cameraContains(config)) box.setAttribute('data-camera-contain', '');
+    if (cameraWanted(model.cameras, handle)) box.setAttribute('data-camera-wanted', '');
+  }
+  const content = contentWithTitle(box, config);
+  if (content !== box) content.classList.add('fw-camera-titled');
+  return content;
+}
+
 function renderImageWidget(
   config: unknown,
   mediaBase: string,
@@ -6419,7 +6451,12 @@ export function renderFreeform(
       // A box the household placed but that has no data yet says so, rather
       // than being an empty rectangle nobody can explain from the kitchen.
       box.appendChild(el('div', 'fw-empty', 'Nothing to show yet.'));
-    } else if (widget.type === 'clock' || widget.type === 'image' || widget.type === MOTION_FIXTURE_TYPE) {
+    } else if (
+      widget.type === 'clock' ||
+      widget.type === 'image' ||
+      widget.type === 'camera' ||
+      widget.type === MOTION_FIXTURE_TYPE
+    ) {
       // The clock sizes itself to its box, and the image covers it — both fill
       // the box on their own, in CSS, with no measurement here at all. The
       // motion fixture is two shapes positioned in percentages of its box, and

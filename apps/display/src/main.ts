@@ -1,3 +1,4 @@
+import { createCameraLayer } from './camera-layer.js';
 import { currentPicture, upcomingPicture } from './wallpaper.js';
 import { UPDATE_RELOAD_KEY, pageVersion, reloadAllowed, reloadFresh, staggerMs, updateDue } from './update.js';
 import { pushUrl, startPush } from './push.js';
@@ -246,6 +247,16 @@ function start(): void {
    * change to it, so it needs no switch and a reload puts the front back.
    */
   const stacks = new Map<string, string>();
+  /*
+   * The camera pictures (plan item M6.1), on a layer beside the wall that the
+   * rebuild never clears — `camera-layer.ts` says why. A picture arriving or
+   * failing changes the words under it, so it asks for a draw; that is rare,
+   * and a draw is how every other piece of model state reaches the glass.
+   */
+  const cameraLayer = createCameraLayer(root, {
+    onLoadChange: () => safely(draw),
+    now: () => clock.now(),
+  });
   let panelJustOpened = false;
   let sliderHeld = false;
   let drawWhenReleased = false;
@@ -390,6 +401,7 @@ function start(): void {
         ? {}
         : { controlPanel: { widgetId: controlPanel.widgetId, reading: controlPanel.reading } }),
       stacks: Object.fromEntries(stacks),
+      cameraLoads: cameraLayer.loads(),
       oneShots,
     });
     // Events nothing has asked about for an hour are forgotten, on the clock
@@ -461,6 +473,8 @@ function start(): void {
     } else {
       customCss.clear();
     }
+    // A picture over every camera box this draw left, and over nothing else.
+    cameraLayer.reconcile(root);
     /*
      * The panel's focus, after a rebuild replaced every node in it. A panel
      * the renderer declined to draw — its reading gone, a switch turned off
@@ -663,6 +677,7 @@ function start(): void {
           pairingShown = true;
           renderPairing(root, submitPairingCode);
           customCss.clear();
+          cameraLayer.reconcile(root);
         }
         return;
       case 'failed':
@@ -724,6 +739,7 @@ function start(): void {
                 : 'Not reaching this wall’s server. Nothing has arrived yet — it keeps trying.'),
           );
           customCss.clear();
+          cameraLayer.reconcile(root);
         }
         break;
     }

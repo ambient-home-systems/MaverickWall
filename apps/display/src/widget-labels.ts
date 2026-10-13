@@ -49,6 +49,8 @@ export const PALETTE: readonly { readonly type: string; readonly label: string }
   // Plan item M6.11: alert rules said as tiles, and Home Assistant's own notifications.
   { type: 'notifications', label: 'Notifications' },
   { type: 'image', label: 'Image' },
+  // Plan item M6.1: a Home Assistant camera's latest picture.
+  { type: 'camera', label: 'Camera' },
   { type: 'external', label: 'Module' },
 ];
 
@@ -77,6 +79,7 @@ export const SWATCH: Readonly<Record<string, string>> = {
   environment: 'var(--ok)',
   notifications: 'var(--warn)',
   image: 'var(--ok)',
+  camera: 'var(--night)',
   external: 'var(--warn)',
 };
 

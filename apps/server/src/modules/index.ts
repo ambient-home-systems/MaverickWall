@@ -12,6 +12,7 @@ import { timersModule } from './timers/index.js';
 import { messagesModule } from './messages/index.js';
 import { newsModule } from './news/index.js';
 import { notificationsModule } from './notifications/index.js';
+import { camerasModule, cameraHandles } from './cameras/index.js';
 
 /**
  * Every first-party panel module, in one list.
@@ -31,6 +32,7 @@ export const MODULES: readonly PanelModule[] = [
   messagesModule,
   newsModule,
   notificationsModule,
+  camerasModule,
 ];
 
 /** First-party plus whatever the household has registered. */
@@ -64,5 +66,6 @@ export function householdSetUp(db: SqliteDatabase, modules = allModules(db)): Ho
     // a type (RFC 012 §6.2), read here beside the others so every surface that
     // asks "is this set up" gets the lists from the same instant.
     todoLists: watchedTodoListIds(db),
+    cameras: cameraHandles(db),
   };
 }

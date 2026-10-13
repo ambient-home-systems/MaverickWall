@@ -80,6 +80,7 @@ export const WIDGET_VIEWS: Readonly<Record<string, readonly WidgetView[]>> = {
     { value: 'week', label: 'This week' },
   ],
   image: [{ value: '', label: 'Picture' }],
+  camera: [{ value: '', label: 'Latest picture' }],
   external: [{ value: '', label: 'Module panel' }],
 };
 

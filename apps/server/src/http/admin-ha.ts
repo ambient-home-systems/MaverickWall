@@ -39,6 +39,16 @@ import {
   type WatchedRow,
 } from '../modules/homeassistant/store.js';
 import { householdSetUp } from '../modules/index.js';
+import {
+  CAMERA_HANDLE,
+  MAX_CAMERAS,
+  parseCameraEntities,
+  readCameras,
+  unwatchCamera,
+  watchCamera,
+  type CameraEntity,
+  type CameraRow,
+} from '../modules/cameras/index.js';
 import { conditionChoices } from '../modules/homeassistant/conditions.js';
 import { HOME_BLOCK as HOME_MODULE } from '../modules/homeassistant/index.js';
 import { COVER_CLASSES, wallActionsFor } from '../modules/homeassistant/services.js';
@@ -47,6 +57,7 @@ import {
   anyWallShowsReadings,
   shownOnTag,
   wallsAndWhatTheyDraw,
+  wallsShowingCamera,
   wallsShowingReading,
   type WallDrawing,
 } from './wall-reach.js';
@@ -260,6 +271,11 @@ const calendarSourceBody = z.object({
 });
 
 /** A to-do list to watch: its entity id, and what the household calls it. */
+/** A camera to show (plan item M6.1): its entity id, as Home Assistant lists it. */
+const cameraBody = z.object({
+  entity_id: text('A camera', 255),
+});
+
 const todoListBody = z.object({
   entity_id: text('A to-do list', 255),
   label: optionalText(60),
@@ -493,6 +509,8 @@ interface LiveState {
   readonly calendars: readonly { entityId: string; name: string }[];
   /** The `todo.*` entities in the same `/api/states` the readings picker reads. */
   readonly todo: readonly TodoEntity[];
+  /** The `camera.*` entities in the same document (plan item M6.1). */
+  readonly cameras: readonly CameraEntity[];
   readonly problem: PageError | null;
 }
 
@@ -508,6 +526,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
         entities: [],
         calendars: [],
         todo: [],
+        cameras: [],
         problem:
           resolved.code === 'not-configured'
             ? null
@@ -527,6 +546,7 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
         entities: [],
         calendars: [],
         todo: [],
+        cameras: [],
         problem: {
           message: states.message,
           ...(states.suggestion !== undefined ? { suggestion: states.suggestion } : {}),
@@ -549,6 +569,8 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       // The same document, read the other way: `parseStates` keeps the domains
       // a reading can be and drops `todo`, and this keeps `todo` alone.
       todo: parseTodoEntities(states.body),
+      // And once more for cameras, which are no reading either (RFC 007 §6.1).
+      cameras: parseCameraEntities(states.body),
       problem: null,
     };
   }
@@ -653,6 +675,27 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
   const CALENDARS_ADD = { label: 'Add a calendar', href: 'admin/home-assistant/calendars/new' } as const;
   const LISTS_ADD = { label: 'Add a list', href: 'admin/home-assistant/lists/new' } as const;
   const RULES_ADD = { label: 'Add a rule', href: 'admin/home-assistant/alerts/new' } as const;
+  const CAMERAS_ADD = { label: 'Add a camera', href: 'admin/home-assistant/cameras/new' } as const;
+
+  async function renderCameras(c: Context, error?: PageError, status?: number): Promise<Response> {
+    const live = await look();
+    return html(
+      child(c, 'Cameras', error ?? live.problem ?? undefined, connectedOr(live, () => cameras()), {
+        action: CAMERAS_ADD,
+      }),
+      status,
+    );
+  }
+
+  async function renderAddCamera(c: Context, error?: PageError, status?: number): Promise<Response> {
+    const live = await look();
+    return html(
+      child(c, 'Add a camera', error ?? live.problem ?? undefined, connectedOr(live, () => addCamera(live)), {
+        back: { label: 'Cameras', href: 'admin/home-assistant/cameras' },
+      }),
+      status,
+    );
+  }
 
   async function renderReadings(c: Context, error?: PageError, status?: number): Promise<Response> {
     const live = await look();
@@ -802,6 +845,8 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
    */
   app.get('/admin/home-assistant/lists', async (c: Context) => renderLists(c));
   app.get('/admin/home-assistant/lists/new', async (c: Context) => renderAddList(c));
+  app.get('/admin/home-assistant/cameras', async (c: Context) => renderCameras(c));
+  app.get('/admin/home-assistant/cameras/new', async (c: Context) => renderAddCamera(c));
 
   /**
    * The rules, and — one page along — the form that adds one.
@@ -1300,6 +1345,65 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
   });
 
   /**
+   * Adding a camera (plan item M6.1): one Home Assistant lists now, refused
+   * with a sentence otherwise. Its handle is minted here and is the only name
+   * a wall will ever have for it.
+   */
+  app.post('/admin/home-assistant/cameras', async (c: Context) => {
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const picked = parse(cameraBody, body);
+    if (!picked.ok) return renderAddCamera(c, { message: picked.message }, 400);
+    const live = await look();
+    if (live.problem !== null) return renderAddCamera(c, live.problem, 400);
+    const known = live.cameras.find((camera) => camera.entityId === picked.value.entity_id);
+    if (known === undefined) {
+      return renderAddCamera(
+        c,
+        {
+          message: 'Home Assistant has no camera by that name.',
+          suggestion: 'Pick one from the list; they come from your Home Assistant as it is now.',
+        },
+        400,
+      );
+    }
+    const added = watchCamera(deps.db, { entityId: known.entityId, name: known.name }, now());
+    if (!added.ok) return renderAddCamera(c, { message: added.message }, 400);
+    return savedRedirect(c, '/admin/home-assistant/cameras', 'ha-camera-added');
+  });
+
+  app.get('/admin/home-assistant/cameras/:handle/remove', (c: Context) => {
+    const handle = c.req.param('handle') ?? '';
+    const row = readCameras(deps.db).find((camera) => camera.handle === handle);
+    if (row === undefined) return c.redirect('/admin/home-assistant/cameras', 302);
+    return c.html(
+      confirmDestroyPage({
+        self: selfHref(c),
+        modules: navModules(deps.db),
+        title: 'Remove camera',
+        nav: 'homeassistant',
+        heading: `Stop showing “${row.name}”?`,
+        intro:
+          'Its picture comes off every wall that shows it, and any Camera widget set ' +
+          'to it is left out until you pick another camera there. The camera itself ' +
+          'stays in Home Assistant, untouched.',
+        destroyAction: `admin/home-assistant/cameras/${encodeURIComponent(handle)}/remove`,
+        destroyLabel: 'Remove it',
+        cancelAction: 'admin/home-assistant/cameras',
+        cancelLabel: 'Keep showing it',
+      }),
+    );
+  });
+
+  app.post('/admin/home-assistant/cameras/:handle/remove', (c: Context) => {
+    const handle = c.req.param('handle') ?? '';
+    if (!CAMERA_HANDLE.test(handle) || !readCameras(deps.db).some((camera) => camera.handle === handle)) {
+      return c.redirect('/admin/home-assistant/cameras', 302);
+    }
+    unwatchCamera(deps.db, handle);
+    return savedRedirect(c, '/admin/home-assistant/cameras', 'ha-camera-removed');
+  });
+
+  /**
    * Removing a list asks first — the same GET-then-POST shape as every other
    * destructive control here. The id rides in the path, which is what
    * `destructive()` expects and the readings' query-parameter form cannot give
@@ -1569,6 +1673,15 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
           href: 'admin/home-assistant/lists',
         },
         tag(counted(lists, 'list', 'lists')),
+      ) +
+      listRow(
+        '',
+        {
+          title: 'Cameras',
+          detail: 'A camera’s latest picture, every few seconds, wherever you put a Camera widget.',
+          href: 'admin/home-assistant/cameras',
+        },
+        tag(counted(readCameras(deps.db).length, 'camera', 'cameras')),
       ) +
       listRow(
         '',
@@ -2318,6 +2431,69 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
             attrs: 'maxlength="60"',
           }) +
           `<button type="submit">Show this list</button></form>`;
+  }
+
+  /**
+   * The cameras a wall may show (plan item M6.1, RFC 007 §6.1): each with
+   * whether Home Assistant still has it and which walls draw it, because a
+   * camera just added is on no wall until a Camera widget names it (P1.3).
+   */
+  function cameras(): string {
+    const added = readCameras(deps.db);
+    const walls = readingWalls();
+    const rows = added.map((camera) => cameraRowFor(camera, walls)).join('');
+    return section(
+      'Cameras',
+      'A camera’s latest picture, fetched by this server every few seconds and drawn by ' +
+        'the Camera widget wherever you put one. A wall is never given your Home Assistant ' +
+        'address or its token, only a name for the camera that this server looks up, and ' +
+        'it can fetch only the cameras placed on its own layout. An e-paper panel shows the ' +
+        'box without the picture.',
+      rows === '' ? emptyState('No cameras are shown yet.', CAMERAS_ADD) : rows,
+    );
+  }
+
+  function cameraRowFor(camera: CameraRow, walls: readonly WallDrawing[]): string {
+    const enc = encodeURIComponent(camera.handle);
+    const state = camera.available ? '' : tag('Not answering', 'warn');
+    const detail = camera.available
+      ? 'Answering Home Assistant.'
+      : 'Home Assistant could not reach it at its last check. Walls show the box without a picture until it can.';
+    const menu =
+      `<details class="ovf" data-overflow>` +
+      `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
+      `aria-label="More actions for ${escapeHtml(camera.name)}" title="More">${icon('more')}</summary>` +
+      `<div class="ovf-menu" role="menu">` +
+      destructive('Remove', { thing: camera.name, confirmAction: `admin/home-assistant/cameras/${enc}/remove` }) +
+      `</div></details>`;
+    return listRow('', { title: camera.name, detail }, state + shownOnTag(wallsShowingCamera(walls, camera.handle)) + menu);
+  }
+
+  /** Adding a camera, on a page of its own (P2.1): the house's cameras not yet added. */
+  function addCamera(live: LiveState): string {
+    const added = readCameras(deps.db);
+    const addedIds = new Set(added.map((camera) => camera.entityId));
+    const available = live.cameras.filter((camera) => !addedIds.has(camera.entityId));
+    if (added.length >= MAX_CAMERAS) {
+      return `<p class="hint">A wall shows at most ${MAX_CAMERAS} cameras. Remove one to add another.</p>`;
+    }
+    if (available.length === 0) {
+      return emptyState(
+        live.cameras.length === 0 ? 'Home Assistant has no cameras.' : 'Every camera Home Assistant has is already added.',
+      );
+    }
+    const options = available
+      .map(
+        (camera) =>
+          `<option value="${escapeHtml(camera.entityId)}">${escapeHtml(camera.name)}` +
+          `${camera.available ? '' : ' — not answering at the moment'}</option>`,
+      )
+      .join('');
+    return (
+      `<form method="post" action="admin/home-assistant/cameras">` +
+      selectField({ label: 'Camera', name: 'entity_id', optionsHtml: options, attrs: 'required' }) +
+      `<button type="submit">Add this camera</button></form>`
+    );
   }
 
   /** One watched list: its name, its state as a word, and its actions in the ⋮. */

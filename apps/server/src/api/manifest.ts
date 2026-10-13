@@ -117,6 +117,10 @@ export const WIDGET_TYPES = [
   // Alert rules a household set to say what they found as a tile, and Home
   // Assistant's own persistent notifications (plan item M6.11).
   'notifications',
+  // A Home Assistant camera's latest picture, fetched by the server and named
+  // to the wall by a handle (plan item M6.1, RFC 007 Tier A). A first-party
+  // box drawing a first-party-proxied picture, never a video-URL widget.
+  'camera',
   // A panel from a registered third-party module (docs/rfc-001-module-framework.md).
   // Still first-party by the rule that matters: the wall draws sanitised strings
   // through renderGenericPanel, never anything the module ships.
@@ -171,6 +175,9 @@ export const WIDGET_MODULE: Readonly<Record<string, string>> = {
   // Left out while no tile rule is firing and Home Assistant has said nothing
   // (plan item M6.11): its `whenEmpty` is what the box shows the rest of the time.
   notifications: 'notifications',
+  // Conditional on the widget's own config, as `todo` is: a camera chosen and
+  // since removed is left out; none chosen yet keeps its prompt (M6.1).
+  camera: 'cameras',
 };
 
 /**
@@ -504,6 +511,14 @@ export interface HouseholdSetUp {
    * wall's manifest and a panel's frame, hand it over.
    */
   readonly conditions?: Conditions;
+  /**
+   * The cameras the household has added, by handle (plan item M6.1). A camera
+   * widget naming a handle not among them is left out — the camera was
+   * removed — the way a To-do widget naming an unwatched list is. Absent
+   * means the handle is believed while the cameras module is ready, for a
+   * caller that only asks whether a type can draw at all.
+   */
+  readonly cameras?: readonly string[];
 }
 
 /**
@@ -582,8 +597,35 @@ export function widgetIsSetUp(widget: SetUpTarget, setUp: HouseholdSetUp): boole
     // "at least one watched list" — so one membership test answers both.
     return setUp.todoLists.includes(list);
   }
+  if (widget.type === 'camera') {
+    // No camera chosen yet is a box with a prompt one click away, like an
+    // empty picture; a chosen one needs the camera still to be added.
+    const handle = cameraOf(widget.config);
+    if (handle === undefined) return true;
+    if (!setUp.modules.includes('cameras')) return false;
+    return setUp.cameras === undefined || setUp.cameras.includes(handle);
+  }
   const block = WIDGET_MODULE[widget.type];
   return block === undefined || setUp.modules.includes(block);
+}
+
+/** The handles in the cameras panel (plan item M6.1); none when there is no panel. */
+function cameraHandlesIn(panel: unknown): string[] {
+  if (typeof panel !== 'object' || panel === null) return [];
+  const list = (panel as Record<string, unknown>)['cameras'];
+  if (!Array.isArray(list)) return [];
+  return list.flatMap((entry) =>
+    typeof entry === 'object' && entry !== null && typeof (entry as Record<string, unknown>)['handle'] === 'string'
+      ? [(entry as Record<string, unknown>)['handle'] as string]
+      : [],
+  );
+}
+
+/** The camera a `camera` widget names, by handle, or nothing. */
+export function cameraOf(config: unknown): string | undefined {
+  if (typeof config !== 'object' || config === null) return undefined;
+  const handle = (config as Record<string, unknown>)['camera'];
+  return typeof handle === 'string' && handle !== '' ? handle : undefined;
 }
 
 /**
@@ -1217,12 +1259,19 @@ export function buildLayout(
    * which must draw the box being arranged — see `HouseholdSetUp.conditions`.
    */
   conditions?: Conditions,
+  /*
+   * The cameras the household has added, by handle (plan item M6.1), so a
+   * Camera widget naming one since removed is left out. Absent believes every
+   * handle while the module is ready — the editor's preview.
+   */
+  cameras?: readonly string[],
 ): Manifest['layout'] {
   const setUp: HouseholdSetUp = {
     modules: readyModules,
     shift: household.shiftEnabled === 1,
     todoLists: watchedTodoLists,
     ...(conditions === undefined ? {} : { conditions }),
+    ...(cameras === undefined ? {} : { cameras }),
   };
   const portrait = placeCanvas(portraitWidgets, setUp, styling, readingIndex, albums, playing);
   const landscape = placeCanvas(landscapeWidgets, setUp, styling, readingIndex, albums, playing);
@@ -2553,6 +2602,8 @@ export function buildManifest(input: BuildManifestInput): Manifest {
       input.albums ?? [],
       input.playing ?? {},
       input.conditions,
+      // Read off the cameras panel the wall is sent, from the same instant (M6.1).
+      cameraHandlesIn(input.panels?.['cameras']),
     ), onGlass),
     ...(input.layoutOverride === undefined
       ? {}
@@ -2576,6 +2627,8 @@ export function buildManifest(input: BuildManifestInput): Manifest {
               input.albums ?? [],
               input.playing ?? {},
               input.conditions,
+              // Read off the cameras panel the wall is sent, from the same instant (M6.1).
+              cameraHandlesIn(input.panels?.['cameras']),
             ), onGlass),
           },
         }),

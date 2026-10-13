@@ -119,6 +119,11 @@ const OWN_HONOURS: Readonly<Record<string, readonly string[]>> = {
   // a list absent means the typed items, present means that list's rows.
   todo: ['title', 'showTitle', 'items', 'list', 'showDone', STYLE_INSET, WHEN_EMPTY],
   image: ['title', 'showTitle', 'image', STYLE_INSET],
+  // A camera (plan item M6.1) draws what an empty picture box draws: its
+  // title and a bracketed note. There is no JPEG decoder on a panel, and a
+  // battery panel is a glance class that should not be polling a doorbell
+  // (RFC 007 §7.4). Left out, like a to-do list, once its camera is removed.
+  camera: ['title', 'showTitle', STYLE_INSET, WHEN_EMPTY],
   // RFC 018 phase 5: the names of the chosen buttons, a line each. Nothing to
   // press — `tapAction` is in `PANEL_IGNORES`.
   buttons: ['title', 'showTitle', 'align', 'buttons', STYLE_INSET, WHEN_EMPTY],
@@ -220,6 +225,8 @@ export const INK_LANE: Readonly<Record<string, readonly string[]>> = {
   // way, and stays with the wall's own settings.
   todo: [],
   image: [],
+  // Which camera is the widget's identity; a panel draws no picture of it.
+  camera: [],
   // Which buttons is the widget's identity, as a to-do widget's list is.
   buttons: [],
   timers: [],
@@ -487,9 +494,25 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
   },
   {
     key: 'fit',
-    types: ['image'],
+    types: ['image', 'camera'],
     label: 'Fit',
     why: 'a panel draws no photographs, so there is nothing for it to fit.',
+  },
+  /*
+   * A camera (plan item M6.1, RFC 007 §7.4): a panel draws no picture of it,
+   * so which camera and how often it is fetched are the wall's alone.
+   */
+  {
+    key: 'camera',
+    types: ['camera'],
+    label: 'Camera',
+    why: 'a panel draws no camera pictures, so its box is the same whichever camera — and one you remove is left out, as on a wall.',
+  },
+  {
+    key: 'cameraRefreshSec',
+    types: ['camera'],
+    label: 'New picture every',
+    why: 'a panel draws no camera pictures, and polling a camera would empty a battery panel.',
   },
   {
     key: 'nowPlaying',

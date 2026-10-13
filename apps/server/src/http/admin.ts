@@ -2,6 +2,7 @@ import type { Context, Hono } from 'hono';
 import { immichPhoto } from '../modules/immich/store.js';
 import { folderPhoto } from '../modules/folder/store.js';
 import { artworkPhoto } from '../modules/homeassistant/artwork.js';
+import { readCameras } from '../modules/cameras/index.js';
 import { readAlbumSlides } from '../api/photo-albums.js';
 import { addCalendarSource } from '../api/sources.js';
 import { nextPersonColor } from '../api/palette.js';
@@ -1182,6 +1183,10 @@ function whyNotDrawn(db: SqliteDatabase, type: string): string {
       return 'Pick a to-do list that is still on Home Assistant, or clear it to type the items here.';
     case 'buttons':
       return 'Add a button on Buttons and this appears.';
+    case 'camera':
+      // Only ever said of a widget that names a camera since removed: one with
+      // none chosen keeps its own prompt on the wall.
+      return 'Choose a camera that is still under Home Assistant › Cameras.';
     case 'timers':
       return 'Shows while a timer is running — start one from a phone or on Timers and messages.';
     case 'messages':
@@ -1230,6 +1235,7 @@ export function widgetsNotDrawn(
 export function omissionFacts(db: SqliteDatabase): {
   drawn: Record<string, boolean>;
   todoLists: string[];
+  cameras: string[];
   why: Record<string, string>;
 } {
   const setUp = householdSetUp(db);
@@ -1239,7 +1245,7 @@ export function omissionFacts(db: SqliteDatabase): {
     drawn[type] = widgetIsSetUp({ type }, setUp);
     why[type] = whyNotDrawn(db, type);
   }
-  return { drawn, todoLists: [...setUp.todoLists], why };
+  return { drawn, todoLists: [...setUp.todoLists], cameras: [...(setUp.cameras ?? [])], why };
 }
 
 /**
@@ -6277,6 +6283,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       newsFeeds: newsFeedChoices(deps.db),
       // The photo albums, for the Image widget's picker and its preview (plan item M5.12).
       albums: readAlbumSlides(deps.db),
+      // The cameras by handle and Home Assistant's name (plan item M6.1): the
+      // editor offers names and stores handles, never an entity id.
+      cameras: readCameras(deps.db).map((camera) => ({ handle: camera.handle, name: camera.name })),
       // The bundled faces a widget's style lane may name (RFC 014 §4.1) — the
       // server's allowlist, so the inspector cannot offer a face the schema
       // would refuse.

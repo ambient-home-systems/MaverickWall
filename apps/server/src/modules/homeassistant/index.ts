@@ -4,6 +4,7 @@ import type { Signal } from '@maverick-wall/core';
 import { z } from '../../validation.js';
 import { daylightFromState } from '../../api/daylight.js';
 import { conditionEntities, readConditionStates, writeConditionStates } from './conditions.js';
+import { readCameras, writeCameraStates } from '../cameras/index.js';
 import { historyPath, historyWindowEnd, mediaEntities, parseHistory, seriesFrom, sparklineEntities, storedSeries } from './history.js';
 import { statusPictures } from './artwork.js';
 import { refreshHaNotifications, wantsHaNotifications } from './notifications.js';
@@ -367,7 +368,10 @@ export const haModule: PanelModule = {
       );
       // And the entities a widget is shown by (plan items M6.4, M6.5, M6.7).
       const conditions = conditionEntities(context.db);
-      if (wanted.size === 0 && daylight.size === 0 && conditions.size === 0) {
+      // And whether each camera the household added is there (plan item
+      // M6.1): read from the same body, never a request of its own.
+      const cameras = readCameras(context.db).length > 0;
+      if (wanted.size === 0 && daylight.size === 0 && conditions.size === 0 && !cameras) {
         // Nothing to read; forget any state no widget names any more.
         context.db.prepare('DELETE FROM ha_condition_states').run();
         // But Home Assistant's own notifications are no reading (M6.11): a
@@ -417,6 +421,8 @@ export const haModule: PanelModule = {
       // What a player plays is kept only for the players a now-playing card
       // follows (M6.9): a backup of a house with no such card carries no song.
       const followed = mediaEntities(context.db);
+
+      writeCameraStates(context.db, response.body, at);
 
       const write = context.db.transaction(() => {
         writeConditionStates(context.db, conditionStates, conditions);

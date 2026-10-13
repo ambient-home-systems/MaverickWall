@@ -45,6 +45,12 @@ export type NotDrawn = ReadonlyMap<string, string>;
 export interface OmissionFacts {
   readonly drawn: Readonly<Record<string, boolean>>;
   readonly todoLists: readonly string[];
+  /**
+   * The cameras the household has added, by handle (plan item M6.1): a camera
+   * box naming one not among them is left out, as a to-do box naming an
+   * unwatched list is. Absent, from a server older than cameras, flags none.
+   */
+  readonly cameras?: readonly string[];
   readonly why: Readonly<Record<string, string>>;
 }
 
@@ -73,6 +79,11 @@ export function widgetOmitted(widget: OmissionTarget, facts: OmissionFacts): boo
   if (widget.type === 'todo') {
     const list = todoListOf(widget.config);
     return list !== undefined && !facts.todoLists.includes(list);
+  }
+  if (widget.type === 'camera') {
+    const handle = widget.config?.['camera'];
+    if (typeof handle !== 'string' || handle === '' || facts.cameras === undefined) return false;
+    return !facts.cameras.includes(handle);
   }
   return facts.drawn[widget.type] === false;
 }

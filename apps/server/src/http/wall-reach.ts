@@ -157,6 +157,19 @@ export function wallsShowingModule(walls: readonly WallDrawing[], moduleId: stri
   );
 }
 
+/** The walls that draw a given camera: a Camera widget naming its handle (plan item M6.1). */
+export function wallsShowingCamera(walls: readonly WallDrawing[], handle: string): WallDrawing[] {
+  return walls.filter((wall) =>
+    wall.widgets.some(
+      (widget) =>
+        widget.type === 'camera' &&
+        typeof widget.config === 'object' &&
+        widget.config !== null &&
+        (widget.config as Record<string, unknown>)['camera'] === handle,
+    ),
+  );
+}
+
 function readingsOf(config: unknown): unknown {
   return typeof config === 'object' && config !== null
     ? (config as Record<string, unknown>)['readings']
