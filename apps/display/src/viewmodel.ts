@@ -1344,10 +1344,14 @@ export interface PanelReading {
   readonly value: string;
   /** A glyph key the module named. Absent unless this bundle can draw it. */
   readonly glyph?: GlyphKey;
+  /** What the row is doing (plan item M7.2): the tone its circle is coloured by. */
+  readonly tone?: PanelTone;
 }
+export type PanelTone = 'active' | 'alert' | 'idle';
 export interface PanelTile {
   readonly label: string;
   readonly value: string;
+  readonly tone?: PanelTone;
 }
 export type PanelData =
   | { readonly kind: 'readings'; readonly title?: string; readonly items: readonly PanelReading[] }
@@ -1365,7 +1369,15 @@ function readPanelItems(raw: unknown, withGlyph: boolean): PanelReading[] {
     const value = text(row['value'], 60);
     if (label === undefined || value === undefined) continue;
     const glyph = withGlyph && isGlyphKey(row['glyph']) ? row['glyph'] : undefined;
-    items.push(glyph === undefined ? { label, value } : { label, value, glyph });
+    // A word this bundle knows or no tone at all: a server a version ahead may
+    // name a fourth, and an unknown tone draws as the row it always was.
+    const tone = row['tone'] === 'active' || row['tone'] === 'alert' || row['tone'] === 'idle' ? row['tone'] : undefined;
+    items.push({
+      label,
+      value,
+      ...(glyph === undefined ? {} : { glyph }),
+      ...(tone === undefined ? {} : { tone }),
+    });
   }
   return items;
 }

@@ -81,6 +81,32 @@ every screen, an empty box on some, and nothing at all on e-paper. The old
 `icon` field carried exactly that; it is still **accepted, so an older module's
 panel is not refused, and then dropped**.
 
+#### A row's `tone`
+
+A row may also say what it is doing, with `tone`: `active` for something that
+is on or running, `alert` for something that wants somebody, and `idle` for
+something that is neither.
+
+```json
+{
+  "kind": "readings",
+  "title": "Garden",
+  "items": [
+    { "label": "Sprinkler", "value": "Running", "glyph": "switch", "tone": "active" },
+    { "label": "Shed door", "value": "Open", "glyph": "door", "tone": "alert" },
+    { "label": "Soil", "value": "Damp", "glyph": "moisture", "tone": "idle" }
+  ]
+}
+```
+
+The wall draws a row with a tone the way it draws a Home Assistant tile's mark:
+the row's `glyph` knocked out of a circle in the tone's colour, or the circle
+alone if the row names no glyph. The colours are the theme's own, measured
+against its grounds, which is why a module names a tone and never a colour. A
+row with no `tone` is drawn exactly as before. An e-paper panel has no colour,
+so it puts `! ` in front of an `alert` row and draws `active` and `idle` rows
+as plain lines. Any other word is a rejected panel.
+
 ### `stat` and `tiles` — accepted, drawn as rows
 
 ```json
@@ -117,6 +143,7 @@ against the event text. If you are writing a module now, send `readings`.
 |---|---|
 | `title`, `label`, `value`, `caption` | 60 characters |
 | `glyph` | a key from the list above; anything else is dropped |
+| `tone` | `active`, `alert` or `idle`; anything else is rejected |
 | `text` | 280 characters |
 | `items` | 1–12 rows |
 

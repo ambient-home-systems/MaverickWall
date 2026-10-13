@@ -29,19 +29,32 @@ const str = (max: number): z.ZodString => z.string().max(max);
  * third-party asset resolved on the device, which is the fault this change
  * exists to remove and which a module is no more entitled to than we were.
  */
+/**
+ * What a row is doing (plan item M7.2, contract 2): `active` for a thing that
+ * is on, `alert` for one that wants somebody, `idle` for one that is neither —
+ * the three the Home Assistant tiles colour their circle by (P5.3). A word from
+ * a closed list, never a colour: the theme decides what each looks like, and a
+ * module cannot put a colour on the wall that the theme has not measured.
+ */
+const tone = z.enum(['active', 'alert', 'idle']);
+
 const reading = z
   .object({
     label: str(60),
     value: str(60),
     glyph: str(24).optional(),
     icon: str(4).optional(),
+    tone: tone.optional(),
   })
   .strict()
-  .transform(({ label, value, glyph }) =>
-    isGlyphKey(glyph) ? { label, value, glyph } : { label, value },
-  );
+  .transform(({ label, value, glyph, tone: rowTone }) => ({
+    label,
+    value,
+    ...(isGlyphKey(glyph) ? { glyph } : {}),
+    ...(rowTone === undefined ? {} : { tone: rowTone }),
+  }));
 
-const tile = z.object({ label: str(60), value: str(60) }).strict();
+const tile = z.object({ label: str(60), value: str(60), tone: tone.optional() }).strict();
 
 export const panelDataSchema = z.discriminatedUnion('kind', [
   z

@@ -37,4 +37,28 @@ describe('panelDataSchema', () => {
     expect(panelDataSchema.safeParse({ kind: 'stat' }).success).toBe(false);
     expect(panelDataSchema.safeParse({ kind: 'text' }).success).toBe(false);
   });
+
+  it('keeps a row’s tone, from the closed list, and refuses any other word (M7.2)', () => {
+    const parsed = panelDataSchema.parse({
+      kind: 'readings',
+      items: [
+        { label: 'Shed door', value: 'Open', glyph: 'door', tone: 'alert' },
+        { label: 'Sprinkler', value: 'Running', tone: 'active' },
+        { label: 'Soil', value: 'Damp' },
+      ],
+    });
+    expect(parsed).toEqual({
+      kind: 'readings',
+      items: [
+        { label: 'Shed door', value: 'Open', glyph: 'door', tone: 'alert' },
+        { label: 'Sprinkler', value: 'Running', tone: 'active' },
+        { label: 'Soil', value: 'Damp' },
+      ],
+    });
+    for (const tone of ['red', 'Alert', '#ff0000', '']) {
+      expect(panelDataSchema.safeParse({ kind: 'readings', items: [{ label: 'a', value: 'b', tone }] }).success).toBe(false);
+    }
+    expect(panelDataSchema.safeParse({ kind: 'tiles', items: [{ label: 'a', value: 'b', tone: 'idle' }] }).success).toBe(true);
+    expect(panelDataSchema.safeParse({ kind: 'tiles', items: [{ label: 'a', value: 'b', tone: 'loud' }] }).success).toBe(false);
+  });
 });

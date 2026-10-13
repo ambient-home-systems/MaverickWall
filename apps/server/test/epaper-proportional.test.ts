@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Manifest, ManifestDay, ManifestEvent } from '../src/api/manifest.js';
+import { bitString } from './epaper-frame.js';
 import type { Framebuffer } from '../src/epaper/framebuffer.js';
 import {
   MAX_AGENDA_ROWS,
@@ -929,5 +930,36 @@ describe('a module panel counts the rows it actually draws', () => {
     const fb = renderFreeformEpaper(buildEpaperModel(withModule), withModule, [widget], panel);
     const bottom = Math.round(0.05 * panel.height) + Math.round(0.25 * panel.height);
     expect(inkIn(fb, 0, panel.width, bottom + 1, panel.height)).toBe(0);
+  });
+});
+
+describe('a module row’s tone on a panel (plan item M7.2)', () => {
+  /*
+   * One bit has no colour for a tone, so an alert row is marked in words — the
+   * "! " a notification tile's alert line already carries — and active and
+   * idle rows draw the plain line. A module that sends no tone draws the panel
+   * it always drew.
+   */
+  const frame = (tone?: string): string => {
+    const rows = [
+      { label: 'Shed door', value: 'Open', ...(tone === undefined ? {} : { tone }) },
+      { label: 'Soil', value: 'Damp' },
+    ];
+    const manifest = {
+      ...WIDGET_MANIFEST,
+      panels: { ...WIDGET_MANIFEST.panels, garden: { kind: 'readings', items: rows } },
+    } as unknown as Manifest;
+    const panel = { width: 800, height: 480 } as const;
+    const widget: PlacedEpaperWidget = {
+      type: 'external', x: 0.05, y: 0.05, w: 0.9, h: 0.4, z: 0, config: { module: 'garden' },
+    };
+    return bitString(renderFreeformEpaper(buildEpaperModel(manifest), manifest, [widget], panel));
+  };
+
+  it('marks an alert row, and draws active and idle rows as the plain line', () => {
+    const plain = frame();
+    expect(frame('alert')).not.toBe(plain);
+    expect(frame('active')).toBe(plain);
+    expect(frame('idle')).toBe(plain);
   });
 });

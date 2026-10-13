@@ -58,6 +58,12 @@ thing's name instead. It now shows your sentence, with what it is about under
 it — "The freezer door is open", then "Freezer door · Open". Weather warnings
 keep the warning's own words.
 
+**A module's rows can say what they are doing.** A module may now mark each
+row `active`, `alert` or `idle`, and the wall draws that row's picture in a
+coloured circle, as a Home Assistant tile does, in your theme's own colours.
+A module that sends none looks exactly as before. An e-paper panel puts `!` in
+front of an alert row. The module guide shows how.
+
 **See who is trying to sign in, and let a locked address back in.** System ›
 Lockouts lists the recent sign-in attempts — where each came from and what
 happened, never the email address typed — and anything currently told to
