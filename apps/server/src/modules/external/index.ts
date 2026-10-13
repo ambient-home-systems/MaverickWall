@@ -1,4 +1,5 @@
 import type { Fetcher, Signal } from '@maverick-wall/core';
+import { DEFAULT_TIMEZONE } from '../../timezone.js';
 import { FETCH_LIMITS } from '@maverick-wall/core';
 import type { SqliteDatabase } from '../../db/open.js';
 import type { ModuleContext, PanelModule } from '../registry.js';
@@ -167,6 +168,11 @@ async function pollRecipe(
   }
   const recipe = parsed.data;
   const now = Date.now();
+  // A recipe's `time` formatter says a clock time in the household's own zone
+  // (plan item M7.8), so a feed that speaks UTC reads like the kitchen clock.
+  const timezone =
+    (db.prepare(`SELECT timezone FROM household_settings WHERE id = 'singleton'`).get() as { timezone: string } | undefined)
+      ?.timezone ?? DEFAULT_TIMEZONE;
   const due = (polledAt: number): boolean => polledAt === 0 || now >= polledAt + recipe.fetch.intervalSeconds * 1000;
 
   const install: RecipeConfig =
@@ -207,7 +213,7 @@ async function pollRecipe(
     const isDue =
       (request.install && due(module.lastPolledAt)) || request.variants.some((key) => due(polled.get(key) ?? 0));
     if (!isDue) continue;
-    const outcome = await readRequest(fetcher, keyring, module, recipe, request.config, now);
+    const outcome = await readRequest(fetcher, keyring, module, recipe, request.config, now, timezone);
     if (request.install) {
       if (outcome.ok) writeExternalModulePanel(db, module.id, outcome.panel);
       else writeExternalModuleError(db, module.id, outcome.error);
@@ -216,7 +222,7 @@ async function pollRecipe(
       // unchanged Phase 2b path. An authoritative replace: a signal whose
       // `when` stopped holding drops out, and its interrupt clears.
       if (outcome.body !== undefined && recipe.signals.length > 0) {
-        const signals = runRecipeSignals(recipe, outcome.body, now, outcome.sources ?? {});
+        const signals = runRecipeSignals(recipe, outcome.body, now, outcome.sources ?? {}, timezone);
         if (signals.ok) writeExternalModuleSignals(db, module.id, signals.signals);
       }
     }
@@ -239,6 +245,7 @@ async function readRequest(
   recipe: Recipe,
   config: RecipeConfig,
   now: number,
+  timezone: string,
 ): Promise<
   | { ok: true; panel: unknown; body: unknown; sources: Record<string, unknown> }
   | { ok: false; error: string; body?: unknown; sources?: Record<string, unknown> }
@@ -283,7 +290,7 @@ async function readRequest(
     }
     sources[source.name] = got.body;
   }
-  const panel = runRecipePanel(recipe, body, now, sources);
+  const panel = runRecipePanel(recipe, body, now, sources, timezone);
   return panel.ok ? { ok: true, panel: panel.panel, body, sources } : { ok: false, error: panel.error, body, sources };
 }
 

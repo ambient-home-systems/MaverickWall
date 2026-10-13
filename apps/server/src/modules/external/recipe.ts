@@ -1,6 +1,7 @@
 import { z } from '../../validation.js';
 import { panelDataSchema } from './panel-data.js';
 import { signalDataSchema } from './signal-data.js';
+import { DEFAULT_TIMEZONE } from '../../timezone.js';
 
 /**
  * Recipe modules (docs/rfc-002-module-catalog-and-recipes.md, Phase B1).
@@ -46,8 +47,19 @@ const CURRENCY_SYMBOL: Readonly<Record<string, string>> = {
   JPY: '¥',
 };
 
+/**
+ * What a formatter may know beyond the value: the time, the household's zone
+ * (plan item M7.8, for `time`), and the recipe's own lookup tables (for `map`).
+ * Never the network, never anything a recipe did not declare.
+ */
+interface FormatContext {
+  readonly now: number;
+  readonly timezone: string;
+  readonly lookups: Readonly<Record<string, Readonly<Record<string, string>>>>;
+}
+
 /** A formatter turns a selected value into a string. First-party, total, pure. */
-type Formatter = (value: unknown, arg: string | undefined, now: number) => string;
+type Formatter = (value: unknown, arg: string | undefined, context: FormatContext) => string;
 
 function asString(value: unknown): string {
   if (value === null || value === undefined) return '';
@@ -90,12 +102,112 @@ const FORMATTERS: Readonly<Record<string, Formatter>> = {
     const max = Math.max(1, Math.min(280, arg === undefined ? 40 : Number(arg) || 40));
     return s.length > max ? `${s.slice(0, max - 1)}…` : s;
   },
-  date: (v, arg, now) => formatDate(v, arg, now),
+  date: (v, arg, context) => formatDate(v, arg, context.now),
   default: (v, arg) => {
     const s = asString(v);
     return s === '' ? arg ?? '' : s;
   },
+  // Plan item M7.8's four.
+  number: (v, arg) => formatNumber(v, arg),
+  duration: (v, arg) => formatDuration(v, arg),
+  time: (v, arg, context) => formatTime(v, arg, context.timezone),
+  plural: (v, arg) => formatPlural(v, arg),
+  map: (v, arg, context) => lookUp(v, arg, context.lookups),
 };
+
+/** How many decimal places an argument asks for: 0 to 6, and 0 when it says nothing. */
+function places(arg: string | undefined): number {
+  const n = arg === undefined ? 0 : Number(arg);
+  return Number.isInteger(n) ? Math.max(0, Math.min(6, n)) : 0;
+}
+
+/** `number:2` — a number with its thousands grouped, "12,345.60", to as many places as asked. */
+function formatNumber(value: unknown, arg: string | undefined): string {
+  const n = asNumber(value);
+  if (n === undefined) return asString(value);
+  const p = places(arg);
+  return n.toLocaleString('en-GB', { minimumFractionDigits: p, maximumFractionDigits: p });
+}
+
+const DURATION_UNITS: Readonly<Record<string, number>> = { ms: 1, s: 1000, min: 60_000, h: 3_600_000 };
+
+/**
+ * `duration:s` — a length of time in the words the wall's own countdowns use:
+ * "45 s", "12 min", "1 h 20 min", "3 days". The argument is the unit the feed
+ * counts in (`ms`, `s`, `min` or `h`; seconds when it says nothing, or names a
+ * unit not on the list). A length has no direction, so a negative one is said
+ * as its size; whether it is to come or past is the recipe's own words.
+ */
+function formatDuration(value: unknown, arg: string | undefined): string {
+  const n = asNumber(value);
+  if (n === undefined) return asString(value);
+  const unit = DURATION_UNITS[arg ?? 's'] ?? 1000;
+  const ms = Math.abs(n) * unit;
+  if (ms < 60_000) return `${Math.floor(ms / 1000)} s`;
+  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)} min`;
+  if (ms < 2 * 86_400_000) {
+    const hours = Math.floor(ms / 3_600_000);
+    const minutes = Math.floor((ms - hours * 3_600_000) / 60_000);
+    return minutes === 0 ? `${hours} h` : `${hours} h ${minutes} min`;
+  }
+  return `${Math.floor(ms / 86_400_000)} days`;
+}
+
+/**
+ * `time:24` or `time:12` — the clock time of an instant in the household's own
+ * zone, "14:05" or "2:05 pm", so a feed that speaks UTC reads like the kitchen
+ * clock. Twenty-four hours when the argument says nothing else.
+ */
+function formatTime(value: unknown, arg: string | undefined, timezone: string): string {
+  const ms = toEpochMs(value);
+  if (ms === undefined) return asString(value);
+  const twelve = arg === '12';
+  try {
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: timezone,
+      hour: twelve ? 'numeric' : '2-digit',
+      minute: '2-digit',
+      hour12: twelve,
+    }).format(new Date(ms));
+  } catch {
+    // A zone this runtime does not know is the household's to fix; the clock
+    // in UTC is still a clock.
+    return new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hour12: false }).format(
+      new Date(ms),
+    );
+  }
+}
+
+/**
+ * `plural:train` — a count and its noun, "1 train", "3 trains"; or
+ * `plural:child,children` for a noun that does not take an s. One (and minus
+ * one) is singular, and every other count plural, nought included.
+ */
+function formatPlural(value: unknown, arg: string | undefined): string {
+  const n = asNumber(value);
+  if (n === undefined) return asString(value);
+  const [one = '', many] = (arg ?? '').split(',').map((word) => word.trim());
+  if (one === '') return String(n);
+  const word = Math.abs(n) === 1 ? one : many ?? `${one}s`;
+  return `${n} ${word}`;
+}
+
+/**
+ * `map:status` — a value turned into the recipe's own words by one of its
+ * lookup tables: `on` into "Running". A value the table does not name takes
+ * its `*` entry where it has one, and is said as itself where it has not.
+ */
+function lookUp(
+  value: unknown,
+  arg: string | undefined,
+  lookups: Readonly<Record<string, Readonly<Record<string, string>>>>,
+): string {
+  const key = asString(value);
+  const table = arg === undefined || !Object.prototype.hasOwnProperty.call(lookups, arg) ? undefined : lookups[arg];
+  if (table === undefined) return key;
+  if (Object.prototype.hasOwnProperty.call(table, key)) return table[key] as string;
+  return Object.prototype.hasOwnProperty.call(table, '*') ? (table['*'] as string) : key;
+}
 
 /** `date:short` and `date:relative`. Server-side, so `Intl` is fine (rule one is core-only). */
 function formatDate(value: unknown, arg: string | undefined, now: number): string {
@@ -208,13 +320,13 @@ function templateIsValid(template: string): boolean {
   return true;
 }
 
-function renderTemplate(template: string, scope: unknown, now: number, sources: RecipeSources = {}): string {
+function renderTemplate(template: string, scope: unknown, context: FormatContext, sources: RecipeSources = {}): string {
   return template.replace(PLACEHOLDER, (_whole, body: string) => {
     const parsed = parsePlaceholder(body);
     if (parsed === null) return '';
     const value = resolvePath(scope, parsed.path, sources);
     if (parsed.formatter === undefined) return asString(value);
-    return FORMATTERS[parsed.formatter]!(value, parsed.arg, now);
+    return FORMATTERS[parsed.formatter]!(value, parsed.arg, context);
   });
 }
 
@@ -373,12 +485,35 @@ const sortSpec = z
   .strict();
 const limitSpec = z.number().int().min(1).max(12);
 
+/*
+ * What a row is doing, from what its feed says (plan item M7.8): the value at
+ * `from`, looked up in `map`, is one of the three tones a row may carry, and
+ * `default` is the tone of a value the map does not name. A value neither
+ * names is a row with no tone, which is the plain row. A lookup and not a
+ * comparison, for the reason a condition is one: `on → active` is a table, and
+ * a table cannot become code.
+ */
+const toneWord = z.enum(['active', 'alert', 'idle']);
+const LOOKUP_KEY = z.string().max(80);
+const toneSpec = z
+  .object({
+    from: selector,
+    map: z
+      .record(LOOKUP_KEY, toneWord)
+      .refine((map) => Object.keys(map).length >= 1 && Object.keys(map).length <= 30, {
+        message: 'a tone map names from 1 to 30 values',
+      }),
+    default: toneWord.optional(),
+  })
+  .strict();
+
 const itemsSpec = z
   .object({
     for: selector,
     label: tpl(120),
     value: tpl(120),
     icon: tpl(8).optional(),
+    tone: toneSpec.optional(),
     where: whereSpec.optional(),
     sort: sortSpec.optional(),
     limit: limitSpec.optional(),
@@ -393,6 +528,7 @@ const timelineSpec = z
     at: tpl(120),
     label: tpl(120),
     detail: tpl(120).optional(),
+    tone: toneSpec.optional(),
     where: whereSpec.optional(),
     limit: limitSpec.optional(),
     empty: tpl(120).optional(),
@@ -501,6 +637,35 @@ const sourceSpec = z
   .strict();
 const MAX_SOURCES = 3;
 
+/*
+ * A recipe's lookup tables (plan item M7.8), each a value's words: `map:name`
+ * in a template turns `on` into "Running". Up to eight tables of up to fifty
+ * entries; `*` is the entry for a value the table does not name. Words, never
+ * templates — a table cannot reach into the feed.
+ */
+const lookupName = z.string().regex(/^[a-z][a-z0-9_]{0,19}$/, 'a lower-case name');
+const lookupTable = z
+  .record(LOOKUP_KEY, z.string().max(120))
+  .refine((table) => Object.keys(table).length >= 1 && Object.keys(table).length <= 50, {
+    message: 'a lookup table names from 1 to 50 values',
+  });
+const MAX_LOOKUPS = 8;
+
+/** Every placeholder's formatter and argument in a recipe's panel and signals. */
+function placeholderFormats(value: unknown): Placeholder[] {
+  if (typeof value === 'string') {
+    const out: Placeholder[] = [];
+    for (const match of value.matchAll(PLACEHOLDER)) {
+      const parsed = parsePlaceholder(match[1] ?? '');
+      if (parsed !== null && parsed.formatter !== undefined) out.push(parsed);
+    }
+    return out;
+  }
+  if (Array.isArray(value)) return value.flatMap(placeholderFormats);
+  if (value !== null && typeof value === 'object') return Object.values(value).flatMap(placeholderFormats);
+  return [];
+}
+
 /** Every selector path a recipe's panel and signals use: the `for`s, the conditions, the sort keys and every placeholder. */
 function selectorPaths(value: unknown, key = ''): string[] {
   if (typeof value === 'string') {
@@ -531,6 +696,12 @@ export const recipeSchema = z
       .record(sourceName, sourceSpec)
       .refine((sources) => Object.keys(sources).length <= MAX_SOURCES, {
         message: `a recipe has at most ${MAX_SOURCES} more sources`,
+      })
+      .optional(),
+    lookups: z
+      .record(lookupName, lookupTable)
+      .refine((lookups) => Object.keys(lookups).length <= MAX_LOOKUPS, {
+        message: `a recipe has at most ${MAX_LOOKUPS} lookup tables`,
       })
       .optional(),
     panel: panelSpec,
@@ -605,6 +776,19 @@ export const recipeSchema = z
           code: z.ZodIssueCode.custom,
           path: ['sources'],
           message: `a selector reaches for @${source[1]}, which is not a declared source`,
+        });
+      }
+    }
+
+    // Every `map:` names a table the recipe declares (plan item M7.8): a lookup
+    // into nothing is a rejected recipe, not a value said as itself for ever.
+    const tables = new Set(Object.keys(recipe.lookups ?? {}));
+    for (const placeholder of placeholderFormats({ panel: recipe.panel, signals: recipe.signals })) {
+      if (placeholder.formatter === 'map' && (placeholder.arg === undefined || !tables.has(placeholder.arg))) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['lookups'],
+          message: `a template looks up “${placeholder.arg ?? ''}”, which is not a declared lookup table`,
         });
       }
     }
@@ -769,8 +953,21 @@ function selectRows(
 /** What a list says when its conditions leave no rows, unless the recipe says otherwise. */
 const NOTHING_TO_SHOW = 'Nothing to show.';
 
-function buildPanel(recipe: Recipe, root: unknown, now: number, sources: RecipeSources): unknown {
-  const r = (template: string, scope: unknown = root): string => renderTemplate(template, scope, now, sources);
+/** The context a recipe's formatters run in: its own tables, and the household's clock and zone. */
+function formatContext(recipe: Recipe, now: number, timezone: string): FormatContext {
+  return { now, timezone, lookups: recipe.lookups ?? {} };
+}
+
+/** A row's tone from its feed (plan item M7.8), or none. */
+function toneOf(spec: z.infer<typeof toneSpec> | undefined, row: unknown, sources: RecipeSources): { tone?: string } {
+  if (spec === undefined) return {};
+  const key = asString(resolvePath(row, spec.from, sources));
+  const tone = Object.prototype.hasOwnProperty.call(spec.map, key) ? spec.map[key] : spec.default;
+  return tone === undefined ? {} : { tone };
+}
+
+function buildPanel(recipe: Recipe, root: unknown, context: FormatContext, sources: RecipeSources): unknown {
+  const r = (template: string, scope: unknown = root): string => renderTemplate(template, scope, context, sources);
   const spec = recipe.panel;
   const title = 'title' in spec && spec.title !== undefined ? { title: r(spec.title) } : {};
   /*
@@ -815,6 +1012,7 @@ function buildPanel(recipe: Recipe, root: unknown, now: number, sources: RecipeS
         at: r(spec.items.at, element),
         label: r(spec.items.label, element),
         ...(detail !== '' ? { detail } : {}),
+        ...toneOf(spec.items.tone, element, sources),
       };
     });
     // A source's list is in whatever order it keeps; the panel a timeline is
@@ -838,6 +1036,7 @@ function buildPanel(recipe: Recipe, root: unknown, now: number, sources: RecipeS
     label: r(spec.items.label, element),
     value: r(spec.items.value, element),
     ...(spec.items.icon !== undefined ? { icon: r(spec.items.icon, element) } : {}),
+    ...toneOf(spec.items.tone, element, sources),
   }));
   return { kind: spec.kind, ...title, items };
 }
@@ -854,8 +1053,9 @@ export function runRecipePanel(
   body: unknown,
   now: number,
   sources: RecipeSources = {},
+  timezone: string = DEFAULT_TIMEZONE,
 ): { ok: true; panel: unknown } | { ok: false; error: string } {
-  const built = buildPanel(recipe, body, now, sources);
+  const built = buildPanel(recipe, body, formatContext(recipe, now, timezone), sources);
   const parsed = panelDataSchema.safeParse(built);
   if (!parsed.success) {
     return { ok: false, error: 'The recipe produced something the wall cannot draw.' };
@@ -888,12 +1088,14 @@ export function runRecipeSignals(
   body: unknown,
   now: number,
   sources: RecipeSources = {},
+  timezone: string = DEFAULT_TIMEZONE,
 ): { ok: true; signals: unknown } | { ok: false; error: string } {
+  const context = formatContext(recipe, now, timezone);
   const built = recipe.signals
     .filter((spec) => whenHolds(spec.when, body, sources))
     .map((spec) => ({
-      key: renderTemplate(spec.key, body, now, sources),
-      title: renderTemplate(spec.title, body, now, sources),
+      key: renderTemplate(spec.key, body, context, sources),
+      title: renderTemplate(spec.title, body, context, sources),
       ...(spec.severity !== undefined ? { severity: spec.severity } : {}),
     }));
   const parsed = signalDataSchema.safeParse({ signals: built });
