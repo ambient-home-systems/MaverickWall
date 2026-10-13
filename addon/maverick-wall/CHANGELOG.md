@@ -33,6 +33,17 @@ that falls behind skips frames rather than slowing the others down. If the
 camera stops sending, the wall keeps its last frame and says how old it is.
 If the camera stays gone, the box says so.
 
+**The doorbell shows the door.** Under Home Assistant › Tell me when…, start
+from **Somebody at the door**: choose your doorbell (its `event` entity, or a
+button), choose a camera, and when it rings every wall shows that camera,
+live, with your words and an OK, for the time you chose, then goes back to
+the calendar by itself. The time counts from when the wall heard the ring,
+which can be up to half a minute after it rang, because Home Assistant is
+read every thirty seconds. A wall can fetch the camera only while the ring is
+on it, and an e-paper panel never does. OK clears one ring, not the doorbell,
+so the next ring shows again. Any rule can now take itself down after a set
+time, too.
+
 **See who is trying to sign in, and let a locked address back in.** System ›
 Lockouts lists the recent sign-in attempts — where each came from and what
 happened, never the email address typed — and anything currently told to

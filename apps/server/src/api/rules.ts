@@ -44,7 +44,7 @@ const timeWindow = z
   .catch(null)
   .transform((w) => w ?? null);
 
-const conditionKind = z.enum(['equals', 'above', 'below', 'changed_to']);
+const conditionKind = z.enum(['equals', 'above', 'below', 'changed_to', 'happened']);
 
 /** `value` arrives as a number from `<input type=number>` and a hand edit. */
 const conditionValue = z.union([z.string(), z.number().transform(String)]);
@@ -164,11 +164,13 @@ interface RuleRow {
   readonly minDwellSec: number;
   readonly dismissible: number;
   readonly reassertAfterSec: number | null;
+  readonly holdSec: number | null;
+  readonly camera: string | null;
 }
 
 const SELECT_RULES = `SELECT id, name, enabled, trigger, conditions, action, priority,
         pierces_night_mode AS piercesNightMode, min_dwell_sec AS minDwellSec,
-        dismissible, reassert_after_sec AS reassertAfterSec
+        dismissible, reassert_after_sec AS reassertAfterSec, hold_sec AS holdSec, camera
    FROM interrupt_rules ORDER BY priority DESC, name`;
 
 /** Every rule, including disabled ones, for the settings screen. */
@@ -286,6 +288,9 @@ export function readRules(db: SqliteDatabase): InterruptRule[] {
       dismissible: row.dismissible === 1,
       ...(row.reassertAfterSec !== null ? { reassertAfterSec: row.reassertAfterSec } : {}),
       priority: row.priority,
+      // Spread, so a rule from before M6.3 is the rule it always was.
+      ...(row.holdSec !== null ? { holdSec: row.holdSec } : {}),
+      ...(row.camera !== null ? { camera: row.camera } : {}),
     });
   }
 
@@ -302,15 +307,16 @@ export function writeRule(db: SqliteDatabase, rule: InterruptRule): void {
     `INSERT INTO interrupt_rules
        (id, name, enabled, trigger, conditions, action, priority, wake_screen,
         pierces_night_mode, min_dwell_sec, dismissible, reassert_after_sec,
-        created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        hold_sec, camera, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        name = excluded.name, enabled = excluded.enabled, trigger = excluded.trigger,
        conditions = excluded.conditions, action = excluded.action,
        priority = excluded.priority, wake_screen = excluded.wake_screen,
        pierces_night_mode = excluded.pierces_night_mode,
        min_dwell_sec = excluded.min_dwell_sec, dismissible = excluded.dismissible,
-       reassert_after_sec = excluded.reassert_after_sec, updated_at = excluded.updated_at`,
+       reassert_after_sec = excluded.reassert_after_sec, hold_sec = excluded.hold_sec,
+       camera = excluded.camera, updated_at = excluded.updated_at`,
   ).run(
     rule.id,
     rule.name,
@@ -326,6 +332,8 @@ export function writeRule(db: SqliteDatabase, rule: InterruptRule): void {
     rule.minDwellSec,
     rule.dismissible ? 1 : 0,
     rule.reassertAfterSec ?? null,
+    rule.holdSec ?? null,
+    rule.camera ?? null,
     at,
     at,
   );

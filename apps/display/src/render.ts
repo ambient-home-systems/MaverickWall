@@ -2704,6 +2704,17 @@ function legendFor(model: DisplayModel): HTMLElement | undefined {
  */
 function renderAlert(interrupt: InterruptModel, model: DisplayModel): HTMLElement {
   const screen = el('div', `screen screen-alert alert-${interrupt.severity.toLowerCase()}`);
+  /*
+   * The doorbell (plan item M6.3): the camera the rule named, live, filling
+   * the wall above the words. Like a camera widget, the picture is not here —
+   * it is on the camera layer, which the rebuild never clears, so the stream
+   * opened when the bell rang is the one still running a minute later. This
+   * box is what the layer covers, and what it says while there is no picture.
+   */
+  if (interrupt.camera !== undefined) {
+    screen.classList.add('has-camera');
+    screen.appendChild(alertCamera(interrupt.camera, model));
+  }
   const panel = el('section', 'alert');
 
   panel.appendChild(el('p', 'alert-kind', interrupt.severity));
@@ -2733,6 +2744,24 @@ function renderAlert(interrupt: InterruptModel, model: DisplayModel): HTMLElemen
 
   screen.appendChild(panel);
   return screen;
+}
+
+/** The box a takeover's camera is drawn over: whole, live, and named as the layer names a widget's. */
+function alertCamera(handle: string, model: DisplayModel): HTMLElement {
+  const widgetId = `alert:${handle}`;
+  const loads = model.cameraLoads;
+  const load = loads === undefined ? undefined : loads[widgetId];
+  const box = el('div', 'fw-camera alert-camera');
+  const note = cameraNote(model.cameras, handle, load, loads !== undefined);
+  if (note !== '') box.appendChild(el('div', 'fw-camera-note', note));
+  box.setAttribute('data-camera-widget', widgetId);
+  box.setAttribute('data-camera', handle);
+  box.setAttribute('data-camera-live', '');
+  // The whole picture: a doorbell's frame is who is there, and cropping it to
+  // the wall's shape can take their face off.
+  box.setAttribute('data-camera-contain', '');
+  if (cameraWanted(model.cameras, handle)) box.setAttribute('data-camera-wanted', '');
+  return box;
 }
 
 /**

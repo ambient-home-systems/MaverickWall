@@ -54,6 +54,8 @@ export interface ConditionReading {
   readonly state: string;
   readonly changedAt: number;
   readonly readAt: number;
+  /** Home Assistant's name for it, for a doorbell rule to say what rang (M6.3). */
+  readonly name?: string;
 }
 
 /**

@@ -72,7 +72,14 @@ export const ACTION_RANK: Readonly<Record<InterruptAction, number>> = {
   none: 0,
 };
 
-export type ConditionKind = 'equals' | 'above' | 'below' | 'changed_to';
+/**
+ * `happened` (plan item M6.3) is the one condition about a *moment*: a doorbell
+ * `event` entity, a `button` or an `input_button`, whose state is the instant it
+ * last happened rather than a state anybody is in. It holds once the signal
+ * carries that instant, and only on a rule with a `holdSec` — a moment has no
+ * end of its own, so a rule without one would cover the wall for ever.
+ */
+export type ConditionKind = 'equals' | 'above' | 'below' | 'changed_to' | 'happened';
 
 /** `HH:MM` to `HH:MM`, 24 hour. Wraps past midnight. */
 export interface TimeWindow {
@@ -148,6 +155,22 @@ export interface InterruptRule {
   readonly reassertAfterSec?: number;
   /** Breaks ties before severity does. Higher wins. */
   readonly priority: number;
+  /**
+   * How long it stays once it fires, in seconds (plan item M6.3).
+   *
+   * A doorbell's `binary_sensor` is on for a second and a takeover that lasted
+   * as long would be gone before anybody turned round, so a held rule is timed
+   * from the moment the signal became true (`since`) and comes down that long
+   * afterwards whatever the signal does since — and no later, even while it is
+   * still true. Undefined is the rule as it always was: there while true.
+   */
+  readonly holdSec?: number;
+  /**
+   * A camera to show while it covers the wall (plan item M6.3), as the handle
+   * a wall is given for it. Opaque here: core never learns what a camera is,
+   * and a takeover is the only action that draws one.
+   */
+  readonly camera?: string;
 }
 
 /**
@@ -210,4 +233,12 @@ export interface Interrupt {
   readonly wakeScreen: boolean;
   readonly piercesNightMode: boolean;
   readonly priority: number;
+  /** The camera a takeover shows, from its rule (M6.3). */
+  readonly camera?: string;
+  /**
+   * When a held rule comes down, epoch ms (M6.3). Carried so a wall takes it
+   * down on its own clock, as it does an alert's `expiresAt`, with the server
+   * gone.
+   */
+  readonly until?: number;
 }

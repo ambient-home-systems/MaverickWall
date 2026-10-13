@@ -11601,6 +11601,78 @@ striped-picture case, red on a clean `main` in this container as before.
 and Reolink's own stream through Home Assistant is core's still-frame loop,
 which RFC 007 §4 already says.
 
+**The doorbell shows the door (plan item M6.3, RFC 007 phase 4).** A "Tell
+me when…" rule can now hold, and can name a camera. RFC 007 §12 left open
+whether a takeover carries a widget, a handle, or a rule's choice. It is the
+rule's: `interrupt_rules.camera` stores the camera's handle (migration
+`0078`, four generated `ADD COLUMN`s, read: `hold_sec` and `camera` on the
+rules, `friendly_name` and `noticed_at` on the condition states).
+
+- **A held rule** (`holdSec`, in core) is up from the moment its signal
+  became true, after any dwell, and down that long afterwards, whatever the
+  signal does in the meantime. It carries `until`, so the wall takes it down
+  by its own clock with the server gone. `main.ts` asks for one draw at that
+  moment rather than leaving it to the next fifteen-second tick.
+- **A moment is its own condition.** A doorbell's `event` entity, a `button`
+  or an `input_button` has a state that is an instant, so `happened` holds
+  once the signal carries one, and only on a held rule: a moment has no end
+  of its own. The form refuses the six half-written combinations by name.
+  The entity is read beside the ones a widget is shown by (M6.4's
+  `ha_condition_states`), from the rule itself, and never becomes a reading.
+- **The poll is the latency.** Home Assistant is read every thirty seconds,
+  so a ring reaches a wall up to half a minute after it rang. A held moment
+  therefore counts from when the poll heard it (`noticed_at`, which moves
+  only when the state does) when that was later and within two minutes. A
+  ring first heard later than that, after a restart, is history. A
+  subscription to Home Assistant's events would close the gap and is not
+  built.
+- **An OK is about one ring.** A doorbell's signal never goes away, so on a
+  held rule a dismissal counts only if it was made after this occurrence
+  began, and the next ring shows again.
+- **The camera reaches a wall by one extra door.** The manifest sends a
+  takeover's camera only while it is one this house still has. A browser
+  wall may fetch it while the takeover shows it, and the gate re-evaluates
+  every request and every second of an open stream, so the stream ends with
+  the takeover. A panel never may, and draws no interrupt at all.
+- **On the wall** the takeover draws an `.alert-camera` box above its words
+  and OK, and the camera layer, which now also shows over a takeover that
+  has one, covers it with the live stream. One stream runs through every
+  rebuild, and the picture stops above the OK.
+
+**Two findings, outside this item and recorded rather than changed.** The
+rule form's "What to say" is "the sentence the wall shows", and it is not:
+an interrupt's title is its signal's, so a Home Assistant takeover says the
+entity's name. And a Home Assistant rule's dismissal is never pruned, so an
+OK on a plain (unheld) rule lasts until somebody deletes the rule rather than
+until the door closes. Measured rather than read: with a banner rule on a
+freezer door, an OK, the door closed, then opened again an hour later, the
+wall shows nothing. Only `pruneDismissals` deletes an acknowledgement, and
+only the NWS job calls it. A held rule is the only kind this change fixes
+that for.
+
+**Measured.** `doorbell.test.ts` (9) runs the real app, a real
+poll of the stand-in house and a clock the test moves.
+`browser-doorbell.test.ts` (1) uses a real paired wall: the picture over the
+takeover's box and above its OK, one stream through a rebuild, and down at
+its own moment with the manifest refused. Core gains 7 tests, the display
+`interrupt-camera.test.ts` (4) and `migration-upgrade` one walk.
+Twenty-three mutations were checked and all are red. Seven failed to build
+or missed their anchor at first and were re-aimed. One stayed green and was
+equivalent: the takeover's `flex-direction: column` repeated `.screen`'s
+own, so the line is deleted and its place in the list taken by the camera
+box's `flex: 1 1 0`, which stayed green until the test held the picture to
+most of the wall's height. **The browser test was flaky as first written**,
+about one run in ten: it read how long was left from a second manifest
+request, which the harness holds for the fonts by a different amount from
+the wall's own poll, so it disagreed with the wall's clock by seconds. It
+records the offset the wall itself takes now, and passed twelve runs in a
+row. **5897 tests passing, 1 red and 2 skipped, over 439 files**: calendar
+153 (1 skipped) over 10 · core 321 over 9 · display 1081 over 70 · server
+4342 (1 skipped) over 350, measured with `pnpm test` and a real Chromium.
+The one red is `browser-glass`'s striped-picture case, red on a clean `main`
+in this container as before.
+**Still unproven where it counts:** no real doorbell has rung a real wall.
+
 ---
 
 ## Open decisions

@@ -547,6 +547,13 @@
       "when": 1791857465060,
       "tag": "0077_ha_cameras",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "6",
+      "when": 1791871860015,
+      "tag": "0078_stormy_shadowcat",
+      "breakpoints": true
     }
   ]
 }

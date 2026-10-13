@@ -297,7 +297,14 @@ export function createCameraLayer(frame: HTMLElement, options: CameraLayerOption
 
   return {
     reconcile(root: HTMLElement): void {
-      const plain = root.querySelector('.canvas') !== null && root.querySelector('.hc-scrim') === null;
+      /*
+       * A plain canvas, or a takeover that shows a camera (plan item M6.3).
+       * Any other takeover, a banner, the pairing form or a control panel
+       * hides the pictures: a tornado warning is never behind a doorbell.
+       */
+      const plain =
+        (root.querySelector('.canvas') !== null && root.querySelector('.hc-scrim') === null) ||
+        root.querySelector('.alert-camera') !== null;
       const seen = new Set<string>();
       for (const box of Array.from(root.querySelectorAll<HTMLElement>('.fw-camera[data-camera-wanted]'))) {
         const facts = factsOf(box);

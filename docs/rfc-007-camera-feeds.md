@@ -1,6 +1,6 @@
 # RFC 007 — Camera feeds on the wall
 
-Status: **Tiers A and B built (plan items M6.1 and M6.2); Tier C not yet** · Owner: — · First
+Status: **Tiers A and B built (plan items M6.1 and M6.2), and phase 4's doorbell (M6.3); Tier C not yet** · Owner: — · First
 drafted 2026-08-13 · Rewritten 2026-09-09 · Relates to
 `apps/server/src/modules/homeassistant/`, `packages/core/src/ports/fetcher.ts`,
 `apps/server/src/net/fetcher.ts`, `apps/server/src/api/widget-schema.ts`,
@@ -78,6 +78,27 @@ drafted 2026-08-13 · Rewritten 2026-09-09 · Relates to
 > - **Revocation is checked once a second on every open stream**, together
 >   with removal, availability and placement, rather than signalled from
 >   the revoke handler. One check covers all four.
+>
+> **Phase 4, the doorbell, was built on 2026-10-13 (plan item M6.3).** §12's
+> "interrupt that carries a widget" is decided as **a rule that names a
+> camera**, not a widget and not a handle minted per interrupt: the rule
+> stores the camera's handle, the interrupt carries it only on a takeover and
+> only while the camera is still added, and the wall draws it on the camera
+> layer over the takeover's own box. Three things are worth knowing.
+>
+> - **A rule can hold.** A doorbell's `binary_sensor` is on for a second, so
+>   a rule now has a time it stays once it fires, timed from when the signal
+>   became true and no longer. A doorbell's `event` entity is a moment, not a
+>   state, and has its own condition, which only fires with a hold.
+> - **Placement widened by exactly one thing.** The camera gate also lets a
+>   browser wall fetch the camera the current takeover shows, re-evaluated
+>   on every request and every second of an open stream, so the stream ends
+>   with the takeover.
+> - **The poll is the latency.** Home Assistant is read every thirty
+>   seconds, so a ring reaches the wall up to half a minute late; the hold
+>   counts from when the poll heard it so the household still gets its whole
+>   minute. A subscription to Home Assistant's events would close that gap
+>   and is not built.
 
 ## 1. Summary
 
