@@ -117,6 +117,10 @@ export const WIDGET_TYPES = [
   // Alert rules a household set to say what they found as a tile, and Home
   // Assistant's own persistent notifications (plan item M6.11).
   'notifications',
+  // A Home Assistant camera's latest picture, fetched by the server and named
+  // to the wall by a handle (plan item M6.1, RFC 007 Tier A). A first-party
+  // box drawing a first-party-proxied picture, never a video-URL widget.
+  'camera',
   // A panel from a registered third-party module (docs/rfc-001-module-framework.md).
   // Still first-party by the rule that matters: the wall draws sanitised strings
   // through renderGenericPanel, never anything the module ships.
@@ -171,6 +175,9 @@ export const WIDGET_MODULE: Readonly<Record<string, string>> = {
   // Left out while no tile rule is firing and Home Assistant has said nothing
   // (plan item M6.11): its `whenEmpty` is what the box shows the rest of the time.
   notifications: 'notifications',
+  // Conditional on the widget's own config, as `todo` is: a camera chosen and
+  // since removed is left out; none chosen yet keeps its prompt (M6.1).
+  camera: 'cameras',
 };
 
 /**
@@ -504,6 +511,14 @@ export interface HouseholdSetUp {
    * wall's manifest and a panel's frame, hand it over.
    */
   readonly conditions?: Conditions;
+  /**
+   * The cameras the household has added, by handle (plan item M6.1). A camera
+   * widget naming a handle not among them is left out — the camera was
+   * removed — the way a To-do widget naming an unwatched list is. Absent
+   * means the handle is believed while the cameras module is ready, for a
+   * caller that only asks whether a type can draw at all.
+   */
+  readonly cameras?: readonly string[];
 }
 
 /**
@@ -582,8 +597,23 @@ export function widgetIsSetUp(widget: SetUpTarget, setUp: HouseholdSetUp): boole
     // "at least one watched list" — so one membership test answers both.
     return setUp.todoLists.includes(list);
   }
+  if (widget.type === 'camera') {
+    // No camera chosen yet is a box with a prompt one click away, like an
+    // empty picture; a chosen one needs the camera still to be added.
+    const handle = cameraOf(widget.config);
+    if (handle === undefined) return true;
+    if (!setUp.modules.includes('cameras')) return false;
+    return setUp.cameras === undefined || setUp.cameras.includes(handle);
+  }
   const block = WIDGET_MODULE[widget.type];
   return block === undefined || setUp.modules.includes(block);
+}
+
+/** The camera a `camera` widget names, by handle, or nothing. */
+export function cameraOf(config: unknown): string | undefined {
+  if (typeof config !== 'object' || config === null) return undefined;
+  const handle = (config as Record<string, unknown>)['camera'];
+  return typeof handle === 'string' && handle !== '' ? handle : undefined;
 }
 
 /**

@@ -1,6 +1,6 @@
 # RFC 007 — Camera feeds on the wall
 
-Status: **proposed; rewritten after review, nothing built** · Owner: — · First
+Status: **Tier A built (plan item M6.1); the hub and Tier B not yet** · Owner: — · First
 drafted 2026-08-13 · Rewritten 2026-09-09 · Relates to
 `apps/server/src/modules/homeassistant/`, `packages/core/src/ports/fetcher.ts`,
 `apps/server/src/net/fetcher.ts`, `apps/server/src/api/widget-schema.ts`,
@@ -36,6 +36,28 @@ drafted 2026-08-13 · Rewritten 2026-09-09 · Relates to
 > Four smaller ones are recorded where they land: a per-frame byte cap (§5.1),
 > the stream port's home in core (§5.5), the e-paper panel (§7.4), and a cache
 > header (§6.4).
+
+> **Tier A was built on 2026-10-13 (plan item M6.1), and four things differ
+> from the text below, each on purpose.**
+>
+> - **The hub is not built yet.** §10 put it first, as phase 0. A snapshot
+>   needs no held socket and §5.4 says so, so Tier A shipped without it: the
+>   `/still` route is single-flighted per camera on its own, with a one-second
+>   window. The hub arrives with Tier B (M6.2), the first thing that holds a
+>   stream open, and the route then answers from it when a stream is open.
+> - **The layer is placed by the box the draw left, not by shared
+>   arithmetic.** §7.2 asked for one exported function both the renderer and
+>   the layer call. Reading the drawn box back gets the same guarantee with
+>   no second caller: gutters, groups, insets and letterboxing are the
+>   renderer's alone. It reads the client rectangle and turns it back through
+>   the frame's rotation, because offsets are whole pixels and the browser
+>   test caught a half-pixel hairline with them.
+> - **The keys.** `camera` and `cameraRefreshSec` as proposed; the fit is the
+>   picture's own `fit` (fill, the absence, or whole) rather than a
+>   `cameraFit`; `cameraMode` waits for there to be a second mode.
+> - **A camera inside a stack** has the stack's dots under its picture, since
+>   the layer is above the whole wall. The dots still take the tap, because the
+>   layer takes none. This is §7.2's stated limit, one case of it.
 
 ## 1. Summary
 

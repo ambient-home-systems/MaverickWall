@@ -16,6 +16,16 @@
 
 ## Unreleased
 
+**A Home Assistant camera on the wall.** Add one under Home Assistant ›
+Cameras, then put a Camera widget where you want it: it shows the camera's
+latest picture, fetched every few seconds (every three unless you choose 1,
+10 or 30), filling its box or whole. The wall is never given your Home
+Assistant address, its token or the camera's name in Home Assistant — only a
+name this server made up for it — and a wall can fetch only the cameras on its
+own layout. When a camera stops answering the box says so, and nothing else on
+the wall moves. It is a picture every few seconds, not live video; that comes
+later. An e-paper panel shows the box without the picture.
+
 **See who is trying to sign in, and let a locked address back in.** System ›
 Lockouts lists the recent sign-in attempts — where each came from and what
 happened, never the email address typed — and anything currently told to

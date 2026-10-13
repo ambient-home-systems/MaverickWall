@@ -223,6 +223,11 @@ export const SAVED_MESSAGES = {
   // list whose first read failed is rendered with the failure instead.
   'todo-list-added': 'List added — it is on the wall on its next refresh.',
   'todo-list-removed': 'List removed.',
+  // Cameras (plan item M6.1). A camera just added is on no wall — a Camera
+  // widget is what draws it — so the strip says what to do rather than
+  // claiming a wall it has not reached (P1.3).
+  'ha-camera-added': 'Camera added. Put a Camera widget on a wall’s layout to show it.',
+  'ha-camera-removed': 'Camera removed.',
   // Store (modules)
   'module-added': 'Module added.',
   'module-removed': 'Module removed.',

@@ -1388,6 +1388,25 @@ function drawImage(fb: Framebuffer, m: EpaperMetrics, box: Box, config: Config):
 }
 
 /**
+ * A camera on one bit (plan item M6.1, RFC 007 §7.4): the box and a note, as
+ * an empty picture draws. There is no JPEG decoder here, and a battery panel
+ * polling a doorbell would be a panel that is flat by Thursday. The note is
+ * a constant, so the frame never changes with the camera.
+ */
+function drawCamera(fb: Framebuffer, m: EpaperMetrics, box: Box): void {
+  const rung = m.small;
+  const lift = m.widget.smallLine - Math.round(m.widget.linePad / 2);
+  drawLines(
+    fb,
+    m,
+    ['[ camera ]', 'shown on browser walls'],
+    { x: box.x, y: box.y + Math.max(0, Math.floor(box.h / 2) - lift), w: box.w, h: box.h },
+    rung,
+    'center',
+  );
+}
+
+/**
  * A tolerant list of "label: value" lines out of a module's panel JSON.
  *
  * A module contributes data whose exact shape is its own; this reaches for the
@@ -3215,6 +3234,8 @@ function drawWidget(
     }
     case 'image':
       return drawImage(fb, m, box, config);
+    case 'camera':
+      return drawCamera(fb, m, box);
     case 'qr':
       return drawQr(fb, m, box, config);
     case 'heading':

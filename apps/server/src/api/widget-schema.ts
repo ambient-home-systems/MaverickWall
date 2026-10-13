@@ -561,6 +561,12 @@ const widgetConfigFields = z
     // While this media player plays, its album art instead (plan item M3.4).
     // An entity id, which leaves the manifest as a handle (`displayConfig`).
     nowPlaying: z.string().regex(/^media_player\.[a-z0-9_]{1,200}$/, 'That is not a media player.').optional(),
+    // Camera — which of the household's cameras, by the handle this server
+    // minted when it was added (plan item M6.1, RFC 007 §6.5), never an entity
+    // id; how often its picture is fetched again; and how it sits in its box,
+    // which is the picture's own `fit` above (fill, the absence, or whole).
+    camera: z.string().regex(/^[A-Za-z0-9_-]{43}$/, 'Choose a camera.').optional(),
+    cameraRefreshSec: z.number().int().min(1).max(60).optional(),
     // Notes — free text the household typed, drawn as written (line breaks kept).
     text: z.string().max(2000).optional(),
     // To-do — a static checklist. Each item is a line the household typed, and

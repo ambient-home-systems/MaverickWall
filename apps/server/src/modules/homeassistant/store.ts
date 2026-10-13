@@ -117,6 +117,9 @@ export function disconnectHa(db: SqliteDatabase): void {
     // different connection, and disconnecting this one is no reason to lose it.
     db.prepare(`DELETE FROM ha_todo_items WHERE entity_id NOT LIKE 'todoist:%'`).run();
     db.prepare(`DELETE FROM ha_todo_lists WHERE entity_id NOT LIKE 'todoist:%'`).run();
+    // The cameras too (plan item M6.1): which cameras a house has is a fact
+    // about it, and a handle left behind would name a picture nothing can fetch.
+    db.prepare('DELETE FROM ha_cameras').run();
     /*
      * Both spellings, and only this source's rules.
      *

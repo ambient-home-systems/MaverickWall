@@ -327,6 +327,9 @@ const BASES: Readonly<Record<string, readonly Record<string, unknown>[]>> = {
   homeassistant: [{}],
   external: [{ module: 'mymod' }],
   image: [{ image: `${'a'.repeat(64)}.png` }],
+  // None chosen, and one chosen that this household has not added (plan item
+  // M6.1): the second is left out, which is the only way `whenEmpty` moves ink.
+  camera: [{}, { camera: 'A'.repeat(43) }],
   buttons: [{}],
   timers: [{}],
   messages: [{}],
@@ -504,6 +507,9 @@ const PROBES: Readonly<Record<string, readonly unknown[]>> = {
   showPassword: [true],
   module: ['weather'],
   image: [`${'b'.repeat(64)}.png`],
+  // A camera this household has not added: the box is left out (plan item M6.1).
+  camera: ['B'.repeat(43)],
+  cameraRefreshSec: [30],
   text: ['Different words entirely'],
   items: [['Cheese']],
   list: ['todo.shopping'],

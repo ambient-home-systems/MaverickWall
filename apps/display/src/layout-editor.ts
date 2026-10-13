@@ -230,6 +230,12 @@ interface LayoutState {
    * the manifest hands it to the wall.
    */
   albums: readonly { readonly id: string; readonly name: string; readonly photos: readonly string[] }[];
+  /**
+   * The household's cameras (plan item M6.1), for the Camera widget's picker:
+   * the handle a widget stores — never an entity id — and Home Assistant's
+   * name for it, which the admin may show and a wall never sees.
+   */
+  cameras: readonly { readonly handle: string; readonly name: string }[];
 }
 
 /** The editor is on the admin page, so its preview reads media behind the session. */
@@ -540,6 +546,7 @@ function boot(): void {
       readonly buttons?: unknown;
       readonly newsFeeds?: unknown;
       readonly albums?: unknown;
+      readonly cameras?: unknown;
       readonly fonts?: unknown;
       readonly wallpapers?: unknown;
       readonly wallTone?: unknown;
@@ -602,7 +609,7 @@ function boot(): void {
      * which is worse than the seed alone.
      */
     const rawFacts = parsed.omission as
-      | { drawn?: unknown; todoLists?: unknown; why?: unknown }
+      | { drawn?: unknown; todoLists?: unknown; cameras?: unknown; why?: unknown }
       | undefined;
     if (
       rawFacts !== undefined &&
@@ -613,6 +620,9 @@ function boot(): void {
       omissionFacts = {
         drawn: rawFacts.drawn as Record<string, boolean>,
         todoLists: rawFacts.todoLists.filter((one): one is string => typeof one === 'string'),
+        ...(Array.isArray(rawFacts.cameras)
+          ? { cameras: rawFacts.cameras.filter((one): one is string => typeof one === 'string') }
+          : {}),
         why: rawFacts.why as Record<string, string>,
       };
     }
@@ -750,13 +760,21 @@ function boot(): void {
               Array.isArray((one as { photos?: unknown }).photos),
           )
         : [],
+      cameras: Array.isArray(parsed.cameras)
+        ? (parsed.cameras as unknown[]).filter(
+            (one): one is LayoutState['cameras'][number] =>
+              typeof one === 'object' && one !== null &&
+              typeof (one as { handle?: unknown }).handle === 'string' &&
+              typeof (one as { name?: unknown }).name === 'string',
+          )
+        : [],
     };
   } catch {
     state = {
       screen: null, mode: 'auto', orientation: 'portrait', slot: null, aspect: 0.5625, widgets: [],
       stash: { [canvasKey('landscape', null)]: { aspect: 1.7778, widgets: [] } },
       slots: [], maxSlots: 4,
-      calendars: [], readings: [], modules: [], people: [], todoLists: [], buttons: [], newsFeeds: [], albums: [],
+      calendars: [], readings: [], modules: [], people: [], todoLists: [], buttons: [], newsFeeds: [], albums: [], cameras: [],
     };
   }
 
@@ -4699,6 +4717,7 @@ function boot(): void {
     else if (widget.type === 'chores') buildChoresConfig(widget, cfg);
     else if (widget.type === 'buttons') buildButtonsConfig(widget, cfg);
     else if (widget.type === 'image') buildImageConfig(widget, cfg);
+    else if (widget.type === 'camera') buildCameraConfig(widget, cfg);
     else if (widget.type === 'qr') buildQrConfig(widget, cfg);
     else if (widget.type === 'heading') buildHeadingConfig(widget, cfg);
     else if (widget.type === 'news') buildNewsConfig(widget, cfg);
@@ -6007,6 +6026,84 @@ function boot(): void {
    * Album art while music plays (plan item M3.4): any media player the
    * household watches on Home Assistant's Readings, or none.
    */
+  /**
+   * A camera (plan item M6.1): which one, by the handle the Cameras screen
+   * minted — the editor offers names and stores handles, so neither this page
+   * nor the manifest ever holds an entity id — how often its picture is
+   * fetched again, and how it sits in its box. A camera removed since is still
+   * shown as chosen, so the picker says what is stored.
+   */
+  function buildCameraConfig(widget: Widget, cfg: Record<string, unknown>): void {
+    const chosen = typeof cfg['camera'] === 'string' ? (cfg['camera'] as string) : '';
+    if (state.cameras.length === 0 && chosen === '') {
+      const note = document.createElement('p');
+      note.className = 'hint';
+      note.textContent = 'Add a camera under Home Assistant › Cameras first, then choose it here.';
+      configPanel.appendChild(note);
+      return;
+    }
+    const picker = cfgField('Camera', 'camera');
+    const select = document.createElement('select');
+    if (chosen === '') {
+      const none = document.createElement('option');
+      none.value = '';
+      none.textContent = 'Choose a camera';
+      select.appendChild(none);
+    }
+    for (const camera of state.cameras) {
+      const opt = document.createElement('option');
+      opt.value = camera.handle;
+      opt.textContent = camera.name;
+      if (chosen === camera.handle) opt.selected = true;
+      select.appendChild(opt);
+    }
+    if (chosen !== '' && !state.cameras.some((camera) => camera.handle === chosen)) {
+      const gone = document.createElement('option');
+      gone.value = chosen;
+      gone.textContent = 'A camera no longer added';
+      gone.selected = true;
+      select.appendChild(gone);
+    }
+    select.addEventListener('change', () => setConfig(widget, 'camera', select.value === '' ? undefined : select.value));
+    picker.appendChild(select);
+    configPanel.appendChild(picker);
+
+    const every = typeof cfg['cameraRefreshSec'] === 'number' ? String(cfg['cameraRefreshSec']) : '3';
+    configPanel.appendChild(
+      segControl(
+        'New picture every',
+        [
+          ['1', '1 s'],
+          ['3', '3 s'],
+          ['10', '10 s'],
+          ['30', '30 s'],
+        ],
+        ['1', '3', '10', '30'].includes(every) ? every : '3',
+        (value) => setConfig(widget, 'cameraRefreshSec', value === '3' ? undefined : Number(value)),
+        'cameraRefreshSec',
+      ),
+    );
+    const fit = cfg['fit'] === 'contain' ? 'contain' : 'cover';
+    configPanel.appendChild(
+      segControl(
+        'Fit',
+        [
+          ['cover', 'Fill the box'],
+          ['contain', 'Whole picture'],
+        ],
+        fit,
+        (value) => setConfig(widget, 'fit', value === 'cover' ? undefined : value),
+        'fit',
+      ),
+    );
+    const hint = document.createElement('p');
+    hint.className = 'hint';
+    hint.textContent =
+      'The picture is shown on the wall itself; this preview shows the box. ' +
+      'An e-paper panel shows the box without the picture.';
+    configPanel.appendChild(hint);
+  }
+
   /** How the picture sits in its box (plan item M3.5). Fill is the absence. */
   function fitField(widget: Widget, cfg: Record<string, unknown>): void {
     const current = cfg['fit'] === 'contain' || cfg['fit'] === 'blur' ? (cfg['fit'] as string) : 'cover';

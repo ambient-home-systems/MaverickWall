@@ -2177,6 +2177,37 @@ export const haNotifications = sqliteTable('ha_notifications', {
 });
 
 /**
+ * The Home Assistant cameras a household has said a wall may show (plan item
+ * M6.1, RFC 007 §6.1).
+ *
+ * **A camera is not a reading**, and that is why this is its own table rather
+ * than a row of `ha_entity_cache` with `camera` added to the supported
+ * domains: everything in that list becomes a reading, and a camera's state is
+ * `idle` or `recording` — "Front door · idle" on a wall is `calendar`'s old
+ * mistake with a worse picture.
+ *
+ * **The `handle` is what a wall is given**, minted here and resolved here: the
+ * manifest, a widget's config and the address a wall fetches carry it, and
+ * the entity id never leaves this table (rule 12). It is an identifier rather
+ * than a credential — the display token is the credential — so a URL in a
+ * screenshot names nothing.
+ *
+ * `name` is Home Assistant's friendly name, refreshed by the poll, for the
+ * admin and the editor's picker; it is never sent to a wall, which shows the
+ * widget's own title. `available` is the poll's reading of whether the camera
+ * is present and not `unavailable`, so a wall can say so without asking for a
+ * picture, and the route can refuse rather than ask a camera that is gone.
+ */
+export const haCameras = sqliteTable('ha_cameras', {
+  handle: text('handle').primaryKey(),
+  entityId: text('entity_id').notNull().unique(),
+  name: text('name').notNull(),
+  available: integer('available', { mode: 'boolean' }).notNull().default(true),
+  checkedAt: integer('checked_at', { mode: 'number' }),
+  ...timestamps,
+});
+
+/**
  * What walls did to the house, for the last fourteen days (RFC 018 §7.4).
  *
  * One row per press Home Assistant was asked about — accepted by it or refused
