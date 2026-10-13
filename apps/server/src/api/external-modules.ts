@@ -1,5 +1,6 @@
 import type { SqliteDatabase } from '../db/open.js';
 import { moduleVariantKey, variantBlockKey, widgetSettings } from './module-variant.js';
+import { panelForWall } from './module-image-handle.js';
 
 export { moduleVariantKey, variantBlockKey, widgetSettings };
 
@@ -349,7 +350,8 @@ export function readVariantPanels(db: SqliteDatabase): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const row of rows) {
     const panel = parseJson(row.panel);
-    if (panel !== null) out[variantBlockKey(row.module_id, row.variant_key)] = panel;
+    // A picture's address stays here; the wall is given its handle (M7.5).
+    if (panel !== null) out[variantBlockKey(row.module_id, row.variant_key)] = panelForWall(row.module_id, panel);
   }
   return out;
 }

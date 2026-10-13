@@ -177,6 +177,15 @@ export function recipePreview(recipe: RecipeEntry['recipe']): readonly string[] 
   } else if (panel.kind === 'text') {
     lines.push(literalOr(panel.title, ''));
     lines.push(literalOr(panel.text, LIVE_VALUE));
+  } else if (panel.kind === 'qr' || panel.kind === 'countdown' || panel.kind === 'image') {
+    // Contract 2's single things (plan item M7.5): the kind's own name, then
+    // the label a literal one gives, so the card says what it draws.
+    const name = panel.kind === 'qr' ? 'QR code' : panel.kind === 'countdown' ? 'Countdown' : 'Picture';
+    lines.push(panel.title === undefined ? name : literalOr(panel.title, name));
+    lines.push(literalOr(panel.kind === 'image' ? panel.caption : panel.label, ''));
+  } else if (panel.kind === 'timeline') {
+    lines.push(panel.title === undefined ? 'Timeline' : literalOr(panel.title, 'Timeline'));
+    lines.push(literalOr(panel.items.label, LIVE_VALUE));
   } else {
     // readings / tiles: a repeater over live rows. A literal title is kept; an
     // absent or templated one falls back to the kind's name, so the line is

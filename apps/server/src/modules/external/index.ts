@@ -32,6 +32,7 @@ import {
   type RecipeSecrets,
 } from './recipe.js';
 import type { ExternalModuleRow } from '../../api/external-modules.js';
+import { panelForWall } from '../../api/module-image-handle.js';
 import type { Keyring } from '../../secrets/keyring.js';
 
 /**
@@ -59,7 +60,8 @@ export function externalPanelModules(db: SqliteDatabase): PanelModule[] {
     label: row.name,
     // Only ready once a poll has stored something the wall can draw.
     ready: () => row.panel !== null && row.panel !== undefined,
-    contribute: () => row.panel ?? null,
+    // A picture's address stays on the server; the wall is given its handle (M7.5).
+    contribute: () => (row.panel === null || row.panel === undefined ? null : panelForWall(row.id, row.panel)),
     signals: (ctx: ModuleContext) => moduleSignals(row.id, row.signals, ctx.now),
   }));
 }
@@ -97,7 +99,7 @@ function moduleSignals(id: string, stored: unknown, now: number): Signal[] {
  * The fetcher still DNS-pins, limits size and validates redirects; and a body
  * that is not valid Panel Data is rejected and never drawn.
  */
-const POLICY = { allowHttp: true, allowPrivateNetwork: true, allowLoopback: true } as const;
+export const POLICY = { allowHttp: true, allowPrivateNetwork: true, allowLoopback: true } as const;
 
 /** The shared poll: refresh every enabled module in turn. Never throws. */
 export async function pollExternalModules(

@@ -185,6 +185,71 @@ others line up on their right edge. A box too short for every row draws the rows
 it has room for, never half of one. A long cell wraps at a word on the wall, and
 is cut to its column on an e-paper panel.
 
+### `qr` — a code a phone can read
+
+```json
+{ "kind": "qr", "title": "Guest Wi-Fi", "text": "WIFI:T:WPA;S:Guest;P:correct-horse;;", "label": "Guest" }
+```
+
+`text` is what the code carries: a link, a Wi-Fi code, a contact card. It is
+kept exactly as sent, line breaks and all, because it is never drawn as words.
+One code holds at most 213 bytes, and a longer `text` is a rejected panel. The
+wall draws the code with the QR code widget's own encoder, black on white on
+every theme, with `label` under it, and an e-paper panel draws the same code.
+
+### `countdown` — how long until something
+
+```json
+{ "kind": "countdown", "title": "Launch", "label": "Falcon 9", "at": "2026-10-20T14:00:00Z" }
+```
+
+`at` is an ISO 8601 date and time **with its offset**, or `Z`. A time without
+one is rejected, because the wall would have to guess its zone. Say when, never
+how long: the wall works out what is left from its own clock on every draw, so it
+goes on counting while your service is down. It says "In 2 min", "In 4 h 20 min"
+or "In 3 days", then "Now", then how long ago. The words are the panel's one
+large reading, capped as a gauge's are. An e-paper panel shows one picture for up
+to an hour, so it says the date and time instead.
+
+### `timeline` — a few things at their times
+
+```json
+{
+  "kind": "timeline",
+  "title": "Today",
+  "items": [
+    { "at": "2026-10-14T08:30:00+01:00", "label": "School run" },
+    { "at": "2026-10-14T14:00:00+01:00", "label": "Dentist", "detail": "Dr Smith", "tone": "alert" },
+    { "at": "2026-10-15T07:00:00+01:00", "label": "Bins" }
+  ]
+}
+```
+
+Up to twelve `items`, **in order of time**. A timeline out of order is rejected
+rather than sorted, so which item is next is never a guess. Each `at` is an
+instant with its offset, as a countdown's is. The wall draws the time in the
+household's zone and clock, alone on today and with the weekday before it
+otherwise. What has passed is drawn quieter and the next item bolder, by the
+wall's own clock, so the schedule moves on without a new panel. `tone` adds the
+readings' coloured dot. An e-paper panel lists only what is still to come.
+
+### `image` — a picture
+
+```json
+{ "kind": "image", "title": "Radar", "url": "https://example.com/radar.png?t=1415", "caption": "Rain at 14:00" }
+```
+
+The wall never sees `url`. Maverick Wall fetches the picture itself, through the
+same guard as everything else and under your module's own rules: a service
+module may reach your network, and a recipe only the public internet unless it
+says `allowLan`. It checks the bytes are a PNG, JPEG, GIF or WebP (never an SVG),
+keeps a copy, and hands the wall a handle in place of the address. A URL with a
+name or password in it is rejected. **A picture at an address is fetched once**:
+when it changes, give it a new address (a query string will do), the way a
+content-hashed file is named. The wall draws it whole in its box, never cropped,
+with `caption` under it. An e-paper panel draws no photographs, so it shows only
+the caption.
+
 ### `stat` and `tiles` — accepted, drawn as rows
 
 ```json
@@ -226,7 +291,11 @@ against the event text. If you are writing a module now, send `readings`.
 | `series` | 2–48 finite numbers or `null` |
 | `columns` | 1–4, 24 characters each |
 | `rows` (table) | 1–12, one cell per column, 40 characters each |
-| `text` | 280 characters |
+| `text` | 280 characters; a `qr` code's, 213 bytes |
+| `at` | an ISO 8601 date and time with its offset or `Z` |
+| `items` (timeline) | 1–12, in order of time |
+| `url` (image) | http or https, 2,000 characters, no name or password |
+| `caption` (image) | 120 characters |
 | `items` | 1–12 rows |
 
 A body that does not fit — an unknown `kind`, a missing field, an extra key, an
@@ -330,7 +399,9 @@ lets Maverick Wall run it in-process safely.
   placeholders. For `readings`, give `items` a `for` (a selector that points at
   an array) and `label`/`value` templates evaluated against each row. A recipe's
   rows carry no `glyph`; `stat` and `tiles` are accepted and drawn as rows, as
-  above.
+  above. A recipe can build a `qr`, a `countdown` or an `image` from templates,
+  and a `timeline` from a `for` with `at`, `label` and an optional `detail`;
+  a timeline's items are put in order of time for you.
 - **Selectors** are dotted / indexed paths into the fetched JSON:
   `bitcoin.gbp`, `results.items[0].name`. Traversal only.
 - **Formatters** are a fixed set: `upper`, `lower`, `trim`, `round:N`, `int`,

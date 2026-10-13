@@ -49,6 +49,7 @@ import {
 import { childCells, drawnChildren, groupChildren, groupLayoutOf, nextInStack, topLevelWidgets } from './group-cells.js';
 import { applyStyleTokens, styleTokensOf } from './widget-style.js';
 import { encodeQr } from './qr.js';
+import { nextIndex, untilWords, whenWords } from './module-time.js';
 import { qrCaption, qrKind, qrPasswordLine, qrPayload } from './qr-payload.js';
 import { newsIndexAt, newsMode, newsShown, newsShows } from './news-view.js';
 import { envTiles, type EnvInput } from './env-tiles.js';
@@ -3073,7 +3074,7 @@ export function renderWidget(
     case 'countdown':
       return renderCountdown(model, config, widgetId);
     case 'external':
-      return renderExternalWidget(model, config);
+      return renderExternalWidget(model, config, mediaBase);
     case 'notes':
       return renderNotesWidget(config);
     case 'todo':
@@ -3807,7 +3808,9 @@ function todoNoticeNode(message: string): HTMLElement {
  * manifest already carries. A widget whose module has no panel yet (not chosen,
  * disabled, or not polled) says so rather than drawing an empty box.
  */
-function renderExternalWidget(model: DisplayModel, config: unknown): HTMLElement {
+function renderExternalWidget(model: DisplayModel, config: unknown, mediaBase: string): HTMLElement {
+  // What a countdown, a timeline and a picture read off the wall (plan item M7.5).
+  const context: PanelContext = { now: model.now, timezone: model.timezone, hour12: model.hour12, mediaBase };
   const cfg = widgetConfig(config);
   const id = cfg['module'];
   // The panel this widget's own settings build (plan item M7.6), by the handle
@@ -3818,11 +3821,11 @@ function renderExternalWidget(model: DisplayModel, config: unknown): HTMLElement
     // Waiting for the first read with these settings, which is not the
     // install's panel: that would be another city's weather under this one's box.
     if (own === undefined) return el('div', 'cd-empty', 'Waiting for the first reading with these settings.');
-    return renderGenericPanel(own, panelRowLimit(config));
+    return renderGenericPanel(own, panelRowLimit(config), context);
   }
   const panel = typeof id === 'string' ? model.externalPanels[`ext:${id}`] : undefined;
   if (panel === undefined) return el('div', 'cd-empty', 'Pick a module in this widget’s options.');
-  return renderGenericPanel(panel, panelRowLimit(config));
+  return renderGenericPanel(panel, panelRowLimit(config), context);
 }
 
 /** A variant's handle, as the server mints it (`moduleVariantKey`). */
@@ -4276,7 +4279,20 @@ function renderWeekColumns(model: DisplayModel, config: unknown): HTMLElement {
  * never inject markup, an origin, or a script. The shape is already validated
  * and sanitised (`panelFrom`); this only lays it out.
  */
-export function renderGenericPanel(data: PanelData, rows?: number): HTMLElement {
+/**
+ * What a module panel reads off the wall beyond its own data (plan item M7.5):
+ * the corrected clock and the household's zone and clock, for a countdown and
+ * a timeline, and where pictures are served from, which differs between the
+ * wall and the editor's preview.
+ */
+export interface PanelContext {
+  readonly now: number;
+  readonly timezone: string;
+  readonly hour12: boolean;
+  readonly mediaBase: string;
+}
+
+export function renderGenericPanel(data: PanelData, rows?: number, context?: PanelContext): HTMLElement {
   const section = el('section', `gp gp-${data.kind}`);
   if (data.title !== undefined) section.appendChild(el('div', 'gp-title', data.title));
 
@@ -4359,10 +4375,117 @@ export function renderGenericPanel(data: PanelData, rows?: number): HTMLElement 
     section.appendChild(gaugeNode(data));
   } else if (data.kind === 'table') {
     section.appendChild(tableNode(data, rows));
+  } else if (data.kind === 'qr') {
+    section.appendChild(moduleQrNode(data));
+  } else if (data.kind === 'countdown') {
+    section.appendChild(moduleCountdownNode(data, context?.now ?? Date.now()));
+  } else if (data.kind === 'timeline') {
+    section.appendChild(timelineNode(data, rows, context));
+  } else if (data.kind === 'image') {
+    section.appendChild(moduleImageNode(data, context?.mediaBase ?? MEDIA_BASE));
   } else {
     section.appendChild(el('div', 'gp-text', data.text));
   }
   return section;
+}
+
+/**
+ * A module's QR code (plan item M7.5): the text it carries, encoded by the
+ * same encoder the QR code widget uses and drawn as that widget's code, black
+ * on white on every theme, with the module's label under it.
+ */
+function moduleQrNode(data: Extract<PanelData, { kind: 'qr' }>): HTMLElement {
+  const matrix = encodeQr(data.text);
+  if (matrix === undefined) return el('div', 'cd-empty', 'That is more than one QR code can hold.');
+  const body = el('div', 'qr');
+  const code = el('div', 'qr-code');
+  code.appendChild(qrSvgNode(matrix, data.label === undefined ? 'QR code' : `QR code: ${data.label}`));
+  body.appendChild(code);
+  if (data.label !== undefined) {
+    const words = el('div', 'qr-words', data.label);
+    words.dataset['part'] = 'caption';
+    body.appendChild(words);
+  }
+  return body;
+}
+
+/**
+ * A module's countdown (plan item M7.5): what is left until its instant, from
+ * the wall's own corrected clock on every draw — so it goes on counting with
+ * the server gone — as the one large reading, capped at the clock's cap like a
+ * gauge's (decision D1), with the module's label under it.
+ */
+function moduleCountdownNode(data: Extract<PanelData, { kind: 'countdown' }>, now: number): HTMLElement {
+  const box = el('div', 'gp-count');
+  const words = untilWords(data.at, now);
+  const value = el('div', 'gp-count-value', words);
+  // The words' length, so a long one is drawn smaller rather than past the box's edge.
+  value.style.setProperty('--gp-chars', String(Math.max(4, words.length)));
+  box.appendChild(value);
+  box.appendChild(el('div', 'gp-count-label', data.label));
+  if (data.at <= now) box.setAttribute('data-passed', '');
+  return box;
+}
+
+/**
+ * A module's timeline (plan item M7.5): a row an item, its time in a column of
+ * one width — the time alone today, the weekday before it otherwise — then its
+ * label and its detail. What has passed is drawn in the quiet ink and the next
+ * one in the event's, decided by the wall's own clock on every draw, so the
+ * schedule moves on without a new panel. A toned item carries the readings'
+ * circle. Whole rows only: the household's count first, then the belt.
+ */
+function timelineNode(
+  data: Extract<PanelData, { kind: 'timeline' }>,
+  rows: number | undefined,
+  context: PanelContext | undefined,
+): HTMLElement {
+  const now = context?.now ?? Date.now();
+  const timezone = context?.timezone ?? 'UTC';
+  const hour12 = context?.hour12 ?? false;
+  const list = el('div', 'gp-timeline');
+  const next = nextIndex(data.items, now);
+  const shown = rows === undefined ? data.items : data.items.slice(0, rows);
+  shown.forEach((item, i) => {
+    const row = el('div', 'gp-event');
+    if (next === -1 || i < next) row.classList.add('is-past');
+    if (i === next) row.classList.add('is-next');
+    row.appendChild(el('span', 'gp-when', whenWords(item.at, now, timezone, hour12)));
+    if (item.tone !== undefined) {
+      row.setAttribute('data-tone', item.tone);
+      row.appendChild(el('span', 'gp-circle gp-dot'));
+    }
+    const words = el('span', 'gp-what');
+    words.appendChild(el('span', 'gp-event-label', item.label));
+    if (item.detail !== undefined) words.appendChild(el('span', 'gp-event-detail', item.detail));
+    row.appendChild(words);
+    list.appendChild(row);
+  });
+  return list;
+}
+
+/**
+ * A module's picture (plan item M7.5), by the handle the server gave in place
+ * of its address, from the wall's own server — so no third-party origin ever
+ * reaches the glass (rule three). Whole in its box on the theme's ground, since
+ * a module's picture is a chart or a comic as often as a photograph, and a
+ * crop would take its edge off. A picture that does not arrive says so in its
+ * box rather than leaving a broken one.
+ */
+function moduleImageNode(data: Extract<PanelData, { kind: 'image' }>, mediaBase: string): HTMLElement {
+  const box = el('div', 'gp-picture');
+  const frame = el('div', 'gp-picture-frame');
+  const picture = el('img', 'gp-img') as HTMLImageElement;
+  picture.alt = data.caption ?? '';
+  picture.src = `${mediaBase}${data.image}`;
+  picture.addEventListener('error', () => {
+    picture.remove();
+    frame.appendChild(el('div', 'cd-empty', 'The picture did not arrive.'));
+  });
+  frame.appendChild(picture);
+  box.appendChild(frame);
+  if (data.caption !== undefined) box.appendChild(el('div', 'gp-caption', data.caption));
+  return box;
 }
 
 /**
@@ -5505,6 +5628,7 @@ function beltItems(box: HTMLElement, items: readonly HTMLElement[]): void {
 function beltGenericRows(entry: TieredWidget): void {
   beltItems(entry.box, [...entry.box.querySelectorAll('.gp-reading')] as HTMLElement[]);
   beltItems(entry.box, [...entry.box.querySelectorAll('.gp-trow')] as HTMLElement[]);
+  beltItems(entry.box, [...entry.box.querySelectorAll('.gp-event')] as HTMLElement[]);
 }
 
 /** Swap a widget's drawn body, keeping its title wrapper if it has one. */

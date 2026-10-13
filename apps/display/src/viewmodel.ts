@@ -1377,7 +1377,38 @@ export type PanelData =
       readonly title?: string;
       readonly columns: readonly string[];
       readonly rows: readonly (readonly string[])[];
-    };
+    }
+  /* Contract 2's QR code, countdown, timeline and picture (plan item M7.5). */
+  | { readonly kind: 'qr'; readonly title?: string; readonly text: string; readonly label?: string }
+  | { readonly kind: 'countdown'; readonly title?: string; readonly label: string; readonly at: number }
+  | { readonly kind: 'timeline'; readonly title?: string; readonly items: readonly PanelEvent[] }
+  | { readonly kind: 'image'; readonly title?: string; readonly image: string; readonly caption?: string };
+
+/** One thing on a module's timeline, at its instant. */
+export interface PanelEvent {
+  readonly at: number;
+  readonly label: string;
+  readonly detail?: string;
+  readonly tone?: PanelTone;
+}
+
+/**
+ * An instant as a module sends one — an ISO 8601 date and time with its
+ * offset — as milliseconds, or nothing: a time a reader has to guess the zone
+ * of is no time.
+ */
+const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/;
+function instantOf(raw: unknown): number | undefined {
+  if (typeof raw !== 'string' || !INSTANT.test(raw)) return undefined;
+  const ms = Date.parse(raw);
+  return Number.isFinite(ms) ? ms : undefined;
+}
+
+/** A module picture's handle, as the server mints it (`moduleImageHandle`). */
+const MODULE_IMAGE = /^[a-f0-9]{64}\.jpg$/;
+
+/** The most one QR code holds here, the encoder's own limit. */
+const QR_TEXT_BYTES = 213;
 
 /**
  * A run of numbers this bundle can draw as a line, or nothing: 2 to 48 of
@@ -1500,6 +1531,40 @@ export function panelFrom(raw: unknown): PanelData | null {
     case 'table': {
       const table = tableOf(panel['columns'], panel['rows']);
       return table === undefined ? null : ({ kind: 'table', ...table, ...base } as PanelData);
+    }
+    case 'qr': {
+      // What the code carries is encoded, never drawn as words, so it is kept
+      // exactly as sent; only its length is a fact this bundle checks.
+      const raw = panel['text'];
+      if (typeof raw !== 'string' || raw === '' || new TextEncoder().encode(raw).length > QR_TEXT_BYTES) return null;
+      const label = text(panel['label'], 60);
+      return { kind: 'qr', text: raw, ...(label === undefined ? {} : { label }), ...base } as PanelData;
+    }
+    case 'countdown': {
+      const label = text(panel['label'], 60);
+      const at = instantOf(panel['at']);
+      return label === undefined || at === undefined ? null : ({ kind: 'countdown', label, at, ...base } as PanelData);
+    }
+    case 'timeline': {
+      if (!Array.isArray(panel['items'])) return null;
+      const items: PanelEvent[] = [];
+      for (const entry of panel['items'].slice(0, 12)) {
+        if (typeof entry !== 'object' || entry === null) continue;
+        const row = entry as Record<string, unknown>;
+        const at = instantOf(row['at']);
+        const label = text(row['label'], 60);
+        if (at === undefined || label === undefined) continue;
+        const detail = text(row['detail'], 60);
+        const tone = toneOf(row['tone']);
+        items.push({ at, label, ...(detail === undefined ? {} : { detail }), ...(tone === undefined ? {} : { tone }) });
+      }
+      return items.length === 0 ? null : ({ kind: 'timeline', items, ...base } as PanelData);
+    }
+    case 'image': {
+      const image = panel['image'];
+      if (typeof image !== 'string' || !MODULE_IMAGE.test(image)) return null;
+      const caption = text(panel['caption'], 120);
+      return { kind: 'image', image, ...(caption === undefined ? {} : { caption }), ...base } as PanelData;
     }
     default:
       return null;

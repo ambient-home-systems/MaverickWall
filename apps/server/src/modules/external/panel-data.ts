@@ -1,5 +1,6 @@
 import { z } from '../../validation.js';
 import { isGlyphKey } from '../../glyphs.js';
+import { QR_MAX_BYTES } from '../../api/qr-payload.js';
 
 /**
  * The Panel Data Schema — the vocabulary a third-party module may put on the
@@ -52,6 +53,50 @@ const progress = z.number().finite().min(0).max(100);
  * gap and nothing else — a line through infinity is no picture of anything.
  */
 const series = z.array(z.number().finite().nullable()).min(2).max(48);
+
+/**
+ * An instant (plan item M7.5): an ISO 8601 date and time with its offset, or
+ * `Z`, and nothing a reader has to guess the zone of. A wall reads it against
+ * its own corrected clock and draws it in the household's zone, so a module
+ * never has to know where the wall hangs.
+ */
+const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/;
+const instant = z
+  .string()
+  .max(40)
+  .refine((value) => INSTANT.test(value) && Number.isFinite(Date.parse(value)), {
+    message: 'A time is an ISO 8601 date and time with its offset, such as 2026-10-16T07:00:00+01:00.',
+  });
+
+/**
+ * A picture's address (plan item M7.5): http or https, with no name or
+ * password in it. The wall never sees it — the server fetches the picture
+ * through the guard under the module's own network policy, checks it is a
+ * picture by its bytes, and hands the wall a handle (`module-images.ts`).
+ */
+const pictureUrl = z
+  .string()
+  .max(2000)
+  .refine(
+    (value) => {
+      try {
+        const url = new URL(value);
+        return (url.protocol === 'https:' || url.protocol === 'http:') && url.username === '' && url.password === '';
+      } catch {
+        return false;
+      }
+    },
+    { message: 'A picture’s address is http or https, with no name or password in it.' },
+  );
+
+const timelineItem = z
+  .object({
+    at: instant,
+    label: str(60),
+    detail: str(60).optional(),
+    tone: tone.optional(),
+  })
+  .strict();
 
 const reading = z
   .object({
@@ -144,6 +189,56 @@ export const panelDataSchema = z.discriminatedUnion('kind', [
     .refine((table) => table.rows.every((row) => row.length === table.columns.length), {
       message: 'Every row of a table has one cell for each column.',
     }),
+  /*
+   * A QR code (plan item M7.5): `text` is what the code carries, encoded by
+   * the wall's own encoder, so at most the 213 bytes one code holds here;
+   * `label` is the words under it. The text is never drawn as words, so it is
+   * kept exactly as sent — a vCard's or a Wi-Fi code's line breaks matter.
+   */
+  z
+    .object({
+      kind: z.literal('qr'),
+      title: str(60).optional(),
+      text: z
+        .string()
+        .min(1)
+        .refine((value) => new TextEncoder().encode(value).length <= QR_MAX_BYTES, {
+          message: `A code holds at most ${QR_MAX_BYTES} bytes.`,
+        }),
+      label: str(60).optional(),
+    })
+    .strict(),
+  /*
+   * A countdown to an instant (plan item M7.5). The wall works out what is
+   * left from its own corrected clock on every draw, so it goes on counting
+   * with the server gone; the module says when, never how long.
+   */
+  z
+    .object({ kind: z.literal('countdown'), title: str(60).optional(), label: str(60), at: instant })
+    .strict(),
+  /*
+   * A schedule (plan item M7.5): up to twelve things at their times, in order
+   * of time. Refused out of order rather than sorted, so which item is next is
+   * never a guess about what the module meant.
+   */
+  z
+    .object({
+      kind: z.literal('timeline'),
+      title: str(60).optional(),
+      items: z.array(timelineItem).min(1).max(12),
+    })
+    .strict()
+    .refine(
+      (timeline) => timeline.items.every((item, i, all) => i === 0 || Date.parse(item.at) >= Date.parse(all[i - 1]!.at)),
+      { message: 'A timeline’s items are in order of time.' },
+    ),
+  /*
+   * A picture (plan item M7.5), by its address, with a caption under it. See
+   * `pictureUrl`: the address stays on the server.
+   */
+  z
+    .object({ kind: z.literal('image'), title: str(60).optional(), url: pictureUrl, caption: str(120).optional() })
+    .strict(),
 ]);
 
 export type PanelData = z.infer<typeof panelDataSchema>;
