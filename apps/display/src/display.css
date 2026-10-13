@@ -5018,6 +5018,29 @@ img.wxi { display: block; object-fit: contain; }
 }
 .gp-reading:first-child { border-top: 0; }
 .gp-ico { width: 1.8rem; height: 1.8rem; flex: 0 0 auto; }
+/*
+ * A row with a tone (plan item M7.2): the Home Assistant tile's circle, in the
+ * same three state colours and with the mark in the row's own ground, which
+ * clears 4.5:1 against each of them by construction (`paletteTokens`). Sized
+ * in ems of the row's own type and centred on the line, so the row is no
+ * taller than its words make it.
+ */
+.gp-reading.gp-toned { align-items: center; }
+.gp-reading[data-tone="active"] { --gp-tone: var(--state-active); }
+.gp-reading[data-tone="alert"] { --gp-tone: var(--state-alert); }
+.gp-reading[data-tone="idle"] { --gp-tone: var(--state-idle); }
+.gp-circle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.1em;
+  height: 1.1em;
+  border-radius: 50%;
+  background: var(--gp-tone);
+  color: var(--bg);
+}
+.gp-mark { width: 0.68em; height: 0.68em; }
 .gp-label { color: var(--muted); flex: 1; min-width: 0; }
 .gp-value { color: var(--ink); font-weight: 600; white-space: nowrap; }
 /*

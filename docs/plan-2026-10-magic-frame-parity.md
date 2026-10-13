@@ -1,6 +1,6 @@
 # Plan: parity with Magic Frame
 
-**Status: in progress.** RFC 018 (M6.0) is built, and so are the companion token, its Home Assistant to-do add, timers and messages, and refreshing walls and showing one wall's layout on the others (M1.1–M1.5, M2.1, M2.2, M2.3, M3.1–M3.8, M4.1–M4.12, M5.1–M5.12, M6.1–M6.4, M6.5, M6.7, M6.8, M6.10, M6.12, M6.13, M7.1, M8.4–M8.8); everything else is planned. On 2026-10-05 the owner asked for a
+**Status: in progress.** RFC 018 (M6.0) is built, and so are the companion token, its Home Assistant to-do add, timers and messages, and refreshing walls and showing one wall's layout on the others (M1.1–M1.5, M2.1, M2.2, M2.3, M3.1–M3.8, M4.1–M4.12, M5.1–M5.12, M6.1–M6.4, M6.5, M6.7, M6.8, M6.10, M6.12, M6.13, M7.1, M7.2, M8.4–M8.8); everything else is planned. On 2026-10-05 the owner asked for a
 competitive review of [Magic Frame](https://github.com/jeremiaa/magic-frame)
 against Maverick Wall, then a deeper look at its custom widgets and its
 backgrounds. This document is that review, the decisions taken on it, and the
@@ -248,7 +248,7 @@ upload more modules.
 | ID | Item | Size | Detail |
 | --- | --- | --- | --- |
 | M7.1 | **Fix the stale module docs.** **Built**: the guide says `glyph` and lists the keys, says `stat` and `tiles` draw as rows, points at the Store and the Module widget, and every JSON example in it is parsed by `module-docs.test.ts`. | S | `docs/building-a-module.md` still advertises `stat` and `tiles` as distinct looks and emoji `icon`s; the wall draws all three as rows and drops `icon` (`panel-data.ts`). |
-| M7.2 | **Contract 2: rows with a tone.** | M | `active` / `alert` / `idle` per row, drawn like the HA tiles (P5.3). |
+| M7.2 | **Contract 2: rows with a tone.** **Built**: `tone` on a `readings` or `tiles` row, from a closed list, drawn as the HA tile's circle in the theme's `--state-*` with the row's glyph knocked out of it; a panel marks an alert row `! `. Untoned rows are unchanged. | M | `active` / `alert` / `idle` per row, drawn like the HA tiles (P5.3). |
 | M7.3 | **Contract 2: progress and gauge.** | M | Bars, rings and one gauge; a gauge is capped against the event role like the clock (D1). |
 | M7.4 | **Contract 2: series and table.** | M | Sparklines from a number series; a small table with fixed columns. |
 | M7.5 | **Contract 2: image, QR, countdown, timeline.** | L | Images fetched by the server, type-sniffed and served by handle like media; QR through `qr.ts`; a countdown the wall computes from an instant; a schedule or timeline. |

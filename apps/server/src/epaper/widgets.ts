@@ -1435,7 +1435,10 @@ function panelLines(panel: unknown, max: number): string[] {
                 ? o.text
                 : '';
         const line = [label, value].filter((p) => p !== '').join(': ');
-        if (line !== '') out.push(line);
+        // One bit has no colour for a module row's tone (plan item M7.2), so an
+        // alert is marked in words, the way a notification tile's is; active
+        // and idle are the plain line, as a tile's are in a panel's list.
+        if (line !== '') out.push(o.tone === 'alert' ? `! ${line}` : line);
       }
     }
     return out;

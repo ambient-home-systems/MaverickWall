@@ -4290,8 +4290,24 @@ export function renderGenericPanel(data: PanelData, rows?: number): HTMLElement 
     const list = el('div', 'gp-readings');
     for (const reading of take(items)) {
       const row = el('div', 'gp-reading');
-      const glyph = glyphNode(reading.glyph, 'gp-ico gl');
-      if (glyph !== null) row.appendChild(glyph);
+      /*
+       * A row that says what it is doing (plan item M7.2) is drawn like a Home
+       * Assistant tile's mark: its picture knocked out of a circle in the
+       * tone's colour, or the circle alone where it names no picture, because
+       * the colour is the state from across the room. A row with no tone is
+       * the row it always was, so a module that sends none draws identically.
+       */
+      if (reading.tone !== undefined) {
+        row.classList.add('gp-toned');
+        row.setAttribute('data-tone', reading.tone);
+        const circle = el('span', 'gp-circle');
+        const mark = glyphNode(reading.glyph, 'gp-mark gl');
+        if (mark !== null) circle.appendChild(mark);
+        row.appendChild(circle);
+      } else {
+        const glyph = glyphNode(reading.glyph, 'gp-ico gl');
+        if (glyph !== null) row.appendChild(glyph);
+      }
       row.appendChild(el('span', 'gp-label', reading.label));
       row.appendChild(el('span', 'gp-value', reading.value));
       list.appendChild(row);

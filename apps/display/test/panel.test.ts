@@ -70,4 +70,29 @@ describe('panelFrom', () => {
     if (panel === null || panel.kind !== 'readings') throw new Error('expected readings');
     expect(panel.items).toHaveLength(12);
   });
+
+  it('keeps a row’s tone it knows and drops one it does not (M7.2)', () => {
+    const panel = panelFrom({
+      kind: 'readings',
+      items: [
+        { label: 'Shed door', value: 'Open', glyph: 'door', tone: 'alert' },
+        { label: 'Sprinkler', value: 'Running', tone: 'active' },
+        { label: 'Soil', value: 'Damp', tone: 'idle' },
+        { label: 'Pond', value: 'Full', tone: 'flashing' },
+      ],
+    });
+    expect(panel).toEqual({
+      kind: 'readings',
+      items: [
+        { label: 'Shed door', value: 'Open', glyph: 'door', tone: 'alert' },
+        { label: 'Sprinkler', value: 'Running', tone: 'active' },
+        { label: 'Soil', value: 'Damp', tone: 'idle' },
+        { label: 'Pond', value: 'Full' },
+      ],
+    });
+    expect(panelFrom({ kind: 'tiles', items: [{ label: 'Fuel', value: 'Low', tone: 'alert' }] })).toEqual({
+      kind: 'tiles',
+      items: [{ label: 'Fuel', value: 'Low', tone: 'alert' }],
+    });
+  });
 });

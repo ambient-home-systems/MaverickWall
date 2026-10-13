@@ -11730,6 +11730,32 @@ end-to-end assertions in `homeassistant.test.ts`, `doorbell.test.ts` and
 `browser-doorbell.test.ts` that pinned the old words now read the sentence.
 Four mutations were checked and all four are red.
 
+**A module's row can say what it is doing (plan item M7.2, contract 2).** A
+`readings` or `tiles` row may carry `tone`: `active`, `alert` or `idle`, from a
+closed list in `panelDataSchema`, so a module names a state and never a colour.
+The wall draws a toned row the way a Home Assistant tile draws its mark: the
+row's glyph knocked out of a circle in the theme's own `--state-*`, or the
+circle alone where the row names no glyph. The three colours are already held
+to 4.5:1 against both of a theme's grounds (`paletteTokens`), so the mark in
+the row's `--bg` is legible by construction. The circle is sized in ems of the
+row's own type and centred on its line, so a toned row is no taller than an
+untoned one. A row with no tone takes the old path, so a module that sends
+none draws exactly what it drew. The wall's reader keeps only a tone it knows,
+so a fourth word from a newer server draws the plain row. A panel has no
+colour: it puts `! ` in front of an alert row, as a notification tile's alert
+line already does, and draws active and idle rows as the plain line. Recipes
+cannot set a tone yet; a lookup from a value to a tone is M7.8.
+
+**Measured.** `browser-module-tone.test.ts` (1) uses a real paired wall: each
+circle's computed ground is the page's own `--state-*` for its tone, the three
+are different colours, the mark is the row's ground, a tone without a glyph is
+the circle alone, an untoned row keeps its plain glyph, and every row is the
+same height. `panel-data.test.ts`, the display's `panel.test.ts` and
+`epaper-proportional.test.ts` gain a test each, and the module guide's new
+example is parsed by `module-docs.test.ts`. Eight mutations were checked and
+all eight are red. Two failed to build on the first try and were re-aimed so
+they built.
+
 ---
 
 ## Open decisions
