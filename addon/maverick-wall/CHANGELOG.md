@@ -16,6 +16,18 @@
 
 ## Unreleased
 
+**Modules can show a QR code, a countdown, a schedule or a picture.** A module
+you install, or one you build yourself, can now put any of four new things in a
+Module widget. A QR code a phone can scan, such as your guest Wi-Fi. A
+countdown to a time ("In 4 h 20 min"), which goes on counting on the wall even
+when the module's own server is down. A short schedule, where what has passed
+turns quieter and the next thing stands out, by the wall's own clock. And a
+picture, such as a rain radar or a webcam snapshot, which this server fetches
+and checks is really a picture before any wall is given it. A wall never learns
+where a picture came from. An e-paper panel shows the code, says when a
+countdown ends, lists what is still to come, and shows a picture's caption
+rather than the picture.
+
 **One module, different settings on different widgets.** A module installed
 from the Store can now offer proper controls for its settings — a list to
 choose from, a number, an on/off switch, or one of your Home Assistant

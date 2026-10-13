@@ -11892,6 +11892,86 @@ is `browser-glass`'s striped-picture case, red on a clean `main` in this
 container as before. **Still unproven where it counts:** no real household has
 set two widgets of one module to two cities.
 
+**A module can show a QR code, a countdown, a schedule or a picture (plan item
+M7.5, contract 2).** These are four new panel kinds in `panelDataSchema`. Each
+is strict, and refuses rather than coerces:
+
+- **`qr`** carries up to 213 bytes, counted in UTF-8 rather than characters.
+  The text is kept exactly as sent, because a vCard's line breaks matter. The
+  wall draws it with the QR widget's own encoder and `qrSvgNode`, and a panel
+  through `drawQrBlock`, which `drawQr` now shares, so every existing QR frame
+  is unchanged.
+- **`countdown`** is to an ISO instant with its offset or `Z`. A time with no
+  zone is refused, since the wall would have to guess it. `untilWords`
+  (`apps/display/src/module-time.ts`, pure) works the words out from the wall's
+  corrected clock on every draw:
+  - "Now" from a minute before to a minute after;
+  - minutes rounded up while the instant is still to come, a timer's rule;
+  - hours and minutes under two days, whole days after that;
+  - "… ago" once it has passed.
+
+  The words are the panel's one large reading, capped at the clock's cap the
+  way a gauge is (D1).
+- **`timeline`** holds up to twelve items in order of time, and refuses them
+  out of order rather than sorting them, so which item is next is never a
+  guess. A recipe's builder sorts its own list first, because that is our code
+  and not the module's. The wall marks items passed or next from its own clock
+  (`nextIndex`), with the time alone today and the weekday before it on any
+  other day, in the household's zone and clock.
+- **`image`** is given by its address.
+
+**The picture's address never reaches a wall.** `panelForWall`
+(`api/module-image-handle.ts`) swaps it for a handle, the hash of the module
+and the address, shaped like a stored media name. This happens in both places
+a module panel enters the manifest: the install's `contribute` and
+`readVariantPanels`. `/d/media` and `/admin/media` serve it through
+`modulePicture` (`modules/external/images.ts`) only while a current panel, the
+install's or a widget's own, names it.
+
+- The picture is fetched on the first ask, under the module's own policy: a
+  service module's, or `recipePolicy` for a recipe, so a recipe's picture on
+  the LAN is never asked for unless the recipe opted in.
+- It is sniffed, so an SVG labelled `image/png` is refused, and kept in
+  `module-images/`.
+- A copy no panel names is deleted on the next ask.
+- A picture at an address is fetched once, so the guide tells a module to give
+  a changed picture a new address, the way a content-hashed file is named.
+
+**A panel says when, not how long.** In `panelAtFrame`, a countdown becomes a
+line ("Bins: Fri 16 Oct 07:00", or "since …") and a timeline becomes the items
+still to come, worked out at the frame's `generatedAt`. Neither moves the frame
+from one minute to the next, and both are byte-identical to the plain rows a
+module could have sent. A picture draws its caption and no photograph (MQ11).
+Recipes can build all four kinds, and the Store card names each kind.
+
+**Measured.**
+- `module-contract-2.test.ts` (9) checks each kind's edges, with a passing case
+  for each refusal, and runs the picture against a real loopback service and
+  the real fetcher.
+- `epaper-module-contract-2.test.ts` (4) decodes the panel's code and compares
+  frames byte for byte.
+- `browser-module-contract-2.test.ts` (1) uses a real paired wall:
+  - the code is decoded from a screenshot;
+  - the countdown is at most 1.8 times the event role, and reaches "Now" with
+    every manifest request refused;
+  - passed and next items are read from their computed colours;
+  - the picture loads from `/d/media`, with the address nowhere on the page and
+    no request to any other origin.
+- `module-time.test.ts` (9) runs on the display.
+
+Twenty-two mutations were checked and all are red. The first run of them
+proved nothing: the new server test failed `tsconfig.test.json`, which CI's
+build runs, so every mutant "failed to build" for the test's own reason. A red
+run is evidence only once the build under it is the one being tested. Counted
+from this change against M7.6's measured 5958 over 446, it is **5982 tests over
+450 files**:
+- this change: server +14 over 3, display +9 over 1, plus the row
+  `motion.test.ts` generates for `module-time.ts`;
+- not re-measured locally: CI ran the whole suite green on it.
+
+**Still unproven where it counts:** no real module has put a picture or a
+countdown on a kitchen wall.
+
 ---
 
 ## Open decisions

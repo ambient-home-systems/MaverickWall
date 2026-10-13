@@ -3,6 +3,7 @@ import { editorModules } from './module-settings.js';
 import { immichPhoto } from '../modules/immich/store.js';
 import { folderPhoto } from '../modules/folder/store.js';
 import { artworkPhoto } from '../modules/homeassistant/artwork.js';
+import { modulePicture } from '../modules/external/images.js';
 import { readCameras } from '../modules/cameras/index.js';
 import { readAlbumSlides } from '../api/photo-albums.js';
 import { addCalendarSource } from '../api/sources.js';
@@ -2665,7 +2666,9 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
       readImage(deps.dataDir, name) ??
       (await immichPhoto(sources, name)) ??
       (await folderPhoto(sources, name)) ??
-      (await artworkPhoto(sources, name));
+      (await artworkPhoto(sources, name)) ??
+      // A module's picture by its handle (plan item M7.5).
+      (await modulePicture(sources, name));
     if (image === undefined) return c.json({ error: 'not-found' }, 404);
     c.header('content-type', image.contentType);
     c.header('x-content-type-options', 'nosniff');

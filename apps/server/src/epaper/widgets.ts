@@ -1338,10 +1338,9 @@ function drawNews(fb: Framebuffer, m: EpaperMetrics, box: Box, rows: readonly Ne
  */
 function drawQr(fb: Framebuffer, m: EpaperMetrics, box: Box, config: Config): void {
   const payload = qrPayload(config);
-  const matrix = payload === undefined ? undefined : encodeQrOnce(payload);
-  const middle = { x: box.x, y: box.y + Math.max(0, Math.floor((box.h - m.body.height) / 2)), w: box.w, h: box.h };
-  if (matrix === undefined) {
-    drawLines(fb, m, [payload === undefined ? 'No code yet' : 'Too long for a code'], middle, m.body, 'center');
+  if (payload === undefined) {
+    const middle = { x: box.x, y: box.y + Math.max(0, Math.floor((box.h - m.body.height) / 2)), w: box.w, h: box.h };
+    drawLines(fb, m, ['No code yet'], middle, m.body, 'center');
     return;
   }
   const caption = qrCaption(config);
@@ -1350,6 +1349,21 @@ function drawQr(fb: Framebuffer, m: EpaperMetrics, box: Box, config: Config): vo
     ...(caption === undefined ? [] : [asciiTitle(caption)]),
     ...(password === undefined ? [] : [`Password: ${asciiTitle(password)}`]),
   ].filter((line) => line !== '');
+  drawQrBlock(fb, m, box, payload, words);
+}
+
+/**
+ * A code and the words under it, centred in the box: the words given up, last
+ * first, before a module would go under two pixels — shared by the QR code
+ * widget and a module's code (plan items M5.3, M7.5).
+ */
+function drawQrBlock(fb: Framebuffer, m: EpaperMetrics, box: Box, payload: string, words: readonly string[]): void {
+  const matrix = encodeQrOnce(payload);
+  const middle = { x: box.x, y: box.y + Math.max(0, Math.floor((box.h - m.body.height) / 2)), w: box.w, h: box.h };
+  if (matrix === undefined) {
+    drawLines(fb, m, ['Too long for a code'], middle, m.body, 'center');
+    return;
+  }
   const span = matrix.size + QR_QUIET * 2;
   const lineH = m.body.height + m.widget.linePad;
   let lines = words.length;
@@ -2535,6 +2549,25 @@ function drawPanel(
    * can draw, but a bar says the same "how far along" at any size, and it is
    * the shape a panel already draws for a light's brightness.
    */
+  /*
+   * A module's QR code (plan item M7.5): the QR code widget's own modules and
+   * words. A module's picture: the box and its caption, because a panel draws
+   * no photographs (MQ11) and the frame should not change with the picture.
+   */
+  if (panel !== null && typeof panel === 'object') {
+    const obj = panel as Record<string, unknown>;
+    if (obj.kind === 'qr' && typeof obj.text === 'string' && obj.text !== '') {
+      drawQrBlock(fb, m, box, obj.text, typeof obj.label === 'string' && obj.label !== '' ? [asciiTitle(obj.label)] : []);
+      return;
+    }
+    if (obj.kind === 'image') {
+      const rung = m.small;
+      const caption = typeof obj.caption === 'string' && obj.caption !== '' ? fit(asciiTitle(obj.caption), box.w, { rung }) : 'not drawn on e-paper';
+      const lift = m.widget.smallLine - Math.round(m.widget.linePad / 2);
+      drawLines(fb, m, ['[ picture ]', caption], { x: box.x, y: box.y + Math.max(0, Math.floor(box.h / 2) - lift), w: box.w, h: box.h }, rung, 'center');
+      return;
+    }
+  }
   const gauge = panelGauge(panel);
   if (gauge !== undefined) {
     const line = asciiTitle(`${gauge.label}: ${gauge.value}`);
@@ -2601,6 +2634,58 @@ function drawPanel(
   }
   const lines = panelLines(panel, max).map(asciiTitle);
   drawLines(fb, m, lines.length > 0 ? lines : [empty], box, m.body, 'left');
+}
+
+/**
+ * A module's countdown or timeline as the panel's words (plan item M7.5),
+ * worked out once at the frame's own time.
+ *
+ * A panel shows one picture for up to an hour, so it says *when* rather than
+ * how long — "Bins: Thu 16 Oct 07:00", the way a timer says "ends 10:10" — and
+ * a timeline lists what is still to come, the time alone today and the weekday
+ * before it otherwise. Read tolerantly, as everything in `drawPanel` is; every
+ * other panel is handed through untouched. What the frame's ETag hashes, so a
+ * frame changes when a countdown's instant or a timeline's next item does and
+ * at no other minute.
+ */
+function panelAtFrame(panel: unknown, manifest: Manifest): unknown {
+  if (panel === null || typeof panel !== 'object') return panel;
+  const obj = panel as Record<string, unknown>;
+  const at = (raw: unknown): number | undefined => {
+    if (typeof raw !== 'string') return undefined;
+    const ms = Date.parse(raw);
+    return Number.isFinite(ms) ? ms : undefined;
+  };
+  const zone = manifest.timezone;
+  const clock24 = manifest.display.clock24 !== false;
+  const now = manifest.generatedAt;
+  const date = (ms: number): string =>
+    new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
+  const weekday = (ms: number): string => new Intl.DateTimeFormat('en-GB', { timeZone: zone, weekday: 'short' }).format(new Date(ms));
+  const title = typeof obj.title === 'string' ? { title: obj.title } : {};
+  if (obj.kind === 'countdown') {
+    const when = at(obj.at);
+    const label = typeof obj.label === 'string' ? obj.label : '';
+    if (when === undefined || label === '') return { kind: 'readings', ...title, items: [] };
+    const day = new Intl.DateTimeFormat('en-GB', { timeZone: zone, weekday: 'short', day: 'numeric', month: 'short' }).format(new Date(when));
+    const words = `${day} ${clockLabel(when, zone, clock24)}`;
+    return { kind: 'readings', ...title, items: [{ label, value: when > now ? words : `since ${words}` }] };
+  }
+  if (obj.kind === 'timeline' && Array.isArray(obj.items)) {
+    const lines: string[] = [];
+    for (const entry of obj.items) {
+      if (entry === null || typeof entry !== 'object') continue;
+      const item = entry as Record<string, unknown>;
+      const when = at(item.at);
+      if (when === undefined || when <= now || typeof item.label !== 'string') continue;
+      const time = clockLabel(when, zone, clock24);
+      const stamp = date(when) === date(now) ? time : `${weekday(when)} ${time}`;
+      const detail = typeof item.detail === 'string' && item.detail !== '' ? ` - ${item.detail}` : '';
+      lines.push(`${item.tone === 'alert' ? '! ' : ''}${stamp} ${item.label}${detail}`);
+    }
+    return { kind: 'readings', ...title, items: lines.length > 0 ? lines : ['Nothing more to come'] };
+  }
+  return panel;
 }
 
 /** A module panel's table, read tolerantly, or nothing when it is not one. */
@@ -3289,7 +3374,7 @@ export function panelInput(type: string, manifest: Manifest, config: Config): Pa
       if (mod === undefined) return { kind: 'panel', panel: undefined };
       const settings = widgetSettings(config);
       const key = settings === null ? `ext:${mod}` : variantBlockKey(mod, moduleVariantKey(mod, settings));
-      return { kind: 'panel', panel: panels[key] };
+      return { kind: 'panel', panel: panelAtFrame(panels[key], manifest) };
     }
     default:
       return NO_INPUT;

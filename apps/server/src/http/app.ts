@@ -2,6 +2,7 @@ import { Hono, type Context, type Next } from 'hono';
 import { immichPhoto } from '../modules/immich/store.js';
 import { folderPhoto } from '../modules/folder/store.js';
 import { artworkPhoto, nowPlayingArt } from '../modules/homeassistant/artwork.js';
+import { modulePicture } from '../modules/external/images.js';
 import { CAMERA_HANDLE } from '../modules/cameras/index.js';
 import { cameraPlacedOn, takeoverCamera, withTakeoverCameras } from '../modules/cameras/placement.js';
 import { createSnapshots } from '../modules/cameras/snapshot.js';
@@ -846,7 +847,9 @@ export function createApp(deps: AppDeps): Hono {
       readImage(deps.dataDir, name) ??
       (await immichPhoto(sources, name)) ??
       (await folderPhoto(sources, name)) ??
-      (await artworkPhoto(sources, name));
+      (await artworkPhoto(sources, name)) ??
+      // A module's picture by its handle (plan item M7.5).
+      (await modulePicture(sources, name));
     if (image === undefined) return c.json({ error: 'not-found' }, 404);
     c.header('content-type', image.contentType);
     // The type is sniffed from the bytes; this stops a browser deciding it

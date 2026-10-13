@@ -5167,6 +5167,102 @@ img.wxi { display: block; object-fit: contain; }
 }
 
 /*
+ * Contract 2's QR code, countdown, timeline and picture (plan item M7.5).
+ *
+ * The QR code is the QR code widget's own code and words, filling the panel's
+ * room. The countdown is one large reading, sized from its own box by a
+ * container query and capped at the clock's cap (decision D1), with the
+ * module's label under it. A timeline is rows like the readings', with the
+ * time in a column of one width; what has passed is in the quiet ink. A
+ * picture is whole in its box (`contain`), never cropped.
+ */
+.gp.gp-qr,
+.gp.gp-countdown,
+.gp.gp-image { height: 100%; }
+.gp > .qr {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+.gp-count {
+  flex: 1 1 auto;
+  min-height: 0;
+  container-type: size;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+}
+.gp-count-value {
+  font-size: min(var(--t-wall-clock, calc(var(--t-event) * 1.8)), 40cqh, calc(170cqw / var(--gp-chars, 8)));
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.15;
+  white-space: nowrap;
+}
+.gp-count[data-passed] .gp-count-value { color: var(--ink-quiet, var(--muted)); }
+.gp-count-label {
+  font-size: var(--t-wall-event, 2rem);
+  color: var(--muted);
+  line-height: 1.15;
+  text-align: center;
+  overflow-wrap: break-word;
+  max-width: 100%;
+}
+.gp-timeline { display: flex; flex-direction: column; }
+.gp-event {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: var(--s2) 0;
+  border-top: 1px solid var(--rule);
+  font-size: 2rem;
+  line-height: 1.15;
+}
+.gp-event:first-child { border-top: 0; }
+.gp-event[data-tone="active"] { --gp-tone: var(--state-active); }
+.gp-event[data-tone="alert"] { --gp-tone: var(--state-alert); }
+.gp-event[data-tone="idle"] { --gp-tone: var(--state-idle); }
+.gp-when {
+  flex: 0 0 auto;
+  min-width: 5.2em;
+  color: var(--ink-quiet, var(--muted));
+  white-space: nowrap;
+}
+.gp-dot { width: 0.6em; height: 0.6em; align-self: center; }
+.gp-what { flex: 1 1 auto; min-width: 0; color: var(--ink-event, var(--ink)); overflow-wrap: break-word; }
+.gp-event-detail { color: var(--muted); margin-left: var(--s2); }
+.gp-event.is-next .gp-event-label { font-weight: 600; }
+.gp-event.is-past .gp-what { color: var(--ink-quiet, var(--muted)); }
+.gp-picture {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.gp-picture-frame { flex: 1 1 auto; min-height: 0; position: relative; }
+.gp-img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.gp-caption {
+  flex: 0 0 auto;
+  margin-top: var(--s2);
+  font-size: var(--t-wall-event, 2rem);
+  color: var(--muted);
+  line-height: 1.15;
+  text-align: center;
+  overflow-wrap: break-word;
+}
+
+/*
  * The motion fixture's still frame (plan P4.3) — a dot and a bar, positioned
  * in shares of their box. A test fixture no server sends: `motion-fixture.ts`
  * says why it exists. Still by default, like everything else on the wall;

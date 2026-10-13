@@ -336,11 +336,25 @@ const itemsSpec = z
   })
   .strict();
 
+const timelineSpec = z
+  .object({
+    for: z.string().regex(PATH, 'a selector path'),
+    at: tpl(120),
+    label: tpl(120),
+    detail: tpl(120).optional(),
+  })
+  .strict();
+
 const panelSpec = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('stat'), title: tpl(120).optional(), value: tpl(120), caption: tpl(120).optional() }).strict(),
   z.object({ kind: z.literal('text'), title: tpl(120).optional(), text: tpl(320) }).strict(),
   z.object({ kind: z.literal('readings'), title: tpl(120).optional(), items: itemsSpec }).strict(),
   z.object({ kind: z.literal('tiles'), title: tpl(120).optional(), items: itemsSpec }).strict(),
+  // Contract 2's QR code, countdown, timeline and picture (plan item M7.5).
+  z.object({ kind: z.literal('qr'), title: tpl(120).optional(), text: tpl(320), label: tpl(120).optional() }).strict(),
+  z.object({ kind: z.literal('countdown'), title: tpl(120).optional(), label: tpl(120), at: tpl(120) }).strict(),
+  z.object({ kind: z.literal('timeline'), title: tpl(120).optional(), items: timelineSpec }).strict(),
+  z.object({ kind: z.literal('image'), title: tpl(120).optional(), url: tpl(400), caption: tpl(120).optional() }).strict(),
 ]);
 
 /**
@@ -552,6 +566,37 @@ function buildPanel(recipe: Recipe, root: unknown, now: number): unknown {
   }
   if (spec.kind === 'text') {
     return { kind: 'text', ...title, text: r(spec.text) };
+  }
+  if (spec.kind === 'qr') {
+    return { kind: 'qr', ...title, text: r(spec.text), ...(spec.label !== undefined ? { label: r(spec.label) } : {}) };
+  }
+  if (spec.kind === 'countdown') {
+    return { kind: 'countdown', ...title, label: r(spec.label), at: r(spec.at) };
+  }
+  if (spec.kind === 'image') {
+    return { kind: 'image', ...title, url: r(spec.url), ...(spec.caption !== undefined ? { caption: r(spec.caption) } : {}) };
+  }
+  if (spec.kind === 'timeline') {
+    const selected = resolvePath(root, spec.items.for);
+    const array = Array.isArray(selected) ? selected : [];
+    const items = array.slice(0, 12).map((element) => {
+      const detail = spec.items.detail === undefined ? '' : r(spec.items.detail, element);
+      return {
+        at: r(spec.items.at, element),
+        label: r(spec.items.label, element),
+        ...(detail !== '' ? { detail } : {}),
+      };
+    });
+    // A source's list is in whatever order it keeps; the panel a timeline is
+    // validated as wants time order, so the recipe — our code, not the
+    // module's — puts it there. A time that does not parse sorts last and is
+    // refused by the schema with the recipe's error.
+    const time = (at: string): number => {
+      const ms = Date.parse(at);
+      return Number.isFinite(ms) ? ms : Number.POSITIVE_INFINITY;
+    };
+    items.sort((a, b) => time(a.at) - time(b.at));
+    return { kind: 'timeline', ...title, items };
   }
   // readings | tiles: map the selected array to rows.
   const selected = resolvePath(root, spec.items.for);
