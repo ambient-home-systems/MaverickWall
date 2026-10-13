@@ -95,4 +95,43 @@ describe('panelFrom', () => {
       items: [{ label: 'Fuel', value: 'Low', tone: 'alert' }],
     });
   });
+
+  it('keeps a row’s progress it can draw and drops one it cannot (M7.3)', () => {
+    expect(
+      panelFrom({
+        kind: 'readings',
+        items: [
+          { label: 'Backup', value: '45%', progress: 45 },
+          { label: 'Copy', value: 'Odd', progress: 140 },
+          { label: 'Sync', value: 'Odd', progress: '45' },
+        ],
+      }),
+    ).toEqual({
+      kind: 'readings',
+      items: [
+        { label: 'Backup', value: '45%', progress: 45 },
+        { label: 'Copy', value: 'Odd' },
+        { label: 'Sync', value: 'Odd' },
+      ],
+    });
+  });
+
+  it('shapes a gauge, and draws nothing for one it cannot (M7.3)', () => {
+    expect(panelFrom({ kind: 'gauge', title: 'Butt', label: 'Full', value: '72%', progress: 72, tone: 'idle' })).toEqual({
+      kind: 'gauge',
+      title: 'Butt',
+      label: 'Full',
+      value: '72%',
+      progress: 72,
+      tone: 'idle',
+    });
+    expect(panelFrom({ kind: 'gauge', label: 'Full', value: '72%', progress: 72, tone: 'flashing' })).toEqual({
+      kind: 'gauge',
+      label: 'Full',
+      value: '72%',
+      progress: 72,
+    });
+    expect(panelFrom({ kind: 'gauge', label: 'Full', value: '72%' })).toBeNull();
+    expect(panelFrom({ kind: 'gauge', label: 'Full', value: '72%', progress: -3 })).toBeNull();
+  });
 });

@@ -38,6 +38,14 @@ const str = (max: number): z.ZodString => z.string().max(max);
  */
 const tone = z.enum(['active', 'alert', 'idle']);
 
+/**
+ * How far along something is (plan item M7.3), as a percentage. A number from
+ * 0 to 100 and nothing else: a value outside it is a module that has got its
+ * arithmetic wrong, and a bar drawn past its own end, or a ring wound twice,
+ * would say something the module did not mean. Refused rather than clamped.
+ */
+const progress = z.number().finite().min(0).max(100);
+
 const reading = z
   .object({
     label: str(60),
@@ -45,16 +53,20 @@ const reading = z
     glyph: str(24).optional(),
     icon: str(4).optional(),
     tone: tone.optional(),
+    progress: progress.optional(),
   })
   .strict()
-  .transform(({ label, value, glyph, tone: rowTone }) => ({
+  .transform(({ label, value, glyph, tone: rowTone, progress: rowProgress }) => ({
     label,
     value,
     ...(isGlyphKey(glyph) ? { glyph } : {}),
     ...(rowTone === undefined ? {} : { tone: rowTone }),
+    ...(rowProgress === undefined ? {} : { progress: rowProgress }),
   }));
 
-const tile = z.object({ label: str(60), value: str(60), tone: tone.optional() }).strict();
+const tile = z
+  .object({ label: str(60), value: str(60), tone: tone.optional(), progress: progress.optional() })
+  .strict();
 
 export const panelDataSchema = z.discriminatedUnion('kind', [
   z
@@ -81,6 +93,24 @@ export const panelDataSchema = z.discriminatedUnion('kind', [
     .strict(),
   z
     .object({ kind: z.literal('text'), title: str(60).optional(), text: str(280) })
+    .strict(),
+  /*
+   * One reading drawn as a ring (plan item M7.3): how full the ring is is
+   * `progress`, and `value` is the words in the middle, which the module
+   * writes ("45%", "3 of 8") because only it knows what its number is of.
+   * The one large reading a module panel may carry, and capped against the
+   * event text the way the clock is (decision D1), so it can never be a stat
+   * tile with a ring round it.
+   */
+  z
+    .object({
+      kind: z.literal('gauge'),
+      title: str(60).optional(),
+      label: str(60),
+      value: str(60),
+      progress,
+      tone: tone.optional(),
+    })
     .strict(),
 ]);
 

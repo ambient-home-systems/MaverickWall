@@ -2527,9 +2527,40 @@ function drawPanel(
    * same arithmetic; `agendaRowsInBox` is the same rule in the built-in layout.
    */
   const lineH = m.bodyGlyph + m.widget.linePad;
+  /*
+   * A module's gauge (plan item M7.3), on one bit: its label and its words as
+   * one line, and under it a bar outlined to the box's width and filled to
+   * the gauge's progress. A ring of a few hundred pixels is a circle a panel
+   * can draw, but a bar says the same "how far along" at any size, and it is
+   * the shape a panel already draws for a light's brightness.
+   */
+  const gauge = panelGauge(panel);
+  if (gauge !== undefined) {
+    const line = asciiTitle(`${gauge.label}: ${gauge.value}`);
+    drawLines(fb, m, [line], box, m.body, 'left');
+    const barH = Math.max(6, Math.round(m.bodyGlyph / 2));
+    const y = box.y + lineH;
+    if (y + barH <= box.y + box.h) {
+      fb.strokeRect(box.x, y, box.w, barH);
+      const inner = Math.round(((box.w - 4) * gauge.progress) / 100);
+      if (inner > 0) fb.fillRect(box.x + 2, y + 2, inner, barH - 4);
+    }
+    return;
+  }
   const fits = Math.max(1, Math.floor(box.h / lineH));
   const lines = panelLines(panel, rows === undefined ? fits : Math.min(fits, rows)).map(asciiTitle);
   drawLines(fb, m, lines.length > 0 ? lines : [empty], box, m.body, 'left');
+}
+
+/** A module panel's gauge, read tolerantly, or nothing when it is not one this panel can draw. */
+function panelGauge(panel: unknown): { label: string; value: string; progress: number } | undefined {
+  if (panel === null || typeof panel !== 'object') return undefined;
+  const obj = panel as Record<string, unknown>;
+  if (obj.kind !== 'gauge') return undefined;
+  const { label, value, progress } = obj;
+  if (typeof label !== 'string' || typeof value !== 'string') return undefined;
+  if (typeof progress !== 'number' || !Number.isFinite(progress) || progress < 0 || progress > 100) return undefined;
+  return { label, value, progress };
 }
 
 /**

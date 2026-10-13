@@ -4310,13 +4310,77 @@ export function renderGenericPanel(data: PanelData, rows?: number): HTMLElement 
       }
       row.appendChild(el('span', 'gp-label', reading.label));
       row.appendChild(el('span', 'gp-value', reading.value));
+      /*
+       * How far along (plan item M7.3): a bar along the row's foot, in the
+       * row's own padding and out of flow, so it costs the row no height and
+       * a list of five rows with bars is the height of five rows without.
+       */
+      if (reading.progress !== undefined) {
+        row.classList.add('gp-has-bar');
+        const track = el('span', 'gp-bar');
+        const fill = el('span', 'gp-fill');
+        fill.style.width = `${reading.progress}%`;
+        track.appendChild(fill);
+        row.appendChild(track);
+      }
       list.appendChild(row);
     }
     section.appendChild(list);
+  } else if (data.kind === 'gauge') {
+    section.appendChild(gaugeNode(data));
   } else {
     section.appendChild(el('div', 'gp-text', data.text));
   }
   return section;
+}
+
+/** The ring's radius on its 100-unit square, and the length of its whole circumference. */
+const GAUGE_R = 42;
+const GAUGE_LENGTH = 2 * Math.PI * GAUGE_R;
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/**
+ * A module's one gauge (plan item M7.3): a ring filled to `progress`, the
+ * module's own words for it in the middle, and its label under it.
+ *
+ * The ring is drawn at the shorter side of its room (a square `viewBox`, met
+ * rather than sliced), and the words in it are sized from that same room by a
+ * container query — the widget reading its own box, which is what rule 2
+ * permits one for — and capped at the clock's own cap against the event text,
+ * so the largest thing a module may draw is never larger than a clock may be.
+ */
+function gaugeNode(data: Extract<PanelData, { kind: 'gauge' }>): HTMLElement {
+  const gauge = el('div', 'gp-dial');
+  if (data.tone !== undefined) gauge.setAttribute('data-tone', data.tone);
+  const ring = el('div', 'gp-ring');
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 100 100');
+  svg.setAttribute('aria-hidden', 'true');
+  const circle = (cls: string): SVGCircleElement => {
+    const c = document.createElementNS(SVG_NS, 'circle');
+    c.setAttribute('class', cls);
+    c.setAttribute('cx', '50');
+    c.setAttribute('cy', '50');
+    c.setAttribute('r', String(GAUGE_R));
+    return c;
+  };
+  svg.appendChild(circle('gp-ring-track'));
+  const fill = circle('gp-ring-fill');
+  // Drawn from twelve o'clock, clockwise, by its dash: the length of the arc
+  // that is full, then the rest of the circle empty.
+  const full = (GAUGE_LENGTH * data.progress) / 100;
+  fill.setAttribute('stroke-dasharray', `${full.toFixed(3)} ${GAUGE_LENGTH.toFixed(3)}`);
+  fill.setAttribute('transform', 'rotate(-90 50 50)');
+  svg.appendChild(fill);
+  ring.appendChild(svg);
+  const value = el('span', 'gp-gauge-value', data.value);
+  // How many characters the words in the ring are, so the stylesheet can keep
+  // a long value inside the ring rather than across it.
+  value.style.setProperty('--gp-chars', String(Math.max(3, data.value.length)));
+  ring.appendChild(value);
+  gauge.appendChild(ring);
+  gauge.appendChild(el('div', 'gp-gauge-label', data.label));
+  return gauge;
 }
 
 /**

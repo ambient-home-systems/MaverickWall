@@ -107,6 +107,43 @@ row with no `tone` is drawn exactly as before. An e-paper panel has no colour,
 so it puts `! ` in front of an `alert` row and draws `active` and `idle` rows
 as plain lines. Any other word is a rejected panel.
 
+#### A row's `progress`
+
+A row may say how far along something is, with `progress`: a number from 0 to
+100.
+
+```json
+{
+  "kind": "readings",
+  "title": "Downloads",
+  "items": [
+    { "label": "Holiday photos", "value": "45%", "progress": 45, "tone": "active" },
+    { "label": "Backup", "value": "Done", "progress": 100 }
+  ]
+}
+```
+
+The wall draws a thin bar along the bottom of the row, in the row's tone if it
+has one and the theme's accent if not. The bar sits in the row's own padding, so
+a row with a bar is no taller than one without. `value` is still what the row
+says, so write the number there too if it should be read. An e-paper panel draws
+the row's line and not the bar. A number below 0 or above 100 is a rejected
+panel, never a bar drawn past its end.
+
+### `gauge` — one reading as a ring
+
+```json
+{ "kind": "gauge", "title": "Water butt", "label": "Full", "value": "72%", "progress": 72, "tone": "idle" }
+```
+
+A ring filled to `progress`, with `value` in the middle and `label` under it.
+`value` is your own words for it ("72%", "3 of 8"), because only the module
+knows what the number is of. `tone` is optional and colours the ring as it does
+a row's circle; without one the ring is the theme's accent. It is the one large
+reading a module may draw, so its words are never bigger than a clock's may be,
+and get smaller to stay inside a small ring. An e-paper panel draws the label and
+value as one line with a bar under it.
+
 ### `stat` and `tiles` — accepted, drawn as rows
 
 ```json
@@ -144,6 +181,7 @@ against the event text. If you are writing a module now, send `readings`.
 | `title`, `label`, `value`, `caption` | 60 characters |
 | `glyph` | a key from the list above; anything else is dropped |
 | `tone` | `active`, `alert` or `idle`; anything else is rejected |
+| `progress` | a number from 0 to 100; anything else is rejected |
 | `text` | 280 characters |
 | `items` | 1–12 rows |
 

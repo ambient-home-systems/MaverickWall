@@ -11756,6 +11756,38 @@ example is parsed by `module-docs.test.ts`. Eight mutations were checked and
 all eight are red. Two failed to build on the first try and were re-aimed so
 they built.
 
+**A module can say how far along something is (plan item M7.3).** Two shapes.
+A `readings` or `tiles` row may carry `progress`, a number from 0 to 100
+refused outside it rather than clamped. The wall draws it as a bar along the
+row's foot, absolutely placed inside the row's own padding, so a row with a bar
+is exactly as tall as one without. It is in the row's tone where it has one
+and the accent where not. A new `gauge` panel is one ring wound to its
+`progress`, with the module's own words for it in the middle and its label
+under it. The ring is an SVG circle whose dash is the full share of its
+circumference, drawn from twelve o'clock. Its box is a container, so the words
+are sized from the ring's own shorter side: the least of the clock's cap
+against the event text (D1), a quarter of the ring, and `110cqmin` over the
+value's length, so a long value gets smaller rather than crossing the ring. A
+panel draws the gauge as "label: value" and a bar outlined to the box and
+filled to the number; a row's progress is not drawn there, since its value
+already says it. Rings on rows were not built: the row's tone circle already
+says its state. Recipes cannot produce a number yet, so neither shape is open
+to them until M7.7.
+
+**Measured.** `browser-module-tone.test.ts` grew one test on the same real
+wall: each bar's drawn width over its track is its number, the fill is the
+row's state colour or the accent, every row is one height with bars or
+without, and two gauges — "72%" and "3 of 8 rooms done" — are wound to their
+numbers, in their tone or the accent, with words no larger than 1.8 times the
+event role, wholly inside the ring's inner edge, and the long one smaller.
+`panel-data.test.ts` and the display's `panel.test.ts` gain two each, and
+`epaper-proportional.test.ts` two: a row's progress leaves the frame
+unchanged, and the gauge's fill grows in proportion and is a real bar.
+Ten mutations were checked and all ten are red. One was green at first: with
+the panel's gauge drawing removed, the fallback printed the panel's fields,
+and the ink counts happened to land in range; the test now looks for the
+bar's full-width rows.
+
 ---
 
 ## Open decisions

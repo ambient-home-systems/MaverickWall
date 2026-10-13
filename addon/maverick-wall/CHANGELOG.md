@@ -58,6 +58,13 @@ thing's name instead. It now shows your sentence, with what it is about under
 it — "The freezer door is open", then "Freezer door · Open". Weather warnings
 keep the warning's own words.
 
+**A module can show how far along something is.** A module's row may carry a
+percentage, drawn as a thin bar along the bottom of the row that makes it no
+taller. A module may also show one reading as a ring, filled to its number,
+with its words in the middle, which are never bigger than a clock's. An e-paper
+panel draws a ring as its words with a bar under them. The module guide shows
+how.
+
 **A module's rows can say what they are doing.** A module may now mark each
 row `active`, `alert` or `idle`, and the wall draws that row's picture in a
 coloured circle, as a Home Assistant tile does, in your theme's own colours.

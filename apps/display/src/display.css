@@ -5057,6 +5057,91 @@ img.wxi { display: block; object-fit: contain; }
  * third-party module sending either never goes blank on upgrade (rule nine).
  */
 .gp-text { font-size: 2rem; color: var(--ink); line-height: 1.4; }
+/*
+ * A row's progress (plan item M7.3): a bar along its foot, inside the row's own
+ * padding and out of flow, so a row with a bar is exactly as tall as one
+ * without. In the row's tone where it has one, and the accent where it does
+ * not; the track is the hairline's colour.
+ */
+.gp-reading.gp-has-bar { position: relative; }
+.gp-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0.1em;
+  height: 0.16em;
+  border-radius: 0.08em;
+  background: var(--rule);
+  overflow: hidden;
+}
+.gp-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: inherit;
+  background: var(--gp-tone, var(--accent));
+}
+/*
+ * The gauge (plan item M7.3). The ring takes the room left over the label and
+ * is a container, so the words in it are sized from the ring's own shorter
+ * side and capped at the clock's cap against the event text (decision D1):
+ * the largest thing a module may draw is never larger than a clock may be.
+ */
+.gp.gp-gauge { height: 100%; }
+.gp-dial {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: var(--s2);
+}
+.gp-dial[data-tone="active"] {
+  --gp-tone: var(--state-active);
+}
+.gp-dial[data-tone="alert"] {
+  --gp-tone: var(--state-alert);
+}
+.gp-dial[data-tone="idle"] {
+  --gp-tone: var(--state-idle);
+}
+.gp-ring {
+  position: relative;
+  flex: 1 1 auto;
+  align-self: stretch;
+  min-height: 0;
+  container-type: size;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.gp-ring svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+.gp-ring-track { fill: none; stroke: var(--rule); stroke-width: 9; }
+.gp-ring-fill { fill: none; stroke: var(--gp-tone, var(--accent)); stroke-width: 9; stroke-linecap: round; }
+.gp-gauge-value {
+  position: relative;
+  /* The clock's cap, a quarter of the ring, or what the value's length leaves
+     inside it, whichever is least. */
+  font-size: min(var(--t-wall-clock, calc(var(--t-event) * 1.8)), 24cqmin, calc(110cqmin / var(--gp-chars, 4)));
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.15;
+  white-space: nowrap;
+}
+.gp-gauge-label {
+  font-size: var(--t-wall-event, 2rem);
+  color: var(--muted);
+  line-height: 1.15;
+  text-align: center;
+  overflow-wrap: break-word;
+}
 
 /*
  * The motion fixture's still frame (plan P4.3) — a dot and a bar, positioned
