@@ -58,6 +58,13 @@ thing's name instead. It now shows your sentence, with what it is about under
 it — "The freezer door is open", then "Freezer door · Open". Weather warnings
 keep the warning's own words.
 
+**A module can draw a line of numbers, or a small table.** A module's row may
+carry a short run of numbers, drawn as a little line at the end of the row, with
+every row's value still ending at one edge. A module may also show a table of up
+to four columns and twelve rows: the columns line up, a long entry wraps rather
+than being cut, and a box too short for every row shows the rows it has room
+for. An e-paper panel draws both. The module guide shows how.
+
 **A module can show how far along something is.** A module's row may carry a
 percentage, drawn as a thin bar along the bottom of the row that makes it no
 taller. A module may also show one reading as a ring, filled to its number,

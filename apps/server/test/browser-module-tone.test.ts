@@ -14,6 +14,11 @@
  * tone or the accent, and costs the row no height; a gauge's ring is wound to
  * its number, and the words in it are never larger than a clock may be and
  * stay inside the ring.
+ *
+ * And series and tables (plan item M7.4): a row's line of numbers sits in one
+ * slot at the end of every row once any row has one, so values end at one
+ * edge; a table's cells line up in fixed columns, a long cell wraps rather than
+ * being cut, and a box too short for every row gives up whole rows.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -25,6 +30,7 @@ import {
   type Installation,
 } from './browser-harness.js';
 import { createExternalModule } from '../src/api/external-modules.js';
+import { panelDataSchema } from '../src/modules/external/panel-data.js';
 import { readLayoutWidgets } from '../src/api/queries.js';
 
 process.env['TZ'] = 'UTC';
@@ -38,7 +44,7 @@ const PANEL = {
   items: [
     { label: 'Sprinkler', value: 'Running', glyph: 'switch', tone: 'active', progress: 45 },
     { label: 'Shed door', value: 'Open', glyph: 'door', tone: 'alert' },
-    { label: 'Soil', value: 'Damp', glyph: 'moisture', tone: 'idle' },
+    { label: 'Soil', value: 'Damp', glyph: 'moisture', tone: 'idle', series: [30, 32, null, 35, 33, 31] },
     { label: 'Pond', value: 'Full', tone: 'alert' },
     { label: 'Gate', value: 'Shut', glyph: 'door' },
     { label: 'Backup', value: 'Done', progress: 100 },
@@ -47,11 +53,30 @@ const PANEL = {
 
 const GAUGE = { kind: 'gauge', title: 'Water butt', label: 'Full', value: '72%', progress: 72, tone: 'idle' };
 const LONG = { kind: 'gauge', label: 'Rooms tidied', value: '3 of 8 rooms done', progress: 37.5 };
+const TRAINS = {
+  kind: 'table',
+  title: 'Trains',
+  columns: ['To', 'Due', 'Platform'],
+  rows: [
+    ['London Bridge via Redhill and Croydon', '08:12', '2'],
+    ['Brighton', '08:20', '1'],
+    ['Lewes', '08:31', '4'],
+  ],
+};
+const MANY = {
+  kind: 'table',
+  columns: ['Bin', 'Day'],
+  rows: Array.from({ length: 12 }, (_, i) => [`Bin ${i + 1}`, 'Tuesday']),
+};
 
 let wall: Installation;
 let link: string;
 
 beforeAll(async () => {
+  // Every panel here is written straight to the store, past the poll that
+  // would have refused it — so each is held to the schema first, or a fixture
+  // the server would never accept could pass for a wall drawing it.
+  for (const panel of [PANEL, GAUGE, LONG, TRAINS, MANY]) panelDataSchema.parse(panel);
   wall = await install({});
   equipHousehold(wall.db, wall.now());
   createExternalModule(wall.db, { id: 'garden', url: 'http://127.0.0.1:1', name: 'Garden' });
@@ -64,6 +89,14 @@ beforeAll(async () => {
     JSON.stringify(GAUGE),
     wall.now(),
   );
+  for (const [id, panel] of [['trains', TRAINS], ['many', MANY]] as const) {
+    createExternalModule(wall.db, { id, url: 'http://127.0.0.1:1', name: id });
+    wall.db.prepare(`UPDATE external_modules SET panel = ?, last_polled_at = ? WHERE id = ?`).run(
+      JSON.stringify(panel),
+      wall.now(),
+      id,
+    );
+  }
   createExternalModule(wall.db, { id: 'rooms', url: 'http://127.0.0.1:1', name: 'Rooms' });
   wall.db.prepare(`UPDATE external_modules SET panel = ?, last_polled_at = ? WHERE id = 'rooms'`).run(
     JSON.stringify(LONG),
@@ -88,6 +121,8 @@ beforeAll(async () => {
     { id: 'garden-box', type: 'external', x: 0.05, y: 0.05, w: 0.6, h: 0.3, z: 100, config: { module: 'garden' } },
     { id: 'butt-box', type: 'external', x: 0.68, y: 0.05, w: 0.28, h: 0.2, z: 101, config: { module: 'butt' } },
     { id: 'rooms-box', type: 'external', x: 0.68, y: 0.27, w: 0.28, h: 0.2, z: 102, config: { module: 'rooms' } },
+    { id: 'trains-box', type: 'external', x: 0.05, y: 0.37, w: 0.6, h: 0.22, z: 103, config: { module: 'trains' } },
+    { id: 'many-box', type: 'external', x: 0.68, y: 0.49, w: 0.28, h: 0.1, z: 104, config: { module: 'many' } },
   ];
   const saved = await wall.call('/admin/layout', {
     method: 'POST',
@@ -305,6 +340,108 @@ describe('a module row’s tone on the wall', () => {
         // The long one is smaller for being long, rather than cut.
         expect(read.rooms.valueText).toBe('3 of 8 rooms done');
         expect(read.rooms.valuePx).toBeLessThan(read.butt.valuePx);
+      } finally {
+        await opened.close();
+      }
+    },
+    SLOW,
+  );
+
+  it(
+    'puts a row’s line in one slot on every row, lines a table’s cells up, and gives up whole table rows',
+    async () => {
+      const opened = await loadWallSettled(link, PORTRAIT);
+      try {
+        const read = await opened.page.evaluate(() => {
+          const box = (id: string): HTMLElement => {
+            const found = document.querySelector<HTMLElement>(`#wall .canvas .fw[data-widget-id="${id}"]`);
+            if (found === null) throw new Error(`no box ${id}`);
+            return found;
+          };
+          const garden = box('garden-box');
+          const rows = Array.from(garden.querySelectorAll<HTMLElement>('.gp-reading')).map((row) => {
+            const spark = row.querySelector<HTMLElement>('.gp-spark');
+            const value = row.querySelector<HTMLElement>('.gp-value');
+            const rect = spark?.getBoundingClientRect();
+            return {
+              label: row.querySelector('.gp-label')?.textContent ?? '',
+              slot: rect === undefined ? null : { left: rect.left, width: rect.width },
+              line: spark?.querySelector('polyline') !== null && spark?.querySelector('polyline') !== undefined,
+              lines: spark?.querySelectorAll('polyline').length ?? 0,
+              valueRight: value?.getBoundingClientRect().right ?? 0,
+            };
+          });
+          const tableIn = (id: string) => {
+            const host = box(id);
+            const hostRect = host.getBoundingClientRect();
+            const lines = Array.from(host.querySelectorAll<HTMLElement>('.gp-thead, .gp-trow'));
+            return {
+              cells: lines
+                .filter((line) => getComputedStyle(line).display !== 'none')
+                .map((line) =>
+                  Array.from(line.querySelectorAll<HTMLElement>('.gp-cell')).map((cell) => {
+                    const r = cell.getBoundingClientRect();
+                    return {
+                      text: cell.textContent ?? '',
+                      left: r.left,
+                      right: r.right,
+                      width: r.width,
+                      height: r.height,
+                      cut: cell.scrollWidth > cell.clientWidth + 1,
+                    };
+                  }),
+                ),
+              hidden: lines.filter((line) => getComputedStyle(line).display === 'none').length,
+              overflow: lines
+                .filter((line) => getComputedStyle(line).display !== 'none')
+                .some((line) => line.getBoundingClientRect().bottom > hostRect.bottom + 0.5),
+              total: lines.length,
+            };
+          };
+          return { rows, trains: tableIn('trains-box'), many: tableIn('many-box') };
+        });
+
+        // One slot of one width on every row, once any row has a line.
+        expect(read.rows.every((row) => row.slot !== null)).toBe(true);
+        const lefts = read.rows.map((row) => Math.round(row.slot?.left ?? 0));
+        const widths = read.rows.map((row) => Math.round(row.slot?.width ?? 0));
+        expect(new Set(lefts).size).toBe(1);
+        expect(new Set(widths).size).toBe(1);
+        expect(widths[0]).toBeGreaterThan(0);
+        // Values end at one edge.
+        expect(Math.max(...read.rows.map((r) => r.valueRight)) - Math.min(...read.rows.map((r) => r.valueRight))).toBeLessThan(1);
+        // The soil's line, broken at its gap into two runs, and no line where none was sent.
+        const soil = read.rows.find((row) => row.label === 'Soil');
+        expect(soil?.lines).toBe(2);
+        expect(read.rows.find((row) => row.label === 'Gate')?.lines).toBe(0);
+
+        // The table: a heading and three rows, every cell of a column at one edge.
+        expect(read.trains.cells.map((line) => line.map((cell) => cell.text))).toEqual([
+          ['To', 'Due', 'Platform'],
+          ['London Bridge via Redhill and Croydon', '08:12', '2'],
+          ['Brighton', '08:20', '1'],
+          ['Lewes', '08:31', '4'],
+        ]);
+        for (let column = 0; column < 3; column++) {
+          const lefts = read.trains.cells.map((line) => Math.round(line[column]?.left ?? 0));
+          const rights = read.trains.cells.map((line) => Math.round(line[column]?.right ?? 0));
+          expect(new Set(lefts).size).toBe(1);
+          expect(new Set(rights).size).toBe(1);
+        }
+        // The first column twice each of the others.
+        const [first, second, third] = read.trains.cells[1] ?? [];
+        expect((first?.width ?? 0) / (second?.width ?? 1)).toBeCloseTo(2, 0);
+        expect(second?.width).toBeCloseTo(third?.width ?? 0, 0);
+        // The long cell wrapped whole rather than being cut.
+        const long = read.trains.cells[1]?.[0];
+        expect(long?.cut).toBe(false);
+        expect(long?.height ?? 0).toBeGreaterThan((read.trains.cells[2]?.[0]?.height ?? 0) * 1.5);
+
+        // A box too short for twelve rows gives up whole rows: some hidden, and
+        // none of those it draws past its foot.
+        expect(read.many.hidden).toBeGreaterThan(0);
+        expect(read.many.cells.length).toBeGreaterThan(1);
+        expect(read.many.overflow).toBe(false);
       } finally {
         await opened.close();
       }

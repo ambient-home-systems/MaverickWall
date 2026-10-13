@@ -84,4 +84,26 @@ describe('panelDataSchema', () => {
     expect(panelDataSchema.safeParse({ ...gauge, colour: '#f00' }).success).toBe(false);
     expect(panelDataSchema.safeParse({ ...gauge, label: undefined }).success).toBe(false);
   });
+
+  it('keeps a row’s series of 2 to 48 numbers or gaps, and refuses any other (M7.4)', () => {
+    const row = { label: 'Temp', value: '21', series: [18, null, 21] };
+    expect(panelDataSchema.parse({ kind: 'readings', items: [row] })).toEqual({ kind: 'readings', items: [row] });
+    for (const series of [[1], Array.from({ length: 49 }, () => 1), [1, Number.NaN], [1, Number.POSITIVE_INFINITY], [1, '2'], 'up']) {
+      expect(panelDataSchema.safeParse({ kind: 'readings', items: [{ label: 'a', value: 'b', series }] }).success).toBe(false);
+    }
+    expect(panelDataSchema.safeParse({ kind: 'tiles', items: [{ label: 'a', value: 'b', series: [1, 2] }] }).success).toBe(true);
+  });
+
+  it('accepts a table with one cell per column, and refuses a ragged, empty or oversized one (M7.4)', () => {
+    const table = { kind: 'table', title: 'Trains', columns: ['To', 'Due'], rows: [['Brighton', '08:20'], ['London', '08:12']] };
+    expect(panelDataSchema.parse(table)).toEqual(table);
+    expect(panelDataSchema.safeParse({ ...table, rows: [['Brighton']] }).success).toBe(false);
+    expect(panelDataSchema.safeParse({ ...table, rows: [['Brighton', '08:20', '2']] }).success).toBe(false);
+    expect(panelDataSchema.safeParse({ ...table, rows: [] }).success).toBe(false);
+    expect(panelDataSchema.safeParse({ ...table, columns: [] }).success).toBe(false);
+    expect(panelDataSchema.safeParse({ ...table, columns: ['a', 'b', 'c', 'd', 'e'], rows: [['1', '2', '3', '4', '5']] }).success).toBe(false);
+    expect(panelDataSchema.safeParse({ ...table, rows: Array.from({ length: 13 }, () => ['a', 'b']) }).success).toBe(false);
+    expect(panelDataSchema.safeParse({ ...table, rows: [['x'.repeat(41), 'b']] }).success).toBe(false);
+    expect(panelDataSchema.safeParse({ ...table, rows: [['a', 2]] }).success).toBe(false);
+  });
 });

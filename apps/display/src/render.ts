@@ -1541,7 +1541,13 @@ function sparklineOn(config: unknown): boolean {
  * stroke. Its words are for a screen reader: the least and the most, which is
  * what the line is a picture of.
  */
-function sparkNode(series: readonly (number | null)[] | undefined, className: string): HTMLElement {
+function sparkNode(
+  series: readonly (number | null)[] | undefined,
+  className: string,
+  // What a screen reader is told the line runs from: a Home Assistant
+  // reading's line is its last day, and a module's is whatever it sent.
+  lead = 'The last day: from',
+): HTMLElement {
   const box = el('span', `spark ${className}`);
   box.setAttribute('data-field', 'spark');
   const heights = sparkHeights(series);
@@ -1553,7 +1559,7 @@ function sparkNode(series: readonly (number | null)[] | undefined, className: st
   box.setAttribute('role', 'img');
   box.setAttribute(
     'aria-label',
-    `The last day: from ${Math.min(...numbers)} to ${Math.max(...numbers)}`,
+    `${lead} ${Math.min(...numbers)} to ${Math.max(...numbers)}`,
   );
   const ns = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(ns, 'svg');
@@ -4288,6 +4294,12 @@ export function renderGenericPanel(data: PanelData, rows?: number): HTMLElement 
           ? [{ label: data.caption ?? '', value: data.value }]
           : data.items;
     const list = el('div', 'gp-readings');
+    /*
+     * A line of numbers (plan item M7.4) sits in a slot of one width at the
+     * end of every row once any row has one, so every row's value ends at one
+     * edge and a row whose module sent no numbers this time keeps its place.
+     */
+    const anySeries = items.some((item) => item.series !== undefined);
     for (const reading of take(items)) {
       const row = el('div', 'gp-reading');
       /*
@@ -4310,6 +4322,9 @@ export function renderGenericPanel(data: PanelData, rows?: number): HTMLElement 
       }
       row.appendChild(el('span', 'gp-label', reading.label));
       row.appendChild(el('span', 'gp-value', reading.value));
+      if (anySeries) {
+        row.appendChild(sparkNode(reading.series, 'gp-spark', 'From'));
+      }
       /*
        * How far along (plan item M7.3): a bar along the row's foot, in the
        * row's own padding and out of flow, so it costs the row no height and
@@ -4328,10 +4343,43 @@ export function renderGenericPanel(data: PanelData, rows?: number): HTMLElement 
     section.appendChild(list);
   } else if (data.kind === 'gauge') {
     section.appendChild(gaugeNode(data));
+  } else if (data.kind === 'table') {
+    section.appendChild(tableNode(data, rows));
   } else {
     section.appendChild(el('div', 'gp-text', data.text));
   }
   return section;
+}
+
+/**
+ * A module's small table (plan item M7.4): a heading row of the column names,
+ * then one row per row of cells, each row a grid of the same fixed columns —
+ * the first twice the share of the others, since it is usually what the row is
+ * about — so every row's cells line up without the table measuring anything.
+ * Rows are whole things: the belt gives up a row the box has no room for,
+ * never part of one, and a cell that is too long wraps at a word.
+ */
+function tableNode(data: Extract<PanelData, { kind: 'table' }>, rows?: number): HTMLElement {
+  const table = el('div', 'gp-table');
+  table.setAttribute('role', 'table');
+  table.style.setProperty(
+    '--gp-template',
+    ['minmax(0, 2fr)', ...data.columns.slice(1).map(() => 'minmax(0, 1fr)')].join(' '),
+  );
+  const row = (cells: readonly string[], cls: string, role: string): HTMLElement => {
+    const line = el('div', cls);
+    line.setAttribute('role', 'row');
+    for (const cell of cells) {
+      const node = el('span', 'gp-cell', cell);
+      node.setAttribute('role', role);
+      line.appendChild(node);
+    }
+    return line;
+  };
+  table.appendChild(row(data.columns, 'gp-thead', 'columnheader'));
+  const body = rows === undefined ? data.rows : data.rows.slice(0, rows);
+  for (const cells of body) table.appendChild(row(cells, 'gp-trow', 'cell'));
+  return table;
 }
 
 /** The ring's radius on its 100-unit square, and the length of its whole circumference. */
@@ -5442,6 +5490,7 @@ function beltItems(box: HTMLElement, items: readonly HTMLElement[]): void {
  */
 function beltGenericRows(entry: TieredWidget): void {
   beltItems(entry.box, [...entry.box.querySelectorAll('.gp-reading')] as HTMLElement[]);
+  beltItems(entry.box, [...entry.box.querySelectorAll('.gp-trow')] as HTMLElement[]);
 }
 
 /** Swap a widget's drawn body, keeping its title wrapper if it has one. */

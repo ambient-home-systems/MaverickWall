@@ -130,6 +130,27 @@ says, so write the number there too if it should be read. An e-paper panel draws
 the row's line and not the bar. A number below 0 or above 100 is a rejected
 panel, never a bar drawn past its end.
 
+#### A row's `series`
+
+A row may carry a short run of numbers, oldest first, with `series`: from 2 to
+48 of them, and `null` for a gap.
+
+```json
+{
+  "kind": "readings",
+  "title": "Greenhouse",
+  "items": [
+    { "label": "Temperature", "value": "21°", "series": [18, 18.5, 19, null, 20, 21] },
+    { "label": "Humidity", "value": "64%" }
+  ]
+}
+```
+
+The wall draws it as a sparkline in a slot at the end of the row. Once any row
+has one, every row gets the slot, so the values still line up. The line breaks
+at a gap. An e-paper panel draws the same line in one bit. A number that is not
+finite, or a run shorter than 2 or longer than 48, is a rejected panel.
+
 ### `gauge` — one reading as a ring
 
 ```json
@@ -143,6 +164,26 @@ a row's circle; without one the ring is the theme's accent. It is the one large
 reading a module may draw, so its words are never bigger than a clock's may be,
 and get smaller to stay inside a small ring. An e-paper panel draws the label and
 value as one line with a bar under it.
+
+### `table` — a few rows of a few columns
+
+```json
+{
+  "kind": "table",
+  "title": "Trains",
+  "columns": ["To", "Due", "Platform"],
+  "rows": [
+    ["London Bridge", "08:12", "2"],
+    ["Brighton", "08:20", "1"]
+  ]
+}
+```
+
+One to four `columns` and up to twelve `rows`, each row exactly one cell per
+column. The first column gets twice the room of each of the others, and the
+others line up on their right edge. A box too short for every row draws the rows
+it has room for, never half of one. A long cell wraps at a word on the wall, and
+is cut to its column on an e-paper panel.
 
 ### `stat` and `tiles` — accepted, drawn as rows
 
@@ -182,6 +223,9 @@ against the event text. If you are writing a module now, send `readings`.
 | `glyph` | a key from the list above; anything else is dropped |
 | `tone` | `active`, `alert` or `idle`; anything else is rejected |
 | `progress` | a number from 0 to 100; anything else is rejected |
+| `series` | 2–48 finite numbers or `null` |
+| `columns` | 1–4, 24 characters each |
+| `rows` (table) | 1–12, one cell per column, 40 characters each |
 | `text` | 280 characters |
 | `items` | 1–12 rows |
 

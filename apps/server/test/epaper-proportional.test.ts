@@ -1015,3 +1015,58 @@ describe('a module’s progress and gauge on a panel (plan item M7.3)', () => {
     expect(at(50)).not.toBe(panelFrame({ kind: 'gauge', label: 'Empty', value: '72%', progress: 50 }));
   });
 });
+
+describe('a module’s series and table on a panel (plan item M7.4)', () => {
+  const panelFrame = (panel: unknown, h = 0.4): string => {
+    const manifest = {
+      ...WIDGET_MANIFEST,
+      panels: { ...WIDGET_MANIFEST.panels, garden: panel },
+    } as unknown as Manifest;
+    const widget: PlacedEpaperWidget = {
+      type: 'external', x: 0.05, y: 0.05, w: 0.9, h, z: 0, config: { module: 'garden' },
+    };
+    return bitString(renderFreeformEpaper(buildEpaperModel(manifest), manifest, [widget], { width: 800, height: 480 }));
+  };
+  /** Ink in a column band of the frame, from `x0` to `x1`. */
+  const inkBetween = (frame: string, x0: number, x1: number): number => {
+    let ink = 0;
+    for (let y = 0; y < 480; y++) for (let x = x0; x < x1; x++) if (frame[y * 800 + x] === '1') ink++;
+    return ink;
+  };
+
+  it('draws a row’s line at the right of the box, and the line follows the numbers', () => {
+    const rows = (series: number[] | undefined) => ({
+      kind: 'readings',
+      items: [{ label: 'Temp', value: '21', ...(series === undefined ? {} : { series }) }, { label: 'Wind', value: '3' }],
+    });
+    const plain = panelFrame(rows(undefined));
+    const rising = panelFrame(rows([1, 2, 3, 4, 5, 6]));
+    const falling = panelFrame(rows([6, 5, 4, 3, 2, 1]));
+    // More in the right-hand slot with a line than without, and a different
+    // line for different numbers.
+    const slot = [Math.round(0.05 * 800 + 0.9 * 800) - 80, Math.round(0.05 * 800 + 0.9 * 800) - 4] as const;
+    // The widget's own border crosses the slot, so the line is what the
+    // slot holds over and above the plain frame's.
+    expect(inkBetween(rising, ...slot) - inkBetween(plain, ...slot)).toBeGreaterThan(20);
+    expect(rising).not.toBe(falling);
+  });
+
+  it('leaves a panel whose rows send no numbers exactly as it was', () => {
+    const items = [{ label: 'Temp', value: '21' }, { label: 'Wind', value: '3' }];
+    expect(panelFrame({ kind: 'readings', items })).toBe(panelFrame({ items }));
+  });
+
+  it('draws a table as columns, each cell at its own column’s edge, not a dump of the panel', () => {
+    const table = { kind: 'table', columns: ['To', 'Due'], rows: [['Brighton', '08:20'], ['London', '08:12']] };
+    const frame = panelFrame(table);
+    const left = Math.round(0.05 * 800);
+    const width = Math.round(0.9 * 800);
+    // The second column starts two thirds of the way across, as on the wall:
+    // ink both before and after that edge, and none in the gap before it.
+    const edge = left + Math.floor((width * 2) / 3);
+    expect(inkBetween(frame, left, edge - 30)).toBeGreaterThan(0);
+    expect(inkBetween(frame, edge, left + width)).toBeGreaterThan(0);
+    expect(frame).not.toBe(panelFrame({ ...table, rows: [['Lewes', '09:01'], ['London', '08:12']] }));
+    expect(frame).not.toBe(panelFrame({ ...table, columns: ['To', 'Platform'] }));
+  });
+});
