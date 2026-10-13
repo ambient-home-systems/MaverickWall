@@ -89,7 +89,7 @@ import { haActBody, operate, valueFor } from '../modules/homeassistant/control.j
 import { pressWebhook } from '../modules/webhooks/index.js';
 import { activeOn, localToday, readChores, setChoreDone } from '../api/chores.js';
 import { evaluateInterrupts } from '@maverick-wall/core';
-import { NOTIFICATIONS_BLOCK, bannersOf, tileFor, tilesOf } from '../api/notifications.js';
+import { NOTIFICATIONS_BLOCK, bannersOf, inHouseholdWords, tileFor, tilesOf } from '../api/notifications.js';
 import { dismissInterrupt, readDismissals, readRules } from '../api/rules.js';
 import { createLogBuffer, type LogBuffer } from '../logbuffer.js';
 import {
@@ -1626,7 +1626,7 @@ export function createApp(deps: AppDeps): Hono {
       // says so (plan items M6.4, M6.5, M6.7).
       conditions: readConditions(deps.db, at),
       // A takeover's camera travels only while it is one this house still has.
-      interrupts: withTakeoverCameras(bannersOf(firing), new Set(cameraHandles(deps.db))),
+      interrupts: withTakeoverCameras(inHouseholdWords(bannersOf(firing), rules), new Set(cameraHandles(deps.db))),
       screen: {
         orientation: screenLike.orientation,
         rotation: screenLike.rotation,

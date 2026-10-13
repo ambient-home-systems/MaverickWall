@@ -52,6 +52,12 @@ once it stops — the door closes, or the reading comes back under the line —
 so the next time covers the wall again. A reading that only moves further over
 the line does not bring it back, and nor does Home Assistant restarting.
 
+**A Home Assistant alert says what you wrote.** The rule form's "What to say"
+promised the sentence the wall shows, and a banner or a takeover showed the
+thing's name instead. It now shows your sentence, with what it is about under
+it — "The freezer door is open", then "Freezer door · Open". Weather warnings
+keep the warning's own words.
+
 **See who is trying to sign in, and let a locked address back in.** System ›
 Lockouts lists the recent sign-in attempts — where each came from and what
 happened, never the email address typed — and anything currently told to

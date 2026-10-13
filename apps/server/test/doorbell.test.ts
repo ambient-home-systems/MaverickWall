@@ -292,7 +292,9 @@ describe('a ring', () => {
     const [shown] = await h.interrupts();
     expect(shown).toMatchObject({
       action: 'takeover',
-      title: 'Front door ring',
+      // The rule's own sentence, with the doorbell's name under it.
+      title: 'Somebody at the door',
+      headline: 'Front door ring',
       camera: h.handle,
       until: h.at + 60_000,
     });

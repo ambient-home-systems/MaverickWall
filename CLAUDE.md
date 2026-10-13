@@ -11648,8 +11648,8 @@ until the door closes. Measured rather than read: with a banner rule on a
 freezer door, an OK, the door closed, then opened again an hour later, the
 wall shows nothing. Only `pruneDismissals` deletes an acknowledgement, and
 only the NWS job calls it. A held rule is the only kind this change fixes
-that for. *(The second is fixed now; the paragraph after the measurements
-says how.)*
+that for. *(Both are fixed now. The second is the paragraph after the
+measurements; the first is the one after that.)*
 
 **Measured.** `doorbell.test.ts` (9) runs the real app, a real
 poll of the stand-in house and a clock the test moves.
@@ -11713,6 +11713,22 @@ delete's own `AND source = ?` could never matter, since the key is unique and
 only this source's keys are read, so it is gone, and the read's scope is what
 is mutated. An overlapped mutation run also restored one file over another;
 it was caught by `git diff --stat` before anything was measured on it.
+
+**And a Home Assistant alert says the household's sentence.** That was the
+first finding above: the form asks "What to say" and calls it the sentence
+the wall shows, and an interrupt was titled with its signal's words, which for
+an entity is its name. A tile already said the rule's sentence with "Freezer
+door · Open" under it (M6.11); `inHouseholdWords` in `api/notifications.ts`
+does the same for the banners and takeovers the manifest sends, beside
+`bannersOf`. Only Home Assistant's rules: a weather rule's name is a rung of
+the ladder ("Severe warnings") and the warning's own name is what a wall
+should say, and a calendar reminder's is the event's. A rule with no sentence,
+or one that already says the thing's name, is left as it was. The push hub's
+fingerprint reads the evaluator's own title rather than the manifest's, so it
+changes nothing there. `rule-words.test.ts` (4) holds the rule; the
+end-to-end assertions in `homeassistant.test.ts`, `doorbell.test.ts` and
+`browser-doorbell.test.ts` that pinned the old words now read the sentence.
+Four mutations were checked and all four are red.
 
 ---
 

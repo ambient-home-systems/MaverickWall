@@ -1170,10 +1170,11 @@ describe('interrupts', () => {
     expect(manifest.interrupts).toHaveLength(1);
     expect(manifest.interrupts[0]?.action).toBe('banner');
     expect(manifest.interrupts[0]?.source).toBe('homeassistant');
-    // The entity's own name, and the state said the way a person would say it
+    // The household's own sentence leads, as the form says it will; under it
+    // the entity's own name and the state said the way a person would say it,
     // rather than the way Home Assistant reports it.
-    expect(manifest.interrupts[0]?.title).toBe('Freezer door');
-    expect(manifest.interrupts[0]?.headline).toBe('Open');
+    expect(manifest.interrupts[0]?.title).toBe('Freezer door open');
+    expect(manifest.interrupts[0]?.headline).toBe('Freezer door · Open');
   });
 
   it('does not fire before the wait is up', async () => {

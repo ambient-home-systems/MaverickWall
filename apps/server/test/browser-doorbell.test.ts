@@ -144,7 +144,7 @@ describe('a doorbell on a wall', () => {
         expect(left).toBeGreaterThan(40_000);
         const up = await facts(page);
         expect(up.takeover).toBe(true);
-        expect(up.words).toBe('Front door');
+        expect(up.words).toBe('Somebody at the door');
         expect(up.layerShown).toBe(true);
         // The picture covers the takeover's own box, exactly, and stops above the OK.
         expect(up.picture).toEqual(up.box);
