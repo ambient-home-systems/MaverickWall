@@ -1824,6 +1824,19 @@ export const interruptRules = sqliteTable(
     dismissible: integer('dismissible', { mode: 'boolean' }).notNull().default(true),
     /** Come back this long after a dismissal. Null means stay dismissed. */
     reassertAfterSec: integer('reassert_after_sec', { mode: 'number' }),
+    /**
+     * How long it stays once it fires, in seconds (plan item M6.3): a doorbell
+     * rings for a second and the wall shows the door for a minute. Null is a
+     * rule that is there while its signal is true, which is every rule before
+     * this existed.
+     */
+    holdSec: integer('hold_sec', { mode: 'number' }),
+    /**
+     * The camera a takeover shows (M6.3), by the handle Home Assistant ›
+     * Cameras minted for it, never its entity id. A camera removed since is
+     * simply no camera: the takeover still says what happened.
+     */
+    camera: text('camera'),
 
     ...timestamps,
   },
@@ -2154,6 +2167,18 @@ export const haConditionStates = sqliteTable('ha_condition_states', {
   /** Home Assistant's own `last_changed`, so a pulse is timed from the change and not from our poll. */
   changedAt: integer('changed_at', { mode: 'number' }).notNull(),
   readAt: integer('read_at', { mode: 'number' }).notNull(),
+  /**
+   * Home Assistant's name for it (plan item M6.3): a doorbell rule says what
+   * rang, and an `event` entity is never a reading with a label of its own.
+   */
+  friendlyName: text('friendly_name'),
+  /**
+   * When our poll first saw it in this state (plan item M6.3). Home
+   * Assistant's own instant is when it rang; this is when we heard, up to a
+   * poll later. A doorbell held for a minute is held from whichever is later,
+   * so a ring the poll caught thirty seconds late still shows for its minute.
+   */
+  noticedAt: integer('noticed_at', { mode: 'number' }),
 });
 
 /**

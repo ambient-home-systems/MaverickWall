@@ -1,4 +1,5 @@
 import type { SqliteDatabase } from '../../db/open.js';
+import type { Signal } from '@maverick-wall/core';
 import { z } from '../../validation.js';
 import {
   CONDITION_ENTITY_PATTERN,
@@ -30,6 +31,32 @@ export function conditionEntities(db: SqliteDatabase): Set<string> {
   for (const row of rows) {
     if (typeof row.entityId === 'string' && CONDITION_ENTITY_PATTERN.test(row.entityId)) found.add(row.entityId);
   }
+  for (const entityId of ruleMoments(db)) found.add(entityId);
+  return found;
+}
+
+/**
+ * The moments a "Tell me when…" rule names (plan item M6.3): a doorbell's
+ * `event` entity, a `button`, an `input_button`. None of them is a reading —
+ * a reading is a state somebody is in, and these are an instant — so the
+ * readings' poll never keeps them, and they are read here, beside the
+ * entities a widget is shown by, out of the same body. Enabled or not: a rule
+ * switched back on has its last ring to hand rather than none.
+ */
+export function ruleMoments(db: SqliteDatabase): Set<string> {
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT json_extract(conditions, '$.entityId') AS entityId FROM interrupt_rules
+        WHERE trigger IN ('homeassistant', 'ha_entity') AND json_valid(conditions)
+          AND json_extract(conditions, '$.entityId') IS NOT NULL`,
+    )
+    .all() as { entityId: unknown }[];
+  const found = new Set<string>();
+  for (const row of rows) {
+    if (typeof row.entityId === 'string' && CONDITION_ENTITY_PATTERN.test(row.entityId) && isMomentEntity(row.entityId)) {
+      found.add(row.entityId);
+    }
+  }
   return found;
 }
 
@@ -37,6 +64,7 @@ const stateRow = z.object({
   entity_id: z.string().max(255),
   state: z.string().max(255),
   last_changed: z.string().max(64).optional(),
+  attributes: z.looseObject({ friendly_name: z.string().max(255).optional().catch(undefined) }).optional().catch(undefined),
 });
 
 /** The wanted entities' readings in a `/api/states` body. A row of the wrong shape is skipped. */
@@ -58,7 +86,8 @@ export function readConditionStates(
     const row = stateRow.safeParse(item);
     if (!row.success || !wanted.has(row.data.entity_id)) continue;
     const reading = conditionReadingFrom(row.data, readAt);
-    if (reading !== undefined) found.set(row.data.entity_id, reading);
+    const name = row.data.attributes?.friendly_name;
+    if (reading !== undefined) found.set(row.data.entity_id, name === undefined ? reading : { ...reading, name });
   }
   return found;
 }
@@ -74,11 +103,18 @@ export function writeConditionStates(
   wanted: ReadonlySet<string>,
 ): void {
   const upsert = db.prepare(
-    `INSERT INTO ha_condition_states (entity_id, state, changed_at, read_at) VALUES (?, ?, ?, ?)
-       ON CONFLICT(entity_id) DO UPDATE SET state = excluded.state, changed_at = excluded.changed_at,
-         read_at = excluded.read_at`,
+    // `noticed_at` moves only when the state does: it is when we first heard.
+    `INSERT INTO ha_condition_states (entity_id, state, changed_at, read_at, friendly_name, noticed_at)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(entity_id) DO UPDATE SET
+         noticed_at = CASE WHEN ha_condition_states.state = excluded.state
+                           THEN ha_condition_states.noticed_at ELSE excluded.noticed_at END,
+         state = excluded.state, changed_at = excluded.changed_at,
+         read_at = excluded.read_at, friendly_name = excluded.friendly_name`,
   );
-  for (const [entityId, reading] of readings) upsert.run(entityId, reading.state, reading.changedAt, reading.readAt);
+  for (const [entityId, reading] of readings) {
+    upsert.run(entityId, reading.state, reading.changedAt, reading.readAt, reading.name ?? null, reading.readAt);
+  }
   const held = db.prepare('SELECT entity_id AS entityId FROM ha_condition_states').all() as { entityId: string }[];
   const drop = db.prepare('DELETE FROM ha_condition_states WHERE entity_id = ?');
   for (const row of held) if (!wanted.has(row.entityId)) drop.run(row.entityId);
@@ -169,4 +205,48 @@ export function conditionChoices(body: string): ConditionChoice[] {
     found.push({ id: row.data.entity_id, name: row.data.attributes?.friendly_name ?? row.data.entity_id, states, moment });
   }
   return found.sort((a, b) => a.name.localeCompare(b.name)).slice(0, 2000);
+}
+
+/**
+ * How late a ring may be heard and still count as news (plan item M6.3): a
+ * poll's interval and its lag, with room over. A ring first seen later than
+ * this — a server that has just started, a Home Assistant that has just come
+ * back — is history, and keeps its own instant, so it is already over.
+ */
+export const RING_HEARD_LATE_MS = 2 * 60_000;
+
+/**
+ * The moments a rule names, as signals (plan item M6.3): a doorbell's ring is
+ * the instant in its `event` entity's state. `since` is that instant, or when
+ * our poll first heard of it if that was later and within `RING_HEARD_LATE_MS`
+ * — so a held rule shows for its whole time even when the poll caught the ring
+ * thirty seconds late, and every wall still takes it down at one moment.
+ * Believed however old the poll, as a widget's pulse is: a stale read does not
+ * unmake a press. Never the entity id as the title — Home Assistant's name, or
+ * plain words when it has none.
+ */
+export function momentSignals(db: SqliteDatabase): Signal[] {
+  const wanted = ruleMoments(db);
+  if (wanted.size === 0) return [];
+  const rows = db
+    .prepare(
+      'SELECT entity_id AS entityId, state, friendly_name AS name, noticed_at AS noticedAt FROM ha_condition_states',
+    )
+    .all() as { entityId: string; state: string; name: string | null; noticedAt: number | null }[];
+  const found: Signal[] = [];
+  for (const row of rows) {
+    if (!wanted.has(row.entityId)) continue;
+    const rang = Date.parse(row.state);
+    const heard = row.noticedAt;
+    const at =
+      Number.isFinite(rang) && heard !== null && heard > rang && heard - rang <= RING_HEARD_LATE_MS ? heard : rang;
+    found.push({
+      source: 'homeassistant',
+      key: row.entityId,
+      title: row.name ?? (row.entityId.startsWith('event.') ? 'The doorbell' : 'A button'),
+      state: row.state,
+      since: Number.isFinite(at) ? at : null,
+    });
+  }
+  return found;
 }

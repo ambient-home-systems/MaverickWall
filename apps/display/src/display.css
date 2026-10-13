@@ -558,6 +558,18 @@ body {
   border: 0.5rem solid var(--accent);
 }
 .alert { text-align: center; max-width: 90%; }
+/*
+ * The doorbell's takeover (plan item M6.3): the camera fills the wall above
+ * the words, which keep the event's line and the OK. The picture is drawn on
+ * the camera layer over `.alert-camera`, so the OK below it is never covered.
+ */
+.screen-alert.has-camera { flex-direction: column; align-items: stretch; gap: 1.5rem; padding: 1.5rem; }
+.screen-alert.has-camera .alert-camera {
+  flex: 1 1 0; min-height: 0; width: 100%; height: auto;
+  border-radius: var(--radius); background: var(--panel);
+}
+.screen-alert.has-camera .alert { max-width: none; flex: 0 0 auto; }
+.screen-alert.has-camera .alert-line { font-size: 3.6rem; }
 /* "EXTREME". Small, above the event, because it is a category not a sentence. */
 .alert-kind {
   font-size: 1.6rem;

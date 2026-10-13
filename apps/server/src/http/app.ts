@@ -3,10 +3,10 @@ import { immichPhoto } from '../modules/immich/store.js';
 import { folderPhoto } from '../modules/folder/store.js';
 import { artworkPhoto, nowPlayingArt } from '../modules/homeassistant/artwork.js';
 import { CAMERA_HANDLE } from '../modules/cameras/index.js';
-import { cameraPlacedOn } from '../modules/cameras/placement.js';
+import { cameraPlacedOn, takeoverCamera, withTakeoverCameras } from '../modules/cameras/placement.js';
 import { createSnapshots } from '../modules/cameras/snapshot.js';
 import { callStream, resolveConnection } from '../modules/homeassistant/client.js';
-import { cameraEntityOf } from '../modules/cameras/index.js';
+import { cameraEntityOf, cameraHandles } from '../modules/cameras/index.js';
 import { createCameraHub, HUB_LIMITS, type HubLimits } from '../modules/cameras/hub.js';
 import { CAMERA_BOUNDARY, cameraPart } from '../modules/cameras/multipart.js';
 import { readAlbumSlides } from '../api/photo-albums.js';
@@ -105,7 +105,7 @@ import {
   textField,
 } from './html.js';
 import { parse, text } from '../validation.js';
-import type { Fetcher } from '@maverick-wall/core';
+import type { Fetcher, Interrupt } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
 import {
   buildManifest,
@@ -884,6 +884,27 @@ export function createApp(deps: AppDeps): Hono {
     const opened = await callStream(deps.fetcher, resolved.connection, camera.entityId);
     return opened.ok ? { ok: true, chunks: opened.chunks, close: opened.close } : { ok: false };
   }, { ...HUB_LIMITS, ...deps.cameraHubLimits });
+  /*
+   * What is covering the walls now, by the evaluation the manifest draws them
+   * from. A doorbell's camera (plan item M6.3) is no widget on any canvas, so
+   * the camera gate also asks this: the camera a takeover is showing may be
+   * fetched by any browser wall for as long as it shows, and not a second
+   * longer — a stream checks every second, so it ends with the takeover.
+   */
+  const activeInterrupts = (at: number): readonly Interrupt[] => {
+    const household = readHousehold(deps.db);
+    const context = { db: deps.db, fetcher: deps.fetcher, keyring: deps.keyring, now: at, timezone: household.timezone };
+    return evaluateInterrupts({
+      rules: readRules(deps.db),
+      signals: collectSignals(allModules(deps.db), context),
+      now: at,
+      localHhmm: localClock(at, household.timezone),
+      dismissedAt: readDismissals(deps.db),
+    }).active;
+  };
+  const cameraAllowed = (screen: ScreenRow, handle: string, at: number): boolean =>
+    cameraPlacedOn(deps.db, screen, handle, at) ||
+    (screen.kind !== 'epaper' && takeoverCamera(activeInterrupts(at)) === handle);
   const snapshots = createSnapshots({
     db: deps.db,
     keyring: deps.keyring,
@@ -896,7 +917,7 @@ export function createApp(deps: AppDeps): Hono {
     const screen = c.get('screen') as ScreenRow;
     const handle = c.req.param('handle') ?? '';
     c.header('cache-control', 'no-store');
-    if (!CAMERA_HANDLE.test(handle) || !cameraPlacedOn(deps.db, screen, handle, now())) {
+    if (!CAMERA_HANDLE.test(handle) || !cameraAllowed(screen, handle, now())) {
       return c.json({ error: 'not-found' }, 404);
     }
     const shot = await snapshots.take(handle);
@@ -922,7 +943,7 @@ export function createApp(deps: AppDeps): Hono {
     const screen = c.get('screen') as ScreenRow;
     const handle = c.req.param('handle') ?? '';
     c.header('cache-control', 'no-store');
-    if (!CAMERA_HANDLE.test(handle) || !cameraPlacedOn(deps.db, screen, handle, now())) {
+    if (!CAMERA_HANDLE.test(handle) || !cameraAllowed(screen, handle, now())) {
       return c.json({ error: 'not-found' }, 404);
     }
     const camera = cameraEntityOf(deps.db, handle);
@@ -950,7 +971,7 @@ export function createApp(deps: AppDeps): Hono {
         | undefined;
       if (row === undefined || row.revokedAt !== null) return false;
       const now2 = cameraEntityOf(deps.db, handle);
-      return now2 !== undefined && now2.available && cameraPlacedOn(deps.db, screen, handle, now());
+      return now2 !== undefined && now2.available && cameraAllowed(screen, handle, now());
     };
     const body = new ReadableStream<Uint8Array>({
       start(): void {
@@ -1604,7 +1625,8 @@ export function createApp(deps: AppDeps): Hono {
       // The house's state at this instant, for the boxes shown only while it
       // says so (plan items M6.4, M6.5, M6.7).
       conditions: readConditions(deps.db, at),
-      interrupts: bannersOf(firing),
+      // A takeover's camera travels only while it is one this house still has.
+      interrupts: withTakeoverCameras(bannersOf(firing), new Set(cameraHandles(deps.db))),
       screen: {
         orientation: screenLike.orientation,
         rotation: screenLike.rotation,

@@ -3,7 +3,7 @@ import type { ModuleContext, PanelModule } from '../registry.js';
 import type { Signal } from '@maverick-wall/core';
 import { z } from '../../validation.js';
 import { daylightFromState } from '../../api/daylight.js';
-import { conditionEntities, readConditionStates, writeConditionStates } from './conditions.js';
+import { conditionEntities, momentSignals, readConditionStates, writeConditionStates } from './conditions.js';
 import { readCameras, writeCameraStates } from '../cameras/index.js';
 import { historyPath, historyWindowEnd, mediaEntities, parseHistory, seriesFrom, sparklineEntities, storedSeries } from './history.js';
 import { statusPictures } from './artwork.js';
@@ -304,7 +304,7 @@ export const haModule: PanelModule = {
       )
       .all() as WatchRow[];
 
-    return rows.map((row) => {
+    const readings: Signal[] = rows.map((row) => {
       const state = stateFrom(row);
       const asNumber = Number(state.state);
       return {
@@ -321,6 +321,7 @@ export const haModule: PanelModule = {
         since: row.lastChangedAt,
       };
     });
+    return [...readings, ...momentSignals(context.db)];
   },
 
   job: {

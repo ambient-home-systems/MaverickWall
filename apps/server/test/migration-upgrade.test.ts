@@ -906,6 +906,31 @@ describe('upgrading a database that is already in use', () => {
     db.close();
   });
 
+  it('leaves every rule that existed holding while true, with no camera (0078)', () => {
+    // Plan item M6.3. A rule from before a hold existed is there while its
+    // signal is true, and a hold of zero would be a rule that never fires —
+    // so the column must arrive null, never 0, and the camera with it.
+    const db = new Database(':memory:');
+    const stamp = 1_700_000_000_000;
+    for (const entry of journal()) {
+      apply(db, entry.tag);
+      if (entry.tag.startsWith('0077')) {
+        db.prepare(
+          `INSERT INTO interrupt_rules
+             (id, name, enabled, trigger, conditions, action, priority, wake_screen,
+              pierces_night_mode, min_dwell_sec, dismissible, created_at, updated_at)
+           VALUES ('r-1', 'Freezer door open', 1, 'homeassistant', '{"entityId":"binary_sensor.freezer"}',
+                   'banner', 40, 0, 0, 300, 1, ?, ?)`,
+        ).run(stamp, stamp);
+      }
+    }
+    expect(db.prepare(`SELECT hold_sec AS holdSec, camera FROM interrupt_rules WHERE id = 'r-1'`).get()).toEqual({
+      holdSec: null,
+      camera: null,
+    });
+    db.close();
+  });
+
   it('carries an existing custom theme through the shape column with no shape set (0046)', () => {
     // RFC 014 §4.3. The `shape` column is additive — one `ALTER TABLE ADD
     // COLUMN`, never a recreate — so a theme saved before it existed must come

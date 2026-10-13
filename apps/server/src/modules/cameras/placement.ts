@@ -1,4 +1,5 @@
 import type { SqliteDatabase } from '../../db/open.js';
+import type { Interrupt } from '@maverick-wall/core';
 import { cameraOf } from '../../api/manifest.js';
 import { effectiveDisplay, readHousehold, readLayoutSlots, readLayoutWidgets } from '../../api/queries.js';
 import { readLayoutOverride } from '../../api/wall-commands.js';
@@ -39,4 +40,30 @@ export function cameraPlacedOn(
     }
   }
   return false;
+}
+
+const isTakeover = (interrupt: Interrupt): boolean =>
+  interrupt.action === 'takeover' || interrupt.action === 'takeover_and_wake';
+
+/**
+ * The camera the wall-covering interrupt is showing, if it shows one (plan
+ * item M6.3). `resolveConflicts` lets one takeover through at a time, so this
+ * is at most one camera — the one a doorbell rule named, while it holds.
+ */
+export function takeoverCamera(active: readonly Interrupt[]): string | undefined {
+  return active.find(isTakeover)?.camera;
+}
+
+/**
+ * The interrupts as a wall is sent them: a camera only on a takeover, and only
+ * one this house still has. A camera removed since its rule was written is no
+ * camera, and the takeover still says what happened — rule nine: the bell
+ * rang whether or not there is a picture of it.
+ */
+export function withTakeoverCameras(interrupts: readonly Interrupt[], known: ReadonlySet<string>): Interrupt[] {
+  return interrupts.map((interrupt) => {
+    if (interrupt.camera === undefined || (isTakeover(interrupt) && known.has(interrupt.camera))) return interrupt;
+    const { camera: _dropped, ...rest } = interrupt;
+    return rest;
+  });
 }

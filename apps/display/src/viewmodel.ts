@@ -1,4 +1,4 @@
-import { camerasFrom, type CameraLoad, type CameraModel } from './camera.js';
+import { cameraHandleOf, camerasFrom, type CameraLoad, type CameraModel } from './camera.js';
 import type {
   CivilDate,
   Manifest,
@@ -907,6 +907,10 @@ export interface InterruptModel {
   readonly dismissible: boolean;
   /** `ruleId:signalKey`, the only thing the dismiss endpoint accepts. */
   readonly key: string;
+  /** The camera a takeover shows, by its handle (plan item M6.3). */
+  readonly camera?: string;
+  /** When a held rule comes down, by the wall's own clock (M6.3). */
+  readonly until?: number;
 }
 
 /**
@@ -1265,7 +1269,7 @@ export function houseFrom(panel: unknown): {
  * priority so the two that survive are the two that matter. The rest are still
  * true — they are just not what somebody walking past needs to be told first.
  */
-export function interruptsFrom(raw: unknown): InterruptModel[] {
+export function interruptsFrom(raw: unknown, now?: number): InterruptModel[] {
   if (!Array.isArray(raw)) return [];
   const model: InterruptModel[] = [];
 
@@ -1274,6 +1278,16 @@ export function interruptsFrom(raw: unknown): InterruptModel[] {
     const interrupt = entry as Record<string, unknown>;
     const title = text(interrupt['title'], 120);
     if (title === undefined) continue;
+    /*
+     * A held rule comes down at its own time on the wall's own clock (plan
+     * item M6.3), the way a widget's pulse does: a doorbell held for a minute
+     * is gone after its minute whether or not the next poll arrives.
+     */
+    const until = typeof interrupt['until'] === 'number' && Number.isFinite(interrupt['until']) ? interrupt['until'] : undefined;
+    if (until !== undefined && now !== undefined && now >= until) continue;
+    const takeover = interrupt['action'] === 'takeover' || interrupt['action'] === 'takeover_and_wake';
+    // Only a takeover draws a camera, and only a handle in the shape one has.
+    const camera = takeover ? cameraHandleOf({ camera: interrupt['camera'] }) : undefined;
 
     const ruleId = typeof interrupt['ruleId'] === 'string' ? interrupt['ruleId'] : '';
     const key = typeof interrupt['key'] === 'string' ? interrupt['key'] : '';
@@ -1283,12 +1297,13 @@ export function interruptsFrom(raw: unknown): InterruptModel[] {
       headline: text(interrupt['headline'], 600),
       area: text(interrupt['area'], 300),
       sender: text(interrupt['sender'], 120),
-      takeover:
-        interrupt['action'] === 'takeover' || interrupt['action'] === 'takeover_and_wake',
+      takeover,
       severity: typeof interrupt['severity'] === 'string' ? interrupt['severity'] : 'Unknown',
       expiresAt: typeof interrupt['expiresAt'] === 'number' ? interrupt['expiresAt'] : undefined,
       dismissible: interrupt['dismissible'] === true && ruleId !== '' && key !== '',
       key: `${ruleId}:${key}`,
+      ...(camera !== undefined ? { camera } : {}),
+      ...(until !== undefined ? { until } : {}),
     });
     if (model.length === 3) break;
   }
@@ -2324,7 +2339,7 @@ export function buildModel(options: BuildOptions): DisplayModel {
     notifications: notificationsFrom(manifest.panels?.['notifications']),
     houseNote: house.note,
     now,
-    interrupts: interruptsFrom(manifest.interrupts),
+    interrupts: interruptsFrom(manifest.interrupts, now),
     allowDismiss: manifest.screen?.allowDismiss === true,
     allowChores: manifest.screen?.allowChores === true,
     allowTodo: manifest.screen?.allowTodo === true,

@@ -429,3 +429,91 @@ describe('three sources, one model', () => {
     expect(active).toHaveLength(3);
   });
 });
+
+describe('a held rule: the doorbell (plan item M6.3)', () => {
+  const RANG = NOW - 10_000;
+
+  /** A doorbell's `event` entity: its state is the instant it last rang. */
+  function ring(over: Partial<Signal> = {}): Signal {
+    return {
+      source: 'homeassistant',
+      key: 'event.front_door_ring',
+      title: 'Front door',
+      state: new Date(RANG).toISOString(),
+      since: RANG,
+      ...over,
+    };
+  }
+
+  function doorbell(over: Partial<InterruptRule> = {}): InterruptRule {
+    return rule({
+      id: 'door',
+      source: 'homeassistant',
+      match: { entityId: 'event.front_door_ring', condition: { kind: 'happened', value: '', between: null } },
+      action: 'takeover',
+      holdSec: 60,
+      camera: 'c0ffee',
+      ...over,
+    });
+  }
+
+  it('covers the wall from the ring for the time it holds, and says when it comes down', () => {
+    const [interrupt] = evaluateRules({ ...base, rules: [doorbell()], signals: [ring()] });
+    expect(interrupt).toMatchObject({ action: 'takeover', camera: 'c0ffee', until: RANG + 60_000 });
+    // The moment the hold ends it is gone, though the entity still says the same thing.
+    expect(evaluateRules({ ...base, now: RANG + 60_000, rules: [doorbell()], signals: [ring()] })).toHaveLength(0);
+    expect(evaluateRules({ ...base, now: RANG + 59_999, rules: [doorbell()], signals: [ring()] })).toHaveLength(1);
+  });
+
+  it('never fires a moment with no hold, which would never come down', () => {
+    const unheld = rule({ ...doorbell(), holdSec: undefined });
+    expect(evaluateRules({ ...base, rules: [unheld], signals: [ring()] })).toHaveLength(0);
+    // Nor a hold that is not a positive number of seconds.
+    for (const holdSec of [0, -5, Number.NaN]) {
+      expect(evaluateRules({ ...base, rules: [doorbell({ holdSec })], signals: [ring()] })).toHaveLength(0);
+    }
+  });
+
+  it('does not ring for a doorbell Home Assistant cannot reach', () => {
+    for (const state of ['unavailable', 'unknown']) {
+      expect(evaluateRules({ ...base, rules: [doorbell()], signals: [ring({ state })] })).toHaveLength(0);
+    }
+    expect(evaluateRules({ ...base, rules: [doorbell()], signals: [ring({ since: null })] })).toHaveLength(0);
+  });
+
+  it('holds a sensor that went on for a moment, and ends at the hold while it is still on', () => {
+    const bell = doorbell({
+      match: { entityId: 'binary_sensor.visitor', condition: { kind: 'changed_to', value: 'on', between: null } },
+      holdSec: 30,
+    });
+    const pressed: Signal = { source: 'homeassistant', key: 'binary_sensor.visitor', title: 'Visitor', state: 'on', since: RANG };
+    expect(evaluateRules({ ...base, rules: [bell], signals: [pressed] })[0]).toMatchObject({ until: RANG + 30_000 });
+    // Still on at forty seconds, and down anyway: the hold is the most it shows for.
+    expect(evaluateRules({ ...base, now: RANG + 40_000, rules: [bell], signals: [pressed] })).toHaveLength(0);
+    // A hold longer than the edge window is the hold, not the window.
+    const long = doorbell({ ...bell, holdSec: 600 });
+    expect(evaluateRules({ ...base, now: RANG + EDGE_WINDOW_MS + 1, rules: [long], signals: [pressed] })).toHaveLength(1);
+  });
+
+  it('times the hold from when it fired, after any dwell', () => {
+    const [interrupt] = evaluateRules({ ...base, now: RANG + 70_000, rules: [doorbell({ minDwellSec: 60 })], signals: [ring()] });
+    expect(interrupt?.until).toBe(RANG + 120_000);
+  });
+
+  it('treats an OK as being about one ring, so the next ring shows again', () => {
+    const pressedOk = { 'event.front_door_ring': RANG + 2_000 };
+    expect(evaluateRules({ ...base, rules: [doorbell()], signals: [ring()], dismissedAt: pressedOk })).toHaveLength(0);
+    const again = NOW - 1_000;
+    const next = ring({ state: new Date(again).toISOString(), since: again });
+    expect(evaluateRules({ ...base, rules: [doorbell()], signals: [next], dismissedAt: pressedOk })).toHaveLength(1);
+  });
+
+  it('leaves a rule with no hold exactly as it was: no until, and an OK that lasts', () => {
+    const plain = rule();
+    const [interrupt] = evaluateRules({ ...base, rules: [plain], signals: [alert()] });
+    expect(interrupt).not.toHaveProperty('until');
+    expect(interrupt).not.toHaveProperty('camera');
+    const earlier = { [alert().key]: NOW - 120_000 };
+    expect(evaluateRules({ ...base, rules: [plain], signals: [alert()], dismissedAt: earlier })).toHaveLength(0);
+  });
+});

@@ -27,6 +27,8 @@ export interface RuleTemplate {
   readonly priority: number;
   /** Why this template exists, on the form. */
   readonly hint: string;
+  /** How long it stays once it fires, in seconds (M6.3). */
+  readonly holdSec?: number;
 }
 
 const HHMM = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
@@ -91,5 +93,24 @@ export const RULE_TEMPLATES: readonly RuleTemplate[] = [
     dismissible: true,
     priority: 40,
     hint: 'Five minutes. A banner rather than a takeover — worth knowing, not worth losing the calendar over.',
+  },
+  {
+    key: 'doorbell',
+    name: 'Somebody at the door',
+    domains: ['event', 'button', 'input_button'],
+    /*
+     * A moment rather than a state (plan item M6.3): the doorbell's `event`
+     * entity, whose state is when it last rang. A minute, then the calendar
+     * comes back on its own — nobody should have to walk over and dismiss a
+     * visitor who has already been let in.
+     */
+    condition: { kind: 'happened', value: '', between: null },
+    minDwellSec: 0,
+    action: 'takeover',
+    piercesNightMode: false,
+    dismissible: true,
+    priority: 60,
+    holdSec: 60,
+    hint: 'The whole wall for a minute when it rings. Choose the doorbell camera below to show who it is.',
   },
 ];

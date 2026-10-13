@@ -113,6 +113,8 @@ function pickCanvas(
 const POLL_MS = 60_000;
 /** Redraw between polls so the clock and "today" move on their own. */
 const TICK_MS = 15_000;
+/** The draw asked for when a held takeover comes down (plan item M6.3). */
+let heldEnd: number | undefined;
 /** How often the watchdog asks whether the wall is still a wall. */
 const WATCHDOG_MS = 30_000;
 
@@ -407,6 +409,15 @@ function start(): void {
     // Events nothing has asked about for an hour are forgotten, on the clock
     // they were remembered on.
     oneShots.sweep(now);
+    /*
+     * A held takeover (plan item M6.3) comes down at its own moment, not at
+     * the next fifteen-second tick: one draw is asked for then. Replaced on
+     * every draw, so the timer always belongs to what is on the glass.
+     */
+    if (heldEnd !== undefined) window.clearTimeout(heldEnd);
+    heldEnd = undefined;
+    const ends = model.interrupts.map((interrupt) => interrupt.until).filter((at): at is number => at !== undefined);
+    if (ends.length > 0) heldEnd = window.setTimeout(() => safely(draw), Math.max(0, Math.min(...ends) - now) + 50);
 
     // Which blocks are on screen, for the few layout rules that need to know
     // one is absent. A space-separated attribute so `~=` can test it, which

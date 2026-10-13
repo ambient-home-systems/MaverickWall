@@ -42,6 +42,7 @@ import { householdSetUp } from '../modules/index.js';
 import {
   CAMERA_HANDLE,
   MAX_CAMERAS,
+  cameraHandles,
   parseCameraEntities,
   readCameras,
   unwatchCamera,
@@ -50,6 +51,7 @@ import {
   type CameraRow,
 } from '../modules/cameras/index.js';
 import { conditionChoices } from '../modules/homeassistant/conditions.js';
+import { isMomentEntity } from '../api/show-when.js';
 import { HOME_BLOCK as HOME_MODULE } from '../modules/homeassistant/index.js';
 import { COVER_CLASSES, wallActionsFor } from '../modules/homeassistant/services.js';
 import { checkScene, readWallActions } from '../modules/homeassistant/control.js';
@@ -281,23 +283,84 @@ const todoListBody = z.object({
   label: optionalText(60),
 });
 
+/**
+ * How long a held rule stays (plan item M6.3), as the form offers it. A
+ * closed list rather than a number: a minute is what a doorbell wants, and a
+ * household asked "how many seconds?" types thirty or three hundred with
+ * nothing to tell them which is right.
+ */
+const HOLDS = [
+  { key: '30', label: '30 seconds' },
+  { key: '60', label: '1 minute' },
+  { key: '120', label: '2 minutes' },
+  { key: '300', label: '5 minutes' },
+] as const;
+const HOLD_KEYS = HOLDS.map((entry) => entry.key) as unknown as readonly ['30', '60', '120', '300'];
+
 const ruleBody = z.object({
   name: text('What the wall should say', 60),
   entity_id: text('An entity', 255),
-  condition: z.enum(['equals', 'above', 'below', 'changed_to'], {
+  condition: z.enum(['equals', 'above', 'below', 'changed_to', 'happened'], {
     error: () => 'Choose a condition from the list.',
   }),
-  value: text('A state or a number', 100),
+  value: optionalText(100),
   for_minutes: optionalText(4),
   from_time: optionalText(5),
   to_time: optionalText(5),
   action: z.enum(['tile', 'banner', 'takeover', 'takeover_and_wake'], {
     error: () => 'Choose how loudly this should be shown.',
   }),
+  // How long it stays once it fires, and the camera it shows (plan item M6.3).
+  // Blank is "when it stops being true", which the select posts as `''`.
+  hold_sec: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.enum(HOLD_KEYS, { error: () => 'Choose how long it stays from the list.' }).optional(),
+  ),
+  camera: optionalText(64),
 }).superRefine((value, ctx) => {
+  /*
+   * A moment is its own condition, and its own kind of entity.
+   *
+   * A doorbell's `event` entity has no state anybody is in — its state is the
+   * instant it last rang — so "exactly on" can never hold of one, and "rings"
+   * can never hold of anything else. And a moment has no end, so it needs a
+   * time to come down after; nor does a wait before it make sense.
+   */
+  const moment = isMomentEntity(value.entity_id);
+  if (value.condition === 'happened' && !moment) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'Only a doorbell or a button rings or is pressed. Choose one of those, or another condition.',
+    });
+  }
+  if (moment && value.condition !== 'happened') {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'A doorbell or a button is never in a state to compare. Choose “rings, or is pressed”.',
+    });
+  }
+  if (value.condition === 'happened' && value.hold_sec === undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'A ring has no end of its own. Choose how long the wall shows it for.',
+    });
+  }
+  if (value.condition === 'happened' && value.for_minutes !== undefined && value.for_minutes !== '0') {
+    ctx.addIssue({ code: 'custom', message: 'A ring does not last, so it cannot wait first. Leave the wait empty.' });
+  }
+  if (value.condition !== 'happened' && value.value === undefined) {
+    ctx.addIssue({ code: 'custom', message: 'Enter the state or the number to compare with.' });
+  }
+  if (value.camera !== undefined && value.action !== 'takeover' && value.action !== 'takeover_and_wake') {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'A camera covers the whole wall, so it goes with “The whole wall”. Choose that, or no camera.',
+    });
+  }
+
   // Two rules that are about the *combination*, which is the whole reason
   // this is a schema rather than four independent fields.
-  if ((value.condition === 'above' || value.condition === 'below') && !Number.isFinite(Number(value.value))) {
+  if ((value.condition === 'above' || value.condition === 'below') && !Number.isFinite(Number(value.value ?? ''))) {
     ctx.addIssue({ code: 'custom', message: 'Above and below need a number to compare with.' });
   }
 
@@ -390,7 +453,14 @@ const ACTIONS: readonly { key: InterruptAction; label: string }[] = [
  * keep in step.
  */
 const ACTION_KEYS: readonly InterruptAction[] = ACTIONS.map((entry) => entry.key);
-const CONDITION_KEYS = ['equals', 'above', 'below', 'changed_to'] as const;
+
+/** A rule card's words for how long it stays and whether it shows a camera (M6.3). */
+function ruleExtras(holdSec: number | null, camera: string | null): string {
+  const held = HOLDS.find((entry) => Number(entry.key) === holdSec);
+  const hold = holdSec === null ? '' : ` · down after ${held?.label ?? `${holdSec} seconds`}`;
+  return hold + (camera === null ? '' : ' · with a camera');
+}
+const CONDITION_KEYS = ['equals', 'above', 'below', 'changed_to', 'happened'] as const;
 
 /** One `<option>`, selected when it is the one a template chose. */
 function option(value: string, label: string, selected?: string): string {
@@ -459,6 +529,8 @@ interface RuleEcho {
   readonly fromTime: string;
   readonly toTime: string;
   readonly action: string;
+  readonly holdSec: string;
+  readonly camera: string;
 }
 
 /** A raw body field as a string — before any schema has had an opinion. */
@@ -485,6 +557,8 @@ function ruleEchoOf(body: Record<string, unknown>): RuleEcho {
     fromTime: str(body, 'from_time'),
     toTime: str(body, 'to_time'),
     action: str(body, 'action'),
+    holdSec: str(body, 'hold_sec'),
+    camera: str(body, 'camera'),
   };
 }
 
@@ -511,6 +585,12 @@ interface LiveState {
   readonly todo: readonly TodoEntity[];
   /** The `camera.*` entities in the same document (plan item M6.1). */
   readonly cameras: readonly CameraEntity[];
+  /**
+   * The doorbells and buttons in the same document (plan item M6.3): `event`,
+   * `button` and `input_button` entities, which a rule may be about and which
+   * are never a reading.
+   */
+  readonly moments?: readonly { readonly id: string; readonly name: string }[];
   readonly problem: PageError | null;
 }
 
@@ -571,6 +651,10 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       todo: parseTodoEntities(states.body),
       // And once more for cameras, which are no reading either (RFC 007 §6.1).
       cameras: parseCameraEntities(states.body),
+      // And for the moments a doorbell rule is about (M6.3).
+      moments: conditionChoices(states.body)
+        .filter((choice) => choice.moment)
+        .map((choice) => ({ id: choice.id, name: choice.name })),
       problem: null,
     };
   }
@@ -1461,11 +1545,26 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
     const shaped = parse(ruleBody, body);
     if (!shaped.ok) return renderAddRule(c, { message: shaped.message }, 400, undefined, echo);
 
-    const { name, entity_id: entityId, condition, value, action } = shaped.value;
+    const { name, entity_id: entityId, condition, action } = shaped.value;
+    const value = shaped.value.value ?? '';
+    const moment = isMomentEntity(entityId);
     // Membership rather than shape: which domains this can watch is a fact
-    // about the application, not about the request.
-    if (!isSupported(entityId)) {
+    // about the application, not about the request. A doorbell or a button is
+    // no reading, and a rule may still be about one (M6.3).
+    if (!isSupported(entityId) && !moment) {
       return renderAddRule(c, { message: 'That entity is not one this can watch.' }, 400, undefined, echo);
+    }
+    // A camera by the handle Home Assistant › Cameras minted, and only one
+    // this house has: the form offers only those, and the POST is the boundary.
+    const camera = shaped.value.camera;
+    if (camera !== undefined && !cameraHandles(deps.db).includes(camera)) {
+      return renderAddRule(
+        c,
+        { message: 'That camera is not one you added. Add it under Cameras first, or choose no camera.' },
+        400,
+        undefined,
+        echo,
+      );
     }
 
     const minutes = shaped.value.for_minutes;
@@ -1499,16 +1598,21 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       // asking about it would be a field nobody could answer. A takeover
       // outranks a banner, which is the only ordering anybody means.
       priority: action === 'tile' ? 20 : action === 'banner' ? 40 : action === 'takeover' ? 60 : 90,
+      ...(shaped.value.hold_sec !== undefined ? { holdSec: Number(shaped.value.hold_sec) } : {}),
+      ...(camera !== undefined ? { camera } : {}),
     });
 
     // The entity has to be polled or the rule can never fire, and it would look
-    // exactly like an entity that is simply fine.
-    deps.db
-      .prepare(
-        `INSERT INTO ha_entity_cache (entity_id, friendly_name, watched, fetched_at)
-         VALUES (?, ?, 0, 0) ON CONFLICT(entity_id) DO NOTHING`,
-      )
-      .run(entityId, entityId);
+    // exactly like an entity that is simply fine. A moment is read beside the
+    // entities a widget is shown by, from the rule itself, and is no reading.
+    if (!moment) {
+      deps.db
+        .prepare(
+          `INSERT INTO ha_entity_cache (entity_id, friendly_name, watched, fetched_at)
+           VALUES (?, ?, 0, 0) ON CONFLICT(entity_id) DO NOTHING`,
+        )
+        .run(entityId, entityId);
+    }
     deps.db.prepare(`UPDATE job_state SET next_run_at = 0 WHERE kind = 'ha-sync'`).run();
 
     return savedRedirect(c, '/admin/home-assistant/alerts', 'ha-rule-added');
@@ -2552,10 +2656,13 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
           (row.enabled === 1 ? '' : tag('Off', 'warn')) +
           `</h2>` +
           `<p class="host">${escapeHtml(match?.entityId ?? 'unknown entity')} ` +
-          `${escapeHtml(match?.condition?.kind ?? '?')} ` +
-          `${escapeHtml(match?.condition?.value ?? '?')}` +
+          (match?.condition?.kind === 'happened'
+            ? 'rings, or is pressed'
+            : `${escapeHtml(match?.condition?.kind ?? '?')} ${escapeHtml(match?.condition?.value ?? '?')}`) +
           `${escapeHtml(wait)}${escapeHtml(window)}</p>` +
-          `<p class="sub">${escapeHtml(ACTIONS.find((a) => a.key === row.action)?.label ?? row.action)}</p>` +
+          `<p class="sub">${escapeHtml(ACTIONS.find((a) => a.key === row.action)?.label ?? row.action)}` +
+          escapeHtml(ruleExtras(row.holdSec, row.camera)) +
+          `</p>` +
           `</div>` +
           `<details class="ovf" data-overflow>` +
           `<summary class="ovf-btn" role="button" aria-haspopup="menu" ` +
@@ -2608,13 +2715,23 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       ),
     ).join('');
 
-    const options = live.entities
-      .map(
-        (state) =>
-          `<option value="${escapeHtml(state.entityId)}">` +
-          `${escapeHtml(state.friendlyName)} — ${escapeHtml(domainOf(state.entityId))}</option>`,
-      )
-      .join('');
+    const options =
+      live.entities
+        .map(
+          (state) =>
+            `<option value="${escapeHtml(state.entityId)}">` +
+            `${escapeHtml(state.friendlyName)} — ${escapeHtml(domainOf(state.entityId))}</option>`,
+        )
+        .join('') +
+      // And the doorbells and buttons (M6.3), which are no reading.
+      (live.moments ?? [])
+        .map(
+          (moment) =>
+            `<option value="${escapeHtml(moment.id)}">` +
+            `${escapeHtml(moment.name)} — ${escapeHtml(domainOf(moment.id))}</option>`,
+        )
+        .join('');
+    const cameras = readCameras(deps.db);
 
     /*
      * What goes in the fields: the echo wins, then the template, then nothing.
@@ -2647,6 +2764,10 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
       fromTime: echo?.fromTime ?? template?.condition.between?.from ?? '',
       toTime: echo?.toTime ?? template?.condition.between?.to ?? '',
       action: known(ACTION_KEYS, echo?.action) ?? template?.action,
+      holdSec: known(HOLD_KEYS, echo?.holdSec) ?? (template?.holdSec !== undefined ? String(template.holdSec) : undefined),
+      // A camera is closed by what this house has, so an echo of one it has
+      // not is dropped rather than selected as nothing.
+      camera: cameras.some((camera) => camera.handle === echo?.camera) ? echo?.camera : undefined,
     };
 
     return (
@@ -2684,13 +2805,14 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
           option('equals', 'exactly', filled.condition) +
           option('above', 'above', filled.condition) +
           option('below', 'below', filled.condition) +
-          option('changed_to', 'has just become', filled.condition),
+          option('changed_to', 'has just become', filled.condition) +
+          option('happened', 'rings, or is pressed', filled.condition),
       }) +
       textField({
         label: 'This',
         name: 'value',
-        required: true,
         value: filled.value,
+        hint: 'Not needed for a doorbell or a button.',
       }) +
       textField({
         label: 'For (minutes)',
@@ -2733,6 +2855,30 @@ export function registerHaRoutes(app: Hono, deps: AdminDeps): void {
             `${entry.key === filled.action ? ' selected' : ''}>${escapeHtml(entry.label)}</option>`,
         ).join(''),
       }) +
+      /*
+       * The doorbell's two (plan item M6.3). How long it stays is offered on
+       * every rule: a doorbell needs it, and "show it for a minute, then put
+       * the calendar back" is as true of a sensor that stays on.
+       */
+      selectField({
+        label: 'Take it down',
+        name: 'hold_sec',
+        optionsHtml:
+          option('', 'when it stops being true', filled.holdSec ?? '') +
+          HOLDS.map((entry) => option(entry.key, `after ${entry.label}`, filled.holdSec)).join(''),
+        hint: 'A doorbell rings for a moment, so choose how long the wall shows it for.',
+      }) +
+      (cameras.length === 0
+        ? `<p class="hint">To show a camera while it covers the wall, add one under ` +
+          `<a href="admin/home-assistant/cameras">Cameras</a> first.</p>`
+        : selectField({
+            label: 'Show a camera',
+            name: 'camera',
+            optionsHtml:
+              option('', 'No camera', filled.camera ?? '') +
+              cameras.map((camera) => option(camera.handle, camera.name, filled.camera)).join(''),
+            hint: 'Only with “The whole wall”. Every wall shows the camera live while this covers it.',
+          })) +
       `<button type="submit">Add rule</button></form>`
     );
   }

@@ -82,11 +82,25 @@ function conditionHolds(
   signal: Signal,
   now: number,
   localHhmm: string,
+  held: boolean,
 ): boolean {
   const state = signal.state ?? '';
 
   let holds: boolean;
   switch (condition.kind) {
+    case 'happened': {
+      // A moment, with the instant it happened. Only ever on a held rule: a
+      // moment has no end, so without a hold it would never come down.
+      const since = signal.since;
+      holds =
+        held &&
+        since !== null &&
+        since !== undefined &&
+        Number.isFinite(since) &&
+        state !== 'unavailable' &&
+        state !== 'unknown';
+      break;
+    }
     case 'equals':
     case 'changed_to':
       // Case-insensitive: Home Assistant answers `on`, and somebody typing a
@@ -114,7 +128,8 @@ function conditionHolds(
   }
   if (!holds) return false;
 
-  if (condition.kind === 'changed_to') {
+  // A held rule's own window replaces the edge window (`evaluateRules`).
+  if (condition.kind === 'changed_to' && !held) {
     const since = signal.since;
     if (since === null || since === undefined || now - since > EDGE_WINDOW_MS) return false;
   }
@@ -124,7 +139,7 @@ function conditionHolds(
   return true;
 }
 
-function matches(match: RuleMatch, signal: Signal, now: number, localHhmm: string): boolean {
+function matches(match: RuleMatch, signal: Signal, now: number, localHhmm: string, held: boolean): boolean {
   if (match.entityId !== undefined && match.entityId !== signal.key) return false;
 
   if (match.eventTypes !== undefined) {
@@ -149,7 +164,7 @@ function matches(match: RuleMatch, signal: Signal, now: number, localHhmm: strin
     if (until < 0 || until > match.startsWithinSec * 1000) return false;
   }
 
-  if (match.condition !== undefined && !conditionHolds(match.condition, signal, now, localHhmm)) {
+  if (match.condition !== undefined && !conditionHolds(match.condition, signal, now, localHhmm, held)) {
     return false;
   }
 
@@ -185,9 +200,14 @@ export function evaluateRules(input: EvaluateInput): Interrupt[] {
     if (!rule.enabled) continue;
     if (rule.action === 'none') continue;
 
+    const hold = rule.holdSec;
+    // A hold that is not a positive number of seconds is a rule half-written,
+    // and a rule half-written does nothing rather than staying up for ever.
+    if (hold !== undefined && !(Number.isFinite(hold) && hold > 0)) continue;
+
     for (const signal of input.signals) {
       if (signal.source !== rule.source) continue;
-      if (!matches(rule.match, signal, input.now, input.localHhmm)) continue;
+      if (!matches(rule.match, signal, input.now, input.localHhmm, hold !== undefined)) continue;
 
       // Expired is not firing, whatever anybody was told. This is the
       // client-side expiry: an alert clears on its own `expires` even if the
@@ -199,6 +219,22 @@ export function evaluateRules(input: EvaluateInput): Interrupt[] {
         const since = signal.since;
         if (since === null || since === undefined) continue;
         if (input.now - since < rule.minDwellSec * 1000) continue;
+      }
+
+      /*
+       * Held (plan item M6.3): up from the moment it fired, and down a fixed
+       * time later, whatever the signal has done since. Timed from `since`,
+       * the instant Home Assistant says it became true, rather than from our
+       * poll — so every wall takes it down at the same moment, and a ring the
+       * poll caught twenty seconds late is twenty seconds shorter rather than
+       * twenty seconds out of step.
+       */
+      let until: number | undefined;
+      if (hold !== undefined) {
+        const since = signal.since;
+        if (since === null || since === undefined || !Number.isFinite(since)) continue;
+        until = since + rule.minDwellSec * 1000 + hold * 1000;
+        if (input.now >= until) continue;
       }
 
       /*
@@ -215,7 +251,15 @@ export function evaluateRules(input: EvaluateInput): Interrupt[] {
        */
       if (rule.dismissible) {
         const clearedAt = dismissed[signal.key];
-        if (clearedAt !== undefined) {
+        /*
+         * A held rule's acknowledgement is of one occurrence. The signal of a
+         * doorbell never goes away — its entity is always there, saying when
+         * it last rang — so an OK pressed at the last ring would otherwise
+         * silence every ring after it. An OK from before this one began is
+         * about an earlier one.
+         */
+        const earlier = until !== undefined && clearedAt !== undefined && clearedAt < (signal.since ?? 0);
+        if (clearedAt !== undefined && !earlier) {
           if (rule.reassertAfterSec === undefined) continue;
           if (input.now - clearedAt < rule.reassertAfterSec * 1000) continue;
         }
@@ -237,6 +281,8 @@ export function evaluateRules(input: EvaluateInput): Interrupt[] {
         wakeScreen: rule.action === 'takeover_and_wake',
         piercesNightMode: rule.piercesNightMode,
         priority: rule.priority,
+        ...(rule.camera !== undefined ? { camera: rule.camera } : {}),
+        ...(until !== undefined ? { until } : {}),
       });
     }
   }
