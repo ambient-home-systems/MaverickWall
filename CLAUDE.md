@@ -11885,7 +11885,7 @@ before and after its variant's panel exists. The display's
 `module-settings.test.ts` (5) covers what a control writes. Twelve mutations were checked,
 each on a rebuilt bundle, and all twelve are red. Seven failed to build at
 first because they left a variable unread, and were re-aimed so they built.
-**5960 tests passing, 1 red and 2 skipped, over 446 files**: calendar 153 (1
+**5958 tests passing, 1 red and 2 skipped, over 446 files**: calendar 153 (1
 skipped) over 10 · core 327 over 9 · display 1091 over 71 · server 4387 (1
 skipped) over 356, measured with `pnpm test` and a real Chromium. The one red
 is `browser-glass`'s striped-picture case, red on a clean `main` in this
