@@ -244,7 +244,9 @@ describe('a camera’s live stream', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(ended).toBe(false);
     await k.stop();
-  });
+    // Two idle limits and a reopen are about 1.5s idle; the waits above allow
+    // ten between them, so the test's own budget has to be larger than both.
+  }, 15_000);
 
   it('ends a wall’s stream within two seconds of the wall being revoked', async () => {
     const h = await harness();

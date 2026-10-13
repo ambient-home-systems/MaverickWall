@@ -642,6 +642,9 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
       state.streamOpens += 1;
       state.streamsOpen += 1;
       response.writeHead(200, { 'content-type': 'multipart/x-mixed-replace;boundary=frame' });
+      // Node holds the headers back until the first body write; a quiet camera
+      // still answers at once, so they go now (Home Assistant's own stream does).
+      response.flushHeaders();
       const frames = [CAMERA_FRAMES.a, CAMERA_FRAMES.b];
       let n = 0;
       const send = (): void => {
