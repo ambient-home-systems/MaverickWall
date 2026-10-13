@@ -293,6 +293,33 @@ export async function callPicture(
   return { ok: true, bytes: Buffer.from(response.body, 'base64') };
 }
 
+/**
+ * A camera's MJPEG stream (plan item M6.2), held open for the camera hub.
+ *
+ * Beside `callPicture`, for its reason: the token is attached in this file
+ * and nowhere else. The path is Home Assistant's own camera stream and
+ * nothing else — a caller cannot name another — and the fetcher follows no
+ * redirect, so the token reaches the house's own address or nowhere.
+ */
+export async function callStream(
+  fetcher: Fetcher,
+  connection: Connection,
+  entityId: string,
+): Promise<{ readonly ok: true; readonly chunks: AsyncIterable<Uint8Array>; close(): void } | { readonly ok: false; readonly message: string }> {
+  if (fetcher.stream === undefined) return { ok: false, message: 'This fetcher cannot hold a stream open.' };
+  if (!/^camera\.[a-z0-9_]+$/.test(entityId)) return { ok: false, message: 'That is not a camera.' };
+  const url = `${connection.baseUrl.replace(/\/api$/, '')}/api/camera_proxy_stream/${encodeURIComponent(entityId)}`;
+  const opened = await fetcher.stream({
+    url,
+    policy: connection.policy,
+    headers: { authorization: `Bearer ${connection.token}` },
+    acceptContentTypes: ['multipart/x-mixed-replace'],
+    connectTimeoutMs: 15_000,
+  });
+  if (opened.status !== 'ok') return { ok: false, message: 'Home Assistant did not open the camera’s stream.' };
+  return { ok: true, chunks: opened.chunks, close: opened.close };
+}
+
 /*
  * The allowlist and its one constructor live in `services.ts`, which is pure:
  * the table, the eligibility rules and the value bounds can be tested without a

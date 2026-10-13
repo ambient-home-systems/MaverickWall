@@ -510,6 +510,7 @@ const PROBES: Readonly<Record<string, readonly unknown[]>> = {
   // A camera this household has not added: the box is left out (plan item M6.1).
   camera: ['B'.repeat(43)],
   cameraRefreshSec: [30],
+  cameraMode: ['stream'],
   text: ['Different words entirely'],
   items: [['Cheese']],
   list: ['todo.shopping'],

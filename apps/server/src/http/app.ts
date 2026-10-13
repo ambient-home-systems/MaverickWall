@@ -5,6 +5,10 @@ import { artworkPhoto, nowPlayingArt } from '../modules/homeassistant/artwork.js
 import { CAMERA_HANDLE } from '../modules/cameras/index.js';
 import { cameraPlacedOn } from '../modules/cameras/placement.js';
 import { createSnapshots } from '../modules/cameras/snapshot.js';
+import { callStream, resolveConnection } from '../modules/homeassistant/client.js';
+import { cameraEntityOf } from '../modules/cameras/index.js';
+import { createCameraHub, HUB_LIMITS, type HubLimits } from '../modules/cameras/hub.js';
+import { CAMERA_BOUNDARY, cameraPart } from '../modules/cameras/multipart.js';
 import { readAlbumSlides } from '../api/photo-albums.js';
 import { join } from 'node:path';
 import { localDateOf } from '@maverick-wall/calendar';
@@ -175,6 +179,11 @@ export interface WallAddress {
 export interface AppDeps {
   /** Where Todoist is — set only by a test, to a stand-in; the product always uses the real one (plan item M5.7). */
   readonly todoist?: TodoistEndpoint;
+  /**
+   * The camera hub's limits (plan item M6.2), for a test that cannot wait
+   * thirty seconds for a camera to go quiet. Nothing in the product sets it.
+   */
+  readonly cameraHubLimits?: Partial<HubLimits>;
   /** Where Google and Microsoft are — set only by a test, to a stand-in (plan item M5.11). */
   readonly oauth?: OAuthEndpoints;
   readonly db: SqliteDatabase;
@@ -862,7 +871,27 @@ export function createApp(deps: AppDeps): Hono {
    * `no-store`, unlike `/d/media`'s day-long cache: a snapshot out of a
    * browser's cache is a picture of the past presented as now.
    */
-  const snapshots = createSnapshots({ db: deps.db, keyring: deps.keyring, fetcher: deps.fetcher, now });
+  /*
+   * One socket into the house per camera however many walls watch it (plan
+   * item M6.2, RFC 007 §5): the hub opens a camera's stream on its first
+   * watcher and closes it a grace period after its last.
+   */
+  const cameraHub = createCameraHub(async (handle) => {
+    const camera = cameraEntityOf(deps.db, handle);
+    if (camera === undefined || !camera.available) return { ok: false };
+    const resolved = resolveConnection(deps.db, deps.keyring);
+    if (!resolved.ok) return { ok: false };
+    const opened = await callStream(deps.fetcher, resolved.connection, camera.entityId);
+    return opened.ok ? { ok: true, chunks: opened.chunks, close: opened.close } : { ok: false };
+  }, { ...HUB_LIMITS, ...deps.cameraHubLimits });
+  const snapshots = createSnapshots({
+    db: deps.db,
+    keyring: deps.keyring,
+    fetcher: deps.fetcher,
+    now,
+    // A camera whose stream is open is answered from its latest frame (§5.4).
+    latest: (handle) => cameraHub.latest(handle),
+  });
   app.get('/d/camera/:handle/still', async (c: Context) => {
     const screen = c.get('screen') as ScreenRow;
     const handle = c.req.param('handle') ?? '';
@@ -875,6 +904,81 @@ export function createApp(deps: AppDeps): Hono {
     c.header('content-type', shot.contentType);
     c.header('x-content-type-options', 'nosniff');
     return c.body(bytesOf(shot.bytes));
+  });
+
+  /**
+   * A camera's live stream (plan item M6.2, RFC 007 §6.4): its frames as they
+   * come, under our own multipart boundary, from the hub's one socket into
+   * the house.
+   *
+   * The gate is the snapshot's — paired, placed, there — plus the hub's caps,
+   * each refused with a sentence. **The stream checks itself every second**:
+   * a wall revoked, a camera removed or taken off this wall's canvases, or a
+   * camera the poll finds missing ends it then, rather than whenever the
+   * socket next happens to reconnect (§6.4 step 7). Pull-based, so a wall that
+   * stops reading costs a mailbox of one frame and holds back nobody else.
+   */
+  app.get('/d/camera/:handle/stream', (c: Context) => {
+    const screen = c.get('screen') as ScreenRow;
+    const handle = c.req.param('handle') ?? '';
+    c.header('cache-control', 'no-store');
+    if (!CAMERA_HANDLE.test(handle) || !cameraPlacedOn(deps.db, screen, handle, now())) {
+      return c.json({ error: 'not-found' }, 404);
+    }
+    const camera = cameraEntityOf(deps.db, handle);
+    if (camera === undefined || !camera.available) {
+      return c.json({ error: 'no-picture', message: 'This camera is not answering Home Assistant at the moment.' }, 503);
+    }
+    const subscribed = cameraHub.subscribe(handle, screen.id);
+    if (!subscribed.ok) {
+      return c.json(
+        {
+          error: 'too-many-cameras',
+          message:
+            subscribed.reason === 'screen-full'
+              ? 'This wall is already showing as many live cameras as it can.'
+              : 'This house is already showing as many live cameras as it can at once.',
+        },
+        503,
+      );
+    }
+    const subscription = subscribed.subscription;
+    let check: ReturnType<typeof setInterval> | undefined;
+    const stillAllowed = (): boolean => {
+      const row = deps.db.prepare('SELECT revoked_at AS revokedAt FROM screens WHERE id = ?').get(screen.id) as
+        | { revokedAt: number | null }
+        | undefined;
+      if (row === undefined || row.revokedAt !== null) return false;
+      const now2 = cameraEntityOf(deps.db, handle);
+      return now2 !== undefined && now2.available && cameraPlacedOn(deps.db, screen, handle, now());
+    };
+    const body = new ReadableStream<Uint8Array>({
+      start(): void {
+        check = setInterval(() => {
+          if (!stillAllowed()) subscription.close();
+        }, 1_000);
+      },
+      async pull(controller): Promise<void> {
+        const frame = await subscription.next();
+        if (frame === undefined) {
+          if (check !== undefined) clearInterval(check);
+          controller.close();
+          return;
+        }
+        controller.enqueue(cameraPart(frame));
+      },
+      cancel(): void {
+        if (check !== undefined) clearInterval(check);
+        subscription.close();
+      },
+    });
+    return new Response(body, {
+      headers: {
+        'content-type': `multipart/x-mixed-replace; boundary=${CAMERA_BOUNDARY}`,
+        'cache-control': 'no-store',
+        'x-content-type-options': 'nosniff',
+      },
+    });
   });
 
   /**

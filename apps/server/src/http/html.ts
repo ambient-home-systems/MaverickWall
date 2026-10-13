@@ -2064,6 +2064,10 @@ pre.code{background:var(--mw-surface-2);
 .le-cfg-refused{color:var(--mw-danger)}
 .le-config .switch{margin:var(--mw-s-2) 0}
 .le-cfg-field{display:block;margin:var(--mw-s-3) 0 0}
+/* A field an option hides (a camera's refresh while it is live, a to-do list's
+   typed items while it shows a Home Assistant list): the display above beats
+   the user agent's [hidden], as .row-fields' does. */
+.le-cfg-field[hidden]{display:none}
 .le-cfg-field>span{display:block;
   font:var(--mw-t-label-sm);
   letter-spacing:var(--mw-t-label-sm-tracking);

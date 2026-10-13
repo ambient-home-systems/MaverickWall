@@ -1,5 +1,8 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { WebSocketServer } from 'ws';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
  * A Home Assistant that is real enough to be wrong in the same ways.
@@ -406,6 +409,18 @@ export interface FakeHa {
   cameraFrame: Buffer;
   cameraFails: boolean;
   /**
+   * The live stream (plan item M6.2), as core's own MJPEG loop answers
+   * `/api/camera_proxy_stream/<id>`: real JPEG frames under a boundary, the
+   * first one twice, one every `streamEveryMs`, alternating between the two
+   * fixtures so a wall's pixels change. `streamQuiet` sends the headers and
+   * then nothing, the way a still porch does; `streamOpens` counts every
+   * socket opened, and `streamsOpen` the ones still open.
+   */
+  streamEveryMs: number;
+  streamQuiet: boolean;
+  streamOpens: number;
+  streamsOpen: number;
+  /**
    * Each entity's recorded changes, as `/api/history/period` answers them
    * (plan item M6.10): a list per entity asked for, the first in full and the
    * rest as a state and an instant. None until a test records some.
@@ -421,6 +436,12 @@ export interface FakeHa {
   /** Stand the fake down without reaching into a module-level array. */
   close(): Promise<void>;
 }
+
+/** Two real JPEG frames (plan item M6.2), for the stream: red, then blue. */
+export const CAMERA_FRAMES = {
+  a: readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'camera', 'frame-a.jpg')),
+  b: readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'camera', 'frame-b.jpg')),
+};
 
 export async function fakeHomeAssistant(): Promise<FakeHa> {
   const state: FakeHa = {
@@ -443,6 +464,10 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
     cameras: {},
     cameraFrame: ARTWORK,
     cameraFails: false,
+    streamEveryMs: 200,
+    streamQuiet: false,
+    streamOpens: 0,
+    streamsOpen: 0,
     history: {},
     notifications: [],
     wsReceived: [],
@@ -599,6 +624,49 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
         return;
       }
       return json(JSON.stringify(listed));
+    }
+    // A camera's live stream (plan item M6.2), the way core's MJPEG loop writes one.
+    if (url.startsWith('/api/camera_proxy_stream/')) {
+      const entityId = decodeURIComponent(url.slice('/api/camera_proxy_stream/'.length).split('?')[0] ?? '');
+      const camera = state.cameras[entityId];
+      if (camera === undefined) {
+        response.writeHead(404, { 'content-type': 'application/json' });
+        response.end('{"message":"Entity not found."}');
+        return;
+      }
+      if (state.cameraFails || camera.state === 'unavailable') {
+        response.writeHead(500, { 'content-type': 'text/plain' });
+        response.end('500: Internal Server Error');
+        return;
+      }
+      state.streamOpens += 1;
+      state.streamsOpen += 1;
+      response.writeHead(200, { 'content-type': 'multipart/x-mixed-replace;boundary=frame' });
+      // Node holds the headers back until the first body write; a quiet camera
+      // still answers at once, so they go now (Home Assistant's own stream does).
+      response.flushHeaders();
+      const frames = [CAMERA_FRAMES.a, CAMERA_FRAMES.b];
+      let n = 0;
+      const send = (): void => {
+        if (state.streamQuiet) return;
+        const frame = frames[n % 2] as Buffer;
+        // Core writes the very first frame twice.
+        const times = n === 0 ? 2 : 1;
+        for (let i = 0; i < times; i++) {
+          response.write(`--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ${frame.length}\r\n\r\n`);
+          response.write(frame);
+          response.write('\r\n');
+        }
+        n += 1;
+      };
+      send();
+      const timer = setInterval(send, state.streamEveryMs);
+      const done = (): void => {
+        clearInterval(timer);
+        state.streamsOpen = Math.max(0, state.streamsOpen - 1);
+      };
+      response.on('close', done);
+      return;
     }
     // A camera's latest picture (plan item M6.1), the way Home Assistant's
     // camera proxy answers: the bytes, for a camera the house has.

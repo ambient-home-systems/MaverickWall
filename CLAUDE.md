@@ -11539,6 +11539,68 @@ container as before. **Still unproven where it counts:** no real camera has
 been shown on a kitchen wall, and nobody has watched the picture survive a
 night of rebuilds on a real tablet.
 
+**A camera can be live on the wall, through one socket into the house (plan
+item M6.2, RFC 007 Tier B).** "Picture: Live" on a Camera widget
+(`cameraMode: 'stream'`) asks `GET /d/camera/:handle/stream`, which is gated
+exactly as the still is: the wall placed, the camera there. A wall at its four
+streams, or the house at its eight, is a `503` with a sentence. Behind it is
+`modules/cameras/hub.ts`, the frame hub RFC 007 §5 put first:
+- **One upstream per camera**, opened on its first watcher and closed a grace
+  period (5 s) after its last, so a reloading wall does not reopen the socket.
+- **Frames, not bytes.** `frames.ts` finds each JPEG by its own structure,
+  walking segments by their length, so an EXIF thumbnail inside a frame is
+  never taken for the frame. It reads the upstream's boundary not at all,
+  because integrations disagree about it, and refuses a frame over 4 MB.
+- **A mailbox of one frame per wall, latest first.** A slow tablet misses
+  frames and holds back nobody, and a wall joining a quiet camera paints the
+  hub's last frame at once.
+- **Quiet is not failure.** A camera silent for 30 s is reopened without
+  telling the wall; three opens in a row that fail, or send nothing, end the
+  stream, which is when the wall draws its placeholder. No socket outlives
+  ten minutes.
+- **A still of a streaming camera is its latest frame**, and costs Home
+  Assistant nothing.
+
+The socket is `fetcher.stream`, a new optional port in core: the same
+validate, resolve, check and pin as every request, **no redirect followed**
+because the one caller sends the house's token, and only
+`multipart/x-mixed-replace` accepted. `callStream` sits beside `callPicture`,
+so the token is still attached in one file. Each wall's stream checks once a
+second that the wall is not revoked and the camera is still there and still
+placed, and ends within that second if not.
+
+**The wall reads the stream itself, because an `<img>` cannot say when one
+ends.** Probed in Chromium: an `<img>` on a multipart stream fires one `load`
+and nothing at all when the stream stops, so a dead camera would look live for
+ever. `camera-layer.ts` fetches the stream, takes each part by our own
+`Content-Length`, decodes it with `createImageBitmap` (latest frame wins) and
+draws it on a `<canvas>` on the camera layer. So it knows when the last frame
+came, says a picture is old after ten seconds, and reconnects when the stream
+ends: in a second if it drew, on the backoff if it did not. A browser with
+neither API keeps the `<img>`, which draws the stream and cannot say when it
+stops. The canvas survives every rebuild, so a live camera is one request for
+as long as the box is on the wall. A panel ignores `cameraMode`.
+
+**Measured.** `camera-frames.test.ts` (8) splits real fixture bytes at every
+offset. `camera-stream.test.ts` (12) runs the real app, the real fetcher and
+the fake house, which now streams. `browser-camera.test.ts` gained a live
+wall (frames A and B drawn, one canvas across rebuilds, one request, one
+socket, the placeholder once the camera goes) and Live in the editor. Twenty
+mutations were checked and all are red. Two were green at first and needed a
+test each: a late joiner not handed the latest frame, and a socket silent from
+its very first byte, which only the idle limit taken at the open can close.
+One was a line nothing could contradict: the editor hid the refresh field on
+the click, and the inspector is rebuilt on every change anyway, so the line is
+gone and the one that builds the field is the one mutated. One failed to build
+at first and was re-aimed. **5875 tests passing, 1 red and 2 skipped, over 436
+files**: calendar 153 (1 skipped) over 10 · core 314 over 9 · display 1077
+over 69 · server 4331 (1 skipped) over 348, measured with `pnpm test` and a
+real Chromium, plus the one test added after. The one red is `browser-glass`'s
+striped-picture case, red on a clean `main` in this container as before.
+**Still unproven where it counts:** no real camera has streamed to a wall,
+and Reolink's own stream through Home Assistant is core's still-frame loop,
+which RFC 007 §4 already says.
+
 ---
 
 ## Open decisions

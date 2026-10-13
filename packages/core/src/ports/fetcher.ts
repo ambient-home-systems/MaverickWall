@@ -371,7 +371,46 @@ export interface Fetcher {
    * validate.
    */
   socket?(request: SocketRequest): Promise<SocketOutcome>;
+  /**
+   * One response that never completes — a camera's MJPEG stream (plan item
+   * M6.2, RFC 007 §5.5) — under the same guard, and optional for `socket`'s
+   * reason.
+   *
+   * The address is validated against `policy`, the name resolved and every
+   * address checked, the socket pinned to the address that was checked, and
+   * **no redirect is followed**: the one caller sends the house's token, and
+   * a stream is not a feed that has moved. `connectTimeoutMs` bounds the
+   * handshake and nothing after it — the caller's own timers decide how long
+   * a stream may be quiet or open. The body is handed over as it arrives,
+   * byte arrays in order, never decoded; `close` ends it at once.
+   */
+  stream?(request: StreamRequest): Promise<StreamOutcome>;
 }
+
+export interface StreamRequest {
+  readonly url: string;
+  readonly policy: UrlPolicy;
+  readonly headers?: Readonly<Record<string, string>>;
+  /** Refused unless the answer is one of these (its media type, parameters aside). */
+  readonly acceptContentTypes: readonly string[];
+  readonly connectTimeoutMs?: number;
+}
+
+export type StreamOutcome =
+  | {
+      readonly status: 'ok';
+      /** The whole header, parameters included — a multipart boundary lives there. */
+      readonly contentType: string;
+      readonly chunks: AsyncIterable<Uint8Array>;
+      close(): void;
+    }
+  | { readonly status: 'rejected'; readonly code: FetchRejectionCode; readonly message: string }
+  | {
+      readonly status: 'failed';
+      readonly code: FetchFailureCode;
+      readonly message: string;
+      readonly httpStatus?: number;
+    };
 
 export interface SocketRequest {
   readonly url: string;

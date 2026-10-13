@@ -6068,8 +6068,23 @@ function boot(): void {
     picker.appendChild(select);
     configPanel.appendChild(picker);
 
-    const every = typeof cfg['cameraRefreshSec'] === 'number' ? String(cfg['cameraRefreshSec']) : '3';
+    const live = cfg['cameraMode'] === 'stream';
     configPanel.appendChild(
+      segControl(
+        'Picture',
+        [
+          ['snapshot', 'Every few seconds'],
+          ['stream', 'Live'],
+        ],
+        live ? 'stream' : 'snapshot',
+        // A segment's change rebuilds the panel, so the refresh below is shown
+        // or hidden by the line that builds it.
+        (value) => setConfig(widget, 'cameraMode', value === 'stream' ? 'stream' : undefined),
+        'cameraMode',
+      ),
+    );
+    const every = typeof cfg['cameraRefreshSec'] === 'number' ? String(cfg['cameraRefreshSec']) : '3';
+    const refresh = configPanel.appendChild(
       segControl(
         'New picture every',
         [
@@ -6083,6 +6098,8 @@ function boot(): void {
         'cameraRefreshSec',
       ),
     );
+    // A live picture has no refresh to choose.
+    refresh.hidden = live;
     const fit = cfg['fit'] === 'contain' ? 'contain' : 'cover';
     configPanel.appendChild(
       segControl(
@@ -6099,8 +6116,10 @@ function boot(): void {
     const hint = document.createElement('p');
     hint.className = 'hint';
     hint.textContent =
-      'The picture is shown on the wall itself; this preview shows the box. ' +
-      'An e-paper panel shows the box without the picture.';
+      'The picture is shown on the wall itself; this preview shows the box. Live is ' +
+      'the camera’s own stream through this server, as fast as the camera sends it; ' +
+      'some cameras send no more than two pictures a second. An e-paper panel shows ' +
+      'the box without the picture.';
     configPanel.appendChild(hint);
   }
 

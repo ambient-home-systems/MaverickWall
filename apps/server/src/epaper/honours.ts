@@ -509,6 +509,12 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
     why: 'a panel draws no camera pictures, so its box is the same whichever camera — and one you remove is left out, as on a wall.',
   },
   {
+    key: 'cameraMode',
+    types: ['camera'],
+    label: 'Picture',
+    why: 'a panel draws no camera pictures, still or live.',
+  },
+  {
     key: 'cameraRefreshSec',
     types: ['camera'],
     label: 'New picture every',
