@@ -53,6 +53,14 @@ afterAll(async () => {
   );
 });
 
+/*
+ * A week from whenever the test runs, at 14:00 UTC. It was 15 July 2026, a
+ * fixed date that fell out of the sync window ninety days later, on 13
+ * October, and the restore test went red on that day and every day after.
+ */
+const WEEK_ON = new Date(Date.now() + 7 * 86_400_000);
+const ICS_DAY = WEEK_ON.toISOString().slice(0, 10).replace(/-/g, '');
+
 const FEED = [
   'BEGIN:VCALENDAR',
   'VERSION:2.0',
@@ -60,8 +68,8 @@ const FEED = [
   'BEGIN:VEVENT',
   'UID:restore-1@example.com',
   'DTSTAMP:20260101T000000Z',
-  'DTSTART:20260715T140000Z',
-  'DTEND:20260715T150000Z',
+  `DTSTART:${ICS_DAY}T140000Z`,
+  `DTEND:${ICS_DAY}T150000Z`,
   'SUMMARY:Dentist',
   'END:VEVENT',
   'END:VCALENDAR',
