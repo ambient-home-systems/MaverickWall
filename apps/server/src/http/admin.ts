@@ -659,6 +659,7 @@ const layoutScheduleBody = z
 import { registerHaRoutes } from './admin-ha.js';
 import { registerAlertRoutes } from './admin-alerts.js';
 import { registerModuleRoutes } from './admin-modules.js';
+import { registerScriptRoutes } from './admin-scripts.js';
 import { registerShiftTypeRoutes } from './admin-shifts.js';
 import { registerChoreRoutes } from './admin-chores.js';
 import { registerButtonRoutes } from './admin-buttons.js';
@@ -1370,6 +1371,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
   registerHaRoutes(app, deps);
   registerAlertRoutes(app, deps);
   registerModuleRoutes(app, deps);
+  registerScriptRoutes(app, deps);
   registerShiftTypeRoutes(app, deps);
   registerChoreRoutes(app, deps);
   registerButtonRoutes(app, deps);

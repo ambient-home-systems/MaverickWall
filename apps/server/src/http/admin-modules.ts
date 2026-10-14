@@ -34,6 +34,7 @@ import { householdSetUp } from '../modules/index.js';
 import { readRecipe, runRecipeOnAnswers, type RecipeRun } from '../modules/external/recipe-tooling.js';
 import { householdTimezone } from '../modules/external/index.js';
 import { invalidSetting, readSettingsForm, settingsControls, watchedReadingChoices } from './module-settings.js';
+import { scriptHostLine } from './admin-scripts.js';
 import { shownOnTag, wallsAndWhatTheyDraw, wallsShowingModule, type WallDrawing } from './wall-reach.js';
 
 /**
@@ -412,7 +413,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
           `<div class="rname">${escapeHtml(module.name)} ` +
           (module.enabled === 1 ? '' : tag('Off', 'warn')) +
           `</div>` +
-          `<div class="host">${escapeHtml(module.url)}</div>` +
+          `<div class="host">${module.kind === 'script' ? scriptHostLine(module.recipe, module.script) : escapeHtml(module.url)}</div>` +
           health +
           reach +
           `</div>` +
@@ -535,7 +536,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
       // this page's one main act.
       back: { label: 'Store', href: 'admin/modules' },
       intro:
-        'Two power tools, off the everyday path: write a recipe by hand, or add a ' +
+        'Power tools, off the everyday path: write a recipe by hand, add a script, or add a ' +
         'module that runs as its own service on your network.',
       body:
         (error === undefined ? '' : errorBlock(error)) +
@@ -546,6 +547,14 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
             `or to contribute to the store.</p>` +
             `<div class="row card-divide">` +
             `<a class="btn" href="admin/modules/recipe">Open the recipe builder</a></div>`,
+        ) +
+        card(
+          `<h2>Add a script</h2>` +
+            `<p>A script is a module written in JavaScript, for what a recipe cannot work out — ` +
+            `arithmetic, conditions, merging two answers. It runs on this server in a sandbox, ` +
+            `may contact only the hosts it names, and returns only data for the wall to draw.</p>` +
+            `<div class="row card-divide">` +
+            `<a class="btn" href="admin/modules/script">Add a script</a></div>`,
         ) +
         section(
           'Add a module by URL',
@@ -720,30 +729,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
         'preview',
       );
     }
-    const json = JSON.stringify(run.panel, null, 2);
-    const signals =
-      run.signals.length === 0
-        ? '<p class="hint">It raises no signal from this answer.</p>'
-        : `<p class="hint">It raises ${run.signals.length === 1 ? 'one signal' : `${run.signals.length} signals`} ` +
-          `from this answer, which do nothing until you arm the module’s alerts:</p>` +
-          `<pre class="code">${escapeHtml(run.signals.map((signal) => JSON.stringify(signal)).join('\n'))}</pre>`;
-    return section(
-      'Preview',
-      'Drawn by the wall itself, in two boxes a module is often given, in this house’s theme. ' +
-        'A widget reads its box, so a narrow one may give up rows.',
-      `<div class="recipe-previews">` +
-        PREVIEW_BOXES.map(
-          (box) =>
-            `<figure><div class="recipe-thumb" data-recipe-preview="${box.key}" ` +
-            `style="aspect-ratio:${box.ratio.toFixed(3)}"></div>` +
-            `<figcaption class="hint">${escapeHtml(box.label)}</figcaption></figure>`,
-        ).join('') +
-        `</div>` +
-        `<script type="application/json" id="recipe-preview-panel">${json.replace(/</g, '\\u003c')}</script>` +
-        `<details><summary>The panel it built</summary><pre class="code">${escapeHtml(json)}</pre></details>` +
-        signals,
-      'preview',
-    );
+    return builtPreview(run.panel, run.signals);
   }
 
   /** One store card: glyph, name, author, description, and an Install link. */
@@ -773,14 +759,16 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
         `<div class="rname">${escapeHtml(entry.name)}</div>` +
         `<div class="sub">by ${escapeHtml(entry.author)}</div>` +
         `<p>${escapeHtml(entry.description)}</p></div>` +
-        tag(entry.kind === 'recipe' ? 'Recipe' : 'Service') +
+        tag(entry.kind === 'recipe' ? 'Recipe' : entry.kind === 'script' ? 'Script' : 'Service') +
         `</div>` +
         `<div class="row card-divide">` +
         // A recipe installs in a click and a couple of fields; a service (which you
         // run yourself) hands off to the Advanced add-by-URL form, pre-filled.
         (entry.kind === 'recipe'
           ? `<a class="btn" href="admin/modules/install/${encodeURIComponent(entry.id)}">Install</a>`
-          : `<a class="btn" href="admin/modules/advanced?install=${encodeURIComponent(entry.id)}#add">Install</a>` +
+          : entry.kind === 'script'
+            ? `<a class="btn" href="admin/modules/script/install/${encodeURIComponent(entry.id)}">Install</a>`
+            : `<a class="btn" href="admin/modules/advanced?install=${encodeURIComponent(entry.id)}#add">Install</a>` +
             (entry.install.source === undefined
               ? ''
               : `<a class="link push" href="${escapeHtml(entry.install.source)}" ` +
@@ -862,6 +850,40 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
     });
   }
 
+}
+
+/**
+ * What a module built, drawn by the wall itself in the two boxes a module is
+ * often given, with its JSON and its signals under it. Shared by a recipe's
+ * preview and a script's run-once (RFC 017).
+ */
+export function builtPreview(panel: unknown, signals: readonly unknown[]): string {
+  const signalNote =
+    signals.length === 0
+      ? '<p class="hint">It raises no signal from this answer.</p>'
+      : `<p class="hint">It raises ${signals.length === 1 ? 'one signal' : `${signals.length} signals`} ` +
+        `from this answer, which do nothing until you arm the module’s alerts:</p>` +
+        `<pre class="code">${escapeHtml(signals.map((signal) => JSON.stringify(signal)).join('\n'))}</pre>`;
+  // A module that only raises signals has no panel to draw.
+  if (panel === undefined) return section('Preview', 'It built no panel.', signalNote, 'preview');
+  const json = JSON.stringify(panel, null, 2);
+  return section(
+    'Preview',
+    'Drawn by the wall itself, in two boxes a module is often given, in this house’s theme. ' +
+      'A widget reads its box, so a narrow one may give up rows.',
+    `<div class="recipe-previews">` +
+      PREVIEW_BOXES.map(
+        (box) =>
+          `<figure><div class="recipe-thumb" data-recipe-preview="${box.key}" ` +
+          `style="aspect-ratio:${box.ratio.toFixed(3)}"></div>` +
+          `<figcaption class="hint">${escapeHtml(box.label)}</figcaption></figure>`,
+      ).join('') +
+      `</div>` +
+      `<script type="application/json" id="recipe-preview-panel">${json.replace(/</g, '\\u003c')}</script>` +
+      `<details><summary>The panel it built</summary><pre class="code">${escapeHtml(json)}</pre></details>` +
+      signalNote,
+    'preview',
+  );
 }
 
 /**

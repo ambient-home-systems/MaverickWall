@@ -8,6 +8,7 @@ import { moduleImageHandle, panelImageUrl } from '../../api/module-image-handle.
 import { sniffImage } from '../../api/media.js';
 import { POLICY } from './index.js';
 import { recipePolicy, recipeSchema } from './recipe.js';
+import { scriptManifestSchema, scriptPolicy } from './script.js';
 
 /**
  * A module's picture, for a wall that asks by its handle (plan item M7.5).
@@ -17,7 +18,8 @@ import { recipePolicy, recipeSchema } from './recipe.js';
  * picture the module has since stopped showing, serves nothing and fetches
  * nothing. It is fetched the first time a wall asks, through the guard under
  * the module's own policy: a service module's (it is the household's own
- * container), or a recipe's (public https only unless it opted into the LAN).
+ * container), a recipe's (public https only unless it opted into the LAN), or
+ * a script's (the same, and only from a host the script declared, RFC 017).
  * Sniffed from its bytes as every picture this application serves is, so an
  * SVG or a page is refused, and kept on this box under its handle, so a module
  * whose server goes away still has its picture on the wall. A picture no panel
@@ -34,10 +36,16 @@ function currentPictures(db: SqliteDatabase): Map<string, { url: string; policy:
   const out = new Map<string, { url: string; policy: Policy }>();
   for (const module of readEnabledExternalModules(db)) {
     let policy: Policy = POLICY;
+    let hosts: readonly string[] | undefined;
     if (module.kind === 'recipe') {
       const parsed = recipeSchema.safeParse(module.recipe);
       if (!parsed.success) continue;
       policy = recipePolicy(parsed.data);
+    } else if (module.kind === 'script') {
+      const parsed = scriptManifestSchema.safeParse(module.recipe);
+      if (!parsed.success) continue;
+      policy = scriptPolicy(parsed.data);
+      hosts = parsed.data.hosts;
     }
     const variants = db
       .prepare(`SELECT panel FROM external_module_variants WHERE module_id = ? AND panel IS NOT NULL`)
@@ -52,6 +60,8 @@ function currentPictures(db: SqliteDatabase): Map<string, { url: string; policy:
     }
     for (const panel of panels) {
       const url = panelImageUrl(panel);
+      // A script's picture comes from a host it declared, as its fetches do.
+      if (url !== undefined && hosts !== undefined && !hosts.includes(new URL(url).hostname)) continue;
       if (url !== undefined) out.set(moduleImageHandle(module.id, url), { url, policy });
     }
   }

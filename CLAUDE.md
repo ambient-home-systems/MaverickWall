@@ -12358,6 +12358,90 @@ count. The one red is `browser-glass`'s striped-picture case, red on a clean
 has run the Shortcut on a real iPhone or the `rest_command` on a real Home
 Assistant.
 
+
+**A module can be a script, run on the server in a sandbox, and still only
+hand the wall data (plan item M7.12, RFC 017).** `kind = 'script'` is the third
+kind of module, beside a service and a recipe. Its manifest is in the `recipe`
+column and its JavaScript in a new `script` column (migration `0080`, one
+generated `ADD COLUMN`, read). It is for what a recipe refuses because a recipe
+is not a language: sorting, arithmetic, conditions, two answers merged.
+
+- **The runtime** is QuickJS compiled to WebAssembly (`quickjs-emscripten-core`
+  and `@jitl/quickjs-wasmfile-release-sync` 0.32.0, MIT, 491 KB of
+  WebAssembly). It lives in `apps/server` only.
+- **Every run is a worker thread of its own** (`sandbox-worker.ts`), started for
+  the run and terminated after it. So no state crosses runs or modules. The
+  main thread (`sandbox.ts`) holds the fetcher, the secrets and the wall clock;
+  the worker holds only the interpreter.
+- **The limits are RFC 017 §4.1's**:
+  - 16 MB of memory and a 512 KB stack, both set on the interpreter;
+  - 200 ms of interpreter time, counted by the interrupt handler, so waiting
+    on a host is not charged;
+  - 10 s in all, after which the main thread terminates the thread;
+  - five fetches, a megabyte per answer and 256 KB of output.
+- **The worker starts from its TypeScript source under the tests**, through
+  Node 22's type stripping, and from `dist` in the image. Its only imports
+  beyond the two packages are type-only, which is what makes that work.
+- **`ctx` is built inside the interpreter and frozen.** It carries `config` (a
+  reading setting as its value, never its id), `now`, `timeZone`,
+  `local(instant)` (QuickJS has no `Intl`) and `fetch`. `fetch` is forwarded to
+  the main thread, where `prepareScriptFetch` decides it: the host must be one
+  the manifest names, compared exactly; no secret may be in the address; and
+  `{secret:key}` in a header is filled in only for the host that secret was
+  declared for. Then the SSRF-guarded fetcher sends it, public https only unless
+  the household pasted a script with `allowLan`. An answer never carries the
+  response's headers.
+- **What a run returns** is read as `{panel, signals}`, strictly, by the panel
+  and signal schemas, and refused rather than coerced. A failed run keeps the
+  last good panel and signals and writes the sentence and the interpreter's
+  words, capped and stripped, to the card.
+
+**Consent is bound to what was shown.** Modules › Advanced › Add a script is two
+presses. The first shows every host, which credential goes to which host, the
+network grant and the code's sha256. The second carries a key over the manifest
+and the code, so a changed host or a changed character asks again. **Run it
+once** runs it for real behind the same key and draws what it built through the
+recipe preview's renderer. The module's card shows the sha256. The store gains a
+`script` kind that may not set `allowLan`, and its first entry is **Moon
+phase**, which contacts nobody and is held to the 2024 almanac's January
+quarters within a day. A script's picture is served only from a host it
+declared.
+
+**Measured.**
+- `script-sandbox.test.ts` (29) runs ten attack shapes from published sandbox
+  escapes (`test/fixtures/scripts/hostile/README.md`) through real workers, a
+  real loopback server and the real fetcher. Among them are a loop, ReDoS,
+  doubling memory, unbounded recursion, a promise that never settles, the
+  `constructor.constructor` and vm2-style rejection escapes, prototype
+  pollution across runs, a 4 MB output, and a script that walks `ctx`, has its
+  secret's host echo the header and sends everything it saw to another host it
+  declared. The secret is in none of what that host received.
+- `script-modules.test.ts` (11) covers the consent flow, run-once, the poll, a
+  broken script beside a working one, signals, a reading's value, the picture
+  host and the store install.
+- `script-cost.test.ts` (1) is §8's measurement. On a 4-core x86_64 container,
+  three runs of twenty took 13–14 ms to load the interpreter and 13–16 ms of
+  interpreter time for one fetch and fifty rows (at most 22 ms), and about
+  150–170 ms in all with the thread's start. **No arm64 Pi 4 has been
+  measured.**
+- `module-docs.test.ts` runs the guide's script example in the sandbox.
+
+Twenty-three mutations were checked and all are red. Two were green at first:
+- **Removing the stack limit.** QuickJS's own default also stops the hostile
+  recursion. Our 512 KB reaches about 2,700 calls and the default about 5,500,
+  so a depth of 4,000 now tells them apart.
+- **A consent key that hashed the code's length.** The test's edit changed the
+  length. It now changes one character in place.
+
+Six first failed to build and were re-aimed.
+
+**6165 tests passing, 1 red and 2 skipped, over 463 files**: calendar 153 (1
+skipped) over 10 · core 327 over 9 · display 1101 over 72 · docs 26 over 1 ·
+server 4558 (1 skipped) over 371, measured with `pnpm test` and a real
+Chromium. Against M2.4's 6123 over 460, that is +42 and +3, this change's own
+count. The one red is `browser-glass`'s striped-picture case, red on a clean
+`main` in this container as before. **Still unproven where it counts:** no
+household has pasted a script, and no Pi has run one.
 ---
 
 ## Open decisions

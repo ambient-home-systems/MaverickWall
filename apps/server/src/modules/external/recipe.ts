@@ -426,7 +426,7 @@ const fieldBase = {
 const NUMBER_TEXT = /^-?\d+(\.\d+)?$/;
 const OPTION_VALUE = /^[^{}]{1,80}$/;
 
-const configField = z.preprocess(
+export const configField = z.preprocess(
   // `type` was optional when every field was text, and a recipe that leaves it
   // out still means text.
   (raw) =>
@@ -515,7 +515,7 @@ export function fieldValue(field: ConfigField, raw: string): string | undefined 
 }
 
 /** The fields whose value is a Home Assistant reading's, read at fetch time. */
-export function readingFields(recipe: Recipe): string[] {
+export function readingFields(recipe: SettingsOf): string[] {
   return recipe.config.filter((f) => f.type === 'ha_reading').map((f) => f.key);
 }
 
@@ -645,7 +645,7 @@ const signalSpec = z
   .strict();
 
 /** A credential the household supplies at install: never defaulted, never shown. */
-const secretField = z
+export const secretField = z
   .object({
     key: z.string().min(1).max(40).regex(/^[a-z0-9_]+$/, 'lower-case, digits and underscore only'),
     label: z.string().min(1).max(60),
@@ -903,6 +903,10 @@ export const recipeSchema = z
 export type Recipe = z.infer<typeof recipeSchema>;
 export type RecipeConfig = Record<string, string>;
 export type RecipeSecrets = Record<string, string>;
+/** Anything that declares settings: a recipe, or a script module's manifest (RFC 017). */
+export interface SettingsOf {
+  readonly config: readonly ConfigField[];
+}
 
 // ---------------------------------------------------------------------------
 // Running a recipe
@@ -1295,7 +1299,7 @@ export function runRecipeSignals(
  * off its list, a number now out of range — is no value, and the default
  * stands in: what reaches the address is always one the recipe declared.
  */
-export function normaliseConfig(recipe: Recipe, supplied: RecipeConfig): RecipeConfig {
+export function normaliseConfig(recipe: SettingsOf, supplied: RecipeConfig): RecipeConfig {
   const config: RecipeConfig = {};
   for (const field of recipe.config) {
     const raw = supplied[field.key];
@@ -1310,7 +1314,7 @@ export function normaliseConfig(recipe: Recipe, supplied: RecipeConfig): RecipeC
  * widget's fetch is built from. A widget's value that this field does not take
  * falls back to the install's, never to a stranger's default.
  */
-export function widgetConfig(recipe: Recipe, install: RecipeConfig, settings: RecipeConfig): RecipeConfig {
+export function widgetConfig(recipe: SettingsOf, install: RecipeConfig, settings: RecipeConfig): RecipeConfig {
   const base = normaliseConfig(recipe, install);
   const out: RecipeConfig = { ...base };
   for (const field of recipe.config) {
@@ -1349,7 +1353,7 @@ export function requestKey(recipe: Recipe, config: RecipeConfig): string {
  * is empty, which is what an unfilled text field has always sent.
  */
 export function withReadingValues(
-  recipe: Recipe,
+  recipe: SettingsOf,
   config: RecipeConfig,
   valueOf: (entityId: string) => string | undefined,
 ): RecipeConfig {

@@ -2,6 +2,7 @@ import { z } from '../validation.js';
 import { GLYPH_KEYS } from '../glyphs.js';
 import { EMOJI_KEYS } from '../emoji.js';
 import { recipeSchema } from '../modules/external/recipe.js';
+import { scriptManifestSchema, scriptSourceSchema } from '../modules/external/script.js';
 import { STORE_ENTRIES } from '../catalog/index.js';
 
 /**
@@ -106,13 +107,32 @@ const recipeEntry = z
   })
   .strict();
 
-const entrySchema = z.discriminatedUnion('kind', [serviceEntry, recipeEntry]);
+/**
+ * A script module (RFC 017): its manifest and its JavaScript, both checked by
+ * the same schemas the paste form uses. Reviewed by pull request and versioned
+ * with the image, so its source and its hash change only with a release. A
+ * store script may not reach the household's network: that is a grant a
+ * household gives by pasting a script themselves.
+ */
+const scriptEntry = z
+  .object({
+    ...common,
+    kind: z.literal('script'),
+    manifest: scriptManifestSchema.refine((manifest) => !manifest.allowLan, {
+      message: 'a store script may not reach the household’s network',
+    }),
+    source: scriptSourceSchema,
+  })
+  .strict();
+
+const entrySchema = z.discriminatedUnion('kind', [serviceEntry, recipeEntry, scriptEntry]);
 
 export const catalogSchema = z.object({ version: z.literal(1), modules: z.array(entrySchema) });
 
 export type CatalogEntry = z.infer<typeof entrySchema>;
 export type ServiceEntry = z.infer<typeof serviceEntry>;
 export type RecipeEntry = z.infer<typeof recipeEntry>;
+export type ScriptEntry = z.infer<typeof scriptEntry>;
 export type Catalog = z.infer<typeof catalogSchema>;
 
 /**

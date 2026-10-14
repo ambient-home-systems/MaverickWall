@@ -8,13 +8,18 @@ want a recipe**:
   it, and Maverick Wall does the fetching. No service to host. See
   [Recipes](#recipes--a-module-with-no-server) below, and
   [`adding-to-the-store.md`](./adding-to-the-store.md) to share one in the store.
+- A **script** is one file of JavaScript that Maverick Wall runs on its own
+  server, in a sandbox, for what a recipe cannot work out: arithmetic,
+  conditions, sorting, merging two answers. It returns the same data a recipe
+  builds. See [Scripts](#scripts--code-that-runs-in-a-sandbox) below.
 - A **service module** is its own small HTTP service you run on your own
   network, for the rare thing a recipe cannot do. This document covers that
   contract first; there is a runnable example in
   [`examples/example-module`](../examples/example-module).
 
-Either way, Maverick Wall reads what the module supplies and draws it, and
-**never runs anything it sends**.
+Whichever kind, the wall only ever draws data: a script runs on the server and
+never on a wall, and Maverick Wall **never runs anything a service or a feed
+sends**.
 
 ## The service contract
 
@@ -718,6 +723,88 @@ the way the poll does, and says which request answered, which did not, and
 what the panel built or why it could not. It names addresses by their host
 only, never prints a secret or a setting's value, and writes nothing back, so
 the module's card still says what the last poll found.
+
+## Scripts — code that runs in a sandbox
+
+A recipe is deliberately not a language. When the job needs one — which of
+three bins goes out next, how long until high tide, a train list merged with
+its disruptions — write a **script**: one file of JavaScript with a default
+function. Maverick Wall runs it on its own server inside QuickJS, a JavaScript
+interpreter compiled to WebAssembly, in a thread of its own, and draws what it
+returns exactly as it draws a recipe's panel. The wall never runs it.
+
+Its manifest is a recipe's settings and secrets, with the hosts it may reach in
+place of a `fetch`:
+
+```json
+{
+  "name": "Next bin",
+  "contract": 1,
+  "hosts": ["bins.example-council.gov.uk"],
+  "config": [{ "key": "street", "label": "Street", "type": "string" }],
+  "secrets": [{ "key": "api_key", "label": "API key", "host": "bins.example-council.gov.uk" }],
+  "intervalSeconds": 3600
+}
+```
+
+And the script:
+
+```js
+// The council answers { "bins": [{ "kind": "Recycling", "date": "2026-10-16" }, …] }.
+export default async function run(ctx) {
+  const res = await ctx.fetch(
+    'https://bins.example-council.gov.uk/v1/collections?street=' + encodeURIComponent(ctx.config.street),
+    { headers: { 'X-Api-Key': '{secret:api_key}' } },
+  );
+  if (!res.ok) throw new Error('The council said ' + res.status);
+  const bins = (await res.json()).bins.slice().sort((a, b) => a.date.localeCompare(b.date));
+  const next = bins[0];
+  return {
+    panel: { kind: 'countdown', title: 'Next bin', label: next.kind, at: next.date + 'T07:00:00Z' },
+    signals: [],
+  };
+}
+```
+
+**What it is given.** `ctx` is frozen, and holds:
+
+| | |
+|---|---|
+| `ctx.config` | The settings, as strings, each checked against its field. A Home Assistant reading setting is the reading's value, never its entity id. |
+| `ctx.now` | The server's clock, in milliseconds. |
+| `ctx.timeZone` | The household's zone, such as `Europe/London`. |
+| `ctx.local(instant)` | That instant on the household's clock: `{ year, month, day, hour, minute, second, weekday }`, with Sunday as 0. QuickJS has no `Intl`, so this is how a script knows what day it is at home. |
+| `ctx.fetch(url, options)` | A GET. `options.headers` may name a secret as `{secret:key}`, which is filled in on the server, only for the host that secret was declared for; the script never sees its value. `options.format` may be `feed` or `xml`, and the answer then carries `data`, read the way a recipe's feed or document is. |
+
+An answer has `ok`, `status`, `contentType`, `text()` and `json()`, and never
+the response's headers. A 404 is an answer with `ok: false`. A host the
+manifest does not name, an address with a secret in it, a sixth fetch, a
+private address without the household's say-so, or an answer over a megabyte
+is an error thrown into the script, which it may catch.
+
+**What it returns.** `{ panel, signals }`, either or both. The panel is any of
+the [shapes above](#panel-data--the-shapes) and the signals are the
+[`/signals` list](#get-signals--raising-an-alert-optional), read by the same
+schemas: anything else is refused, never cut down to fit, and the wall keeps
+the last good panel while the module's card says why.
+
+**What it cannot do.** There are no files, no timers, no console, no `import`,
+no network beyond `ctx.fetch`, and nothing left over from the last run: every
+run starts in a new thread with a new interpreter. One run has 16 MB of memory,
+200 ms of its own computing time (time spent waiting for a host is not
+counted) and ten seconds in all. A loop that never ends, a recursion with no
+bottom and a runaway regular expression are each stopped, and cost that one
+module its panel and nothing else.
+
+**Adding one.** Modules › Advanced › **Add a script** takes the manifest, the
+script, the settings and any secrets. **Check it** shows what it may contact,
+which credential goes to which host, and the sha256 of the code; **Run it
+once** runs it for real and draws what it built, and **Add script** adds it.
+Change a host or a character of the code and the page asks again. The
+module's card shows the same sha256, so you can tell which version is running.
+A script in the store is reviewed by pull request like a recipe, and may not
+reach a household's own network: that is something a household allows only by
+pasting a script themselves.
 
 ## Sharing a module
 

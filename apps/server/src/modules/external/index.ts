@@ -41,6 +41,9 @@ import {
 import type { ExternalModuleRow } from '../../api/external-modules.js';
 import { panelForWall } from '../../api/module-image-handle.js';
 import type { Keyring } from '../../secrets/keyring.js';
+import { runScript, type ScriptRun } from './sandbox.js';
+import { SCRIPT_LIMITS, scriptFetch, scriptManifestSchema, scriptSourceSchema } from './script.js';
+import { clean } from '../weather/alerts.js';
 
 /**
  * Third-party modules, as `PanelModule`s (docs/rfc-001-module-framework.md).
@@ -122,6 +125,16 @@ export async function pollExternalModules(
         await pollRecipe(db, fetcher, keyring, module);
       } catch {
         writeExternalModuleError(db, module.id, 'The recipe could not run.');
+      }
+      continue;
+    }
+    // A script runs here too, in its sandbox (RFC 017); it has no `/signals`
+    // of its own because its one run returns both.
+    if (module.kind === 'script') {
+      try {
+        await pollScript(db, fetcher, keyring, module);
+      } catch {
+        writeExternalModuleError(db, module.id, 'The module could not run.');
       }
       continue;
     }
@@ -285,6 +298,100 @@ async function pollRecipe(
       else writeModuleVariantError(db, module.id, key, outcome.error, now);
     }
   }
+}
+
+/**
+ * Run one script module for its install and for every widget that sets its own
+ * settings (RFC 017, plan item M7.12), the way `pollRecipe` reads a recipe.
+ *
+ * Each distinct set of settings is one run, however many widgets name it, and
+ * each keeps the manifest's own interval. Each run is a fresh sandbox: nothing
+ * the last run did, and nothing another module did, is in reach. Signals come
+ * from the install's run only, as a recipe's do.
+ *
+ * A Home Assistant reading setting is handed to the script as the reading's
+ * value, never its entity id (rule twelve), as a recipe's address is built.
+ */
+export async function pollScript(
+  db: SqliteDatabase,
+  fetcher: Fetcher,
+  keyring: Keyring,
+  module: ExternalModuleRow,
+  run: typeof runScript = runScript,
+): Promise<void> {
+  const manifest = scriptManifestSchema.safeParse(module.recipe);
+  const source = scriptSourceSchema.safeParse(module.script);
+  if (!manifest.success || !source.success) {
+    writeExternalModuleError(db, module.id, 'This module is not valid.');
+    return;
+  }
+  const now = Date.now();
+  const timeZone = householdTimezone(db);
+  const due = (polledAt: number): boolean =>
+    polledAt === 0 || now >= polledAt + manifest.data.intervalSeconds * 1000;
+
+  const install: RecipeConfig =
+    module.config !== null && typeof module.config === 'object' ? (module.config as RecipeConfig) : {};
+  const readingValue = readingValueReader(db);
+  const runs = new Map<string, { config: RecipeConfig; install: boolean; variants: string[] }>();
+  const join = (stored: RecipeConfig, add: (entry: { install: boolean; variants: string[] }) => void): void => {
+    const config = withReadingValues(manifest.data, stored, readingValue);
+    const key = JSON.stringify(Object.entries(config).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+    const entry = runs.get(key) ?? { config, install: false, variants: [] };
+    add(entry);
+    runs.set(key, entry);
+  };
+  join(normaliseConfig(manifest.data, install), (entry) => {
+    entry.install = true;
+  });
+  const wanted = readModuleWidgetSettings(db, module.id);
+  for (const [key, settings] of wanted) {
+    join(widgetConfig(manifest.data, install, settings), (entry) => entry.variants.push(key));
+  }
+  pruneModuleVariants(db, module.id, new Set(wanted.keys()));
+  const polled = new Map(readModuleVariants(db, module.id).map((row) => [row.variantKey, row.lastPolledAt]));
+
+  for (const entry of runs.values()) {
+    const isDue = (entry.install && due(module.lastPolledAt)) || entry.variants.some((key) => due(polled.get(key) ?? 0));
+    if (!isDue) continue;
+    // The secrets are opened here, for this run, and stay in this thread: the
+    // script names one in a header and the host fills it in (`prepareScriptFetch`).
+    const secrets = decryptSecrets(keyring, module.secretsEnvelope);
+    const began = Date.now();
+    const outcome: ScriptRun = await run({
+      source: source.data,
+      config: entry.config,
+      now,
+      timeZone,
+      fetch: scriptFetch(fetcher, manifest.data, secrets, () => SCRIPT_LIMITS.wallMs - (Date.now() - began)),
+    });
+    const error = outcome.ok ? undefined : scriptError(outcome);
+    if (entry.install) {
+      if (outcome.ok) {
+        if (outcome.panel !== undefined) writeExternalModulePanel(db, module.id, outcome.panel);
+        else writeExternalModuleError(db, module.id, null);
+        // Authoritative, as a service's `/signals` is: a run that names no
+        // signals is a module with nothing to raise now.
+        writeExternalModuleSignals(db, module.id, outcome.signals ?? { signals: [] });
+      } else {
+        writeExternalModuleError(db, module.id, error ?? '');
+      }
+    }
+    for (const key of entry.variants) {
+      if (outcome.ok && outcome.panel !== undefined) writeModuleVariantPanel(db, module.id, key, outcome.panel, now);
+      else writeModuleVariantError(db, module.id, key, error ?? 'The module returned no panel.', now);
+    }
+  }
+}
+
+/**
+ * A failed run, as the module's card says it: the sentence, then the
+ * interpreter's or the schema's own words, capped and stripped like every
+ * other stranger's string. Never logged.
+ */
+export function scriptError(outcome: Extract<ScriptRun, { ok: false }>): string {
+  const detail = clean(outcome.detail, 240);
+  return detail === null || detail === '' ? outcome.error : `${outcome.error} ${detail}`;
 }
 
 /**

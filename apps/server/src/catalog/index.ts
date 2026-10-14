@@ -6,6 +6,7 @@ import { entry as floodWarnings } from './flood-warnings.js';
 import { entry as fuelFrance } from './fuel-prices-france.js';
 import { entry as hurricanes } from './hurricanes.js';
 import { entry as londonLines } from './london-lines.js';
+import { entry as moonPhase } from './moon-phase.js';
 import { entry as outsideTemperature } from './outside-temperature.js';
 import { entry as pollen } from './pollen.js';
 import { entry as publicHolidays } from './public-holidays.js';
@@ -46,6 +47,8 @@ export const STORE_ENTRIES: readonly CatalogEntry[] = [
   swissDepartures,
   fuelFrance,
   rocketLaunches,
+  // Scripts (RFC 017): code run here in a sandbox, for what a recipe cannot work out.
+  moonPhase,
   // Service modules (run their own process) after.
   countdownExample,
 ];

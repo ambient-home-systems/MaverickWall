@@ -53,6 +53,23 @@ The recipe format — selectors, formatters, templates, `config`, `secrets`,
   in at install and it is stored encrypted. Keep the feed public where possible;
   `allowLan: true` (reaching the household's own network) needs a good reason.
 
+## A script
+
+A **script** (RFC 017) is for what a recipe cannot work out: arithmetic,
+sorting, conditions, two answers merged. Its file carries a `manifest` (the
+hosts it may contact, its settings and secrets) and its `source`, one file of
+JavaScript with a default function, and runs on the household's server in a
+sandbox. Copy [`moon-phase.ts`](../apps/server/src/catalog/moon-phase.ts),
+which contacts nobody, and read
+[Scripts](./building-a-module.md#scripts--code-that-runs-in-a-sandbox) for what
+a script is given and may return.
+
+A store script may not set `allowLan`: reaching a household's own network is
+something they allow only by pasting a script themselves. Its source and its
+sha256 change only with a release, and the install page shows both the hosts
+and the hash before anything runs. Add a test that runs it on a pinned clock and
+holds what it builds, as `test/script-modules.test.ts` does for the moon.
+
 ## A service module (advanced)
 
 A **service** module runs as its own process and Maverick Wall reads it over
