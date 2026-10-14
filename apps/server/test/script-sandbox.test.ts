@@ -95,6 +95,16 @@ describe('a run that does not stop ends, and the server carries on', () => {
     if (reason === 'cpu') expect(outcome.timing.cpuMs).toBeLessThan(SCRIPT_LIMITS.cpuMs + 100);
   });
 
+  it('holds the interpreter’s stack to its own limit, not QuickJS’s larger default', async () => {
+    // At 512 KB a call chain reaches about 2,700 deep; QuickJS's default of
+    // 1 MB reaches about 5,500. Four thousand is inside the one and not the other.
+    const deep = (n: number) =>
+      run(`function d(n) { return n === 0 ? 0 : d(n - 1) + 1; }
+        export default function run() { return { panel: { kind: 'text', text: String(d(${n})) } }; }`);
+    expect(textOf(await deep(2000))).toBe('2000');
+    expect(await deep(4000)).toMatchObject({ ok: false, reason: 'stack' });
+  });
+
   it('ends a run that waits for ever, at its wall time, by ending its thread', async () => {
     const outcome = await run(hostile('never.js'), { limits: { wallMs: 1500 } });
     expect(outcome).toMatchObject({ ok: false, reason: 'time' });

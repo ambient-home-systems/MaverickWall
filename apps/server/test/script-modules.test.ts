@@ -175,7 +175,8 @@ describe('pasting a script', () => {
     // Agreed to one script, and pasted another: asked again, and nothing added.
     const changed = await h.form('/admin/modules/script', {
       ...fields,
-      source: SOURCE.replace('Next bin', 'Next bin!'),
+      // The same length, one character different.
+      source: SOURCE.replace("title: 'Next bin'", "title: 'Next bun'"),
       consent: consentOf(html),
     });
     expect(changed.status).toBe(200);
