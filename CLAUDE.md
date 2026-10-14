@@ -12073,6 +12073,67 @@ The one red is `browser-glass`'s striped-picture case, red on a clean `main`
 in this container as before. **Still unproven where it counts:** no real feed
 has been coloured on a kitchen wall.
 
+**A recipe can read a news feed, any XML document, and the house (plan item
+M7.9).** `format` on a recipe's `fetch` and on each source is `json` (the
+absence, so every recipe that existed reads as before), `feed` or `xml`.
+`modules/external/source-formats.ts` turns the answer into the plain tree a
+selector walks, once, before anything selects from it, so the recipe language
+does not change: `items` in a feed and `rss.channel.item` in a document are
+paths like any other.
+
+- **A feed** goes through the News screen's own parser (`readFeed`), so RSS
+  2.0, RSS 1.0 and Atom come out as one shape, `{ title, items: [{ id, title,
+  link, published }] }`, with `published` an ISO instant. A feed with nothing
+  in it is an empty list, so a recipe's `empty` words say so; a web page is a
+  failure, by name.
+- **A document** is read by the shared narrow reader (`xml/read.ts`, depth 64,
+  undeclared prefixes kept). An element with no attributes and no children is
+  its text. Any other element is an object with no prototype: its attributes
+  under `_attr`, its text under `_text`, and its children by local name, one
+  child the child and several a list. Names keep the characters a selector can
+  say (`xml:lang` is `xml_lang`). One child and many being different shapes is
+  what makes `rss.channel.title` readable, and the cost is a list of one, so an
+  element object carries a symbol and `selectRows` reads one marked element as
+  a list of one. A JSON object where a list is asked for is still a feed that
+  changed shape.
+- **Neither is held to a content type.** RSS alone is served under five, so
+  only JSON keeps `acceptContentTypes`; a feed or document is decided by
+  reading it, under `FETCH_LIMITS.feed`.
+- **The house** is a source `{ ha: [setting…] }` naming up to eight of the
+  recipe's own `ha_reading` settings, never an entity: which reading is the
+  household's choice, and a recipe that typed an entity id would be a stranger
+  choosing which of the house's things to read. Its body is a list in the
+  recipe's order of `{ key, name, state, unit, changed }`, read from
+  `ha_entity_cache` for a watched reading only, with nothing but `key` for an
+  empty setting or an unwatched reading. It asks nobody. `houseRequests` reads
+  the entities from the settings as stored, because by the time an address is
+  built `withReadingValues` has turned every reading setting into its value,
+  and two readings can say the same thing: the poll's request key is therefore
+  the address key plus the house entities, so two widgets on two readings are
+  two reads.
+
+A headline is often over a row's 60 characters, which the panel schema refuses
+rather than cuts, so the guide's example uses `truncate:60`.
+
+**Measured.** `recipe-formats.test.ts` (10) reads the real feeds the News screen
+is tested on (`fixtures/news/real/`), each both as a feed and as a document,
+covers the schema's edges, the house body, and a `__proto__` element. It also
+polls a real recipe through the real job and fetcher at a loopback server
+serving the feed as `application/rss+xml` beside an XML source and a house
+source, with two widgets on two readings that say the same thing, and checks
+that no entity id reaches a request or the stored panels. Twenty mutations were
+checked. Nineteen are red. Three failed to build at first, because each left a
+variable unread, and were re-aimed to keep it read. The twentieth, a filter
+dropping namespace declarations, stayed green because the reader already drops
+them, so the filter is deleted. **6015 tests passing, 1 red and 2 skipped, over
+453 files**: calendar 153 (1 skipped) over 10 · core 327 over 9 · display 1101
+over 72 · server 4434 (1 skipped) over 362, measured with `pnpm test` and a
+real Chromium. Against M7.8's 6005 over 452, that is +10 and +1, this change's
+own count. The one red is `browser-glass`'s striped-picture case, red on a
+clean `main` in this container as before. **Still unproven where it counts:**
+no real council XML or Home Assistant reading has been drawn by a recipe on a
+kitchen wall.
+
 ---
 
 ## Open decisions
