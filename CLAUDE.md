@@ -12322,6 +12322,42 @@ striped-picture case, red on a clean `main` in this container as before. **Still
 unproven where it counts:** no recipe here has been installed on a kitchen wall
 and left to poll for a week.
 
+**A phone shortcut and a Home Assistant automation have recipes, and the recipes
+are run (plan item M2.4).** `docs/phone-and-automations.md`, published on the
+docs site under Home Assistant, is the companion token, one example request for
+each of the nine companion routes, an iOS Shortcut built step by step ("Hey
+Siri, add to shopping": Dictate Text, Get Contents of URL, read `message`, Speak
+Text), a `rest_command` per request with the token in `secrets.yaml`, two
+automations that call them, and the table of refusals with their `error` words.
+**System › Phone and automations** links to it, and so does the add-on's
+`DOCS.md`, absolutely, because the supervisor renders that file where a
+relative link goes nowhere. A payload template uses `tojson` and `int` and
+nothing else, so an item with a quote in it cannot break the body.
+
+**A recipe is copied into a phone and forgotten**, so one that drifts from the
+server fails months later in a kitchen, and the page is held three ways.
+`companion-docs.test.ts` sends every ```http block to a real app with a real
+token and a wall named Kitchen, and none may be refused for its shape; the
+timers, messages and refresh examples must succeed, and the page's own end and
+clear examples must leave no timer or message behind. It reads the YAML with
+`!secret` kept as a marker, holds every `rest_command` to the secret, renders
+each payload from the data the page's automations call it with, refuses a
+template it does not understand, and sends that too. The docs build
+(`checkCompanion`) holds the page to a request for every `app.post('/companion/…')`
+and none the server does not answer, and `checkCompanionMentions` holds every
+page that names a companion address to one that exists. Ten mutations were
+checked and all ten are red. One was green as first written: a payload with
+`"{{ item }}"` in quotes is valid JSON before it is rendered, so it reached the
+server as the literal text; any `{{` left after rendering now fails.
+**6123 tests passing, 1 red and 2 skipped, over 460 files**: calendar 153 (1
+skipped) over 10 · core 327 over 9 · display 1101 over 72 · docs 26 over 1 ·
+server 4516 (1 skipped) over 368, measured with `pnpm test` and a real
+Chromium. Against M7.11's 6115 over 459 that is +8 and +1, this change's own
+count. The one red is `browser-glass`'s striped-picture case, red on a clean
+`main` in this container as before. **Still unproven where it counts:** nobody
+has run the Shortcut on a real iPhone or the `rest_command` on a real Home
+Assistant.
+
 ---
 
 ## Open decisions

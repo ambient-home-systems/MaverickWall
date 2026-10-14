@@ -29,6 +29,13 @@ const WHAT_IT_CAN_DO =
   'to its next picture, and show one wall’s layout on the others for up to two hours — and nothing else: it cannot read your lists, tick ' +
   'them off, change a setting or sign in.';
 
+/**
+ * Where the recipes for an iOS Shortcut and a Home Assistant `rest_command`
+ * are (plan item M2.4): the docs site's page, built from
+ * `docs/phone-and-automations.md`, whose every request is held to the routes.
+ */
+export const RECIPES_URL = 'https://ambient-home-systems.github.io/MaverickWall/phone-and-automations.html';
+
 const QUERY_CAUTION =
   'If your app cannot send a header, put the token on the end of the address as ' +
   '?key=… instead. The whole address, token included, can then be written down by ' +
@@ -215,7 +222,11 @@ export function registerCompanionAdminRoutes(app: Hono, deps: AdminDeps): void {
         'A token lets a phone shortcut or an automation add to your to-do lists, start timers and ' +
         'send messages without signing in. ' +
         'It belongs to your account, and there is one at a time.',
-      body: tokenCard(c) + usage(c),
+      body:
+        tokenCard(c) +
+        `<p>Step-by-step recipes for an iOS Shortcut and a Home Assistant rest_command are on the ` +
+        `<a class="link" href="${RECIPES_URL}" target="_blank" rel="noopener noreferrer">docs site</a>.</p>` +
+        usage(c),
     });
   }
 }

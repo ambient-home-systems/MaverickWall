@@ -16,6 +16,14 @@
 
 ## Unreleased
 
+**Recipes for your phone and for Home Assistant.** The docs site has a new
+page, Phone and automations, with step-by-step recipes: an iOS Shortcut that
+adds to your shopping list when you say "Hey Siri, add to shopping", and Home
+Assistant `rest_command`s that put a message on the walls when the washing is
+done or start a timer. Every request on the page is sent to a real server
+whenever the code changes, so a recipe you copy today still works next
+release. **System › Phone and automations** links to it.
+
 **The Store has fifteen modules you can add without running anything.** Tide
 times, earthquakes, the aurora forecast, volcano alerts, hurricanes, a river
 gauge and the UV index from the US government's own services; pollen, flood

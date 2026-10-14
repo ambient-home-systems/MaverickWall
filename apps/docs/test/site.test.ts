@@ -157,6 +157,22 @@ describe('a fault in the docs stops the build, and says where', () => {
     expect(site.problems).toEqual(['docs/command-line.md: apps/server/src/tools/analyse-titles.ts is not documented.']);
   });
 
+  it('a companion route the recipes page does not show', () => {
+    const site = repositoryWith((root) =>
+      edit(root, 'docs/phone-and-automations.md', (md) => md.replace('POST /companion/walls/show/end\n', 'POST /companion/walls/show/stop\n')),
+    );
+    expect(site.problems).toEqual([
+      'docs/phone-and-automations.md: POST /companion/walls/show/end is not shown.',
+      'docs/phone-and-automations.md: shows POST /companion/walls/show/stop, which the server does not answer.',
+      'docs/phone-and-automations.md: names /companion/walls/show/stop, which the server does not answer.',
+    ]);
+  });
+
+  it('a companion address on any page that the server does not answer', () => {
+    const site = repositoryWith((root) => edit(root, 'docs/kiosk.md', (md) => `${md}\nA phone can call \`/companion/walls/reboot\`.\n`));
+    expect(site.problems).toEqual(['docs/kiosk.md: names /companion/walls/reboot, which the server does not answer.']);
+  });
+
   it('a screen the admin no longer has', () => {
     const site = repositoryWith((root) =>
       edit(root, 'docs/first-run.md', (md) => md.replace('**Walls → Add a wall → Add a browser wall.**', '**Screens → Add.**')),

@@ -88,6 +88,12 @@ export const SECTIONS: readonly Section[] = [
         label: 'The add-on',
         summary: 'Installing the add-on, the sidebar, and what it can and cannot do in the house.',
       },
+      {
+        source: 'docs/phone-and-automations.md',
+        slug: 'phone-and-automations',
+        label: 'Phone and automations',
+        summary: 'The companion token, with recipes for an iOS Shortcut and a Home Assistant rest_command.',
+      },
     ],
   },
   {
