@@ -16,6 +16,15 @@
 
 ## Unreleased
 
+**The documentation is a website now**, at
+ambient-home-systems.github.io/MaverickWall, built from the same pages that are
+in the repository and checked against the app every time it changes: a page
+that names a screen the admin no longer has, a setting nothing reads or a link
+that goes nowhere stops it being published. Several pages were out of date and
+are corrected — how to pair a wall, where weather and alerts come from, what a
+backup does and does not hold (uploaded photos are files beside it, not in
+it), and the command-line tools, which now have a page of their own.
+
 **You can try a recipe before you add it.** The recipe page under Modules ›
 Advanced has a Preview button. Paste what the recipe's address answers, and the
 page shows what your walls would draw from it, in your own theme, in a wide box

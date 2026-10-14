@@ -2,10 +2,16 @@
 
 ## What to keep
 
-Everything is in the data directory. Two files matter:
+Everything is in the data directory. Two files and a folder matter:
 
-- `wall.db` — the calendar, settings, people, shifts, screens.
+- `wall.db` — the calendars, settings, people, rotas, walls and accounts.
 - `.secret` — the encryption key.
+- `media/` — every picture somebody uploaded: photo albums, avatars and
+  backgrounds. The database names them; the pictures themselves are files.
+
+The other folders in it (`immich-cache/`, `photo-folder-cache/`, `art-cache/`,
+`module-images/`) are copies of pictures from elsewhere, and are fetched again
+when they are missing.
 
 **They are not interchangeable and you need both.** The database alone restores
 everything except your calendar addresses and feed passwords: those are
@@ -20,7 +26,8 @@ running.
 ## The export
 
 **System → Backup.** Two separate downloads, deliberately: the database and the
-key. Keeping the credential visibly apart from the data is the point — you can
+key. Uploaded pictures are not in either — copy `media/` as well if you want
+them, or use a Home Assistant backup on the add-on, which carries everything. Keeping the credential visibly apart from the data is the point — you can
 hand somebody the database for troubleshooting knowing it reveals no feed
 addresses.
 

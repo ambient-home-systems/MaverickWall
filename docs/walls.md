@@ -10,14 +10,26 @@ Open a wall and use **Layout** to move widgets. Portrait and landscape have
 separate layouts. Use the **Background** button beside **Layout** to choose
 the wall's theme colour, a solid colour, gradient, uploaded image or wallpaper
 for the layout currently on screen.
-You can create another layout for certain hours and schedule it under **Wall
-settings → Design**. That timed layout can have its own background.
+
+A wall can hold more than one layout and change between them by the clock — a
+morning layout before school, say. The first button in the layout toolbar
+names the layout on screen ("Everyday ▾"); its menu lists every layout with
+when it shows, makes a new one, and sets the hours of the one you are looking
+at. A timed layout can have its own background. **Wall settings → Layouts**
+lists them too. An e-paper panel draws one layout and never changes on the
+clock.
 
 Use **Wall settings → Look** for the wall's theme, daytime theme, widget ground,
 default widget styling and a link to each everyday background. A background
 link opens its layout's Background picker. Choosing a wallpaper offers an option
 to apply it across both orientations. A widget's individual style can override
 the wall's widget defaults, which in turn override the shared theme.
+
+**Wall settings → Advanced → Versions and copies** keeps the last twenty saves
+of a wall's layouts and settings, any of which can be restored, and saves the
+whole wall as a file that another wall — or another installation — can load.
+**Duplicate wall** there makes a new wall with the same look, to be paired on
+its own and allowed to press nothing until you say so.
 
 **Choose a starter design** replaces both orientations and their backgrounds.
 Some designs also change the wall's theme; each card says whether it does. A

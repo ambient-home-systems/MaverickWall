@@ -34,10 +34,11 @@ Assistant session and cannot get one, so a screen connects directly:
 http://<your-home-assistant>:8080/
 ```
 
-Pair it from **Screens** in the settings — the pairing link and its QR code are
-there. The token in that link is what the screen authenticates with; it is not
-a Home Assistant credential and it only ever grants read access to the
-calendar document.
+Add it under **Walls → Add a wall** in the settings — the pairing link, its QR
+code and a pairing code are there. The token in that link is what the wall
+authenticates with. It is not a Home Assistant credential: it reads that wall's
+calendar document, and it can press only what you have allowed that wall to
+press.
 
 If port 8080 is taken, change it in the add-on's **Configuration** tab and use
 the new one in the pairing link.
@@ -59,8 +60,8 @@ about the wall changes.
 ## Weather alerts
 
 United States only, from the National Weather Service. No account and no API
-key. On by default; the ladder of what each severity does is on the **Weather
-alerts** screen and every rule can be changed or switched off.
+key. On by default; the ladder of what each severity does is on the **Weather**
+screen and every rule can be changed or switched off.
 
 > **Not a life-safety system.** Do not rely on it for emergency warnings. It is
 > not a substitute for a NOAA Weather Radio, Wireless Emergency Alerts, or
@@ -111,7 +112,7 @@ off** on a particular wall's page is what puts a box beside each item there. It
 is its own switch rather than a share of the chore one, because it changes
 something outside this application — your phones see it. Switching a light is
 its own switch again, **Allow operating things in the house**, for the same
-reason and more so. An eInk panel shows the list and never offers a box at all.
+reason and more so. An e-paper panel shows the list and never offers a box at all.
 
 The wall itself receives resolved values — "19.4 °C", "Open" — never an entity
 id and never a way to ask Home Assistant a question of its own. If a tablet in

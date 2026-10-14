@@ -1,0 +1,20 @@
+{
+  "name": "@maverick-wall/docs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.test.json && node dist/cli.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "typescript": "^5.6.3",
+    "vitest": "^4.1.11"
+  },
+  "license": "AGPL-3.0-or-later",
+  "dependencies": {
+    "marked": "18.1.1"
+  }
+}

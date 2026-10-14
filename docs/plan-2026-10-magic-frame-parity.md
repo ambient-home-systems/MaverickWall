@@ -1,6 +1,6 @@
 # Plan: parity with Magic Frame
 
-**Status: in progress.** RFC 018 (M6.0) is built, and so are the companion token, its Home Assistant to-do add, timers and messages, and refreshing walls and showing one wall's layout on the others (M1.1–M1.5, M2.1, M2.2, M2.3, M3.1–M3.8, M4.1–M4.12, M5.1–M5.12, M6.1–M6.13, M7.1–M7.10, M8.1–M8.8); everything else is planned. On 2026-10-05 the owner asked for a
+**Status: in progress.** RFC 018 (M6.0) is built, and so are the companion token, its Home Assistant to-do add, timers and messages, and refreshing walls and showing one wall's layout on the others (M1.1–M1.5, M2.1, M2.2, M2.3, M3.1–M3.8, M4.1–M4.12, M5.1–M5.12, M6.1–M6.13, M7.1–M7.10, M8.1–M8.8, M9.1); everything else is planned. On 2026-10-05 the owner asked for a
 competitive review of [Magic Frame](https://github.com/jeremiaa/magic-frame)
 against Maverick Wall, then a deeper look at its custom widgets and its
 backgrounds. This document is that review, the decisions taken on it, and the
@@ -190,7 +190,7 @@ The read-only items can start now. Items marked † follow RFC 018's phases (acc
 
 | ID | Item | Size | What it must respect |
 | --- | --- | --- | --- |
-| M9.1 | **A published docs site**, checked against the code in CI, plus `llms.txt`. | L | It is the one item still in `CLAUDE.md`'s "Not started" list. Magic Frame's 28-page wiki, checked in CI by `scripts/check-wiki.mjs`, is the model. |
+| M9.1 | **A published docs site**, checked against the code in CI, plus `llms.txt`. **Built**: `apps/docs` renders the household docs, the add-on's page and the release notes into a static site with no script and nothing from another origin, and refuses to build on a broken link or anchor, a `docs/` page nobody listed, an environment variable or command-line tool the page and the code disagree about, a screen path the admin does not have, or a retired name; CI's build runs it on every pull request and `docs.yml` publishes it to GitHub Pages, with `llms.txt`, `llms-full.txt` and every page as Markdown. | L | It is the one item still in `CLAUDE.md`'s "Not started" list. Magic Frame's 28-page wiki, checked in CI by `scripts/check-wiki.mjs`, is the model. |
 
 ---
 

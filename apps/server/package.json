@@ -20,7 +20,8 @@
     "test-recipe": "node dist/tools/test-recipe.js",
     "new-recipe": "node dist/tools/new-recipe.js",
     "enable-shift": "node dist/tools/enable-shift.js",
-    "analyse-titles": "node dist/tools/analyse-titles.js"
+    "analyse-titles": "node dist/tools/analyse-titles.js",
+    "reset-two-step": "node dist/tools/reset-two-step.js"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",

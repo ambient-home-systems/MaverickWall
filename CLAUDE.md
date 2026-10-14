@@ -113,6 +113,7 @@ apps/server/         Hono + SQLite + scheduler + jobs. The single process.
 apps/server/src/modules/   Panel modules: weather, homeassistant. One block, one
                            manifest slice, one job, one corner of the settings.
 apps/display/        Vanilla TS wall renderer. Draws offline from a stored manifest.
+apps/docs/           The docs site: docs/*.md rendered, and checked against the code.
 apps/admin/          Does not exist. The admin screens are server-rendered — see below.
 ```
 
@@ -1124,9 +1125,10 @@ one tap marking a chore done in both widgets at once, an undo, `Enter`, and a
 44×44 target behind a 17px box — but by this project's history the next fault
 is on the wall in somebody's kitchen.
 
-**Not started: a published docs site.** That is the whole list, and the three
-things that used to sit beside it are a lesson in how this section rots — all
-three were shipped and none was struck off:
+**Not started: nothing.** The last item on this list was a published docs site,
+and M9.1 built it (see "The docs site is built from the repository" below). The
+three things that used to sit beside it are a lesson in how this section rots —
+all three were shipped and none was struck off:
 
 - **ws push is built and connected at both ends.** `net/push-hub.ts` is a real
   `WebSocketServer`, wired by `net/push-wire.ts` and covered by
