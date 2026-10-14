@@ -145,6 +145,56 @@ export async function pollExternalModules(
   }
 }
 
+/** What a Home Assistant reading says now: its value, never its entity id, and only a reading the household watches. */
+export function readingValueReader(db: SqliteDatabase): (entityId: string) => string | undefined {
+  return (entityId) => {
+    const row = db
+      .prepare(`SELECT state FROM ha_entity_cache WHERE entity_id = ? AND watched = 1`)
+      .get(entityId) as { state: string | null } | undefined;
+    return row?.state ?? undefined;
+  };
+}
+
+/**
+ * A house source's readings (plan item M7.9): what the household calls each,
+ * what it says, its unit and when it last changed — and still only a reading
+ * the household watches. The entity id stays here.
+ */
+export function houseValueReader(db: SqliteDatabase): (entityId: string) => HouseValue | undefined {
+  return (entityId) => {
+    const row = db
+      .prepare(
+        `SELECT state, label, friendly_name, unit_of_measurement, last_changed_at
+           FROM ha_entity_cache WHERE entity_id = ? AND watched = 1`,
+      )
+      .get(entityId) as
+      | {
+          state: string | null;
+          label: string | null;
+          friendly_name: string | null;
+          unit_of_measurement: string | null;
+          last_changed_at: number | null;
+        }
+      | undefined;
+    if (row === undefined) return undefined;
+    const name = row.label ?? row.friendly_name;
+    return {
+      ...(name !== null ? { name } : {}),
+      ...(row.state !== null ? { state: row.state } : {}),
+      ...(row.unit_of_measurement !== null ? { unit: row.unit_of_measurement } : {}),
+      ...(row.last_changed_at !== null ? { changed: new Date(row.last_changed_at).toISOString() } : {}),
+    };
+  };
+}
+
+/** The household's own zone, which a recipe's `time` formatter speaks in (plan item M7.8). */
+export function householdTimezone(db: SqliteDatabase): string {
+  return (
+    (db.prepare(`SELECT timezone FROM household_settings WHERE id = 'singleton'`).get() as { timezone: string } | undefined)
+      ?.timezone ?? DEFAULT_TIMEZONE
+  );
+}
+
 /**
  * Run one recipe for its install and for every widget that sets its own
  * settings (plan item M7.6).
@@ -175,49 +225,14 @@ async function pollRecipe(
   const now = Date.now();
   // A recipe's `time` formatter says a clock time in the household's own zone
   // (plan item M7.8), so a feed that speaks UTC reads like the kitchen clock.
-  const timezone =
-    (db.prepare(`SELECT timezone FROM household_settings WHERE id = 'singleton'`).get() as { timezone: string } | undefined)
-      ?.timezone ?? DEFAULT_TIMEZONE;
+  const timezone = householdTimezone(db);
   const due = (polledAt: number): boolean => polledAt === 0 || now >= polledAt + recipe.fetch.intervalSeconds * 1000;
 
   const install: RecipeConfig =
     module.config !== null && typeof module.config === 'object' ? (module.config as RecipeConfig) : {};
-  // What a Home Assistant reading says now: its value, never its entity id,
-  // and only a reading the household watches.
-  const readingValue = (entityId: string): string | undefined => {
-    const row = db
-      .prepare(`SELECT state FROM ha_entity_cache WHERE entity_id = ? AND watched = 1`)
-      .get(entityId) as { state: string | null } | undefined;
-    return row?.state ?? undefined;
-  };
+  const readingValue = readingValueReader(db);
   const resolved = (config: RecipeConfig): RecipeConfig => withReadingValues(recipe, config, readingValue);
-  // A house source's readings (plan item M7.9): what the household calls each,
-  // what it says, its unit and when it last changed — and still only a reading
-  // the household watches. The entity id stays here.
-  const houseValue = (entityId: string): HouseValue | undefined => {
-    const row = db
-      .prepare(
-        `SELECT state, label, friendly_name, unit_of_measurement, last_changed_at
-           FROM ha_entity_cache WHERE entity_id = ? AND watched = 1`,
-      )
-      .get(entityId) as
-      | {
-          state: string | null;
-          label: string | null;
-          friendly_name: string | null;
-          unit_of_measurement: string | null;
-          last_changed_at: number | null;
-        }
-      | undefined;
-    if (row === undefined) return undefined;
-    const name = row.label ?? row.friendly_name;
-    return {
-      ...(name !== null ? { name } : {}),
-      ...(row.state !== null ? { state: row.state } : {}),
-      ...(row.unit_of_measurement !== null ? { unit: row.unit_of_measurement } : {}),
-      ...(row.last_changed_at !== null ? { changed: new Date(row.last_changed_at).toISOString() } : {}),
-    };
-  };
+  const houseValue = houseValueReader(db);
 
   interface Request {
     readonly config: RecipeConfig;
@@ -348,7 +363,7 @@ async function readRequest(
  * its own upstream refuses it, which surfaces as the recipe's error, not a dead
  * wall. The plaintext lives only in the returned object, for the one request.
  */
-function decryptSecrets(keyring: Keyring, envelope: string | null): RecipeSecrets {
+export function decryptSecrets(keyring: Keyring, envelope: string | null): RecipeSecrets {
   if (envelope === null) return {};
   const result = keyring.decrypt(envelope, 'recipe-secret');
   if (!result.ok) return {};

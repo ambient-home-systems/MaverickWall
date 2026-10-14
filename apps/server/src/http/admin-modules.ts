@@ -24,7 +24,6 @@ import { signalDataSchema } from '../modules/external/signal-data.js';
 import {
   normaliseConfig,
   recipeFetchHost,
-  recipeSchema,
   type RecipeConfig,
 } from '../modules/external/recipe.js';
 import { CATALOG, catalogEntry, previewFor, type CatalogEntry, type RecipeEntry, type ServiceEntry } from './catalog.js';
@@ -32,6 +31,8 @@ import { parse, text, z } from '../validation.js';
 import { readSaved, savedRedirect } from './saved.js';
 import { selfHref } from './self.js';
 import { householdSetUp } from '../modules/index.js';
+import { readRecipe, runRecipeOnAnswers, type RecipeRun } from '../modules/external/recipe-tooling.js';
+import { householdTimezone } from '../modules/external/index.js';
 import { invalidSetting, readSettingsForm, settingsControls, watchedReadingChoices } from './module-settings.js';
 import { shownOnTag, wallsAndWhatTheyDraw, wallsShowingModule, type WallDrawing } from './wall-reach.js';
 
@@ -135,7 +136,7 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
     return deps.keyring.encrypt(JSON.stringify(values), 'recipe-secret');
   }
 
-  app.get('/admin/modules/recipe', (c: Context) => c.html(recipePage(c)));
+  app.get('/admin/modules/recipe', (c: Context) => c.html(recipePage(c, {})));
 
   app.post('/admin/modules/recipe', async (c: Context) => {
     const body = (await c.req.parseBody()) as Record<string, unknown>;
@@ -143,25 +144,26 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
     const configRaw = typeof body['config'] === 'string' ? body['config'] : '';
     const secretsRaw = typeof body['secrets'] === 'string' ? body['secrets'] : '';
     const nameOverride = typeof body['name'] === 'string' ? body['name'].trim() : '';
+    const answerRaw = typeof body['answer'] === 'string' ? body['answer'] : '';
+    const sourcesRaw = typeof body['source_answers'] === 'string' ? body['source_answers'] : '';
     const back = (message: string): Response =>
-      c.html(recipePage(c, message, manifestRaw, configRaw, secretsRaw), 400);
+      c.html(
+        recipePage(c, {
+          error: message,
+          manifest: manifestRaw,
+          config: configRaw,
+          secrets: secretsRaw,
+          answer: answerRaw,
+          sources: sourcesRaw,
+        }),
+        400,
+      );
 
-    let manifestJson: unknown;
-    try {
-      manifestJson = JSON.parse(manifestRaw);
-    } catch {
-      return back('That recipe is not valid JSON.');
-    }
-    const parsed = recipeSchema.safeParse(manifestJson);
-    if (!parsed.success) {
-      // Name the first thing wrong, with its field — a recipe author is standing
-      // at a form, not reading a stack trace.
-      const first = parsed.error.issues[0];
-      const where = first && first.path.length > 0 ? `${first.path.join('.')}: ` : '';
-      const why = first?.message ?? 'not a valid recipe';
-      return back(`This recipe is not valid — ${where}${why}.`);
-    }
-    const recipe = parsed.data;
+    // Name the first thing wrong, with its field — a recipe author is standing
+    // at a form, not reading a stack trace.
+    const read = readRecipe(manifestRaw);
+    if (!read.ok) return back(read.error);
+    const recipe = read.recipe;
 
     let configJson: unknown = {};
     if (configRaw.trim() !== '') {
@@ -211,6 +213,43 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
     ensureDisplayBlock(deps.db, blockKey);
     deps.db.prepare(`UPDATE job_state SET next_run_at = 0 WHERE kind = 'external-modules'`).run();
     return savedRedirect(c, '/admin/modules', 'module-added');
+  });
+
+  /*
+   * Try a recipe on an answer its author already has (plan item M7.10).
+   *
+   * Nothing is installed and nothing is fetched: the recipe runs on the pasted
+   * answer through the same code the poll uses, and the page comes back with
+   * everything as typed and what it built — drawn by the wall's own renderer
+   * when script runs, and as the panel's JSON either way. A recipe that does not
+   * build says at which step, and where in the panel the wall's schema refused
+   * it, which the module's card never can.
+   */
+  app.post('/admin/modules/recipe/preview', async (c: Context) => {
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const field = (name: string): string => (typeof body[name] === 'string' ? body[name] : '');
+    const echo = {
+      manifest: field('manifest'),
+      config: field('config'),
+      secrets: field('secrets'),
+      answer: field('answer'),
+      sources: field('source_answers'),
+    };
+    const show = (run: RecipeRun, status: 200 | 400): Response =>
+      c.html(recipePage(c, { ...echo, preview: run }), status);
+
+    const read = readRecipe(echo.manifest);
+    if (!read.ok) return show({ ok: false, stage: 'recipe', error: read.error }, 400);
+    if (echo.answer.trim() === '') {
+      return show({ ok: false, stage: 'answer', error: 'Paste what the recipe’s address answered, to try it on.' }, 400);
+    }
+    const sources = readSourceAnswers(echo.sources);
+    if (!sources.ok) return show({ ok: false, stage: 'answer', error: sources.error }, 400);
+    const run = runRecipeOnAnswers(read.recipe, { main: echo.answer, sources: sources.value }, {
+      now: now(),
+      timezone: householdTimezone(deps.db),
+    });
+    return show(run, run.ok ? 200 : 400);
   });
 
   app.post('/admin/modules', async (c: Context) => {
@@ -561,11 +600,17 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
 
   function recipePage(
     c: Context,
-    error?: string,
-    manifest?: string,
-    config?: string,
-    secrets?: string,
+    form: {
+      readonly error?: string;
+      readonly manifest?: string;
+      readonly config?: string;
+      readonly secrets?: string;
+      readonly answer?: string;
+      readonly sources?: string;
+      readonly preview?: RecipeRun;
+    },
   ): string {
+    const mono = 'spellcheck="false" style="font-family:var(--mono);font-size:13px"';
     return page({
       self: selfHref(c),
       modules: navModules(deps.db),
@@ -578,7 +623,8 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
         'and how to draw it, and Maverick Wall does the fetching. A recipe is data, ' +
         'never code — it can pull fields and format them, and nothing else.',
       body:
-        (error === undefined ? '' : errorBlock(error)) +
+        (form.error === undefined ? '' : errorBlock(form.error)) +
+        (form.preview === undefined ? '' : recipePreview(form.preview)) +
         `<form method="post" action="admin/modules/recipe">` +
         textField({
           label: 'Call it (optional)',
@@ -591,8 +637,8 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
           name: 'manifest',
           rows: 16,
           required: true,
-          value: manifest ?? RECIPE_EXAMPLE,
-          attrs: 'spellcheck="false" style="font-family:var(--mono);font-size:13px"',
+          value: form.manifest ?? RECIPE_EXAMPLE,
+          attrs: mono,
         }) +
         `<p class="hint">A recipe reaches the public internet over https only. To ` +
         `point one at a service on your own network, add <span class="code">` +
@@ -605,9 +651,9 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
           label: 'Config values (optional JSON)',
           name: 'config',
           rows: 3,
-          value: config ?? '',
+          value: form.config ?? '',
           placeholder: '{ "station": "12345" }',
-          attrs: 'spellcheck="false" style="font-family:var(--mono);font-size:13px"',
+          attrs: mono,
         }) +
         `<p class="hint">If the recipe’s address has <span class="code">{placeholders}</span>, ` +
         `fill them here. A tidier form is coming; for now this is the raw way in.</p>` +
@@ -615,15 +661,89 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
           label: 'Secret values (optional JSON)',
           name: 'secrets',
           rows: 3,
-          value: secrets ?? '',
+          value: form.secrets ?? '',
           placeholder: '{ "api_key": "…" }',
           attrs: 'spellcheck="false" autocomplete="off" style="font-family:var(--mono);font-size:13px"',
         }) +
         `<p class="hint">If the recipe declares <span class="code">secrets</span> and uses ` +
         `them in a <span class="code">header</span>, put the values here. They are ` +
         `stored encrypted and never shown again — a secret may not go in the address.</p>` +
-        `<button type="submit">Add recipe</button></form>`,
+        section(
+          'Try it first',
+          'Paste what the recipe’s address answers — open it in a browser and copy the page — and ' +
+            'Preview runs the recipe on that, here, without adding it or asking the address anything.',
+          textareaField({
+            label: 'What the address answered',
+            name: 'answer',
+            rows: 8,
+            value: form.answer ?? '',
+            placeholder: '{ "bitcoin": { "gbp": 51234.5 } }',
+            attrs: mono,
+          }) +
+            textareaField({
+              label: 'What its other sources answered (optional JSON)',
+              name: 'source_answers',
+              rows: 3,
+              value: form.sources ?? '',
+              placeholder: '{ "news": "<rss>…</rss>", "house": [{ "key": "room", "state": "21" }] }',
+              attrs: mono,
+            }) +
+            `<p class="hint">One entry per named source. A feed or an XML document is its text; ` +
+            `JSON can be written as itself; a house source is the list of readings it would read.</p>` +
+            `<button type="submit" class="btn-tonal" formaction="admin/modules/recipe/preview" ` +
+            `formnovalidate>Preview</button>`,
+        ) +
+        `<button type="submit">Add recipe</button></form>` +
+        (form.preview?.ok === true ? `<script type="module" src="assets/recipe-preview.js"></script>` : ''),
     });
+  }
+
+  /** What a preview built, or the step it stopped at and why. */
+  function recipePreview(run: RecipeRun): string {
+    if (!run.ok) {
+      const stage = {
+        recipe: 'The recipe is not valid',
+        answer: 'The answer could not be read',
+        panel: 'The recipe ran, and the wall cannot draw what it built',
+        signals: 'The panel built, and a signal the wall cannot use',
+      }[run.stage];
+      return section(
+        'Preview',
+        undefined,
+        card(
+          `<p><strong>${escapeHtml(stage)}.</strong> ${escapeHtml(run.error)}</p>` +
+            (run.detail === undefined
+              ? ''
+              : `<pre class="code" data-preview-detail>${escapeHtml(run.detail)}</pre>`),
+          { tone: 'danger' },
+        ),
+        'preview',
+      );
+    }
+    const json = JSON.stringify(run.panel, null, 2);
+    const signals =
+      run.signals.length === 0
+        ? '<p class="hint">It raises no signal from this answer.</p>'
+        : `<p class="hint">It raises ${run.signals.length === 1 ? 'one signal' : `${run.signals.length} signals`} ` +
+          `from this answer, which do nothing until you arm the module’s alerts:</p>` +
+          `<pre class="code">${escapeHtml(run.signals.map((signal) => JSON.stringify(signal)).join('\n'))}</pre>`;
+    return section(
+      'Preview',
+      'Drawn by the wall itself, in two boxes a module is often given, in this house’s theme. ' +
+        'A widget reads its box, so a narrow one may give up rows.',
+      `<div class="recipe-previews">` +
+        PREVIEW_BOXES.map(
+          (box) =>
+            `<figure><div class="recipe-thumb" data-recipe-preview="${box.key}" ` +
+            `style="aspect-ratio:${box.ratio.toFixed(3)}"></div>` +
+            `<figcaption class="hint">${escapeHtml(box.label)}</figcaption></figure>`,
+        ).join('') +
+        `</div>` +
+        `<script type="application/json" id="recipe-preview-panel">${json.replace(/</g, '\\u003c')}</script>` +
+        `<details><summary>The panel it built</summary><pre class="code">${escapeHtml(json)}</pre></details>` +
+        signals,
+      'preview',
+    );
   }
 
   /** One store card: glyph, name, author, description, and an Install link. */
@@ -742,4 +862,37 @@ export function registerModuleRoutes(app: Hono, deps: AdminDeps): void {
     });
   }
 
+}
+
+/**
+ * The two boxes a recipe's preview is drawn in: a wall's aspect, the widget's
+ * box on it, and the box's own shape. They must match `PREVIEW_BOXES` in the
+ * display's `recipe-preview.ts`, which draws them, and a test holds them to it.
+ */
+export const PREVIEW_BOXES: readonly { readonly key: string; readonly label: string; readonly ratio: number }[] = [
+  { key: 'third', label: 'A third of a landscape wall', ratio: (0.33 * (16 / 9)) / 0.5 },
+  { key: 'strip', label: 'A strip across a portrait wall', ratio: (0.92 * (9 / 16)) / 0.14 },
+];
+
+/**
+ * The other sources' answers, as pasted: a JSON object of name to answer. A
+ * string is the answer's text; anything else is JSON the source answered, and
+ * is written back out as JSON for the reader that takes it.
+ */
+function readSourceAnswers(raw: string): { ok: true; value: Record<string, string> } | { ok: false; error: string } {
+  if (raw.trim() === '') return { ok: true, value: {} };
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    return { ok: false, error: 'The other sources’ answers are not valid JSON.' };
+  }
+  if (json === null || typeof json !== 'object' || Array.isArray(json)) {
+    return { ok: false, error: 'The other sources’ answers are a JSON object, one entry per named source.' };
+  }
+  const value: Record<string, string> = {};
+  for (const [name, answer] of Object.entries(json)) {
+    value[name] = typeof answer === 'string' ? answer : JSON.stringify(answer);
+  }
+  return { ok: true, value };
 }

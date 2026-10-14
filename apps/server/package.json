@@ -16,6 +16,9 @@
     "add-screen": "node dist/tools/add-screen.js",
     "add-wall": "node dist/tools/add-screen.js",
     "diagnose": "node dist/tools/diagnose-source.js",
+    "diagnose-module": "node dist/tools/diagnose-module.js",
+    "test-recipe": "node dist/tools/test-recipe.js",
+    "new-recipe": "node dist/tools/new-recipe.js",
     "enable-shift": "node dist/tools/enable-shift.js",
     "analyse-titles": "node dist/tools/analyse-titles.js"
   },

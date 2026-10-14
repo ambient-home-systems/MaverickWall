@@ -664,6 +664,51 @@ recipe. It is stored **encrypted**, injected into the request header at fetch
 time, and never appears in the manifest, on the wall, or in a log. A secret may
 **not** go in the URL (a URL is stored and logged).
 
+### Trying a recipe before it is on a wall
+
+**On the recipe page.** Modules › Advanced › Build a recipe has a *Try it
+first* section. Paste what the recipe's address answers (open the address in a
+browser and copy the page), and, if the recipe has named sources, a JSON object
+of what each answered: a feed or an XML document as its text, JSON as itself, a
+house source as the list of readings it would read. **Preview** runs the recipe
+on those answers. Nothing is installed and nothing asks the address. The page
+draws the panel through the wall's own renderer, in the house's theme, in a
+third of a landscape wall and in a strip across a portrait one, so you see the
+rows a narrow box gives up. A recipe the wall cannot draw says at which step it
+stopped, and where in the built panel the schema refused it:
+
+```
+panel.items.3.label: Too big: expected string to have <=60 characters
+```
+
+**From a shell**, on a box that has this repository built:
+
+```bash
+node apps/server/dist/tools/new-recipe.js my-recipe     # a working starter
+node apps/server/dist/tools/test-recipe.js my-recipe    # PASS, or what moved
+node apps/server/dist/tools/test-recipe.js my-recipe --update   # record it
+```
+
+A fixture is a directory:
+
+| File | What it is |
+|---|---|
+| `recipe.json` | The recipe, exactly as you would paste it. |
+| `answer.json`, `answer.xml` or `answer.txt` | What the main fetch answered. Exactly one. |
+| `sources/<name>.json` (or `.xml`, `.txt`) | What a named source answered. A house source's is the JSON list of readings. |
+| `fixture.json` | Optional: `{ "at": "2026-10-14T08:00:00Z", "timezone": "Europe/London" }`. Pin the clock, or a `time` or a countdown reads differently tomorrow. |
+| `expected.json` | What the recipe should build: `{ "panel": …, "signals": […] }`. |
+
+`test-recipe` exits 0 when every fixture passes, 1 when one does not, and 2
+when it is asked wrongly, so it can run in CI. A failure lists the places the
+result differs, such as `panel.items.1.value: expected "Monday", got "Tuesday"`.
+
+**For a module already installed**, `diagnose-module [module-id]` reads it now,
+the way the poll does, and says which request answered, which did not, and
+what the panel built or why it could not. It names addresses by their host
+only, never prints a secret or a setting's value, and writes nothing back, so
+the module's card still says what the last poll found.
+
 ## Sharing a module
 
 There is one store, and it is in this repository: one file per module under
