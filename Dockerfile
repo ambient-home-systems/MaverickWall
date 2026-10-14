@@ -47,7 +47,11 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
 COPY . .
 
 # `pnpm test` builds first and then runs; the image build only wants the build.
-RUN pnpm -r build
+# The docs site is left out: it is published from CI, never served by the
+# image, and it reads `docs/` and the Markdown that .dockerignore keeps out of
+# the build context — and its package.json is not copied above, so its
+# dependencies are not even installed here.
+RUN pnpm -r --filter '!@maverick-wall/docs' build
 
 # Prune to what actually runs. `--prod` drops typescript, vitest and the rest;
 # `deploy` flattens the server package to the root of /out and brings its own
