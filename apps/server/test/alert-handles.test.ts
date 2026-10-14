@@ -122,7 +122,7 @@ async function harness(): Promise<Harness> {
   ha.others[DOOR] = { state: 'on', lastChanged: new Date(at).toISOString(), name: 'Back door' };
   ha.others[GARAGE] = { state: 'open', lastChanged: new Date(at).toISOString(), name: 'Garage' };
 
-  const asWall = (path: string, init: RequestInit = {}): Promise<Response> =>
+  const asWall = async (path: string, init: RequestInit = {}): Promise<Response> =>
     app.fetch(
       new Request(`http://localhost${path}`, {
         ...init,
