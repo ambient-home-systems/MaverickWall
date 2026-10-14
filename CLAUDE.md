@@ -47,13 +47,18 @@ Violating any of these is a failed task.
     one door.** *(Amended 2026-10-05 by `docs/rfc-018-wall-control.md`, accepted
     as decision MD13; its last clause qualified 2026-10-05 for scripts, by the
     owner, in phase 4, and carried to webhook buttons in phase 5. Every
-    wall phase, 1–6, has landed.)* Three kinds of
+    wall phase, 1–6, has landed. Amended again 2026-10-14 by the owner, for
+    two things below: a wall dismissing a Home Assistant notification, and a
+    camera shown over WebRTC.)* Four kinds of
     write are permitted.
     `todo.update_item` sets an item's status on a to-do list the household added
     (RFC 012). `todo.add_item` adds an item to such a list, from the companion
     API and never from a wall. And a wall may operate an entity the household
     marked controllable, on a wall they allowed, from a widget they set to act,
-    using only the verbs in RFC 018 §5. The allowlist is a frozen table and a
+    using only the verbs in RFC 018 §5. And a wall allowed to clear alerts
+    may dismiss a Home Assistant persistent notification it was shown, named
+    by a handle this server minted (`persistent_notification.dismiss`, one
+    notification at a time). The allowlist is a frozen table and a
     test asserts no outbound request to Home Assistant leaves it. **Never**
     `lock`, `alarm_control_panel`, a cover whose device class is `garage`,
     `gate`, `door`, `window` or `damper` or is unset, `input_boolean`,
@@ -66,9 +71,16 @@ Violating any of these is a failed task.
     script by another name — so either, once the household allows it, can do
     whatever it was written to do, and the admin says so before they allow it.
     The display still receives handles this server minted, never an entity id,
-    an address or the token — so a compromised wall tablet can turn off the
-    kitchen light and cannot open the garage, unless a script or a webhook
-    button the household allowed on that wall does.
+    Home Assistant's address or the token — so a compromised wall tablet can
+    turn off the kitchen light and cannot open the garage, unless a script or a
+    webhook button the household allowed on that wall does. **One exception, for
+    WebRTC cameras:** a wall showing a camera over WebRTC is handed the session's
+    connection candidates, which name the network address and ports of Home
+    Assistant's media server (go2rtc) for that one stream, because WebRTC sends
+    the video straight from that server to the wall's browser. That is a media
+    path for one camera, not the API: the server signals the session itself, so
+    the wall still never sees Home Assistant's URL, an entity id or the token,
+    and cannot call a single service with what it was given.
 
 ---
 
