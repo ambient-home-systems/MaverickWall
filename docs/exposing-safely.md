@@ -58,7 +58,7 @@ docker run -e TRUSTED_PROXY_SOURCE=127.0.0.1 ...
 
 `X-Forwarded-Proto` is trusted only when the request's real socket address is
 in `TRUSTED_PROXY_SOURCE` — never from the header alone, which anything on the
-network could send. See `docs/environment.md`.
+network could send. See [Environment variables](environment.md).
 
 ### Home Assistant ingress
 
@@ -71,11 +71,13 @@ LAN.
 - Put it behind HTTPS. The session cookie and every calendar address you paste
   cross the network otherwise.
 - Set `BASE_URL` to the public address.
-- Use a long password. There is no second factor.
+- Use a long password, and turn on two-step sign-in for every account under
+  **System → Your account**.
 - Do not connect Home Assistant. The token cannot be scoped, and the blast
   radius stops being "somebody saw my calendar".
-- Watch the log. Failed sign-ins are rate limited per address, and the counters
-  are in memory, so a restart clears them.
+- Watch **System → Lockouts**. Failed sign-ins are rate limited per address,
+  and it shows who has been trying. The counters are in memory, so a restart
+  clears them.
 
 ## What is exposed either way
 

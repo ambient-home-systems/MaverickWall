@@ -1,0 +1,59 @@
+# The docs site: the Markdown in docs/, built and published to GitHub Pages
+# (plan item M9.1).
+#
+# The build is the check. `apps/docs` refuses to write a site with a broken
+# link, a page nobody listed, an environment variable or a command-line tool
+# the page and the code disagree about, or a screen the admin no longer has —
+# and CI's `pnpm -r build` runs the same build on every pull request, so a
+# change that would break the docs is red before it merges, and only a site
+# that passed is ever published from main.
+#
+# GitHub Pages has to be told once, by somebody with admin on the repository,
+# to take its site from a workflow: Settings → Pages → Build and deployment →
+# Source: "GitHub Actions". That is a web setting with no API a workflow's own
+# token can reach, the way the image's public visibility was. Until it is set,
+# the deploy job fails with a message saying so, and nothing else is affected.
+name: Docs
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time, and never cancel one halfway: a half-published site is
+# worse than a site one change behind.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @maverick-wall/docs build
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: apps/docs/dist/site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

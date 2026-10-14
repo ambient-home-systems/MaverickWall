@@ -113,6 +113,7 @@ apps/server/         Hono + SQLite + scheduler + jobs. The single process.
 apps/server/src/modules/   Panel modules: weather, homeassistant. One block, one
                            manifest slice, one job, one corner of the settings.
 apps/display/        Vanilla TS wall renderer. Draws offline from a stored manifest.
+apps/docs/           The docs site: docs/*.md rendered, and checked against the code.
 apps/admin/          Does not exist. The admin screens are server-rendered — see below.
 ```
 
@@ -1124,9 +1125,10 @@ one tap marking a chore done in both widgets at once, an undo, `Enter`, and a
 44×44 target behind a 17px box — but by this project's history the next fault
 is on the wall in somebody's kitchen.
 
-**Not started: a published docs site.** That is the whole list, and the three
-things that used to sit beside it are a lesson in how this section rots — all
-three were shipped and none was struck off:
+**Not started: nothing.** The last item on this list was a published docs site,
+and M9.1 built it (see "The docs site is built from the repository" below). The
+three things that used to sit beside it are a lesson in how this section rots —
+all three were shipped and none was struck off:
 
 - **ws push is built and connected at both ends.** `net/push-hub.ts` is a real
   `WebSocketServer`, wired by `net/push-wire.ts` and covered by
@@ -12199,6 +12201,69 @@ is `browser-glass`'s striped-picture case, red on a clean `main` in this
 container as before. **Still unproven where it counts:** nobody has written a
 recipe for a real feed with these tools.
 
+
+**The docs site is built from the repository (plan item M9.1).** `apps/docs`
+renders the household docs, the add-on's `DOCS.md` and the release notes (the
+add-on's `CHANGELOG.md`) into a static site. It has no script and fetches
+nothing from another origin. A picture from elsewhere, such as Home
+Assistant's "add repository" badge, is drawn as its own words. It writes
+`llms.txt`, `llms-full.txt` and every page as Markdown with its links made
+absolute. Headings get GitHub's own anchors, so a link written against the
+repository lands on the site too. `docs.yml` publishes it to GitHub Pages from
+`main`. That needed one setting nobody's workflow token can reach, Settings →
+Pages → Source: GitHub Actions, and the owner set it.
+
+**The build is the check, and CI's `pnpm -r build` runs it on every pull
+request.** It refuses to write a site that has any of these:
+
+- a link or a heading anchor that is not there;
+- a `docs/*.md` that is neither published (`apps/docs/src/pages.ts`) nor kept
+  off with a reason (RFCs by rule, plans and release runbooks by name);
+- an environment variable the server reads and the page does not document, or
+  the other way round, read from the three spellings the source uses;
+- a tool in `apps/server/src/tools` with no `## \`name\`` on the
+  command-line page, or no package script that runs it;
+- a bold path such as **Walls → Add a wall** whose first step is not one of
+  the admin's destinations, or whose later steps no string literal in the
+  admin's source says. Literals only, read with TypeScript's parser, so a
+  retired name left in a comment does not count;
+- a name the product retired.
+
+The release notes are exempt from the last two, because a shipped section
+rightly names the screens of its day and is never edited.
+
+**Its first run found the docs wrong in ways no test had looked at.** Eight
+environment variables the server reads were undocumented, among them `TZ`,
+`MDNS_DISABLE` and the four asset directories. The pairing instructions said
+**Screens → Add**, two releases after Screens became Walls. Troubleshooting
+said there was no forecast provider outside the United States, told a
+household to `chown` a volume the image now adopts itself, and pointed at a
+Diagnose button that does not exist. Exposing-safely said there was no second
+factor. The backup page did not say that uploaded photos are files beside the
+export rather than in it. `reset-two-step` had no package script. All of these
+are fixed. The command-line tools have a page of their own (`docs/command-line.md`),
+and the stale "What's new in 0.68.0" is kept off the site in favour of the
+release notes.
+
+**What it cannot check is the prose**, and the home page says so: a sentence
+that describes a screen wrongly passes every check here. The screen-name check
+covers only bold paths with arrows, so a single bold word naming a renamed
+screen is caught only for the names in `RETIRED`.
+
+**Measured.** `apps/docs/test/site.test.ts` (24) builds the real repository and
+then a copy of it with one fault planted at a time, and holds the build to
+naming each one. It also checks the output for scripts and other origins, and
+every link in every built page against the files and ids the build wrote.
+Seventeen mutations were checked and all seventeen are red. Three failed to
+build at first and were re-aimed. One, the package-script check, stayed green
+until a test was written for it. **6057 tests passing, 1 red and 2 skipped,
+over 457 files**: calendar 153 (1 skipped) over 10 · core 327 over 9 · display
+1101 over 72 · docs 24 over 1 · server 4452 (1 skipped) over 365, measured
+with `pnpm test` and a real Chromium. Against M7.10's 6033 over 456 that is
++24 and +1, this change's own count. The one red is `browser-glass`'s
+striped-picture case, red on a clean `main` in this container as before.
+**Still unproven where it counts:** the site has not yet been seen at its
+published address.
 ---
 
 ## Open decisions

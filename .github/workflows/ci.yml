@@ -20,7 +20,8 @@ jobs:
   # rejects outright), then runs its own part of the suite. Nothing is
   # skipped, and `pnpm test` is still the whole thing on a laptop.
 
-  # The three packages that are not the server: about forty seconds together.
+  # The packages that are not the server: about forty seconds together. One of
+  # them is the docs site, whose build is itself a check (apps/docs).
   packages:
     runs-on: ubuntu-latest
     steps:

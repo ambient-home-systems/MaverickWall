@@ -32,8 +32,8 @@ which no browser can. Download the signed APK from the repository's
    `adb install -r maverick-wall-X.Y.Z.apk` (or use a file-manager sideload).
 2. Open it. Pick the server it found on the network — or type its address — and
    approve the pairing from your phone or the Maverick Wall settings.
-3. On the screen's settings in the admin, turn on **This screen can acknowledge
-   alerts** — the remote's OK button then clears whatever the wall is showing.
+3. On the wall's page in the admin, turn on **Allow alert dismissal** — the
+   remote's OK button then clears whatever the wall is showing.
 
 See [`apps/android/README.md`](../apps/android/README.md) for the app, and
 [`docs/releasing-the-app.md`](releasing-the-app.md) for cutting a release. A
@@ -44,10 +44,10 @@ No app? Any browser that can be pinned — **Fully Kiosk** is the usual pick —
 works too: open the pairing link once and it becomes a cookie. You lose only the
 native wake and boot-start.
 
-A television is landscape, so it gets the two-column layout. If you have hung
-it on its end, set the rotation per screen rather than fighting the
-television's own settings — plenty of panels cannot rotate and plenty of the
-ones that can forget after a power cut.
+A television is landscape, so it draws the wall's landscape layout. If you
+have hung it on its end, set the rotation on the wall's own settings rather
+than fighting the television's — plenty of panels cannot rotate and plenty of
+the ones that can forget after a power cut.
 
 ## Raspberry Pi
 

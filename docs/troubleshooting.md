@@ -2,14 +2,11 @@
 
 ## The container will not start
 
-Almost always the volume. It runs as uid 1000 rather than root, and says so on
-the way out with the command to fix it:
-
-```bash
-sudo chown -R 1000:1000 ./data
-```
-
-Or let Docker own it: `-v maverick-wall:/data`.
+Almost always the volume, and almost always a mount it cannot write to. The
+container starts as root, takes ownership of `/data` and then drops to an
+unprivileged user, so a named volume or a folder you just made needs nothing.
+What it cannot fix is a mount that is read-only (`:ro`) or one you forced a
+`--user` onto, and it says which on the way out.
 
 ## "That pairing link is not valid"
 
@@ -24,10 +21,13 @@ database it opened on start; if two disagree, that is why.
 `localhost`, and nobody browses to localhost from the sofa. Set it to what the
 browser actually uses.
 
-## The wall says "This screen is not paired"
+## The wall says "Pair this wall"
 
-The token was revoked, or the cookie was cleared. Open the pairing link again
-from **Screens**.
+The wall has no pairing: the cookie was cleared, the wall was revoked, or this
+browser was never paired. Open the wall's page under **Walls** and pair it
+again. A wall that was unpaired stays folded away at the foot of that list,
+kept for the record; it cannot be paired again, so add it afresh from **Add a
+wall**.
 
 ## The wall shows "the bundle is missing"
 
@@ -46,24 +46,36 @@ never happen with the published image.
 - The feed is behind something that needs a login. It has to be a link that
   works in a private browser window.
 
-Use **Diagnose** on the calendar for the parser's own message rather than a
-summary.
+For the parser's own message rather than a summary, run
+[`diagnose-source`](command-line.md#diagnose-source).
 
 ## Home Assistant readings are blank
 
-- The address must include neither `/api` nor a trailing slash — either is
-  accepted, but a *wrong host* is not. Check it in a browser first.
+On the add-on there is nothing to set: it reaches Home Assistant through the
+supervisor. Otherwise, on **Home Assistant → Connection and token**:
+
+- The address may end with `/api` or not — either is accepted, but a *wrong
+  host* is not. Check it in a browser first.
 - Names ending in `.local` are resolved by the device you are browsing from,
   not by this server. Use the IP address.
-- Tick "Home Assistant is on my local network" — outbound requests to private
-  addresses are refused by default.
+- Turn on **Allow a local network address** — requests to a private address
+  are refused unless you say so.
 - Long-lived tokens are revoked when deleted in Home Assistant, and on some
   upgrades. The screen says when the token was refused.
 
+A reading only appears on a wall that has a Home Assistant widget showing it:
+adding it under **Home Assistant → Readings** says whether any wall does.
+
 ## Weather or alerts are empty
 
-The National Weather Service covers the United States only. Anywhere else,
-there is no provider yet and the settings page says so.
+A forecast needs a location: type a town or postcode on **Weather**, or use Home
+Assistant's home location. The forecast comes from the provider chosen there —
+the National Weather Service covers the United States only, and Open-Meteo,
+which needs no key, covers everywhere.
+
+Weather **alerts** come from the National Weather Service, so they exist in the
+United States only, and only once a location has been set: the zones to watch
+are worked out from it. The Weather screen lists them as soon as there are any.
 
 ## The wall is showing an old calendar
 
@@ -73,13 +85,15 @@ check the **Calendars** screen for a failing feed.
 
 ## I forgot the account password
 
-There is no reset flow — no email address is ever collected, so there is
-nothing to send a reset link to. Two ways forward:
+There is no reset link — the email address is only a name to sign in with,
+and nothing is ever sent to it. Three ways forward:
+
+**Ask another admin.** An admin can set a new password for any account under
+**System → Accounts**.
 
 **Restore a backup taken before the password was lost.** It restores the
-account along with everything else — see [Backup and restore](backup.md). If
-you never took one, this option is not available; the household is the one
-account, and there is no default credential to fall back to (rule ten).
+accounts along with everything else — see [Backup and restore](backup.md).
+There is no default credential to fall back to.
 
 **Or, on a Docker or Compose install with shell access, create a new account
 without losing the calendar.** The add-on has no shell, so this is Docker
@@ -92,9 +106,9 @@ UPDATE household_settings SET setup_completed_at = NULL WHERE id = 'singleton';
 SQL
 ```
 
-Deleting from `user` cascades to `account` and `session` — the only two
-tables that reference it — so calendars, screens, chores and every setting
-are untouched. Start the container again: with no account, boot prints a
+Deleting from `user` deletes every account, with its sessions, its two-step
+sign-in and its phone token. Calendars, walls, chores and every setting are
+untouched. Start the container again: with no account, boot prints a
 fresh setup code to the log exactly as it did on a brand-new install, and
 `/setup` opens straight to creating one. This is a manual, unsupported
 procedure — back the database up first — but it is the one way to recover the

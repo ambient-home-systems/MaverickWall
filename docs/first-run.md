@@ -4,8 +4,8 @@ Open `http://<the-machine>:8080`.
 
 ## The setup code
 
-The first account is the only one that can be created, and the only way to
-create it is a code printed in the container's log:
+The only way to create the first account is a code printed in the container's
+log:
 
 ```bash
 docker logs maverick-wall
@@ -34,7 +34,8 @@ expires — restart the container if you missed it.
    not control, and a wizard you cannot finish because Google is having a bad
    morning would leave a wall blank on the evening you installed it.
 4. **Your location, and the people who live here.** Also optional. A latitude
-   and longitude for the forecast strip — and, in the United States, for working
+   and longitude for the forecast strip — or a town or postcode, looked up for
+   you on the Weather screen afterwards — and, in the United States, for working
    out which National Weather Service zones to watch — and the name of one
    person. A person is somebody for the wall to know about: their colour marks
    their events once a calendar is assigned to them, and a rota once one
@@ -51,7 +52,7 @@ is leaving out and names the screen that fixes it.
 A name on its own changes nothing on the glass, and that is worth knowing
 before you look for it. A person's colour marks events on a calendar assigned
 to them, which is done on **Calendars**; the rota badge appears once a rotation
-exists on **Shifts**. Adding a person creates neither — it creates the person
+exists on **Work Schedule**. Adding a person creates neither — it creates the person
 both of those then attach to.
 
 **No weather alert rule is armed until a zone is being watched.** The zones are
@@ -62,7 +63,8 @@ that could not happen. **Weather** shows the zones as soon as there are any.
 
 ## Adding a calendar
 
-**Calendars → Add.** Paste the address of any ICS feed.
+**Calendars → Add a calendar**, then the iCal address. Paste the address of any
+ICS feed.
 
 For Google: **Settings → Settings for my calendars → Integrate calendar →
 Secret address in iCal format.** Use the *secret* address, not the public one.
@@ -104,7 +106,7 @@ away.
 
 ### An iCloud calendar, or any CalDAV server
 
-**Calendars → Add a CalDAV account.** This is the route for iCloud, and it
+**Calendars → Add a calendar → Add a CalDAV account.** This is the route for iCloud, and it
 works for any server that speaks CalDAV — Nextcloud, Baïkal, Radicale, SOGo,
 Fastmail — where one sign-in reaches every calendar on the account rather than
 one address per calendar.
@@ -161,13 +163,25 @@ is Google's decision rather than ours: Google caches it on its own schedule and
 it can be hours behind. If that matters, the Home Assistant route is the one
 that fixes it.
 
-## Pairing a screen
+## Pairing your first wall
 
-**Screens → Add.** You get a link and a QR code.
+**Walls → Add a wall → Add a browser wall.** Give the wall a name, say what
+the hardware is if you know (its size and how far away it is read from, which
+is what sizes the type), pick a layout to start from and a theme. You then get
+a link and a QR code.
 
 Open the link on the wall display once. It trades the token for a cookie and
 then redirects, so the token appears once and never again in a browser history
-somebody later screenshots. That screen is now paired until you revoke it.
+somebody later screenshots. That wall is now paired until you revoke it.
 
-Each screen has its own settings: orientation, rotation for a panel mounted on
-its side, theme, timezone, and whether it can acknowledge alerts.
+Where a link is awkward to open — a television with only a remote — open the
+wall's plain address instead. It asks for a pairing code, which the add page
+shows beside the link. The Android TV app pairs the other way round: it shows
+a code, and you enter it under **Walls → Approve a pairing code**.
+
+Each wall has its own settings on its page: its layouts, its theme, its
+orientation and rotation for a panel mounted on its side, its timezone, and
+what it may do — clear an alert, tick a chore or a to-do item, operate things
+in the house. Everything a wall may press is off until you turn it on. An
+e-paper panel is added the same way, with **Add an e-paper wall**; see
+[Walls and designs](walls.md).
