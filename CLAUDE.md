@@ -9650,6 +9650,9 @@ pull request as a finding rather than in the diff. `homeassistant.test.ts`
 now proves no entity id travels with a readings-filtered widget placed in both
 orientations, a legacy label, an ink override, and an unwatched id on a named
 layout; it does not fire a rule, which is exactly why it cannot see the other.
+*(Fixed since: a Home Assistant interrupt reaches a wall as a handle, which is
+the paragraph "A Home Assistant alert reaches a wall as a handle" at the end
+of this section.)*
 
 **Eighteen mutations were checked and all eighteen are red**, across
 `browser-ha-readings` (a real paired wall and a real editor),

@@ -90,7 +90,15 @@ import { haActBody, operate, valueFor } from '../modules/homeassistant/control.j
 import { pressWebhook } from '../modules/webhooks/index.js';
 import { activeOn, localToday, readChores, setChoreDone } from '../api/chores.js';
 import { evaluateInterrupts } from '@maverick-wall/core';
-import { NOTIFICATIONS_BLOCK, bannersOf, inHouseholdWords, tileFor, tilesOf } from '../api/notifications.js';
+import {
+  NOTIFICATIONS_BLOCK,
+  alertFor,
+  bannersOf,
+  inHouseholdWords,
+  tileFor,
+  tilesOf,
+  withAlertHandles,
+} from '../api/notifications.js';
 import { dismissInterrupt, readDismissals, readRules } from '../api/rules.js';
 import { createLogBuffer, type LogBuffer } from '../logbuffer.js';
 import {
@@ -1033,20 +1041,8 @@ export function createApp(deps: AppDeps): Hono {
      */
     if (key.startsWith('tile:')) {
       const at = now();
-      const household = readHousehold(deps.db);
-      const modules = allModules(deps.db);
-      const context = { db: deps.db, fetcher: deps.fetcher, keyring: deps.keyring, now: at, timezone: household.timezone };
       const rules = readRules(deps.db);
-      const tile = tileFor(
-        key,
-        evaluateInterrupts({
-          rules,
-          signals: collectSignals(modules, context),
-          now: at,
-          localHhmm: localClock(at, household.timezone),
-          dismissedAt: readDismissals(deps.db),
-        }).active,
-      );
+      const tile = tileFor(key, activeInterrupts(at));
       const rule = tile === undefined ? undefined : rules.find((candidate) => candidate.id === tile.ruleId);
       if (tile === undefined || rule === undefined) return c.json({ error: 'not-found' }, 404);
       if (!rule.dismissible) return c.json({ error: 'not-dismissible' }, 403);
@@ -1075,7 +1071,23 @@ export function createApp(deps: AppDeps): Hono {
      * several rules match one warning. Storing per rule meant pressing OK
      * promoted the next rule down and the wall carried on regardless.
      */
-    dismissInterrupt(deps.db, rule.source, key.slice(key.indexOf(':') + 1), now());
+    const signal = key.slice(key.indexOf(':') + 1);
+
+    /*
+     * A Home Assistant rule's is named by its handle (rule 12), so the handle
+     * is matched against what this rule has firing now, as a tile's is. A
+     * signal key sent raw is refused rather than taken: no wall is ever given
+     * one, so the only thing that could send one is not a wall drawing what
+     * it was sent.
+     */
+    if (rule.source === 'homeassistant') {
+      const at = now();
+      const found = alertFor(rule.id, signal, activeInterrupts(at));
+      if (found === undefined) return c.json({ error: 'not-found' }, 404);
+      dismissInterrupt(deps.db, rule.source, found, at);
+      return c.json({ ok: true });
+    }
+    dismissInterrupt(deps.db, rule.source, signal, now());
     return c.json({ ok: true });
   });
 
@@ -1634,7 +1646,11 @@ export function createApp(deps: AppDeps): Hono {
       // says so (plan items M6.4, M6.5, M6.7).
       conditions: readConditions(deps.db, at),
       // A takeover's camera travels only while it is one this house still has.
-      interrupts: withTakeoverCameras(inHouseholdWords(bannersOf(firing), rules), new Set(cameraHandles(deps.db))),
+      // A Home Assistant interrupt's key is an entity id, so a wall is handed
+      // its handle instead (rule 12); the push socket sends this same list.
+      interrupts: withAlertHandles(
+        withTakeoverCameras(inHouseholdWords(bannersOf(firing), rules), new Set(cameraHandles(deps.db))),
+      ),
       screen: {
         orientation: screenLike.orientation,
         rotation: screenLike.rotation,
