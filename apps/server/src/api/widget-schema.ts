@@ -579,7 +579,7 @@ const widgetConfigFields = z
     cameraRefreshSec: z.number().int().min(1).max(60).optional(),
     // A picture every few seconds (the absence) or the camera's live stream
     // through the server's one socket into the house (plan item M6.2).
-    cameraMode: z.enum(['snapshot', 'stream']).optional(),
+    cameraMode: z.enum(['snapshot', 'stream', 'webrtc']).optional(),
     // Notes — free text the household typed, drawn as written (line breaks kept).
     text: z.string().max(2000).optional(),
     // To-do — a static checklist. Each item is a line the household typed, and

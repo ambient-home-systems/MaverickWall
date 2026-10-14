@@ -39,6 +39,73 @@ import {
  * when it leaves the document, and the wall targets several (RFC 007 §7.2).
  */
 
+/** How long the wall gathers its own candidates before it sends its offer. */
+const GATHER_MS = 3_000;
+/** How often a WebRTC session is polled for late candidates, which keeps it open. */
+const POLL_MS = 2_000;
+/** A session that has drawn no frame by now falls back to the MJPEG stream. */
+const FIRST_FRAME_MS = 10_000;
+
+function canDecodeFrames(): boolean {
+  return typeof createImageBitmap === 'function' && typeof ReadableStream === 'function';
+}
+
+function pause(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+/** Resolves once the connection has gathered its candidates, or after `ms`, whichever is first. */
+function gathered(pc: RTCPeerConnection, ms: number): Promise<void> {
+  if (pc.iceGatheringState === 'complete') return Promise.resolve();
+  return new Promise((resolve) => {
+    const timer = window.setTimeout(resolve, ms);
+    pc.addEventListener('icegatheringstatechange', () => {
+      if (pc.iceGatheringState === 'complete') {
+        window.clearTimeout(timer);
+        resolve();
+      }
+    });
+  });
+}
+
+/** A candidate as the server hands it on, or nothing. */
+function candidateOf(raw: unknown): RTCIceCandidateInit | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const record = raw as Record<string, unknown>;
+  const line = record['candidate'];
+  if (typeof line !== 'string' || !line.startsWith('candidate:')) return undefined;
+  const mid = record['sdpMid'];
+  const index = record['sdpMLineIndex'];
+  return {
+    candidate: line,
+    ...(typeof mid === 'string' ? { sdpMid: mid } : {}),
+    ...(typeof index === 'number' ? { sdpMLineIndex: index } : {}),
+    // A candidate with neither is for the first media section.
+    ...(typeof mid !== 'string' && typeof index !== 'number' ? { sdpMLineIndex: 0 } : {}),
+  };
+}
+
+function candidatesOf(raw: unknown): RTCIceCandidateInit[] {
+  return Array.isArray(raw) ? raw.map(candidateOf).filter((c): c is RTCIceCandidateInit => c !== undefined) : [];
+}
+
+/** The server's answer to an offer, or nothing. */
+export function sessionAnswer(raw: unknown): { session: string; answer: string; candidates: RTCIceCandidateInit[] } | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const record = raw as Record<string, unknown>;
+  const session = record['session'];
+  const answer = record['answer'];
+  if (typeof session !== 'string' || typeof answer !== 'string' || !answer.startsWith('v=0')) return undefined;
+  return { session, answer, candidates: candidatesOf(record['candidates']) };
+}
+
+/** A poll's answer, or nothing. */
+export function sessionPoll(raw: unknown): { ended: boolean; candidates: RTCIceCandidateInit[] } | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const record = raw as Record<string, unknown>;
+  return { ended: record['ended'] === true, candidates: candidatesOf(record['candidates']) };
+}
+
 /** What a box the renderer drew says about the picture that goes over it. */
 interface BoxFacts {
   readonly widgetId: string;
@@ -47,6 +114,8 @@ interface BoxFacts {
   readonly contain: boolean;
   /** The live stream (M6.2) rather than a picture every few seconds. */
   readonly live: boolean;
+  /** Live over WebRTC first, with the MJPEG stream as the fallback. */
+  readonly webrtc: boolean;
 }
 
 interface Picture {
@@ -54,7 +123,11 @@ interface Picture {
   /** A snapshot's picture, or a live picture on a browser that cannot decode frames itself. */
   readonly img: HTMLImageElement;
   /** A live picture, drawn frame by frame (plan item M6.2); absent for a snapshot. */
-  readonly canvas: HTMLCanvasElement | undefined;
+  canvas: HTMLCanvasElement | undefined;
+  /** A live picture over WebRTC, until it falls back to the MJPEG stream. */
+  video: HTMLVideoElement | undefined;
+  /** Asked for WebRTC; stays true after a fallback, so the box is not made again. */
+  readonly webrtc: boolean;
   /** Ends a live picture's request. */
   abort: (() => void) | undefined;
   dropped: boolean;
@@ -83,6 +156,8 @@ export interface CameraLayerOptions {
   readonly now: () => number;
   /** Where pictures are asked for; a test may point it elsewhere. */
   readonly base?: string;
+  /** Where a WebRTC session is polled and ended. */
+  readonly sessionBase?: string;
 }
 
 function factsOf(box: HTMLElement): BoxFacts | undefined {
@@ -96,6 +171,7 @@ function factsOf(box: HTMLElement): BoxFacts | undefined {
     refreshSec: Number.isInteger(refresh) && refresh >= 1 && refresh <= 60 ? refresh : 3,
     contain: box.hasAttribute('data-camera-contain'),
     live: box.hasAttribute('data-camera-live'),
+    webrtc: box.hasAttribute('data-camera-live') && box.hasAttribute('data-camera-webrtc'),
   };
 }
 
@@ -124,6 +200,7 @@ function placeWithin(box: HTMLElement, frame: HTMLElement): { x: number; y: numb
 
 export function createCameraLayer(frame: HTMLElement, options: CameraLayerOptions): CameraLayer {
   const base = options.base ?? '/d/camera/';
+  const sessionBase = options.sessionBase ?? '/d/camera-session/';
   const doc = frame.ownerDocument;
   const layer = doc.createElement('div');
   layer.id = 'camera-layer';
@@ -156,6 +233,10 @@ export function createCameraLayer(frame: HTMLElement, options: CameraLayerOption
    */
   function ask(picture: Picture): void {
     picture.counter += 1;
+    if (picture.video !== undefined) {
+      void connect(picture, picture.video);
+      return;
+    }
     if (picture.canvas !== undefined) {
       void watch(picture, picture.canvas);
       return;
@@ -233,6 +314,133 @@ export function createCameraLayer(frame: HTMLElement, options: CameraLayerOption
     schedule(picture, drew ? 1_000 : retryDelayMs(picture.failures));
   }
 
+  /*
+   * A live picture over WebRTC (Hard rule 12's WebRTC exception).
+   *
+   * The wall makes the offer and gathers its own candidates before it sends
+   * it, so nothing but that offer goes to the server; the server signals the
+   * session with Home Assistant and hands back the answer and the media
+   * server's candidates, then any late ones while the wall polls, and that
+   * poll is what keeps the session open. No STUN or TURN server is named,
+   * because a wall contacts no third party (rule three): the media server is
+   * on the household's own network, and a host candidate reaches it.
+   *
+   * **A picture that never arrives falls back, for good.** A camera that does
+   * not offer WebRTC is refused at once; a media server this screen cannot
+   * reach is a session that never draws a frame. Either way the box becomes
+   * the MJPEG stream (M6.2), which goes through this server and so reaches
+   * any wall that can reach the server. One that drew and then stopped is
+   * asked again, as a stream is.
+   */
+  async function connect(picture: Picture, video: HTMLVideoElement): Promise<void> {
+    const pc = new RTCPeerConnection({ iceServers: [] });
+    let session: string | undefined;
+    let stopped = false;
+    let drew = false;
+    const endSession = (): void => {
+      if (session !== undefined) {
+        void fetch(`${sessionBase}${encodeURIComponent(session)}/end`, { method: 'POST', cache: 'no-store' }).catch(() => undefined);
+        session = undefined;
+      }
+    };
+    picture.abort = () => {
+      stopped = true;
+      pc.close();
+      endSession();
+    };
+    const frameSeen = (): void => {
+      drew = true;
+      picture.failures = 0;
+      picture.lastLoadedAt = options.now();
+      settle(picture, 'live');
+    };
+    const watchFrames = (): void => {
+      const withFrames = video as HTMLVideoElement & {
+        requestVideoFrameCallback?: (callback: () => void) => number;
+      };
+      if (typeof withFrames.requestVideoFrameCallback === 'function') {
+        const next = (): void => {
+          if (stopped || picture.dropped) return;
+          frameSeen();
+          withFrames.requestVideoFrameCallback?.(next);
+        };
+        withFrames.requestVideoFrameCallback(next);
+      } else {
+        video.addEventListener('timeupdate', frameSeen);
+      }
+    };
+    try {
+      pc.addTransceiver('video', { direction: 'recvonly' });
+      pc.addTransceiver('audio', { direction: 'recvonly' });
+      pc.ontrack = (event) => {
+        if (event.track.kind !== 'video') return;
+        video.srcObject = event.streams[0] ?? new MediaStream([event.track]);
+        void video.play().catch(() => undefined);
+      };
+      watchFrames();
+      await pc.setLocalDescription(await pc.createOffer());
+      await gathered(pc, GATHER_MS);
+      const offer = pc.localDescription?.sdp;
+      if (offer === undefined) throw new Error('no offer');
+      const response = await fetch(`${base}${encodeURIComponent(picture.handle)}/webrtc`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ offer }),
+        cache: 'no-store',
+      });
+      if (!response.ok) throw new Error('no session');
+      const started = sessionAnswer(await response.json());
+      if (started === undefined) throw new Error('no session');
+      session = started.session;
+      await pc.setRemoteDescription({ type: 'answer', sdp: started.answer });
+      let seen = 0;
+      const add = async (candidates: readonly RTCIceCandidateInit[]): Promise<void> => {
+        for (const candidate of candidates) await pc.addIceCandidate(candidate).catch(() => undefined);
+        seen += candidates.length;
+      };
+      await add(started.candidates);
+      const begun = options.now();
+      for (;;) {
+        await pause(POLL_MS);
+        if (stopped || picture.dropped) return;
+        if (pc.connectionState === 'failed' || pc.connectionState === 'closed') break;
+        // A session that has drawn nothing by now never will on this screen.
+        if (!drew && options.now() - begun > FIRST_FRAME_MS) break;
+        const polled = await fetch(`${sessionBase}${encodeURIComponent(started.session)}?after=${seen}`, { cache: 'no-store' })
+          .then((r) => (r.ok ? r.json() : undefined))
+          .catch(() => undefined);
+        const late = sessionPoll(polled);
+        if (late === undefined || late.ended) break;
+        await add(late.candidates);
+      }
+    } catch {
+      // A refusal, a browser that cannot, or an ended session: answered below.
+    }
+    if (stopped || picture.dropped) return;
+    picture.abort = undefined;
+    pc.close();
+    endSession();
+    if (!drew) {
+      fallBack(picture);
+      return;
+    }
+    schedule(picture, 1_000);
+  }
+
+  /** The box becomes the MJPEG stream it would have been without WebRTC. */
+  function fallBack(picture: Picture): void {
+    const video = picture.video;
+    if (video === undefined) return;
+    video.srcObject = null;
+    video.remove();
+    picture.video = undefined;
+    picture.element.classList.remove('is-webrtc');
+    const canvas = canDecodeFrames() ? doc.createElement('canvas') : undefined;
+    picture.canvas = canvas;
+    picture.element.insertBefore(canvas ?? picture.img, picture.caption);
+    ask(picture);
+  }
+
   function make(facts: BoxFacts): Picture {
     const element = doc.createElement('div');
     element.className = 'camera-pic';
@@ -242,20 +450,26 @@ export function createCameraLayer(frame: HTMLElement, options: CameraLayerOption
     // A live picture on a browser that can decode frames itself is a canvas;
     // one that cannot (an old WebKit) keeps the <img>, which draws the stream
     // with no script and simply cannot say when it stops.
-    const canvas =
-      facts.live && typeof createImageBitmap === 'function' && typeof ReadableStream === 'function'
-        ? doc.createElement('canvas')
-        : undefined;
+    const video = facts.webrtc && typeof RTCPeerConnection === 'function' ? doc.createElement('video') : undefined;
+    if (video !== undefined) {
+      video.muted = true;
+      video.autoplay = true;
+      video.playsInline = true;
+      element.classList.add('is-webrtc');
+    }
+    const canvas = video === undefined && facts.live && canDecodeFrames() ? doc.createElement('canvas') : undefined;
     const caption = doc.createElement('div');
     caption.className = 'camera-stale';
     caption.hidden = true;
-    element.appendChild(canvas ?? img);
+    element.appendChild(video ?? canvas ?? img);
     element.appendChild(caption);
     layer.appendChild(element);
     const picture: Picture = {
       element,
       img,
       canvas,
+      video,
+      webrtc: facts.webrtc,
       abort: undefined,
       dropped: false,
       caption,
@@ -291,6 +505,7 @@ export function createCameraLayer(frame: HTMLElement, options: CameraLayerOption
     if (picture.timer !== undefined) window.clearTimeout(picture.timer);
     // An empty `src` ends any fetch under way rather than letting it land on nothing.
     picture.img.removeAttribute('src');
+    if (picture.video !== undefined) picture.video.srcObject = null;
     picture.element.remove();
     pictures.delete(widgetId);
   }
@@ -314,7 +529,10 @@ export function createCameraLayer(frame: HTMLElement, options: CameraLayerOption
         let picture = pictures.get(facts.widgetId);
         // A widget set to another camera, or switched between a picture every
         // few seconds and the live stream, is a new picture, not the old one renamed.
-        if (picture !== undefined && (picture.handle !== facts.handle || picture.live !== facts.live)) {
+        if (
+          picture !== undefined &&
+          (picture.handle !== facts.handle || picture.live !== facts.live || picture.webrtc !== facts.webrtc)
+        ) {
           drop(facts.widgetId, picture);
           picture = undefined;
         }
@@ -335,7 +553,7 @@ export function createCameraLayer(frame: HTMLElement, options: CameraLayerOption
         // A live picture drawn here knows when its last frame came; one an
         // <img> draws on its own does not, and is never called old.
         picture.caption.hidden =
-          picture.live && picture.canvas === undefined
+          picture.live && picture.canvas === undefined && picture.video === undefined
             ? true
             : !pictureIsStale(picture.lastLoadedAt, options.now(), picture.live ? LIVE_STALE_SEC : picture.refreshSec);
         if (!picture.caption.hidden) picture.caption.textContent = 'This picture is not new — the camera has not sent another.';

@@ -327,8 +327,14 @@ describe('a camera in the editor', () => {
         // Live hides the refresh, which a stream has no use for.
         const refresh = page.locator('.le-cfg-field[data-cfg-key="cameraRefreshSec"]');
         expect(await refresh.isVisible()).toBe(true);
-        await page.locator('.le-cfg-field[data-cfg-key="cameraMode"] .seg button', { hasText: 'Live' }).click();
+        const segment = (name: RegExp) => page.locator('.le-cfg-field[data-cfg-key="cameraMode"] .seg button', { hasText: name });
+        // WebRTC says what it hands the wall before it is chosen for good.
+        await segment(/^Live, WebRTC$/).click();
         await expect.poll(() => refresh.isVisible()).toBe(false);
+        await expect.poll(() => page.locator('.hint', { hasText: 'falls back to Live' }).isVisible()).toBe(true);
+        await segment(/^Live$/).click();
+        await expect.poll(() => refresh.isVisible()).toBe(false);
+        expect(await page.locator('.hint', { hasText: 'falls back to Live' }).count()).toBe(0);
         // The preview draws the box and says where the picture goes.
         await expect
           .poll(() =>

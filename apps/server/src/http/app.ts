@@ -7,6 +7,8 @@ import { CAMERA_HANDLE } from '../modules/cameras/index.js';
 import { cameraPlacedOn, takeoverCamera, withTakeoverCameras } from '../modules/cameras/placement.js';
 import { createSnapshots } from '../modules/cameras/snapshot.js';
 import { callStream, resolveConnection } from '../modules/homeassistant/client.js';
+import { websocketUrl } from '../modules/homeassistant/notifications.js';
+import { createWebrtcSessions, isSdp, MAX_SDP, type WebrtcLimits } from '../modules/cameras/webrtc.js';
 import { cameraEntityOf, cameraHandles } from '../modules/cameras/index.js';
 import { createCameraHub, HUB_LIMITS, type HubLimits } from '../modules/cameras/hub.js';
 import { CAMERA_BOUNDARY, cameraPart } from '../modules/cameras/multipart.js';
@@ -113,7 +115,7 @@ import {
   page,
   textField,
 } from './html.js';
-import { parse, text } from '../validation.js';
+import { parse, parseJsonOr, text, z } from '../validation.js';
 import type { Fetcher, Interrupt } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
 import {
@@ -194,6 +196,8 @@ export interface AppDeps {
    * thirty seconds for a camera to go quiet. Nothing in the product sets it.
    */
   readonly cameraHubLimits?: Partial<HubLimits>;
+  /** WebRTC session limits; a test shortens them. */
+  readonly webrtcLimits?: Partial<WebrtcLimits>;
   /** Where Google and Microsoft are — set only by a test, to a stand-in (plan item M5.11). */
   readonly oauth?: OAuthEndpoints;
   readonly db: SqliteDatabase;
@@ -1012,6 +1016,80 @@ export function createApp(deps: AppDeps): Hono {
         'x-content-type-options': 'nosniff',
       },
     });
+  });
+
+  /**
+   * A camera over WebRTC (Hard rule 12's WebRTC exception): this server signals
+   * the session with Home Assistant and the wall receives the answer and the
+   * media server's candidates for that one stream, never Home Assistant's URL,
+   * the entity id or the token. The gate is the stream's, and it is asked again
+   * every second for as long as the session is held, so a session ends with
+   * the wall's revocation or the camera's removal as a stream does. A camera
+   * that does not offer WebRTC is a `409`, which the wall answers by falling
+   * back to the MJPEG stream.
+   */
+  const webrtc = createWebrtcSessions({
+    open: async (converse, idleTimeoutMs) => {
+      if (deps.fetcher.subscribe === undefined) return undefined;
+      const resolved = resolveConnection(deps.db, deps.keyring);
+      if (!resolved.ok) return undefined;
+      return deps.fetcher.subscribe({
+        url: websocketUrl(resolved.connection),
+        policy: resolved.connection.policy,
+        maxBytes: MAX_SDP * 2,
+        connectTimeoutMs: 10_000,
+        idleTimeoutMs,
+        converse,
+      });
+    },
+    ...(deps.webrtcLimits === undefined ? {} : { limits: deps.webrtcLimits }),
+    now,
+  });
+  // The wall each session was started for, so the gate can be asked of it again.
+  const webrtcScreens = new Map<string, ScreenRow>();
+  const screenWatches = (screenId: string, handle: string): boolean => {
+    const screen = webrtcScreens.get(screenId);
+    const row = deps.db.prepare('SELECT revoked_at AS revokedAt FROM screens WHERE id = ?').get(screenId) as
+      | { revokedAt: number | null }
+      | undefined;
+    if (screen === undefined || row === undefined || row.revokedAt !== null) return false;
+    const camera = cameraEntityOf(deps.db, handle);
+    return camera !== undefined && camera.available && cameraAllowed(screen, handle, now());
+  };
+  const webrtcSweep = setInterval(() => webrtc.sweep(screenWatches), 1_000);
+  webrtcSweep.unref?.();
+  app.post('/d/camera/:handle/webrtc', async (c: Context) => {
+    const screen = c.get('screen') as ScreenRow;
+    const handle = c.req.param('handle') ?? '';
+    c.header('cache-control', 'no-store');
+    if (!CAMERA_HANDLE.test(handle) || !cameraAllowed(screen, handle, now())) {
+      return c.json({ error: 'not-found' }, 404);
+    }
+    const camera = cameraEntityOf(deps.db, handle);
+    if (camera === undefined || !camera.available) {
+      return c.json({ error: 'no-picture', message: 'This camera is not answering Home Assistant at the moment.' }, 503);
+    }
+    const body = parseJsonOr(z.looseObject({ offer: z.string() }), await c.req.text().catch(() => ''), undefined);
+    if (body === undefined || !isSdp(body.offer)) return c.json({ error: 'bad-offer' }, 400);
+    const resolved = resolveConnection(deps.db, deps.keyring);
+    if (!resolved.ok) return c.json({ error: 'no-picture', message: 'Home Assistant is not connected.' }, 503);
+    webrtcScreens.set(screen.id, screen);
+    const started = await webrtc.start(screen.id, handle, camera.entityId, body.offer, resolved.connection.token);
+    if (!started.ok) return c.json({ error: 'no-webrtc', message: started.message }, started.status);
+    return c.json({ session: started.session, answer: started.answer, candidates: started.candidates });
+  });
+  app.get('/d/camera-session/:session', (c: Context) => {
+    const screen = c.get('screen') as ScreenRow;
+    c.header('cache-control', 'no-store');
+    const after = Number(c.req.query('after') ?? '0');
+    const polled = webrtc.poll(screen.id, c.req.param('session') ?? '', after);
+    if (polled === undefined) return c.json({ error: 'not-found' }, 404);
+    return c.json(polled);
+  });
+  app.post('/d/camera-session/:session/end', (c: Context) => {
+    const screen = c.get('screen') as ScreenRow;
+    webrtc.end(screen.id, c.req.param('session') ?? '');
+    return c.json({ ok: true });
   });
 
   /**

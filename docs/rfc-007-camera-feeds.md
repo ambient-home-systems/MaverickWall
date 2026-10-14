@@ -1,6 +1,6 @@
 # RFC 007 — Camera feeds on the wall
 
-Status: **Tiers A and B built (plan items M6.1 and M6.2), and phase 4's doorbell (M6.3); Tier C not yet** · Owner: — · First
+Status: **Tiers A and B built (plan items M6.1 and M6.2), phase 4's doorbell (M6.3), and Tier C as Shape 1 (2026-10-14, see §9)** · Owner: — · First
 drafted 2026-08-13 · Rewritten 2026-09-09 · Relates to
 `apps/server/src/modules/homeassistant/`, `packages/core/src/ports/fetcher.ts`,
 `apps/server/src/net/fetcher.ts`, `apps/server/src/api/widget-schema.ts`,
@@ -664,6 +664,26 @@ write both. It must not.
   changes for the manifest it changes for cameras in the same commit.
 
 ## 9. The WebRTC decision
+
+> **Decided 2026-10-14, and built as Shape 1.** The owner chose WebRTC
+> ("standard in Home Assistant and works great") and, once told that Shape 1
+> hands the wall go2rtc's address, amended Hard rule 12 rather than build
+> Shape 2's media relay. The rule now names the exception: a wall showing a
+> camera over WebRTC is handed that one session's connection candidates, and
+> still never Home Assistant's URL, an entity id or the token. What follows
+> is the argument as it was made, kept because it is the cost the owner
+> accepted. What was built: "Picture: Live, WebRTC" (`cameraMode: 'webrtc'`).
+> The wall makes the offer with no STUN or TURN server, gathers its own
+> candidates before sending it, and posts it to
+> `POST /d/camera/:handle/webrtc`, gated exactly as the stream is. The server
+> opens Home Assistant's WebSocket with the token and sends
+> `camera/webrtc/offer`, and holds that socket as the session for as long as
+> the wall polls `GET /d/camera-session/:id` for late candidates; it closes it
+> when the wall stops polling, ends the session, is revoked or no longer
+> places the camera. A camera Home Assistant will not stream over WebRTC, or
+> a session that draws no frame in ten seconds, falls back to Tier B on that
+> wall. The SDP and candidates are held to their shapes before they are
+> handed on (`modules/cameras/webrtc.ts`).
 
 Home Assistant bundles go2rtc, and Reolink over WebRTC is the well-trodden
 path, so this is a real option and worth pinning rather than hand-waving.

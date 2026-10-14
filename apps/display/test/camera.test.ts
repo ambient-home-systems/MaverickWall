@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
+import { sessionAnswer, sessionPoll } from '../src/camera-layer.js';
 import {
+  cameraIsWebrtc,
   CAMERA_BOUNDARY,
   cameraIsLive,
   createPartReader,
@@ -134,5 +136,31 @@ describe('the live stream', () => {
     const got = [...reader.push(bad), ...reader.push(part(frameA)), ...reader.push(part(frameB))];
     // A is over 250 bytes and is passed over; B is read.
     expect(got.map((frame) => frame.length)).toEqual([180]);
+  });
+});
+
+describe('a camera over WebRTC', () => {
+  it('is live, and asked over WebRTC only when the widget says so', () => {
+    expect(cameraIsLive({ cameraMode: 'webrtc' })).toBe(true);
+    expect(cameraIsWebrtc({ cameraMode: 'webrtc' })).toBe(true);
+    expect(cameraIsWebrtc({ cameraMode: 'stream' })).toBe(false);
+    expect(cameraIsWebrtc({})).toBe(false);
+  });
+
+  it('reads the server’s answer and polls, and drops what is not a candidate', () => {
+    const line = 'candidate:1 1 udp 2130706431 192.168.1.20 8555 typ host';
+    expect(sessionAnswer({ session: 's', answer: 'v=0\r\n', candidates: [{ candidate: line, sdpMid: '0' }, { candidate: 'x' }, 7] })).toEqual({
+      session: 's',
+      answer: 'v=0\r\n',
+      candidates: [{ candidate: line, sdpMid: '0' }],
+    });
+    // A candidate naming no section is for the first.
+    expect(sessionPoll({ ended: false, candidates: [{ candidate: line }] })).toEqual({
+      ended: false,
+      candidates: [{ candidate: line, sdpMLineIndex: 0 }],
+    });
+    expect(sessionAnswer({ session: 's', answer: '<html>' })).toBeUndefined();
+    expect(sessionAnswer(null)).toBeUndefined();
+    expect(sessionPoll({ ended: true })).toEqual({ ended: true, candidates: [] });
   });
 });
