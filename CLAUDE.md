@@ -12446,36 +12446,27 @@ household has pasted a script, and no Pi has run one.
 
 ## Open decisions
 
-- **First-run is a two-step dance, and it should not be.** Today the bootstrap
-  code prints to the log and the household types it into the wizard — read the
-  container log, copy a code, cross to the web UI, paste it. On a real install
-  that means the add-on log tab and the sidebar panel, or `docker logs` and a
-  browser. It is awkward and the household said so.
+- ~~First-run is a two-step dance~~ **is closed, and was for two months
+  before this entry said so.** It read "this is the next thing to build", and
+  it had been built on 2026-08-11 (`738bfd3`, "First run: skip the setup code
+  under trusted ingress"). Both halves are done:
 
-  The code is not decoration and a fix cannot just drop it: it is the whole of
-  rule ten on the first run — before it existed, the first sign-up was open to
-  anyone who could reach the port. So "simpler" has to keep the property that
-  *only someone who can already prove they own the box* creates the first
-  account. Two directions, and the first is nearly free:
+  - **On the add-on**, `/setup` asks `isTrustedIngress`, the same check as the
+    sidebar's sign-in, pinned to the supervisor's socket source. A household
+    reaching it through the sidebar goes straight to creating the account,
+    with no code. `setup-wizard.test.ts` holds this in six cases: the account
+    form shown, an account created with no code and no cookie, the code still
+    demanded on a plain `docker run`, under a forged header from the LAN, and
+    from the supervisor's address with no header, and no second account.
+  - **On a plain `docker run`** the code still stands, because nothing vouches
+    for the person at the browser. The boot line prints
+    `…/setup?token=<token>`, and `GET /setup` swaps that token for a cookie
+    and redirects, so opening the printed link is one click and nothing to
+    type.
 
-  - **Under ingress, the supervisor has already authenticated the household.**
-    The *post-setup* half of this is now built: `isTrustedIngress` lets the
-    settings accept a Home Assistant login in place of ours, pinned to the
-    supervisor's socket source rather than the forgeable ingress header. The
-    setup code is the same argument one step earlier — reaching `/setup` from a
-    trusted supervisor source is itself proof of ownership — so the wizard could
-    reuse `isTrustedIngress` to skip the code on the add-on entirely, and let
-    the first sidebar visitor create the account. That is the install that
-    matters most and the one where the dance is worst. The blocker is now gone:
-    the login path proved `isTrustedIngress` works on a real supervisor in
-    v0.1.4, so the setup wizard can lean on the same check with nothing left to
-    confirm. This is the next thing to build, not the next thing to prove.
-  - **For plain `docker run`, the code still earns its place** — there is no
-    supervisor vouching for anyone — but even there the log→UI copy could
-    become a one-click link. The wizard could show "waiting for the code from
-    the log", and the boot line already prints a full `…/setup?token=` URL;
-    the gap is only that the token is not pre-filled into the form a browser
-    lands on. Tabled deliberately, not forgotten.
+  It was found by going to build it and reading `setup.ts` first. That is the
+  header's warning about this section, arriving in the one part of the file
+  that names what to do next.
 - **Whether a second screen kind needs its own acknowledge affordance.** The
   control is a real button plus a global `Enter` handler, which covers a
   remote, a touchscreen and a keyboard. A voice assistant or a wall switch
