@@ -37,13 +37,14 @@ import {
  * `/api/states` answers with the whole house in a single request and asking
  * for six entities individually would be six.
  *
- * **Polling is the implementation, deliberately.** Home Assistant has a
- * WebSocket API and it would cost less, but its auth handshake is reported to
- * behave differently through the supervisor proxy than against Core directly,
- * and a subscription that fails to authenticate must not be the reason a
- * household's wall stops knowing anything. Thirty-second REST polling is the
- * reliable baseline the brief asks for; a subscription would be an
- * optimisation layered on top of it, and it is not built.
+ * **Polling is the baseline, deliberately.** Home Assistant has a WebSocket
+ * API, but its auth handshake is reported to behave differently through the
+ * supervisor proxy than against Core directly, and a subscription that fails
+ * to authenticate must not be the reason a household's wall stops knowing
+ * anything. So thirty-second REST polling is what writes every reading, and
+ * the subscription layered on top (`live.ts`) only ever runs this same read
+ * sooner: a doorbell rung is read in a quarter of a second, and a socket that
+ * will not open costs exactly that and nothing else.
  */
 
 export const HOME_BLOCK = 'home';
@@ -341,7 +342,24 @@ export const haModule: PanelModule = {
      */
     intervalMs: 30_000,
 
-    async run(context: ModuleContext): Promise<void> {
+    /*
+     * One read at a time. The live subscription (`live.ts`) runs this the
+     * moment a doorbell rings, and the scheduler runs it on its half minute,
+     * and two reads overlapping could write the older answer last — a ring
+     * read, then overwritten by the read that started before it.
+     */
+    run(context: ModuleContext): Promise<void> {
+      const next = readsDone.then(() => syncHomeAssistant(context));
+      readsDone = next.catch(() => undefined);
+      return next;
+    },
+  },
+};
+
+/** The last Home Assistant read queued: the next waits for it. */
+let readsDone: Promise<void> = Promise.resolve();
+
+async function syncHomeAssistant(context: ModuleContext): Promise<void> {
       /*
        * Only the entities somebody asked about.
        *
@@ -464,9 +482,7 @@ export const haModule: PanelModule = {
       await refreshHistory(context, resolved.connection);
       // And Home Assistant's own notifications, while a widget shows them (M6.11).
       await refreshHaNotifications(context.db, context.fetcher, resolved.connection, context.now);
-    },
-  },
-};
+}
 
 /**
  * A reading's last day, spread only when there is one (M6.10): the poll keeps

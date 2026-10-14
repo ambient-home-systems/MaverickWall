@@ -25,6 +25,9 @@ import {
   type SocketOutcome,
   type SocketRequest,
   type StreamOutcome,
+  type SubscribeEnd,
+  type SubscribeOutcome,
+  type SubscribeRequest,
   type StreamRequest,
   type UrlPolicy,
   type ValidatedUrl,
@@ -1154,6 +1157,124 @@ export function createFetcher(): Fetcher {
           socket.on('close', () =>
             finish({ status: 'failed', code: 'network-error', message: 'The server closed the connection.' }),
           );
+        });
+      } catch (error) {
+        return {
+          status: 'failed',
+          code: 'network-error',
+          message: error instanceof Error ? networkErrorMessage(error) : 'unknown error',
+        };
+      }
+    },
+
+    /**
+     * A WebSocket held open — Home Assistant's event subscription — under the
+     * same guard as `socket`: validated, resolved and checked, pinned, no
+     * redirect. Open is `ok`; after that the idle clock, the message ceiling
+     * and `converse` are what close it, and `ended` says why, once.
+     */
+    async subscribe(request: SubscribeRequest): Promise<SubscribeOutcome> {
+      try {
+        const validated = validateOutboundUrl(request.url, request.policy);
+        if (!validated.ok) return { status: 'rejected', code: 'url-rejected', message: validated.error.message };
+        const target = validated.value;
+        const resolved = await resolveAndCheck(target.hostname, request.policy);
+        if (!resolved.ok) {
+          const outcome = resolved.outcome;
+          return outcome.status === 'rejected'
+            ? { status: 'rejected', code: outcome.code, message: outcome.message }
+            : { status: 'failed', code: 'network-error', message: 'The address could not be checked.' };
+        }
+        const href = new URL(target.href);
+        href.protocol = target.protocol === 'https:' ? 'wss:' : 'ws:';
+        const connectTimeoutMs = request.connectTimeoutMs ?? DEFAULT_TIMEOUT_MS;
+
+        return await new Promise<SubscribeOutcome>((resolve) => {
+          let open = false;
+          let over = false;
+          let endedWith: (end: SubscribeEnd) => void = () => undefined;
+          const ended = new Promise<SubscribeEnd>((settle) => {
+            endedWith = settle;
+          });
+          const socket = new WebSocket(href.toString(), {
+            // The pin.
+            lookup: pinnedLookup(resolved.addresses) as never,
+            followRedirects: false,
+            handshakeTimeout: connectTimeoutMs,
+            maxPayload: request.maxBytes,
+            perMessageDeflate: false,
+            headers: { 'user-agent': DEFAULT_USER_AGENT },
+          });
+          let idle: ReturnType<typeof setTimeout> | undefined;
+          const finish = (end: SubscribeEnd): void => {
+            if (over) return;
+            over = true;
+            if (idle !== undefined) clearTimeout(idle);
+            socket.removeAllListeners();
+            socket.on('error', () => undefined);
+            socket.terminate();
+            if (open) endedWith(end);
+            else
+              resolve(
+                end.code === 'closed'
+                  ? { status: 'failed', code: 'network-error', message: end.message }
+                  : { status: 'failed', code: end.code, message: end.message },
+              );
+          };
+          const awake = (): void => {
+            if (idle !== undefined) clearTimeout(idle);
+            idle = setTimeout(
+              () => finish({ code: 'timeout', message: `Nothing heard for ${Math.round(request.idleTimeoutMs / 1000)} seconds.` }),
+              request.idleTimeoutMs,
+            );
+            idle.unref?.();
+          };
+          socket.on('open', () => {
+            open = true;
+            awake();
+            resolve({
+              status: 'ok',
+              send: (message) => {
+                if (!over && socket.readyState === WebSocket.OPEN) socket.send(message);
+              },
+              close: () => finish({ code: 'closed', message: 'Closed.' }),
+              ended,
+            });
+          });
+          socket.on('message', (data: WebSocket.RawData, isBinary: boolean) => {
+            awake();
+            if (isBinary) {
+              finish({ code: 'unacceptable-content-type', message: 'The server answered in binary.' });
+              return;
+            }
+            const text = Buffer.isBuffer(data) ? data.toString('utf8') : Buffer.concat(data as Buffer[]).toString('utf8');
+            let step;
+            try {
+              step = request.converse(text);
+            } catch {
+              finish({ code: 'network-error', message: 'A message could not be read.' });
+              return;
+            }
+            if ('done' in step) finish({ code: 'closed', message: step.done });
+            else if ('fail' in step) finish({ code: 'http-error', message: step.fail });
+            else for (const message of step.send) socket.send(message);
+          });
+          socket.on('unexpected-response', (_req, response) => {
+            const status = response.statusCode ?? 0;
+            if (status >= 300 && status < 400) {
+              over = true;
+              socket.removeAllListeners();
+              socket.on('error', () => undefined);
+              socket.terminate();
+              resolve({ status: 'rejected', code: 'redirect-rejected', message: 'The server answered with a redirect.' });
+              return;
+            }
+            finish({ code: 'http-error', message: `The server answered ${status}.` });
+          });
+          socket.on('error', (error: Error) =>
+            finish({ code: /max payload/i.test(error.message) ? 'too-large' : 'network-error', message: networkErrorMessage(error) }),
+          );
+          socket.on('close', () => finish({ code: 'network-error', message: 'The server closed the connection.' }));
         });
       } catch (error) {
         return {

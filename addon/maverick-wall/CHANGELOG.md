@@ -16,6 +16,17 @@
 
 ## Unreleased
 
+**A doorbell is on the wall in about a second.** Until now the wall read
+Home Assistant every thirty seconds, so a ring could reach it half a minute
+late, after your visitor had given up. Maverick Wall now keeps a connection
+open to Home Assistant and hears a change the moment it happens. A ring, a
+door a "Tell me when…" rule watches, or a widget's show-when entity is read
+straight away and every wall is told within a second. A reading that is only
+drawn, like a temperature, still waits a few seconds, so a busy sensor cannot
+keep the server reading all day. If that connection cannot open, the wall
+carries on reading every thirty seconds exactly as before, and the log says
+`[ha-live] not listening:` with the reason.
+
 ## 1.8.1
 
 **A Home Assistant alert no longer tells the wall what it is about.** When a

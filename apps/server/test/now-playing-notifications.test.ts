@@ -342,10 +342,16 @@ describe('a now-playing card on a wall (M6.9)', () => {
   it('does not move the manifest while a song plays, and does when the song changes', async () => {
     const h = await harness([PLAYER]);
     h.place('w-ha', 'homeassistant', { variant: 'media', readings: [PLAYER] });
+    // Both reports are stated from one instant a second into a five-second
+    // grain, so the starts they imply (200 ms apart, as a real re-report's are)
+    // round to the same grain. Taken from two clocks (the fake's stand-up and
+    // this line), the two starts could fall either side of a grain's edge.
+    const base = Math.floor(Date.now() / 5000) * 5000 + 1000;
+    h.ha.set[PLAYER] = { media_position: 90, media_position_updated_at: new Date(base).toISOString() };
     await h.poll();
     const first = manifestEtag((await manifestOf(h)).manifest);
     // Home Assistant re-reports the position thirty seconds on.
-    const said = Date.now() + 90_000;
+    const said = base + 30_200;
     h.ha.set[PLAYER] = { media_position: 120.2, media_position_updated_at: new Date(said).toISOString() };
     await h.poll();
     expect(manifestEtag((await manifestOf(h)).manifest)).toBe(first);

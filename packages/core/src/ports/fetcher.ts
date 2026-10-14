@@ -385,7 +385,50 @@ export interface Fetcher {
    * byte arrays in order, never decoded; `close` ends it at once.
    */
   stream?(request: StreamRequest): Promise<StreamOutcome>;
+  /**
+   * A WebSocket held open for as long as both ends want it — Home Assistant's
+   * event subscription, so a doorbell reaches a wall in a second rather than
+   * at the next thirty-second poll — under the same guard as `socket`, and
+   * optional for its reason.
+   *
+   * The address is validated against `policy`, the name resolved and every
+   * address checked, the socket pinned to the address that was checked, and
+   * no redirect followed. `connectTimeoutMs` bounds the handshake; after it,
+   * a message over `maxBytes` ends the socket, and so do `idleTimeoutMs`
+   * without a message — the caller keeps it alive by asking something. What
+   * is said is `converse`'s decision, as in `socket`; `done` closes it
+   * quietly and `fail` closes it with a sentence. The outcome is `ok` once
+   * the socket is open, and `ended` settles, once, when it is not.
+   */
+  subscribe?(request: SubscribeRequest): Promise<SubscribeOutcome>;
 }
+
+export interface SubscribeRequest {
+  readonly url: string;
+  readonly policy: UrlPolicy;
+  /** The most one message may be. */
+  readonly maxBytes: number;
+  readonly connectTimeoutMs?: number;
+  /** How long the socket may go without a message from the server. */
+  readonly idleTimeoutMs: number;
+  readonly converse: (message: string) => SocketStep;
+}
+
+/** Why a held socket is no longer open. `closed` is `converse` saying `done`, or the caller's `close`. */
+export interface SubscribeEnd {
+  readonly code: FetchFailureCode | 'closed';
+  readonly message: string;
+}
+
+export type SubscribeOutcome =
+  | {
+      readonly status: 'ok';
+      send(message: string): void;
+      close(): void;
+      readonly ended: Promise<SubscribeEnd>;
+    }
+  | { readonly status: 'rejected'; readonly code: FetchRejectionCode; readonly message: string }
+  | { readonly status: 'failed'; readonly code: FetchFailureCode; readonly message: string };
 
 export interface StreamRequest {
   readonly url: string;
