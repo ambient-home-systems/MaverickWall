@@ -16,104 +16,6 @@
 
 ## Unreleased
 
-**Modules can now be a little program, run safely on your own server.** For
-what a recipe cannot work out, such as which of three bins goes out next or how
-far through its cycle the moon is, a module can be a short script. It runs
-on the box itself, in a sandbox with no files and no network but the addresses
-it names, and it can only hand the wall data to draw. The wall never runs it.
-Before a script is added, Modules › Advanced › Add a script shows every address
-it may contact and a fingerprint of its code. The Store's first script is
-**Moon phase**, which needs no internet at all. A script that loops for ever,
-eats memory or breaks is stopped, and costs only its own panel.
-
-**Recipes for your phone and for Home Assistant.** The docs site has a new
-page, Phone and automations, with step-by-step recipes: an iOS Shortcut that
-adds to your shopping list when you say "Hey Siri, add to shopping", and Home
-Assistant `rest_command`s that put a message on the walls when the washing is
-done or start a timer. Every request on the page is sent to a real server
-whenever the code changes, so a recipe you copy today still works next
-release. **System › Phone and automations** links to it.
-
-**The Store has fifteen modules you can add without running anything.** Tide
-times, earthquakes, the aurora forecast, volcano alerts, hurricanes, a river
-gauge and the UV index from the US government's own services; pollen, flood
-warnings in England, public holidays for your country, London's line status,
-Swiss departures, French fuel prices and the next rocket launches. None of them
-needs a key. Each was tried against what its service really answered before it
-went in.
-
-**A recipe's dates now follow your timezone.** `date:short` and
-`date:relative` used to follow the server's own zone, so on a box set to UTC
-something late in a New York evening could show as tomorrow. A time a feed
-writes with no zone is read as UTC everywhere, and a plain date such as a
-holiday is never moved a day.
-
-**The documentation is a website now**, at
-ambient-home-systems.github.io/MaverickWall, built from the same pages that are
-in the repository and checked against the app every time it changes: a page
-that names a screen the admin no longer has, a setting nothing reads or a link
-that goes nowhere stops it being published. Several pages were out of date and
-are corrected — how to pair a wall, where weather and alerts come from, what a
-backup does and does not hold (uploaded photos are files beside it, not in
-it), and the command-line tools, which now have a page of their own.
-
-**You can try a recipe before you add it.** The recipe page under Modules ›
-Advanced has a Preview button. Paste what the recipe's address answers, and the
-page shows what your walls would draw from it, in your own theme, in a wide box
-and in a narrow one, without adding anything or asking the address. A recipe the
-wall cannot draw now says where, such as which row's label is too long, rather
-than only that something is wrong. For people writing recipes there are three
-commands too: one to check a recipe against answers you have saved, one to start
-a new recipe from a working example, and `diagnose-module`, which reads an
-installed module now and says which request or which part of its panel is the
-problem.
-
-**Recipes can read news feeds, XML and your house.** A recipe can now read an
-RSS or Atom news feed, or any XML document, as well as JSON, such as headlines
-beside the day's bin collection from your council's own XML. And it can read
-the Home Assistant readings you pick in its settings, so one widget can say
-what a feed says beside what your house says. The recipe only ever sees what a
-reading says, never which device it is, and only for readings you watch.
-
-**Recipes can colour their rows and write times your way.** A recipe can now
-turn what a feed says into its own words, so "on" reads "Running", and colour a
-row by it: green when something is running, the alert colour when it wants
-somebody. Numbers can have their thousands grouped ("12,345"), a length of time
-reads the way the wall's own countdowns do ("1 h 20 min"), a count carries its
-noun ("3 trains"), and a time from a feed that speaks UTC is shown in your own
-timezone.
-
-**Recipes can choose their rows and read more than one feed.** A recipe can now
-draw only the rows that match, such as the trains that are not cancelled or the
-readings over a level. It can put them in order and keep the first few, and when
-nothing matches it says so in words rather than going on showing the last rows
-it had. A recipe can also read up to three more feeds and draw from all of them
-at once, such as departures with the line's status as the heading. The install
-page names every site the recipe asks.
-
-**Modules can show a QR code, a countdown, a schedule or a picture.** A module
-you install, or one you build yourself, can now put any of four new things in a
-Module widget. A QR code a phone can scan, such as your guest Wi-Fi. A
-countdown to a time ("In 4 h 20 min"), which goes on counting on the wall even
-when the module's own server is down. A short schedule, where what has passed
-turns quieter and the next thing stands out, by the wall's own clock. And a
-picture, such as a rain radar or a webcam snapshot, which this server fetches
-and checks is really a picture before any wall is given it. A wall never learns
-where a picture came from. An e-paper panel shows the code, says when a
-countdown ends, lists what is still to come, and shows a picture's caption
-rather than the picture.
-
-**One module, different settings on different widgets.** A module installed
-from the Store can now offer proper controls for its settings — a list to
-choose from, a number, an on/off switch, or one of your Home Assistant
-readings — and each Module widget can change them for itself: the same
-weather module showing York in the kitchen and Leeds in the hall, from one
-install. A setting you leave alone follows the install. However many widgets
-ask for the same thing, it is fetched once. When a setting is a Home Assistant
-reading, only that reading's current value is sent, and the page says where to
-before you choose one. This also fixes a Module widget on an e-paper panel,
-which always said "No data yet".
-
 **A Home Assistant camera on the wall.** Add one under Home Assistant ›
 Cameras, then put a Camera widget where you want it: it shows the camera's
 latest picture, fetched every few seconds (every three unless you choose 1,
@@ -156,25 +58,12 @@ thing's name instead. It now shows your sentence, with what it is about under
 it — "The freezer door is open", then "Freezer door · Open". Weather warnings
 keep the warning's own words.
 
-**A module can draw a line of numbers, or a small table.** A module's row may
-carry a short run of numbers, drawn as a little line at the end of the row, with
-every row's value still ending at one edge. A module may also show a table of up
-to four columns and twelve rows: the columns line up, a long entry wraps rather
-than being cut, and a box too short for every row shows the rows it has room
-for. An e-paper panel draws both. The module guide shows how.
-
-**A module can show how far along something is.** A module's row may carry a
-percentage, drawn as a thin bar along the bottom of the row that makes it no
-taller. A module may also show one reading as a ring, filled to its number,
-with its words in the middle, which are never bigger than a clock's. An e-paper
-panel draws a ring as its words with a bar under them. The module guide shows
-how.
-
-**A module's rows can say what they are doing.** A module may now mark each
-row `active`, `alert` or `idle`, and the wall draws that row's picture in a
-coloured circle, as a Home Assistant tile does, in your theme's own colours.
-A module that sends none looks exactly as before. An e-paper panel puts `!` in
-front of an alert row. The module guide shows how.
+**Two widgets can share a box and take turns.** Group them and choose
+**Stack** under the group's Arrange: each one fills the box, the wall shows
+the first, and a tap on the dots in the corner shows the next. It is a look
+at that wall and nothing else: it changes no other wall, survives the wall's
+own redraw, and a reload shows the first again. An e-paper panel shows the
+first.
 
 **See who is trying to sign in, and let a locked address back in.** System ›
 Lockouts lists the recent sign-in attempts — where each came from and what
@@ -186,12 +75,125 @@ by itself; Release lets it try again at once. An account locked out of its
 codes is now told it is fifteen minutes, not a minute, and that another admin
 can release it.
 
-**Two widgets can share a box and take turns.** Group them and choose
-**Stack** under the group's Arrange: each one fills the box, the wall shows
-the first, and a tap on the dots in the corner shows the next. It is a look
-at that wall and nothing else: it changes no other wall, survives the wall's
-own redraw, and a reload shows the first again. An e-paper panel shows the
-first.
+**The Store has fifteen modules you can add without running anything.** Tide
+times, earthquakes, the aurora forecast, volcano alerts, hurricanes, a river
+gauge and the UV index from the US government's own services; pollen, flood
+warnings in England, public holidays for your country, London's line status,
+Swiss departures, French fuel prices and the next rocket launches. None of them
+needs a key. Each was tried against what its service really answered before it
+went in.
+
+**One module, different settings on different widgets.** A module installed
+from the Store can now offer proper controls for its settings — a list to
+choose from, a number, an on/off switch, or one of your Home Assistant
+readings — and each Module widget can change them for itself: the same
+weather module showing York in the kitchen and Leeds in the hall, from one
+install. A setting you leave alone follows the install. However many widgets
+ask for the same thing, it is fetched once. When a setting is a Home Assistant
+reading, only that reading's current value is sent, and the page says where to
+before you choose one. This also fixes a Module widget on an e-paper panel,
+which always said "No data yet".
+
+**Modules can show a QR code, a countdown, a schedule or a picture.** A module
+you install, or one you build yourself, can now put any of four new things in a
+Module widget. A QR code a phone can scan, such as your guest Wi-Fi. A
+countdown to a time ("In 4 h 20 min"), which goes on counting on the wall even
+when the module's own server is down. A short schedule, where what has passed
+turns quieter and the next thing stands out, by the wall's own clock. And a
+picture, such as a rain radar or a webcam snapshot, which this server fetches
+and checks is really a picture before any wall is given it. A wall never learns
+where a picture came from. An e-paper panel shows the code, says when a
+countdown ends, lists what is still to come, and shows a picture's caption
+rather than the picture.
+
+**Recipes for your phone and for Home Assistant.** The docs site has a new
+page, Phone and automations, with step-by-step recipes: an iOS Shortcut that
+adds to your shopping list when you say "Hey Siri, add to shopping", and Home
+Assistant `rest_command`s that put a message on the walls when the washing is
+done or start a timer. Every request on the page is sent to a real server
+whenever the code changes, so a recipe you copy today still works next
+release. **System › Phone and automations** links to it.
+
+**The documentation is a website now**, at
+ambient-home-systems.github.io/MaverickWall, built from the same pages that are
+in the repository and checked against the app every time it changes: a page
+that names a screen the admin no longer has, a setting nothing reads or a link
+that goes nowhere stops it being published. Several pages were out of date and
+are corrected — how to pair a wall, where weather and alerts come from, what a
+backup does and does not hold (uploaded photos are files beside it, not in
+it), and the command-line tools, which now have a page of their own.
+
+### For people who build modules
+
+**Modules can now be a little program, run safely on your own server.** For
+what a recipe cannot work out, such as which of three bins goes out next or how
+far through its cycle the moon is, a module can be a short script. It runs
+on the box itself, in a sandbox with no files and no network but the addresses
+it names, and it can only hand the wall data to draw. The wall never runs it.
+Before a script is added, Modules › Advanced › Add a script shows every address
+it may contact and a fingerprint of its code. The Store's first script is
+**Moon phase**, which needs no internet at all. A script that loops for ever,
+eats memory or breaks is stopped, and costs only its own panel.
+
+**A module's rows can say what they are doing.** A module may now mark each
+row `active`, `alert` or `idle`, and the wall draws that row's picture in a
+coloured circle, as a Home Assistant tile does, in your theme's own colours.
+A module that sends none looks exactly as before. An e-paper panel puts `!` in
+front of an alert row. The module guide shows how.
+
+**A module can show how far along something is.** A module's row may carry a
+percentage, drawn as a thin bar along the bottom of the row that makes it no
+taller. A module may also show one reading as a ring, filled to its number,
+with its words in the middle, which are never bigger than a clock's. An e-paper
+panel draws a ring as its words with a bar under them. The module guide shows
+how.
+
+**A module can draw a line of numbers, or a small table.** A module's row may
+carry a short run of numbers, drawn as a little line at the end of the row, with
+every row's value still ending at one edge. A module may also show a table of up
+to four columns and twelve rows: the columns line up, a long entry wraps rather
+than being cut, and a box too short for every row shows the rows it has room
+for. An e-paper panel draws both. The module guide shows how.
+
+**Recipes can choose their rows and read more than one feed.** A recipe can now
+draw only the rows that match, such as the trains that are not cancelled or the
+readings over a level. It can put them in order and keep the first few, and when
+nothing matches it says so in words rather than going on showing the last rows
+it had. A recipe can also read up to three more feeds and draw from all of them
+at once, such as departures with the line's status as the heading. The install
+page names every site the recipe asks.
+
+**Recipes can colour their rows and write times your way.** A recipe can now
+turn what a feed says into its own words, so "on" reads "Running", and colour a
+row by it: green when something is running, the alert colour when it wants
+somebody. Numbers can have their thousands grouped ("12,345"), a length of time
+reads the way the wall's own countdowns do ("1 h 20 min"), a count carries its
+noun ("3 trains"), and a time from a feed that speaks UTC is shown in your own
+timezone.
+
+**Recipes can read news feeds, XML and your house.** A recipe can now read an
+RSS or Atom news feed, or any XML document, as well as JSON, such as headlines
+beside the day's bin collection from your council's own XML. And it can read
+the Home Assistant readings you pick in its settings, so one widget can say
+what a feed says beside what your house says. The recipe only ever sees what a
+reading says, never which device it is, and only for readings you watch.
+
+**You can try a recipe before you add it.** The recipe page under Modules ›
+Advanced has a Preview button. Paste what the recipe's address answers, and the
+page shows what your walls would draw from it, in your own theme, in a wide box
+and in a narrow one, without adding anything or asking the address. A recipe the
+wall cannot draw now says where, such as which row's label is too long, rather
+than only that something is wrong. For people writing recipes there are three
+commands too: one to check a recipe against answers you have saved, one to start
+a new recipe from a working example, and `diagnose-module`, which reads an
+installed module now and says which request or which part of its panel is the
+problem.
+
+**A recipe's dates now follow your timezone.** `date:short` and
+`date:relative` used to follow the server's own zone, so on a box set to UTC
+something late in a New York evening could show as tomorrow. A time a feed
+writes with no zone is read as UTC everywhere, and a plain date such as a
+holiday is never moved a day.
 
 ## 1.7.0
 
