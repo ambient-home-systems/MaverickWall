@@ -1,0 +1,31 @@
+{
+  "name": "Swiss departures",
+  "contract": 1,
+  "config": [
+    {
+      "key": "station",
+      "label": "Station or stop",
+      "type": "string",
+      "default": "Bern"
+    }
+  ],
+  "secrets": [],
+  "fetch": {
+    "url": "https://transport.opendata.ch/v1/stationboard?station={station}&limit=8",
+    "intervalSeconds": 120,
+    "allowLan": false,
+    "format": "json"
+  },
+  "panel": {
+    "kind": "readings",
+    "title": "{station.name}",
+    "items": {
+      "for": "stationboard",
+      "label": "{category}{number} {to | truncate:40}",
+      "value": "{stop.departure | time}",
+      "limit": 6,
+      "empty": "Nothing leaves this stop for a while."
+    }
+  },
+  "signals": []
+}

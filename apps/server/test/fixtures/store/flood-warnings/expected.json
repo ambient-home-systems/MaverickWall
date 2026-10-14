@@ -1,0 +1,14 @@
+{
+  "panel": {
+    "kind": "readings",
+    "title": "Floods",
+    "items": [
+      {
+        "label": "The tidal Rivers Bure, Ant and Thurne",
+        "value": "Flood alert",
+        "tone": "active"
+      }
+    ]
+  },
+  "signals": []
+}

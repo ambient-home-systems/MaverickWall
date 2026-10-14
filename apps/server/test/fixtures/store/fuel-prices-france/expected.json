@@ -1,0 +1,17 @@
+{
+  "panel": {
+    "kind": "readings",
+    "title": "Fuel",
+    "items": [
+      {
+        "label": "65 COURS ALBERT THOMAS",
+        "value": "2.269 €"
+      },
+      {
+        "label": "258 rue Garibaldi",
+        "value": "2.269 €"
+      }
+    ]
+  },
+  "signals": []
+}

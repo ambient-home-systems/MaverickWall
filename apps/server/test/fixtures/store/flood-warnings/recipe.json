@@ -1,0 +1,44 @@
+{
+  "name": "Flood warnings",
+  "contract": 1,
+  "config": [
+    {
+      "key": "county",
+      "label": "County (optional)",
+      "type": "string",
+      "default": ""
+    }
+  ],
+  "secrets": [],
+  "fetch": {
+    "url": "https://environment.data.gov.uk/flood-monitoring/id/floods?min-severity=3&county={county}",
+    "intervalSeconds": 900,
+    "allowLan": false,
+    "format": "json"
+  },
+  "panel": {
+    "kind": "readings",
+    "title": "Floods",
+    "items": {
+      "for": "items",
+      "label": "{description | truncate:40}",
+      "value": "{severity}",
+      "sort": {
+        "by": "severityLevel",
+        "order": "asc",
+        "as": "number"
+      },
+      "limit": 6,
+      "empty": "No flood warnings or alerts are in force.",
+      "tone": {
+        "from": "severityLevel",
+        "map": {
+          "1": "alert",
+          "2": "alert",
+          "3": "active"
+        }
+      }
+    }
+  },
+  "signals": []
+}

@@ -403,12 +403,22 @@ lets Maverick Wall run it in-process safely.
   and a `timeline` from a `for` with `at`, `label` and an optional `detail`;
   a timeline's items are put in order of time for you.
 - **Selectors** are dotted / indexed paths into the fetched JSON:
-  `bitcoin.gbp`, `results.items[0].name`. Traversal only.
+  `bitcoin.gbp`, `results.items[0].name`. Traversal only. A feed whose
+  answer is a list at the top is reached with `.` for the whole list (as a
+  `for`, say) and `[0].name` for one row of it.
 - **Formatters** are a fixed set: `upper`, `lower`, `trim`, `round:N`, `int`,
   `currency:GBP` (also USD/EUR/JPY), `truncate:N`, `date:relative`,
-  `date:short`, `default:TEXT`, `number:N`, `duration:UNIT`, `time`,
+  `date:short`, `default:TEXT`, `number:N`, `duration:UNIT`, `time`, `iso`,
   `plural:WORD` and `map:TABLE` (see below). A formatter this list does not
   have is a rejected recipe, not a broken panel.
+- **Times** can be what a feed writes: an ISO time with its zone, seconds or
+  milliseconds since 1970, or a date and time with **no** zone, such as
+  `2026-10-14 02:56`, which is read as **UTC**, the same on every server.
+  `date` and `time` speak the household's own zone; `date:relative` counts
+  calendar days there, so 23:00 tonight is "today". A bare date such as
+  `2026-12-25` is a day on the calendar and is never moved into a zone.
+  `iso` writes any of these as the instant a timeline's or a countdown's `at`
+  must be: `{t | iso}`.
 - **`config`** (optional) declares fields a household fills in; reference them in
   the URL as `{key}`:
   ```json

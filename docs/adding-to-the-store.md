@@ -12,15 +12,16 @@ directory's `index.ts`. There are two kinds of entry.
 
 A **recipe** has no service to host: it names a public web feed and how to draw
 it, and Maverick Wall does the fetching. This is what most store entries are.
-Copy [`outside-temperature.ts`](../apps/server/src/catalog/outside-temperature.ts)
-and change the fields:
+Copy [`outside-temperature.ts`](../apps/server/src/catalog/outside-temperature.ts),
+or whichever entry in that directory draws its feed most like yours, and change
+the fields:
 
 ```ts
 import type { CatalogEntry } from '../http/catalog.js';
 
 export const entry: CatalogEntry = {
-  id: 'tide-times',                 // stable, kebab-case, unique
-  name: 'Tide times',
+  id: 'harbour-tides',              // stable, kebab-case, unique
+  name: 'Harbour tides',
   author: 'your name',
   description: 'The next high tide, from a public tide API.',
   glyph: 'moisture',                // a key from the drawn set, never an emoji
@@ -71,5 +72,27 @@ export const STORE_ENTRIES: readonly CatalogEntry[] = [tideTimes, /* … */];
 ```
 
 `test/catalog.test.ts` validates every entry against the schema, so `pnpm test`
-fails on a malformed one — never a household's wall. Open the PR; once it merges
-it is in the store for everyone.
+fails on a malformed one — never a household's wall.
+
+## Its feed's real answer
+
+A schema can only say a recipe is well-formed, and the store promises that every
+entry works. So every recipe in the store is held to what its own feed really
+answered, and `test/store-recipes.test.ts` fails on one that is not:
+
+```bash
+pnpm --filter @maverick-wall/server build
+NODE_USE_ENV_PROXY=1 node scripts/store/capture.mjs harbour-tides
+node apps/server/dist/tools/test-recipe.js apps/server/test/fixtures/store/harbour-tides --update
+```
+
+The first asks your recipe's own address, with every setting at its default,
+and saves the answer, the recipe and the moment it asked under
+`apps/server/test/fixtures/store/harbour-tides/` (add the place the default
+belongs to, to `ZONES` in the script, so its times read as they would there).
+The second records what the recipe builds from that answer as `expected.json`.
+**Read it before you commit it**: the test holds the recipe to the answer, and
+only a person can say the answer drew something true. Pick defaults that show
+the recipe drawing rows on the day you capture, not its empty line.
+
+Open the PR; once it merges it is in the store for everyone.

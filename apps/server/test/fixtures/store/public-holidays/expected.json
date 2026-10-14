@@ -1,0 +1,29 @@
+{
+  "panel": {
+    "kind": "readings",
+    "title": "Holidays",
+    "items": [
+      {
+        "label": "Christmas Day",
+        "value": "25 Dec · in 72 days"
+      },
+      {
+        "label": "Boxing Day",
+        "value": "28 Dec · in 75 days"
+      },
+      {
+        "label": "Good Friday",
+        "value": "26 Mar · in 163 days"
+      },
+      {
+        "label": "Early May Bank Holiday",
+        "value": "3 May · in 201 days"
+      },
+      {
+        "label": "Spring Bank Holiday",
+        "value": "31 May · in 229 days"
+      }
+    ]
+  },
+  "signals": []
+}

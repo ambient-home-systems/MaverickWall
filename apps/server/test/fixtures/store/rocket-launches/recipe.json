@@ -1,0 +1,25 @@
+{
+  "name": "Rocket launches",
+  "contract": 1,
+  "config": [],
+  "secrets": [],
+  "fetch": {
+    "url": "https://ll.thespacedevs.com/2.2.0/launch/upcoming/?limit=6&mode=list",
+    "intervalSeconds": 3600,
+    "allowLan": false,
+    "format": "json"
+  },
+  "panel": {
+    "kind": "timeline",
+    "title": "Launches",
+    "items": {
+      "for": "results",
+      "at": "{net | iso}",
+      "label": "{name | truncate:60}",
+      "detail": "{location | truncate:60}",
+      "limit": 5,
+      "empty": "No launches are scheduled."
+    }
+  },
+  "signals": []
+}

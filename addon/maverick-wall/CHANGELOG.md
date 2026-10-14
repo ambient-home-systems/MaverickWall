@@ -16,6 +16,20 @@
 
 ## Unreleased
 
+**The Store has fifteen modules you can add without running anything.** Tide
+times, earthquakes, the aurora forecast, volcano alerts, hurricanes, a river
+gauge and the UV index from the US government's own services; pollen, flood
+warnings in England, public holidays for your country, London's line status,
+Swiss departures, French fuel prices and the next rocket launches. None of them
+needs a key. Each was tried against what its service really answered before it
+went in.
+
+**A recipe's dates now follow your timezone.** `date:short` and
+`date:relative` used to follow the server's own zone, so on a box set to UTC
+something late in a New York evening could show as tomorrow. A time a feed
+writes with no zone is read as UTC everywhere, and a plain date such as a
+holiday is never moved a day.
+
 **The documentation is a website now**, at
 ambient-home-systems.github.io/MaverickWall, built from the same pages that are
 in the repository and checked against the app every time it changes: a page

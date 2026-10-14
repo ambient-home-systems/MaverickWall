@@ -224,16 +224,22 @@ function formatDate(value: unknown, arg: string | undefined, now: number, timezo
   const ms = toEpochMs(value);
   if (ms === undefined) return asString(value);
   const zone = knownZone(timezone);
+  // A bare date is a day on the calendar, not an instant: Christmas is the
+  // 25th in New York too, so it is never moved into a zone.
+  const dateOnly = typeof value === 'string' && DATE_ONLY.test(value.trim());
   if (arg === 'relative') {
-    const days = Math.round((civilDay(ms, zone) - civilDay(now, zone)) / 86_400_000);
+    const day = dateOnly ? ms : civilDay(ms, zone);
+    const days = Math.round((day - civilDay(now, zone)) / 86_400_000);
     if (days === 0) return 'today';
     if (days === 1) return 'tomorrow';
     if (days === -1) return 'yesterday';
     return days > 0 ? `in ${days} days` : `${-days} days ago`;
   }
   // `short` (and the default): a plain calendar date.
-  return new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: zone });
+  return new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: dateOnly ? 'UTC' : zone });
 }
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
 /** A zone this runtime knows, or UTC: a zone it does not is the household's to fix, and UTC is still a date. */
 function knownZone(timezone: string): string {

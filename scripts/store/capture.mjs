@@ -32,14 +32,37 @@ const { STORE_ENTRIES } = await import(join(root, 'apps/server/dist/catalog/inde
 const wanted = new Set(process.argv.slice(2));
 const EXT = { json: 'json', feed: 'xml', xml: 'xml' };
 
+/**
+ * The household a fixture is read for: somewhere the feed's default settings
+ * make sense, so a time in it reads as it would on that wall.
+ */
+const ZONES = {
+  'outside-temperature': 'Europe/London',
+  pollen: 'Europe/London',
+  'flood-warnings': 'Europe/London',
+  'public-holidays': 'Europe/London',
+  'london-lines': 'Europe/London',
+  'swiss-departures': 'Europe/Zurich',
+  'fuel-prices-france': 'Europe/Paris',
+  'rocket-launches': 'Europe/London',
+};
+
 function address(template, config) {
   return template.replace(/\{([^}]*)\}/g, (_all, key) => encodeURIComponent(config[key.trim()] ?? ''));
 }
 
 async function ask(url) {
-  const response = await fetch(url, { headers: { 'user-agent': 'maverick-wall store fixture capture' } });
-  if (response.status !== 200) throw new Error(`${new URL(url).host} answered ${response.status}`);
-  return response.text();
+  // A public service a whole data centre shares answers 429 now and then; it
+  // is asked again a few times, and an answer that is not a 200 is refused.
+  for (let attempt = 0; ; attempt += 1) {
+    const response = await fetch(url, { headers: { 'user-agent': 'maverick-wall store fixture capture' } });
+    if (response.status === 429 && attempt < 5) {
+      await new Promise((resolve) => setTimeout(resolve, 2000 * 2 ** attempt));
+      continue;
+    }
+    if (response.status !== 200) throw new Error(`${new URL(url).host} answered ${response.status}`);
+    return response.text();
+  }
 }
 
 let failed = false;
@@ -67,7 +90,7 @@ for (const entry of STORE_ENTRIES) {
       mkdirSync(join(dir, 'sources'), { recursive: true });
       writeFileSync(join(dir, 'sources', `${name}.${ext}`), text);
     }
-    writeFileSync(join(dir, 'fixture.json'), `${JSON.stringify({ at, timezone: 'America/New_York' }, null, 2)}\n`);
+    writeFileSync(join(dir, 'fixture.json'), `${JSON.stringify({ at, timezone: ZONES[entry.id] ?? 'America/New_York' }, null, 2)}\n`);
     console.log(`SAVED  ${entry.id}`);
   } catch (error) {
     console.log(`FAILED ${entry.id}: ${error instanceof Error ? error.message : String(error)}`);

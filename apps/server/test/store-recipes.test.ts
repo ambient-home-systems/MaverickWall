@@ -59,9 +59,10 @@ describe('the store’s recipes, on their feeds’ real answers', () => {
         expect(check.status).toBe('pass');
         const panel = check.built?.panel;
         expect(panelDataSchema.safeParse(panel).success).toBe(true);
-        // An empty-state line is a true answer on some days, never on the
-        // day a fixture was captured to show the recipe drawing its feed.
-        expect((panel as { kind: string }).kind).not.toBe('text');
+        // An empty-state line is a true answer on some days, but not on the
+        // day a fixture was captured to show the recipe drawing its feed: a
+        // recipe that draws rows has to have drawn some.
+        expect((panel as { kind: string }).kind).toBe(entry.recipe.panel.kind);
       });
     });
   }

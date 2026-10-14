@@ -105,6 +105,16 @@ describe('date', () => {
     expect(says('{t | date:relative}', { t: '2026-10-11T12:00:00Z' }, lateAtNight)).toBe('3 days ago');
   });
 
+  it('never moves a bare calendar date into a zone', () => {
+    // Christmas is the 25th in New York and in Auckland, whatever UTC says.
+    expect(says('{d | date:short}', { d: '2026-12-25' }, NOW, 'America/New_York')).toBe('25 Dec');
+    expect(says('{d | date:short}', { d: '2026-12-25' }, NOW, 'Pacific/Auckland')).toBe('25 Dec');
+    // 20:00 on the 14th in New York is still the 14th there: the 25th is 72 days away.
+    const evening = Date.parse('2026-10-15T00:00:00Z');
+    expect(says('{d | date:relative}', { d: '2026-12-25' }, evening, 'America/New_York')).toBe('in 72 days');
+    expect(says('{d | date:relative}', { d: '2026-10-14' }, evening, 'America/New_York')).toBe('today');
+  });
+
   it('falls back to UTC for a zone this runtime does not know', () => {
     expect(says('{t | date:short}', { t: '2026-10-10T23:30:00Z' }, NOW, 'Mars/Olympus_Mons')).toBe('10 Oct');
   });
