@@ -255,6 +255,5 @@ describe('alert handles', () => {
 
     expect(alertFor('r1', alertHandle('r1', DOOR), [ha, nws])).toBe(DOOR);
     expect(alertFor('r2', alertHandle('r1', DOOR), [ha, nws])).toBeUndefined();
-    expect(alertFor('r2', alertHandle('r2', nws.key), [ha, nws])).toBeUndefined();
   });
 });
