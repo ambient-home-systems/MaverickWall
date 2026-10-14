@@ -379,6 +379,9 @@ CLI tools, all in `apps/server/dist/tools/`:
 add-source "Family" "<ics-url>" [--allow-lan] [--allow-loopback] [--allow-http]
 add-screen "Kitchen" | --list | --revoke <id>
 diagnose-source [source-id]      why a feed is failing, with the parser's own message
+diagnose-module [module-id]      what a module's feed answers now, and why its panel builds or not
+test-recipe <dir>... [--update]  check a recipe against answers saved beside it
+new-recipe <dir>                 a working recipe and fixture to start from
 analyse-titles [source-id]       which titles look like a work schedule
 enable-shift --from-calendar <source-id> [--person Name]
              --pattern <YYYY-MM-DD> [--person Name]
@@ -12133,6 +12136,68 @@ own count. The one red is `browser-glass`'s striped-picture case, red on a
 clean `main` in this container as before. **Still unproven where it counts:**
 no real council XML or Home Assistant reading has been drawn by a recipe on a
 kitchen wall.
+
+**A recipe can be tried before it is on a wall, checked against saved answers,
+started from a working one, and diagnosed once it is installed (plan item
+M7.10).** The recipe page under Modules › Advanced gains *Try it first*: paste
+what the recipe's address answered, and each named source's, and **Preview**
+runs the recipe on those answers. Nothing is installed and nothing asks the
+address. The page draws what it built through the wall's own `renderFreeform`
+(`recipe-preview.ts`, the template gallery's mechanism), in the house's theme,
+in two boxes: a third of a landscape wall and a strip across a portrait one, so
+an author sees the rows a narrow box gives up. The panel's JSON is on the page
+either way.
+
+**One harness serves all three tools.** `runRecipeOnAnswers` in
+`recipe-tooling.ts` is used by the preview, `test-recipe` and the live half of
+`diagnose-module`. It reads each answer in its source's format and reaches the
+panel through the same `runRecipePanel` the poll uses, so none of the three can
+disagree with a wall about what an answer draws. `runRecipePanel` now returns a
+`detail` beside the household's one sentence:
+`panel.items.3.label: Too big: expected string to have <=60 characters`. The
+detail is paths and the schema's own words, never the feed's values. The
+module's card still says only the sentence.
+
+- **`test-recipe <dir>... [--update]`** checks a fixture directory:
+  `recipe.json`, one `answer.*`, `sources/<name>.*`, a `fixture.json` that pins
+  the clock, and `expected.json`. It lists the places a result moved, and exits
+  0, 1 or 2, so it can run in CI. `--update` records what the recipe builds now.
+- **`new-recipe <dir>`** writes a starter that uses a setting, `where`, `sort`,
+  `limit`, a lookup and a tone, and passes as written. It refuses a directory
+  that is not empty.
+- **`diagnose-module [id]`** reads an installed module now through the poll's
+  own fetcher and policy, and says which request answered, which did not, and
+  what the panel built or where it was refused. It names hosts only, never a
+  path, a secret or a setting's value, and writes nothing back, so the card
+  still says what the last poll found. `pollRecipe`'s two Home Assistant readers
+  and the household's zone moved into exported functions so both use one copy.
+
+**Measured.** `recipe-tooling.test.ts` (11) runs the harness, the fixtures and
+the built commands. `diagnose-module.test.ts` (5) runs against a real loopback
+server and the real fetcher. `browser-recipe-preview.test.ts` (2) uses a real
+Chromium: both boxes drawn, the strip holding fewer rows and neither drawing
+past its foot, Panels' ground, nothing asked of a real loopback address and
+nothing installed, the form echoed so Add recipe installs what was previewed,
+and the refusal's detail. A screenshot was looked at. Twenty-four mutations
+were checked and all are red:
+- Sixteen were red the first time.
+- Four were green at first, and each was the test's fault:
+  - The "detail repeats a value" mutant changed nothing, because this Zod puts
+    no input on an issue. It was re-aimed to append the built panel.
+  - Every main answer in the tests was JSON. A feed is one now.
+  - The "writes nothing back" check sat in a test whose panel failed before
+    that line.
+  - The preview test watched only the browser's requests. The recipe now points
+    at a real server that counts.
+- Four failed to build and were re-aimed so they built.
+
+**6033 tests passing, 1 red and 2 skipped, over 456 files**: calendar 153 (1
+skipped) over 10 · core 327 over 9 · display 1101 over 72 · server 4452 (1
+skipped) over 365, measured with `pnpm test` and a real Chromium. Against
+M7.9's 6015 over 453, that is +18 and +3, this change's own count. The one red
+is `browser-glass`'s striped-picture case, red on a clean `main` in this
+container as before. **Still unproven where it counts:** nobody has written a
+recipe for a real feed with these tools.
 
 ---
 
