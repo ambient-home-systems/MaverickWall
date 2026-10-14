@@ -12264,6 +12264,64 @@ with `pnpm test` and a real Chromium. Against M7.10's 6033 over 456 that is
 striped-picture case, red on a clean `main` in this container as before.
 **Still unproven where it counts:** the site has not yet been seen at its
 published address.
+**The Store has fifteen recipes, and every one is held to what its own feed
+really answered (plan item M7.11).** Outside temperature, UV index (EPA), tide
+times (NOAA), a river gauge (USGS), hurricanes (National Hurricane Center),
+earthquakes (USGS), volcano alerts (USGS), the aurora forecast (NOAA), pollen
+(Open-Meteo), flood warnings in England (Environment Agency), public holidays
+(Nager.Date), London line status (TfL), Swiss departures
+(transport.opendata.ch), French fuel prices (prix-carburants) and rocket
+launches (The Space Devs). None needs a key. Bins are not among them: no public
+feed covers more than one council.
+
+**A schema says a recipe is well-formed, not that it works**, and the store
+promises it works. So `scripts/store/capture.mjs` asks each recipe's own address
+with its default settings and saves the answer, the recipe and the instant it
+asked under `test/fixtures/store/<id>/`; `test-recipe --update` records what the
+recipe builds, which a person reads before it is committed; and
+`store-recipes.test.ts` holds three things for every store recipe:
+- the fixture's recipe is the store's, so a changed address or interval that
+  leaves the output alone still fails;
+- it builds what was recorded, at the instant it was captured;
+- it draws its designed kind of panel, not its empty line.
+
+A store recipe with no fixture fails, and so does a fixture whose recipe left
+the store. Node's `fetch` does not use the agent proxy by itself, so the script
+runs under `NODE_USE_ENV_PROXY=1`, and it retries a 429, which Open-Meteo gives
+a shared address now and then.
+
+**Seeding found the recipe language short in four places, and the store's test
+found a fifth.** These are fixed:
+- **A time with no zone is read as UTC.** NOAA's tides, its space weather and
+  USGS's volcano notices all write `2026-10-14 02:56` and all mean UTC.
+  JavaScript reads that in the server's own zone, so one answer said two times
+  on two boxes.
+- **`iso`** writes any time a recipe can read as the instant a timeline's or a
+  countdown's `at` must be.
+- **`.` is the whole answer and a path may start with `[0]`.** NOAA's space
+  weather, USGS's volcanoes, the EPA's UV index, TfL and Nager.Date all answer
+  a bare list, which no selector could reach.
+- **`date:short` wrote the server's zone, and `date:relative` counted hours.**
+  The store test caught it, because vitest runs in Pacific/Chatham: a wildfire
+  that began at 14:58 UTC on the 10th read "11 Oct". Both now use the
+  household's zone, and `relative` compares calendar dates there.
+- **A bare date is never moved into a zone.** Christmas is the 25th in New York
+  too; the holidays recipe is what showed it.
+
+`recipe-times.test.ts` holds all five, under the same Chatham clock.
+
+**Measured.** Thirteen mutations were checked and all thirteen are red: each of
+the five fixes reverted (some in two ways), the unknown-zone fallback removed,
+and three changes to store recipes, one of which leaves the output identical
+and is caught only by the recipe comparison. **6115 tests passing, 1 red and 2
+skipped, over 459 files**: calendar 153 (1 skipped) over 10 · core 327 over 9 ·
+display 1101 over 72 · docs 24 over 1 · server 4510 (1 skipped) over 367,
+measured with `pnpm test` and a real Chromium. Against M9.1's 6057 over 457,
+that is +58 and +2, this change's own count. The one red is `browser-glass`'s
+striped-picture case, red on a clean `main` in this container as before. **Still
+unproven where it counts:** no recipe here has been installed on a kitchen wall
+and left to poll for a week.
+
 ---
 
 ## Open decisions
