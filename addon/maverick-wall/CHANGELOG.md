@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 1.8.2
+
 **A doorbell is on the wall in about a second.** Until now the wall read
 Home Assistant every thirty seconds, so a ring could reach it half a minute
 late, after your visitor had given up. Maverick Wall now keeps a connection
