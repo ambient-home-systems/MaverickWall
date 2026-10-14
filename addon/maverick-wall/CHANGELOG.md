@@ -16,6 +16,16 @@
 
 ## Unreleased
 
+**Modules can now be a little program, run safely on your own server.** For
+what a recipe cannot work out, such as which of three bins goes out next or how
+far through its cycle the moon is, a module can be a short script. It runs
+on the box itself, in a sandbox with no files and no network but the addresses
+it names, and it can only hand the wall data to draw. The wall never runs it.
+Before a script is added, Modules › Advanced › Add a script shows every address
+it may contact and a fingerprint of its code. The Store's first script is
+**Moon phase**, which needs no internet at all. A script that loops for ever,
+eats memory or breaks is stopped, and costs only its own panel.
+
 **Recipes for your phone and for Home Assistant.** The docs site has a new
 page, Phone and automations, with step-by-step recipes: an iOS Shortcut that
 adds to your shopping list when you say "Hey Siri, add to shopping", and Home

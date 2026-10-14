@@ -1,6 +1,6 @@
 # RFC 017 — Sandboxed module code
 
-Status: **proposed, nothing built** · Owner: — · First drafted 2026-10-05 ·
+Status: **built** (plan item M7.12, 2026-10-14; see §11) · Owner: — · First drafted 2026-10-05 ·
 Relates to `apps/server/src/modules/external/` (`index.ts`, `recipe.ts`,
 `panel-data.ts`, `signal-data.ts`), `apps/server/src/api/external-modules.ts`,
 `apps/server/src/net/fetcher.ts`, `apps/server/src/secrets/keyring.ts`,
@@ -188,3 +188,48 @@ asked for. If none appears, this RFC stays proposed, which is a fine outcome.
 - Is 5 fetches per run enough for the store entries we know of (trains with
   disruptions, bins with holiday overrides)? To be checked against the seed
   list in M7.11.
+
+## 11. As built
+
+Built on 2026-10-14, when the owner asked for it. §9's condition, a store entry
+a richer recipe cannot express, is met by the first store script, the moon's
+phase, which fetches nothing and is all arithmetic. The design above stands,
+with these departures and answers:
+
+- **The runtime** is `quickjs-emscripten-core` and
+  `@jitl/quickjs-wasmfile-release-sync` 0.32.0, both MIT. The WebAssembly is
+  491 KB and the two packages are about 1.2 MB on disk. It is the synchronous
+  build: `ctx.fetch` is a promise the main thread resolves, so no asyncify
+  build is needed.
+- **Each run is a worker thread of its own**, started for the run and
+  terminated after it, which answers "one run cannot see the last" and "two
+  scripts cannot see each other" by construction. The main thread holds the
+  fetcher, the secrets and the wall clock; the worker holds only the
+  interpreter.
+- **The limits are §4.1's numbers**, and CPU is interpreter time only, counted
+  by the interrupt handler, so waiting on a host is not charged. A runaway
+  regular expression is interrupted too.
+- **`ctx.local(instant)`** is added, because QuickJS has no `Intl` and a script
+  otherwise cannot tell what day it is in the household's zone.
+  **`ctx.fetch` is GET only**, and `format: 'feed' | 'xml'` reads an answer the
+  way a recipe's source is read. An answer never carries the response's
+  headers.
+- **Where a script comes from** is as §4.5 says. A paste is two presses: the
+  first shows the hosts, which credential goes where, the network grant and the
+  code's sha256, and the second adds it. Both are bound to a key over the
+  manifest and the code, so a changed character asks again. A store script
+  shows the same on its install page and may not set `allowLan`.
+- **§10's questions**: no state between runs; JavaScript only in the stored
+  source; five fetches. M7.11's seed list did not need more than five, because
+  none of its entries is a script.
+
+**§8, measured, and not on a Pi.** The typical run (one fetch, fifty rows of
+arithmetic) was measured on a 4-core x86_64 container over three runs of
+twenty. Loading the interpreter took 13–14 ms, the script 13–16 ms of
+interpreter time (at most 22 ms), and a whole run 150–170 ms including starting
+its thread. `script-cost.test.ts` prints the same figures from every CI run.
+**An arm64 Raspberry Pi 4 has not been measured**, so the limits are the RFC's
+own numbers rather than ones a Pi has confirmed. A run uses about 7% of its CPU
+budget here, so a Pi several times slower is still well inside the gate. That is
+reasoning, not a measurement, and the Pi reading is still owed.
+

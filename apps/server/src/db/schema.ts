@@ -1989,11 +1989,22 @@ export const externalModules = sqliteTable('external_modules', {
   /**
    * `service` (RFC 001 — a module the household runs, polled over HTTP) or
    * `recipe` (RFC 002 B1 — a declarative fetch-and-transform Maverick Wall runs
-   * itself). Defaults to `service` so every existing row keeps its meaning.
+   * itself), or `script` (RFC 017 — a file of JavaScript run here in a sandbox
+   * whose only output is data). Defaults to `service` so every existing row
+   * keeps its meaning.
    */
   kind: text('kind').notNull().default('service'),
-  /** For a recipe row: its manifest, as JSON this process validated and wrote. */
+  /**
+   * For a recipe row: its manifest, as JSON this process validated and wrote.
+   * For a script row (RFC 017): the script's manifest, in the same column.
+   */
   recipe: text('recipe', { mode: 'json' }).$type<unknown>(),
+  /**
+   * For a script row (RFC 017, `kind = 'script'`): the JavaScript itself, as the
+   * household pasted it or the store shipped it. Run on the server in a
+   * sandbox whose only output is data; its sha256 is shown on the module's card.
+   */
+  script: text('script'),
   /** For a recipe row: the household's filled-in config values. */
   config: text('config', { mode: 'json' }).$type<unknown>(),
   /**

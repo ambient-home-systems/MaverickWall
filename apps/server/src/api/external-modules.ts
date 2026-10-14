@@ -15,8 +15,8 @@ export { moduleVariantKey, variantBlockKey, widgetSettings };
 export type AlertsAction = 'none' | 'banner' | 'takeover';
 const ALERTS_ACTIONS: readonly AlertsAction[] = ['none', 'banner', 'takeover'];
 
-/** How a module is fed: an HTTP service (RFC 001) or a recipe (RFC 002 B1). */
-export type ModuleKind = 'service' | 'recipe';
+/** How a module is fed: an HTTP service (RFC 001), a recipe (RFC 002 B1) or a script (RFC 017). */
+export type ModuleKind = 'service' | 'recipe' | 'script';
 
 export interface ExternalModuleRow {
   readonly id: string;
@@ -29,8 +29,10 @@ export interface ExternalModuleRow {
   readonly kind: ModuleKind;
   /** For a recipe: its manifest (raw JSON this process wrote). Null for a service. */
   readonly recipe: unknown;
-  /** For a recipe: the household's filled-in config values. */
+  /** For a recipe or a script: the household's filled-in config values. */
   readonly config: unknown;
+  /** For a script (RFC 017): its JavaScript. Null for anything else. */
+  readonly script: string | null;
   /** For a recipe with secrets: the encrypted envelope, decrypted only at fetch. */
   readonly secretsEnvelope: string | null;
   readonly panel: unknown;
@@ -52,6 +54,7 @@ interface RawRow {
   kind: string;
   recipe: string | null;
   config: string | null;
+  script: string | null;
   secrets: string | null;
   panel: string | null;
   signals: string | null;
@@ -83,9 +86,10 @@ function shape(row: RawRow): ExternalModuleRow {
     blockKey: row.block_key,
     enabled: row.enabled,
     sortOrder: row.sort_order,
-    kind: row.kind === 'recipe' ? 'recipe' : 'service',
+    kind: row.kind === 'recipe' || row.kind === 'script' ? row.kind : 'service',
     recipe: parseJson(row.recipe),
     config: parseJson(row.config),
+    script: row.script,
     secretsEnvelope: row.secrets,
     panel: parseJson(row.panel),
     signals: parseJson(row.signals),
@@ -96,7 +100,7 @@ function shape(row: RawRow): ExternalModuleRow {
 }
 
 const SELECT = `SELECT id, url, name, block_key, enabled, sort_order, kind, recipe, config,
-  secrets, panel, signals, alerts_action, last_polled_at, last_error
+  script, secrets, panel, signals, alerts_action, last_polled_at, last_error
   FROM external_modules ORDER BY sort_order, created_at`;
 
 export function readExternalModules(db: SqliteDatabase): ExternalModuleRow[] {
@@ -171,6 +175,51 @@ export function createRecipeModule(
   return blockKey;
 }
 
+/**
+ * A script module (RFC 017): its manifest in the `recipe` column, its source in
+ * `script`, and the household's settings and sealed secrets as a recipe's are.
+ * The `url` column carries the first host it may contact, for the health line,
+ * or nothing for a script that contacts none.
+ */
+export function createScriptModule(
+  db: SqliteDatabase,
+  input: {
+    id: string;
+    name: string;
+    url: string;
+    manifest: unknown;
+    source: string;
+    config: unknown;
+    /** An already-encrypted keyring envelope, or null. Never plaintext here. */
+    secretsEnvelope?: string | null;
+  },
+): string {
+  const at = Date.now();
+  const blockKey = externalBlockKey(input.id);
+  const order =
+    (db.prepare(`SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM external_modules`).get() as {
+      n: number;
+    }).n;
+  db.prepare(
+    `INSERT INTO external_modules (id, url, name, block_key, enabled, kind, recipe, script, config,
+        secrets, sort_order, last_polled_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 1, 'script', ?, ?, ?, ?, ?, 0, ?, ?)`,
+  ).run(
+    input.id,
+    input.url,
+    input.name,
+    blockKey,
+    JSON.stringify(input.manifest),
+    input.source,
+    JSON.stringify(input.config),
+    input.secretsEnvelope ?? null,
+    order,
+    at,
+    at,
+  );
+  return blockKey;
+}
+
 export function setExternalModuleEnabled(db: SqliteDatabase, id: string, enabled: boolean): void {
   db.prepare(`UPDATE external_modules SET enabled = ?, updated_at = ? WHERE id = ?`).run(
     enabled ? 1 : 0,
@@ -225,9 +274,11 @@ export function writeExternalModulePanel(db: SqliteDatabase, id: string, panel: 
 /**
  * A failed poll: record the error but keep the last good panel. A forecast from
  * this morning is worth more than a blank rectangle — the same call weather
- * makes — and the household sees the error on the module's own card.
+ * makes — and the household sees the error on the module's own card. A null
+ * error is a poll that worked and drew no panel (a script that only raises
+ * signals): the panel stays as it was and the card stops complaining.
  */
-export function writeExternalModuleError(db: SqliteDatabase, id: string, error: string): void {
+export function writeExternalModuleError(db: SqliteDatabase, id: string, error: string | null): void {
   const at = Date.now();
   db.prepare(
     `UPDATE external_modules SET last_error = ?, last_polled_at = ?, updated_at = ? WHERE id = ?`,

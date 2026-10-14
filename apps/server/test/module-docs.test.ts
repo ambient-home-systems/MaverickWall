@@ -4,6 +4,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { panelDataSchema } from '../src/modules/external/panel-data.js';
 import { recipeSchema } from '../src/modules/external/recipe.js';
+import { scriptManifestSchema, scriptSourceSchema } from '../src/modules/external/script.js';
+import { runScript } from '../src/modules/external/sandbox.js';
 import { signalDataSchema } from '../src/modules/external/signal-data.js';
 import { isGlyphKey } from '../src/glyphs.js';
 
@@ -45,8 +47,35 @@ describe('docs/building-a-module.md', () => {
       if ('kind' in o) expect(panelDataSchema.safeParse(o).success, JSON.stringify(o)).toBe(true);
       else if ('fetch' in o) expect(recipeSchema.safeParse(o).success, JSON.stringify(o)).toBe(true);
       else if ('signals' in o) expect(signalDataSchema.safeParse(o).success, JSON.stringify(o)).toBe(true);
+      else if ('hosts' in o) expect(scriptManifestSchema.safeParse(o).success, JSON.stringify(o)).toBe(true);
       else expect(o['contract'], JSON.stringify(o)).toBe(1);
     }
+  });
+
+  it('runs its script example in the sandbox, on the answer its comment describes', async () => {
+    const scripts = [...guide.matchAll(/```js\n([\s\S]*?)```/g)].map((m) => m[1] ?? '');
+    expect(scripts).toHaveLength(1);
+    const source = scripts[0]!;
+    expect(scriptSourceSchema.safeParse(source).success).toBe(true);
+    const asked: { url: string; headers: Record<string, string> }[] = [];
+    const outcome = await runScript({
+      source,
+      config: { street: 'High Street' },
+      now: Date.parse('2026-10-14T12:00:00Z'),
+      timeZone: 'Europe/London',
+      fetch: async (request) => {
+        asked.push({ url: request.url, headers: request.options.headers ?? {} });
+        const body = JSON.stringify({ bins: [{ kind: 'Garden', date: '2026-10-20' }, { kind: 'Recycling', date: '2026-10-16' }] });
+        return { ok: true, status: 200, contentType: 'application/json', body };
+      },
+    });
+    expect(outcome).toMatchObject({ ok: true, panel: { kind: 'countdown', label: 'Recycling', at: '2026-10-16T07:00:00Z' } });
+    expect(asked).toEqual([
+      {
+        url: 'https://bins.example-council.gov.uk/v1/collections?street=High%20Street',
+        headers: { 'X-Api-Key': '{secret:api_key}' },
+      },
+    ]);
   });
 
   it('gives every reading a glyph key from the drawn set, never an icon', () => {
