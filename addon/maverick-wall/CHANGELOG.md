@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 1.8.0
+
 **A Home Assistant camera on the wall.** Add one under Home Assistant ›
 Cameras, then put a Camera widget where you want it: it shows the camera's
 latest picture, fetched every few seconds (every three unless you choose 1,
