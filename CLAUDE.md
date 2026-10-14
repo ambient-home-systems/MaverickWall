@@ -12608,6 +12608,12 @@ id, address or token. A camera that offers no WebRTC is drawn by the MJPEG
 canvas. `browser-camera.test.ts`'s editor test chooses the segment and reads
 its hint. The display's `camera.test.ts` gains 2.
 Thirteen mutations were checked and all thirteen are red. One failed to build at first and was re-aimed.
+**6200 tests passing, 1 red and 2 skipped, over 468 files**: calendar 153
+(1 skipped) over 10 · core 327 over 9 · display 1103 over 72 · docs 26 over 1 ·
+server 4591 (1 skipped) over 376, measured with `pnpm test` and a real
+Chromium. Against the doorbell's 6187 over 466 that is +13 and +2, this
+change's own count. The one red is `browser-glass`'s striped-picture case, red
+on a clean `main` in this container as before.
 **Still unproven where it counts:** no real go2rtc has been reached from a
 real wall.
 
