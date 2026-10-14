@@ -660,7 +660,7 @@ const MAX_SOURCES = 3;
 
 type NetworkSource = z.infer<typeof networkSource>;
 type HouseSource = z.infer<typeof houseSource>;
-function isHouseSource(source: NetworkSource | HouseSource): source is HouseSource {
+export function isHouseSource(source: NetworkSource | HouseSource): source is HouseSource {
   return 'ha' in source;
 }
 
@@ -1138,6 +1138,21 @@ function buildPanel(recipe: Recipe, root: unknown, context: FormatContext, sourc
 }
 
 /**
+ * Up to three of a schema's complaints as `where: why` lines, for a recipe's
+ * author (plan item M7.10). Paths and the schema's own messages only: the
+ * values that failed are the feed's, and a feed's words are not a tool's to
+ * repeat.
+ */
+export function describeIssues(issues: readonly z.ZodIssue[], prefix: string): string {
+  const lines = issues.slice(0, 3).map((issue) => {
+    const where = [prefix, ...issue.path.map(String)].filter((part) => part !== '').join('.');
+    return `${where === '' ? '(top)' : where}: ${issue.message}`;
+  });
+  if (issues.length > 3) lines.push(`…and ${issues.length - 3} more`);
+  return lines.join('\n');
+}
+
+/**
  * Run a recipe against a fetched body, and hand back Panel Data or a reason.
  *
  * The built panel is validated against the *same* `panelDataSchema` a service
@@ -1150,11 +1165,18 @@ export function runRecipePanel(
   now: number,
   sources: RecipeSources = {},
   timezone: string = DEFAULT_TIMEZONE,
-): { ok: true; panel: unknown } | { ok: false; error: string } {
+): { ok: true; panel: unknown } | { ok: false; error: string; detail: string } {
   const built = buildPanel(recipe, body, formatContext(recipe, now, timezone), sources);
   const parsed = panelDataSchema.safeParse(built);
   if (!parsed.success) {
-    return { ok: false, error: 'The recipe produced something the wall cannot draw.' };
+    // `error` is what the module's card says, for a household; `detail` is
+    // what the tooling says, for whoever wrote the recipe (plan item M7.10):
+    // where in the built panel it went wrong and why, never a value.
+    return {
+      ok: false,
+      error: 'The recipe produced something the wall cannot draw.',
+      detail: describeIssues(parsed.error.issues, 'panel'),
+    };
   }
   return { ok: true, panel: parsed.data };
 }
@@ -1185,7 +1207,7 @@ export function runRecipeSignals(
   now: number,
   sources: RecipeSources = {},
   timezone: string = DEFAULT_TIMEZONE,
-): { ok: true; signals: unknown } | { ok: false; error: string } {
+): { ok: true; signals: unknown } | { ok: false; error: string; detail: string } {
   const context = formatContext(recipe, now, timezone);
   const built = recipe.signals
     .filter((spec) => whenHolds(spec.when, body, sources))
@@ -1196,7 +1218,11 @@ export function runRecipeSignals(
     }));
   const parsed = signalDataSchema.safeParse({ signals: built });
   if (!parsed.success) {
-    return { ok: false, error: 'The recipe produced a signal the wall cannot use.' };
+    return {
+      ok: false,
+      error: 'The recipe produced a signal the wall cannot use.',
+      detail: describeIssues(parsed.error.issues, ''),
+    };
   }
   return { ok: true, signals: parsed.data };
 }

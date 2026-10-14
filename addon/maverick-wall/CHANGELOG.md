@@ -16,6 +16,17 @@
 
 ## Unreleased
 
+**You can try a recipe before you add it.** The recipe page under Modules ›
+Advanced has a Preview button. Paste what the recipe's address answers, and the
+page shows what your walls would draw from it, in your own theme, in a wide box
+and in a narrow one, without adding anything or asking the address. A recipe the
+wall cannot draw now says where, such as which row's label is too long, rather
+than only that something is wrong. For people writing recipes there are three
+commands too: one to check a recipe against answers you have saved, one to start
+a new recipe from a working example, and `diagnose-module`, which reads an
+installed module now and says which request or which part of its panel is the
+problem.
+
 **Recipes can read news feeds, XML and your house.** A recipe can now read an
 RSS or Atom news feed, or any XML document, as well as JSON, such as headlines
 beside the day's bin collection from your council's own XML. And it can read

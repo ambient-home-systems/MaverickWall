@@ -2186,6 +2186,9 @@ pre.code{background:var(--mw-surface-2);
 .tpl-thumb{position:relative;width:100%;aspect-ratio:3/4;background:var(--panel2);
   overflow:hidden;border-radius:var(--mw-r-2);
   display:flex;align-items:center;justify-content:center}
+.recipe-previews{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:var(--mw-s-4)}
+.recipe-thumb{position:relative;width:100%;overflow:hidden;border-radius:var(--mw-r-2);
+  border:var(--mw-hairline) solid var(--mw-line);background:var(--panel2)}
 .tpl-thumb .tpl-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   padding:var(--mw-s-3);text-align:center;font-family:var(--mono);font-size:var(--mw-t-label-sm-size);color:var(--mw-ink-muted)}
 /* An e-paper panel's card is a real 1-bit frame rather than a live wall, so it
