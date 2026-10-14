@@ -572,6 +572,57 @@ A recipe may declare up to eight **lookup tables** under `lookups`, and
 A lookup is a table and never a comparison, for the reason a condition is one:
 `on → active` cannot grow into code.
 
+### A news feed, any XML, and your house
+
+A recipe's address does not have to answer JSON. `format` on `fetch` or on a
+source says what it answers:
+
+- **`json`**, the default.
+- **`feed`**: an RSS or Atom news feed, in any of the three ways feeds are
+  written. It reads as `{ "title": …, "items": [{ "title", "link",
+  "published", "id" }] }`, newest as the feed lists them, with `published` an
+  instant that `date`, `time` and a `time` sort all read. A feed with nothing in
+  it is an empty list, so the recipe's `empty` words say so.
+- **`xml`**: any XML document, read as a tree. Each element is reached by its
+  name, the root included, so `<rss>` is `rss`. An element with no attributes
+  and no children is its text. Any other element has its attributes under
+  `_attr`, its own text under `_text`, and its children under their names; one
+  child is the child, and several are a list. A name keeps letters, digits and
+  `_`, so `xml:lang` is `xml_lang`. Where a list is asked for and one element
+  is found, the element is a list of one.
+
+Both are read by the same narrow reader the News screen uses: no DTD, no entity
+beyond the five XML built-ins, and nesting capped. A headline can be longer than
+a row's 60 characters, so cut it with `truncate:60`.
+
+A source can also be **your house**: `{ "ha": ["inside", "outside"] }` names
+the recipe's own `ha_reading` settings, never an entity, because which reading
+is the household's choice. It reads as a list in that order, each row the
+setting's `key` and what Home Assistant last said about the reading the
+household picked: its `name` (as you call it on the Readings screen), its
+`state`, its `unit` and when it last `changed`. It asks nobody: it is what the
+last Home Assistant poll stored, read each time the recipe runs, and only for a
+reading you watch. A setting left empty, or naming a reading you no longer
+watch, is a row with its `key` and nothing else. No entity id is ever in it.
+
+```json
+{
+  "name": "Morning",
+  "contract": 1,
+  "config": [{ "key": "room", "label": "Room", "type": "ha_reading" }],
+  "fetch": { "url": "https://feeds.bbci.co.uk/news/rss.xml", "format": "feed" },
+  "sources": {
+    "bins": { "url": "https://council.example.com/bins.xml", "format": "xml" },
+    "house": { "ha": ["room"] }
+  },
+  "panel": {
+    "kind": "readings",
+    "title": "{@bins.council.next.kind} on {@bins.council.next._attr.date | date:short} · {@house[0].state}{@house[0].unit}",
+    "items": { "for": "items", "label": "{title | truncate:60}", "value": "{published | time}", "limit": 4 }
+  }
+}
+```
+
 ### A recipe can raise an alert
 
 A recipe may also declare `signals` — the same alerts an add-on module can raise

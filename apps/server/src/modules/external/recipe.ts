@@ -2,6 +2,7 @@ import { z } from '../../validation.js';
 import { panelDataSchema } from './panel-data.js';
 import { signalDataSchema } from './signal-data.js';
 import { DEFAULT_TIMEZONE } from '../../timezone.js';
+import { isXmlElement, type SourceFormat } from './source-formats.js';
 
 /**
  * Recipe modules (docs/rfc-002-module-catalog-and-recipes.md, Phase B1).
@@ -597,6 +598,9 @@ const headerValue = z.string().min(1).max(512);
 /** A placeholder in a header: `secret:key` names a secret, anything else a config key. */
 const SECRET_REF = /^secret:([a-z0-9_]+)$/;
 
+/** What a request answers with (plan item M7.9). */
+const sourceFormat = z.enum(['json', 'feed', 'xml']);
+
 const fetchSpec = z
   .object({
     // May carry {config_key} placeholders, substituted before the request.
@@ -618,6 +622,8 @@ const fetchSpec = z
      * manifest or the stored URL.
      */
     headers: z.record(headerName, headerValue).optional(),
+    /** What the address answers with (plan item M7.9): JSON, a news feed, or any XML. */
+    format: sourceFormat.default('json'),
   })
   .strict();
 
@@ -629,13 +635,34 @@ const fetchSpec = z
  * as one thing. At most three, so one recipe is at most four requests.
  */
 const sourceName = z.string().regex(/^[a-z][a-z0-9_]{0,19}$/, 'a lower-case name');
-const sourceSpec = z
+const networkSource = z
   .object({
     url: z.string().min(1).max(2048),
     headers: z.record(headerName, headerValue).optional(),
+    format: sourceFormat.default('json'),
   })
   .strict();
+/*
+ * A source that is the house rather than an address (plan item M7.9): the Home
+ * Assistant readings the household picked in the recipe's `ha_reading`
+ * settings, read from what the house last told us. A recipe names settings,
+ * never entities — which reading is the household's choice — and the body it
+ * reaches is values only: no entity id is ever in it.
+ */
+const MAX_HOUSE_READINGS = 8;
+const houseSource = z
+  .object({
+    ha: z.array(z.string().min(1).max(40)).min(1).max(MAX_HOUSE_READINGS),
+  })
+  .strict();
+const sourceSpec = z.union([networkSource, houseSource]);
 const MAX_SOURCES = 3;
+
+type NetworkSource = z.infer<typeof networkSource>;
+type HouseSource = z.infer<typeof houseSource>;
+function isHouseSource(source: NetworkSource | HouseSource): source is HouseSource {
+  return 'ha' in source;
+}
 
 /*
  * A recipe's lookup tables (plan item M7.8), each a value's words: `map:name`
@@ -717,8 +744,8 @@ export const recipeSchema = z
     // same way.
     const requests: [readonly (string | number)[], { url: string; headers?: Record<string, string> | undefined }][] = [
       [['fetch'], recipe.fetch],
-      ...Object.entries(recipe.sources ?? {}).map(
-        ([name, source]) => [['sources', name], source] as [readonly (string | number)[], typeof source],
+      ...Object.entries(recipe.sources ?? {}).flatMap(([name, source]) =>
+        isHouseSource(source) ? [] : [[['sources', name], source] as [readonly (string | number)[], NetworkSource]],
       ),
     ];
     for (const [at, request] of requests) {
@@ -762,6 +789,23 @@ export const recipeSchema = z
               message: `references {${body}}, which is not a config field`,
             });
           }
+        }
+      }
+    }
+
+    // A house source names the recipe's own `ha_reading` settings, and nothing
+    // else: an entity id typed into a recipe is a stranger choosing which of
+    // the household's things to read.
+    const readings = new Set(recipe.config.filter((f) => f.type === 'ha_reading').map((f) => f.key));
+    for (const [name, source] of Object.entries(recipe.sources ?? {})) {
+      if (!isHouseSource(source)) continue;
+      for (const key of source.ha) {
+        if (!readings.has(key)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['sources', name, 'ha'],
+            message: `names “${key}”, which is not a Home Assistant reading setting`,
+          });
         }
       }
     }
@@ -816,14 +860,62 @@ export interface SourceRequest {
   readonly name: string;
   readonly url: string;
   readonly headers: Record<string, string>;
+  readonly format: SourceFormat;
 }
 
-/** Every named source's request, in the recipe's own order. */
+/** Every named source that is an address, its request in the recipe's own order. */
 export function resolveSources(recipe: Recipe, config: RecipeConfig, secrets: RecipeSecrets): SourceRequest[] {
-  return Object.entries(recipe.sources ?? {}).map(([name, source]) => ({
-    name,
-    url: resolveUrl(source.url, config),
-    headers: headersFrom(source.headers, config, secrets),
+  return Object.entries(recipe.sources ?? {}).flatMap(([name, source]) =>
+    isHouseSource(source)
+      ? []
+      : [
+          {
+            name,
+            url: resolveUrl(source.url, config),
+            headers: headersFrom(source.headers, config, secrets),
+            format: source.format,
+          },
+        ],
+  );
+}
+
+/** A house source's readings (plan item M7.9): the entity each named setting picked, in the recipe's order. */
+export interface HouseRequest {
+  readonly name: string;
+  readonly readings: readonly { readonly key: string; readonly entityId: string }[];
+}
+
+/**
+ * Every house source and the entities its settings name. Read from the
+ * settings as stored — entity ids — and never from settings whose readings
+ * have already been turned into values for an address.
+ */
+export function houseRequests(recipe: Recipe, config: RecipeConfig): HouseRequest[] {
+  return Object.entries(recipe.sources ?? {}).flatMap(([name, source]) =>
+    isHouseSource(source)
+      ? [{ name, readings: source.ha.map((key) => ({ key, entityId: config[key] ?? '' })) }]
+      : [],
+  );
+}
+
+/** What the house says about one reading, as a house source's body carries it: values, never its id. */
+export interface HouseValue {
+  readonly name?: string;
+  readonly state?: string;
+  readonly unit?: string;
+  readonly changed?: string;
+}
+
+/**
+ * A house source's body: one row per setting, in the recipe's order, so
+ * `@house[0].state` is the first and `for: "@house"` draws them all. A setting
+ * left empty, or naming a reading the household no longer watches, is a row
+ * with its key and nothing else, so a `where` can leave it out.
+ */
+export function houseBody(request: HouseRequest, valueOf: (entityId: string) => HouseValue | undefined): unknown[] {
+  return request.readings.map(({ key, entityId }) => ({
+    key,
+    ...(entityId === '' ? {} : (valueOf(entityId) ?? {})),
   }));
 }
 
@@ -864,7 +956,8 @@ export function recipeFetchHost(recipe: Recipe): string {
   // Every host a recipe asks, its sources' too (plan item M7.7): the install
   // page names where a setting or a secret goes, and that is all of them.
   const hosts: string[] = [];
-  for (const url of [recipe.fetch.url, ...Object.values(recipe.sources ?? {}).map((source) => source.url)]) {
+  const addresses = Object.values(recipe.sources ?? {}).flatMap((source) => (isHouseSource(source) ? [] : [source.url]));
+  for (const url of [recipe.fetch.url, ...addresses]) {
     let host: string;
     try {
       // Placeholders stand in as a dummy so the URL parses; only the host matters.
@@ -922,8 +1015,11 @@ function selectRows(
   const selected = resolvePath(root, spec.for, sources);
   // Not an array at all is a feed that has changed shape, not one that has
   // nothing to say: the read fails, and the wall keeps its last good panel.
-  if (!Array.isArray(selected)) return undefined;
-  let rows = selected.slice(0, MAX_ROWS_READ);
+  // One element of an XML document is a list of one (plan item M7.9): a feed
+  // with one item has not changed shape.
+  const list = isXmlElement(selected) ? [selected] : selected;
+  if (!Array.isArray(list)) return undefined;
+  let rows = list.slice(0, MAX_ROWS_READ);
   const where = spec.where;
   if (where !== undefined) rows = rows.filter((row) => where.every((one) => conditionHolds(one, row, sources)));
   const sort = spec.sort;
