@@ -11643,9 +11643,10 @@ rules, `friendly_name` and `noticed_at` on the condition states).
   so a ring reaches a wall up to half a minute after it rang. A held moment
   therefore counts from when the poll heard it (`noticed_at`, which moves
   only when the state does) when that was later and within two minutes. A
-  ring first heard later than that, after a restart, is history. A
-  subscription to Home Assistant's events would close the gap and is not
-  built.
+  ring first heard later than that, after a restart, is history. *(Closed
+  since: a held subscription now hears a ring in about a second, which is
+  the paragraph "Home Assistant is heard as it happens" at the end of this
+  section.)*
 - **An OK is about one ring.** A doorbell's signal never goes away, so on a
   held rule a dismissal counts only if it was made after this occurrence
   began, and the next ring shows again.
@@ -12493,6 +12494,78 @@ run caught re-run after its fix. Against M7.12's 6165 over 463 that is +6 and
 case, red on a clean `main` in this container as before. **Still unproven
 where it counts:** no real Home Assistant alert has been cleared from a real
 wall since.
+
+
+**Home Assistant is heard as it happens, so a doorbell is on the wall in
+about a second.** A ring used to wait for the thirty-second poll, and a
+visitor does not wait that long. `modules/homeassistant/live.ts` holds a
+WebSocket open to Home Assistant and subscribes with `subscribe_entities` to
+the entities a wall cares about. It does not use `state_changed`, which is
+the whole house on one socket. The entities are:
+
+- the readings and cameras;
+- every entity an enabled Home Assistant rule names;
+- every entity a widget's show-when names;
+- every wall's daylight entity.
+
+**An event only says "read again".** It runs the poll's own job and then
+nudges the push hub, so nothing is parsed or written twice and the poll
+stays the baseline.
+
+- An entity a rule, a show-when or a daylight switch names is read 150 ms
+  after its event.
+- A reading that is only drawn waits until ten seconds after the last read,
+  so a power meter reporting every second does not turn the poll into one a
+  second.
+- The job is serialised: a live read and a scheduled one queue, so the
+  older answer is never written last. A test lets a slow first read finish
+  after a quick second one and finds the newer temperature.
+- A different list is a different subscription: each ping (every 30 s)
+  re-reads the list, and a changed one closes the socket and opens it again.
+- When the socket will not open, will not authenticate, is refused or drops,
+  the poll carries on as before. It tries again from a second, doubling to
+  a minute, and the log says `[ha-live]` with the reason once.
+
+**The socket is a new optional port on the fetcher,** `subscribe`, under the
+same guard as `socket`: the address validated, the name resolved and every
+address checked, the socket pinned, no redirect followed, a ceiling on each
+message, and an idle limit the caller keeps alive by pinging. It only ever
+sends the token, `subscribe_entities` and `ping`, and a test reads the source
+for that.
+
+**Measured.** `ha-live.test.ts` (16) runs the real app, the real fetcher and
+the stand-in house, which now speaks `subscribe_entities` the way core does.
+It checks:
+
+- a ring reaching the manifest in under 1.5 s with no poll run;
+- a ring reaching a wall's push socket in under 1.5 s with the push timer at
+  a minute;
+- a new rule's entity subscribed within a ping, and the next ring heard after
+  Home Assistant drops every socket;
+- five changes to a reading costing one read after the gap, and a ring among
+  them read at once;
+- backoff when the socket is refused and when it will not open at all;
+- no socket for a house with nothing to watch;
+- the held socket refusing loopback without the opt-in, ending on a message
+  over the ceiling and on silence, and following no redirect.
+
+Thirteen mutations were checked and all thirteen are red. Two were green at
+first. Backing off after a refusal could not be seen while the only refusal
+was a `subscribe_entities` the socket had opened for; a test with Home
+Assistant down now counts the opens. A rule's entity read at once could not
+be seen while the rule's entity was also a reading; a test now times a read
+after that entity's change against a five-second gap. Four first failed to
+build and were re-aimed.
+
+**6187 tests passing, 1 red and 2 skipped, over 466 files**: calendar 153 (1
+skipped) over 10 · core 327 over 9 · display 1101 over 72 · docs 26 over 1 ·
+server 4580 (1 skipped) over 374, measured with `pnpm test` and a real
+Chromium. Against the alert handles' 6171 over 465 that is +16 and +1, the new
+file's own count. The one red is `browser-glass`'s striped-picture case, red
+on a clean `main` in this container as before. **Still unproven where it
+counts:** no real doorbell has rung through a real Home Assistant, and the
+supervisor's proxy of the WebSocket API has carried only M6.11's one short
+exchange, never a socket held open for hours.
 
 ---
 
