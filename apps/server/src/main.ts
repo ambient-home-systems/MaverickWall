@@ -17,6 +17,8 @@ import { seedDefaultRules } from './api/rules.js';
 import { backfillClassic, reseedClassicForSetUp, retireDefaultWall } from './api/templates.js';
 import { measureKeptShapes } from './api/photo-shapes.js';
 import { householdSetUp } from './modules/index.js';
+import { haModule } from './modules/homeassistant/index.js';
+import { startHaLive } from './modules/homeassistant/live.js';
 import { createApp, MODULES } from './http/app.js';
 import { defaultDisplayDir, defaultMeteoconsDir, defaultWallpapersDir } from './http/static.js';
 import { WALLPAPERS } from './wallpapers.js';
@@ -593,6 +595,24 @@ async function main(): Promise<void> {
   });
 
   /*
+   * Home Assistant, heard as it happens (`live.ts`): a doorbell's event runs
+   * the Home Assistant read now and nudges every wall, rather than waiting for
+   * the next half-minute poll. The poll stays the baseline; a subscription that
+   * will not open costs nothing but that second.
+   */
+  const haLive = startHaLive({
+    db,
+    fetcher,
+    keyring,
+    sync: () =>
+      haModule.job === undefined
+        ? Promise.resolve()
+        : haModule.job.run({ db, fetcher, keyring, now: Date.now(), timezone: readHousehold(db).timezone }),
+    changed: () => push?.nudge(),
+    log: (message) => console.log(message),
+  });
+
+  /*
    * Advertise the wall on the LAN so the Android app finds it with no typed
    * address (RFC 003 §8). A convenience, never load-bearing — the app always
    * has manual host entry, so this only removes a step and can never brick a
@@ -662,6 +682,7 @@ async function main(): Promise<void> {
     // Close the sockets (and the push timer) before the HTTP server, so a
     // held-open push connection is not what keeps `server.close` waiting.
     push?.close();
+    haLive.close();
     // Withdraw the mDNS record so an app drops us promptly instead of waiting
     // out the TTL and offering a server that has gone.
     mdns?.stop();

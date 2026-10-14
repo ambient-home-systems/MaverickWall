@@ -94,11 +94,14 @@ drafted 2026-08-13 · Rewritten 2026-09-09 · Relates to
 >   browser wall fetch the camera the current takeover shows, re-evaluated
 >   on every request and every second of an open stream, so the stream ends
 >   with the takeover.
-> - **The poll is the latency.** Home Assistant is read every thirty
->   seconds, so a ring reaches the wall up to half a minute late; the hold
->   counts from when the poll heard it so the household still gets its whole
->   minute. A subscription to Home Assistant's events would close that gap
->   and is not built.
+> - **The poll was the latency, and a subscription closed it.** Home
+>   Assistant is read every thirty seconds, so a ring reached the wall up to
+>   half a minute late; the hold counts from when the poll heard it so the
+>   household still gets its whole minute. Since 2026-10-14 a held
+>   `subscribe_entities` socket (`modules/homeassistant/live.ts`) runs the
+>   same read the moment a rule's entity changes and nudges every wall, so a
+>   ring is on the glass in about a second; the poll stays the baseline when
+>   the socket will not open.
 
 ## 1. Summary
 

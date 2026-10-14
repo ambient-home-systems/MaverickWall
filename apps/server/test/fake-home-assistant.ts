@@ -433,6 +433,17 @@ export interface FakeHa {
   readonly notifications: { notification_id: string; title: string | null; message: string; created_at: string }[];
   /** Every message the WebSocket endpoint received, in order — the token is in the first. */
   readonly wsReceived: string[];
+  /**
+   * The entity subscriptions open now (`subscribe_entities`), as core keeps
+   * them: the ids each socket asked for. `emit` sends a change event to every
+   * subscription naming the entity, the way core does when its state moves;
+   * `dropSockets` ends every socket, the way a Home Assistant restart does.
+   */
+  readonly subscriptions: { entityIds: string[] }[];
+  emit(entityId: string, state: string): void;
+  dropSockets(): void;
+  /** Refuse `subscribe_entities` the way a core too old to have it does. */
+  refuseSubscribe: boolean;
   /** Stand the fake down without reaching into a module-level array. */
   close(): Promise<void>;
 }
@@ -471,6 +482,10 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
     history: {},
     notifications: [],
     wsReceived: [],
+    subscriptions: [],
+    emit: () => undefined,
+    dropSockets: () => undefined,
+    refuseSubscribe: false,
     todo: {
       'todo.shopping': {
         items: [
@@ -1020,6 +1035,16 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
    * unknown one, so a test can see what was asked.
    */
   const sockets = new WebSocketServer({ noServer: true });
+  const live: { ws: import('ws').WebSocket; id: number; subscription: { entityIds: string[] } }[] = [];
+  state.emit = (entityId, value) => {
+    for (const entry of live) {
+      if (entry.ws.readyState !== entry.ws.OPEN || !entry.subscription.entityIds.includes(entityId)) continue;
+      entry.ws.send(JSON.stringify({ id: entry.id, type: 'event', event: { c: { [entityId]: { '+': { s: value } } } } }));
+    }
+  };
+  state.dropSockets = () => {
+    for (const client of sockets.clients) client.terminate();
+  };
   server.on('upgrade', (request, socket, head) => {
     if ((request.url ?? '') !== '/api/websocket' || state.down) {
       socket.destroy();
@@ -1050,6 +1075,28 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
         }
         if (message.type === 'persistent_notification/get') {
           ws.send(JSON.stringify({ id: message.id, type: 'result', success: true, result: state.notifications }));
+          return;
+        }
+        if (message.type === 'ping') {
+          ws.send(JSON.stringify({ id: message.id, type: 'pong' }));
+          return;
+        }
+        if (message.type === 'subscribe_entities' && !state.refuseSubscribe) {
+          const entityIds = Array.isArray((message as { entity_ids?: unknown }).entity_ids)
+            ? ((message as { entity_ids: unknown[] }).entity_ids.filter((id) => typeof id === 'string') as string[])
+            : [];
+          const subscription = { entityIds };
+          state.subscriptions.push(subscription);
+          live.push({ ws, id: message.id ?? 0, subscription });
+          ws.on('close', () => {
+            const at = state.subscriptions.indexOf(subscription);
+            if (at >= 0) state.subscriptions.splice(at, 1);
+          });
+          ws.send(JSON.stringify({ id: message.id, type: 'result', success: true, result: null }));
+          // Core then sends every named entity's state, compressed.
+          const added: Record<string, { s: string }> = {};
+          for (const id of entityIds) added[id] = { s: state.others[id]?.state ?? 'unknown' };
+          ws.send(JSON.stringify({ id: message.id, type: 'event', event: { a: added } }));
           return;
         }
         ws.send(

@@ -15,9 +15,8 @@ import { SUPERVISOR_BASE, type Connection } from './client.js';
  * is no REST read. So this is one short conversation — authenticate, ask once,
  * read the answer, hang up — through the fetcher's guarded `socket`, which
  * resolves and pins the address exactly as every other request is pinned
- * (rule 4). It is not a subscription: the module header's argument against
- * one, that a subscription failing to authenticate must not be why a wall
- * stops knowing anything, holds, and a failed read here costs only the
+ * (rule 4). It is not a subscription — the one subscription (`live.ts`) only
+ * says when to read again — and a failed read here costs only the
  * notifications, which keep their last good copy.
  *
  * **Two messages are ever sent**: the token, as the handshake asks, and

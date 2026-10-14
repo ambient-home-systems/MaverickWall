@@ -66,6 +66,20 @@ supervisor. Otherwise, on **Home Assistant → Connection and token**:
 A reading only appears on a wall that has a Home Assistant widget showing it:
 adding it under **Home Assistant → Readings** says whether any wall does.
 
+## A doorbell or an alert takes half a minute to appear
+
+The server keeps a connection open to Home Assistant so a ring reaches the
+wall in about a second. When that connection cannot open, the wall still
+hears everything, but only on the thirty-second read. Look in the log for a
+line starting `[ha-live]`:
+
+- `listening to N entities` means it is working.
+- `not listening:` or `stopped listening:` gives the reason, and it tries
+  again on its own, waiting up to a minute between tries.
+
+A wall that is not on the push channel also waits for its own one-minute
+poll. A wall opened in a current browser joins it by itself.
+
 ## Weather or alerts are empty
 
 A forecast needs a location: type a town or postcode on **Weather**, or use Home
