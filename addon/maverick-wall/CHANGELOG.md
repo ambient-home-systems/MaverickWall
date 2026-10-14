@@ -16,6 +16,14 @@
 
 ## Unreleased
 
+**A Home Assistant alert no longer tells the wall what it is about.** When a
+"Tell me when…" rule about something in your house covered the wall or put a
+banner across it, the wall was sent that thing's Home Assistant name, such as
+`binary_sensor.back_door`. A wall is meant to be given only words and names
+this server made up, never your house's own names for things. It now gets a
+made-up name for the alert, and OK still clears it on every wall. Nothing
+looks different.
+
 ## 1.8.0
 
 **A Home Assistant camera on the wall.** Add one under Home Assistant ›

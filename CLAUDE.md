@@ -9650,6 +9650,9 @@ pull request as a finding rather than in the diff. `homeassistant.test.ts`
 now proves no entity id travels with a readings-filtered widget placed in both
 orientations, a legacy label, an ink override, and an unwatched id on a named
 layout; it does not fire a rule, which is exactly why it cannot see the other.
+*(Fixed since: a Home Assistant interrupt reaches a wall as a handle, which is
+the paragraph "A Home Assistant alert reaches a wall as a handle" at the end
+of this section.)*
 
 **Eighteen mutations were checked and all eighteen are red**, across
 `browser-ha-readings` (a real paired wall and a real editor),
@@ -12442,6 +12445,43 @@ Chromium. Against M2.4's 6123 over 460, that is +42 and +3, this change's own
 count. The one red is `browser-glass`'s striped-picture case, red on a clean
 `main` in this container as before. **Still unproven where it counts:** no
 household has pasted a script, and no Pi has run one.
+**A Home Assistant alert reaches a wall as a handle, never as the entity it
+is about (rule 12).** P1.3 found it and wrote it down: an interrupt's key is
+its signal's, a Home Assistant signal is keyed by its entity, so every firing
+Home Assistant banner or takeover put `binary_sensor.back_door` in every
+wall's manifest, and in the push message, which the hub builds from the same
+list. A notification tile was given a handle when it was built (M6.11);
+banners and takeovers now are too. `withAlertHandles` in `api/notifications.ts`
+swaps a Home Assistant interrupt's key for `alertHandle`, a hash of the rule
+and the signal, as the last step before the manifest. The wall posts
+`ruleId:handle` exactly as it posted `ruleId:key`, so the display bundle did
+not change. The dismiss route, for a Home Assistant rule, finds the signal the
+handle names among what that rule has firing now (`alertFor`) and stores the
+OK under the entity, household-wide as before; two rules on one door are still
+one banner and one OK. A raw entity key is refused with a 404, because no wall
+is ever given one. Weather and calendar keys name nothing in the house and are
+left as they were. `alertFor` first also checked the interrupt's source; the
+route calls it only for a Home Assistant rule, whose interrupts are its own
+source by core's scope, so that line could contradict nothing and is gone.
+
+**Measured.** `alert-handles.test.ts` (5) runs the real app, the real fetcher
+and a real poll of the stand-in house: a banner and a takeover firing with no
+entity id anywhere in the manifest's text, OK by the handle storing the door,
+the entity id and a handle for another door both refused, and two rules on one
+door. `browser-alert-ok.test.ts` (1) presses OK on a takeover in a real
+Chromium and reads the posted key, the stored acknowledgement, every manifest
+the wall received and the page itself. `ha-acknowledgement.test.ts` had pinned
+the leak (`expect(up?.key).toBe(DOOR)`) and now pins the handle. Six mutations
+were checked and all six are red. **6171 tests passing, 1 red and 2 skipped,
+over 465 files**: calendar 153 (1 skipped) over 10 · core 327 over 9 · display
+1101 over 72 · docs 26 over 1 · server 4564 (1 skipped) over 373, measured with
+`pnpm test` and a real Chromium, with the one file whose stale assertion the
+run caught re-run after its fix. Against M7.12's 6165 over 463 that is +6 and
++2, this change's own count. The one red is `browser-glass`'s striped-picture
+case, red on a clean `main` in this container as before. **Still unproven
+where it counts:** no real Home Assistant alert has been cleared from a real
+wall since.
+
 ---
 
 ## Open decisions

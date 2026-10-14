@@ -177,7 +177,8 @@ async function acknowledgedDoor(extra: Record<string, string> = {}): Promise<Har
   ).toBe(302);
   await h.poll();
   const [up] = await h.interrupts();
-  expect(up?.key).toBe(DOOR);
+  // A handle, never the entity (rule 12); the OK is still stored under the door.
+  expect(up?.key).toMatch(/^ha-[0-9a-f]{24}$/);
   if (up === undefined) throw new Error('nothing fired');
   expect((await h.ok(up)).status).toBe(200);
   expect(await h.interrupts()).toEqual([]);
@@ -208,7 +209,7 @@ describe('an OK on a Home Assistant alert', () => {
     await h.poll();
     const again = await h.interrupts();
     expect(again).toHaveLength(1);
-    expect(again[0]?.key).toBe(DOOR);
+    expect(again[0]?.key).toMatch(/^ha-[0-9a-f]{24}$/);
   });
 
   it('is kept when Home Assistant cannot be read, whatever the door has done', async () => {

@@ -49,6 +49,41 @@ export function tileHandle(ruleId: string, signalKey: string): string {
   return `tile:${createHash('sha256').update(`tile:${ruleId}\u0000${signalKey}`).digest('hex').slice(0, 24)}`;
 }
 
+/**
+ * A Home Assistant banner's or takeover's handle: stable for one rule and one
+ * signal, and naming neither.
+ *
+ * An interrupt's key is its signal's, and a Home Assistant signal is keyed by
+ * the entity it is about — so a banner over a wall carried
+ * `binary_sensor.freezer_door` to every tablet that drew it, where rule 12 says
+ * a wall is handed handles and words and never an entity id. A tile was given
+ * a handle when it was built (M6.11); a banner, a takeover and the push
+ * message built from the same list are given one here. Only Home Assistant's:
+ * a weather warning's key is the warning's own id and a calendar reminder's
+ * the event's, and neither names anything in the house.
+ */
+export function alertHandle(ruleId: string, signalKey: string): string {
+  return `ha-${createHash('sha256').update(`alert:${ruleId}\u0000${signalKey}`).digest('hex').slice(0, 24)}`;
+}
+
+/** Every Home Assistant interrupt with its key swapped for its handle. */
+export function withAlertHandles(active: readonly Interrupt[]): Interrupt[] {
+  return active.map((interrupt) =>
+    interrupt.source === 'homeassistant' ? { ...interrupt, key: alertHandle(interrupt.ruleId, interrupt.key) } : interrupt,
+  );
+}
+
+/**
+ * The signal a Home Assistant handle names among those firing for its rule,
+ * which is what an OK is stored under — household-wide, about the thing, as
+ * every acknowledgement is. A handle that names nothing firing has nothing
+ * left to acknowledge.
+ */
+export function alertFor(ruleId: string, handle: string, active: readonly Interrupt[]): string | undefined {
+  return active.find((interrupt) => interrupt.ruleId === ruleId && alertHandle(interrupt.ruleId, interrupt.key) === handle)
+    ?.key;
+}
+
 /** The interrupts a wall draws over itself — everything but the tiles. */
 export function bannersOf(active: readonly Interrupt[]): Interrupt[] {
   return active.filter((interrupt) => interrupt.action !== 'tile');
