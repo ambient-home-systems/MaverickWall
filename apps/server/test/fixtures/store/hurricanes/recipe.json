@@ -1,0 +1,49 @@
+{
+  "name": "Hurricanes",
+  "contract": 1,
+  "config": [],
+  "secrets": [],
+  "fetch": {
+    "url": "https://www.nhc.noaa.gov/CurrentStorms.json",
+    "intervalSeconds": 1800,
+    "allowLan": false,
+    "format": "json"
+  },
+  "lookups": {
+    "kind": {
+      "HU": "Hurricane",
+      "TS": "Tropical storm",
+      "TD": "Tropical depression",
+      "STS": "Subtropical storm",
+      "STD": "Subtropical depression",
+      "PTC": "Potential tropical cyclone",
+      "PC": "Post-tropical cyclone"
+    }
+  },
+  "panel": {
+    "kind": "readings",
+    "title": "Tropical storms",
+    "items": {
+      "for": "activeStorms",
+      "label": "{classification | map:kind} {name}",
+      "value": "{intensity} kt",
+      "sort": {
+        "by": "intensity",
+        "order": "desc",
+        "as": "number"
+      },
+      "limit": 6,
+      "empty": "No tropical storms are being tracked.",
+      "tone": {
+        "from": "classification",
+        "map": {
+          "HU": "alert",
+          "TS": "active",
+          "STS": "active"
+        },
+        "default": "idle"
+      }
+    }
+  },
+  "signals": []
+}

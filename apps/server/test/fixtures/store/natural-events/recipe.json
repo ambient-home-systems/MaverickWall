@@ -1,0 +1,53 @@
+{
+  "name": "Natural events",
+  "contract": 1,
+  "config": [
+    {
+      "key": "category",
+      "label": "Which events",
+      "type": "select",
+      "options": [
+        {
+          "value": "wildfires",
+          "label": "Wildfires"
+        },
+        {
+          "value": "severeStorms",
+          "label": "Severe storms"
+        },
+        {
+          "value": "floods",
+          "label": "Floods"
+        },
+        {
+          "value": "volcanoes",
+          "label": "Volcanoes"
+        },
+        {
+          "value": "seaLakeIce",
+          "label": "Sea and lake ice"
+        }
+      ],
+      "default": "wildfires"
+    }
+  ],
+  "secrets": [],
+  "fetch": {
+    "url": "https://eonet.gsfc.nasa.gov/api/v3/events?status=open&days=30&limit=12&category={category}",
+    "intervalSeconds": 3600,
+    "allowLan": false,
+    "format": "json"
+  },
+  "panel": {
+    "kind": "readings",
+    "title": "Going on now",
+    "items": {
+      "for": "events",
+      "label": "{title | truncate:40}",
+      "value": "since {geometry[0].date | date:short}",
+      "limit": 6,
+      "empty": "Nothing of this kind is going on."
+    }
+  },
+  "signals": []
+}

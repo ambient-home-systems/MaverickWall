@@ -1,0 +1,19 @@
+{
+  "panel": {
+    "kind": "readings",
+    "title": "Tropical storms",
+    "items": [
+      {
+        "label": "Hurricane Simon",
+        "value": "90 kt",
+        "tone": "alert"
+      },
+      {
+        "label": "Tropical storm Trudy",
+        "value": "45 kt",
+        "tone": "active"
+      }
+    ]
+  },
+  "signals": []
+}

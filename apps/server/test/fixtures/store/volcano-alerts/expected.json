@@ -1,0 +1,29 @@
+{
+  "panel": {
+    "kind": "readings",
+    "title": "Volcanoes",
+    "items": [
+      {
+        "label": "Great Sitkin",
+        "value": "Watch",
+        "tone": "alert"
+      },
+      {
+        "label": "Shishaldin",
+        "value": "Advisory",
+        "tone": "active"
+      },
+      {
+        "label": "Kilauea",
+        "value": "Watch",
+        "tone": "alert"
+      },
+      {
+        "label": "Ahyi Seamount",
+        "value": "Advisory",
+        "tone": "active"
+      }
+    ]
+  },
+  "signals": []
+}

@@ -1,0 +1,59 @@
+{
+  "name": "UV index",
+  "contract": 1,
+  "config": [
+    {
+      "key": "zip",
+      "label": "ZIP code",
+      "type": "string",
+      "default": "20050"
+    }
+  ],
+  "secrets": [],
+  "fetch": {
+    "url": "https://data.epa.gov/efservice/getEnvirofactsUVDAILY/ZIP/{zip}/JSON",
+    "intervalSeconds": 10800,
+    "allowLan": false,
+    "format": "json"
+  },
+  "lookups": {
+    "band": {
+      "0": "Low",
+      "1": "Low",
+      "2": "Low",
+      "3": "Moderate",
+      "4": "Moderate",
+      "5": "Moderate",
+      "6": "High",
+      "7": "High",
+      "8": "Very high",
+      "9": "Very high",
+      "10": "Very high",
+      "*": "Extreme"
+    }
+  },
+  "panel": {
+    "kind": "readings",
+    "title": "UV today",
+    "items": {
+      "for": ".",
+      "label": "{CITY}",
+      "value": "{UV_INDEX} · {UV_INDEX | map:band}",
+      "limit": 1,
+      "empty": "The EPA has no forecast for this ZIP code.",
+      "tone": {
+        "from": "UV_INDEX",
+        "map": {
+          "0": "idle",
+          "1": "idle",
+          "2": "idle",
+          "3": "active",
+          "4": "active",
+          "5": "active"
+        },
+        "default": "alert"
+      }
+    }
+  },
+  "signals": []
+}

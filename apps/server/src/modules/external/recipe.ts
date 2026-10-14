@@ -103,7 +103,7 @@ const FORMATTERS: Readonly<Record<string, Formatter>> = {
     const max = Math.max(1, Math.min(280, arg === undefined ? 40 : Number(arg) || 40));
     return s.length > max ? `${s.slice(0, max - 1)}…` : s;
   },
-  date: (v, arg, context) => formatDate(v, arg, context.now),
+  date: (v, arg, context) => formatDate(v, arg, context.now, context.timezone),
   default: (v, arg) => {
     const s = asString(v);
     return s === '' ? arg ?? '' : s;
@@ -112,6 +112,8 @@ const FORMATTERS: Readonly<Record<string, Formatter>> = {
   number: (v, arg) => formatNumber(v, arg),
   duration: (v, arg) => formatDuration(v, arg),
   time: (v, arg, context) => formatTime(v, arg, context.timezone),
+  // Plan item M7.11: the instant a timeline's or a countdown's `at` must be.
+  iso: (v) => formatIso(v),
   plural: (v, arg) => formatPlural(v, arg),
   map: (v, arg, context) => lookUp(v, arg, context.lookups),
 };
@@ -210,20 +212,56 @@ function lookUp(
   return Object.prototype.hasOwnProperty.call(table, '*') ? (table['*'] as string) : key;
 }
 
-/** `date:short` and `date:relative`. Server-side, so `Intl` is fine (rule one is core-only). */
-function formatDate(value: unknown, arg: string | undefined, now: number): string {
+/**
+ * `date:short` and `date:relative`, in the household's own zone, as `time` is.
+ * Plan item M7.11 found both reading the *server's* zone: an event that began
+ * at 14:58 UTC on the 10th said "10 Oct" on a server in UTC and "11 Oct" on
+ * one in New Zealand. And `relative` counted elapsed hours rather than days,
+ * so something at 23:00 tonight read "tomorrow" at one in the morning. It
+ * compares the two calendar dates in the household's zone now.
+ */
+function formatDate(value: unknown, arg: string | undefined, now: number, timezone: string): string {
   const ms = toEpochMs(value);
   if (ms === undefined) return asString(value);
+  const zone = knownZone(timezone);
   if (arg === 'relative') {
-    const days = Math.round((ms - now) / 86_400_000);
+    const days = Math.round((civilDay(ms, zone) - civilDay(now, zone)) / 86_400_000);
     if (days === 0) return 'today';
     if (days === 1) return 'tomorrow';
     if (days === -1) return 'yesterday';
     return days > 0 ? `in ${days} days` : `${-days} days ago`;
   }
   // `short` (and the default): a plain calendar date.
-  return new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  return new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: zone });
 }
+
+/** A zone this runtime knows, or UTC: a zone it does not is the household's to fix, and UTC is still a date. */
+function knownZone(timezone: string): string {
+  try {
+    new Intl.DateTimeFormat('en-GB', { timeZone: timezone });
+    return timezone;
+  } catch {
+    return 'UTC';
+  }
+}
+
+/** The calendar date an instant falls on in a zone, as midnight UTC of that date. */
+function civilDay(ms: number, zone: string): number {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' })
+    .format(new Date(ms));
+  return Date.parse(`${parts}T00:00:00Z`);
+}
+
+/**
+ * A date and time that names no zone, as a feed writes it: `2026-10-14 02:56`
+ * or `2026-10-15T03:00:00`. Plan item M7.11 found three public feeds in the
+ * store's first ten writing their times this way, and every one of them meant
+ * UTC (NOAA's tides asked for in `gmt`, NOAA's space weather, USGS's
+ * `sent_utc`). JavaScript reads such a string in the *server's* zone, so the
+ * same answer said one time on a container in UTC and another on one set to
+ * New York. It is read as UTC here, so a recipe means one thing on every box.
+ */
+const ZONELESS = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?)$/;
 
 function toEpochMs(value: unknown): number | undefined {
   if (typeof value === 'number' && Number.isFinite(value)) {
@@ -231,10 +269,22 @@ function toEpochMs(value: unknown): number | undefined {
     return value < 1e12 ? value * 1000 : value;
   }
   if (typeof value === 'string') {
-    const t = Date.parse(value);
+    const zoneless = ZONELESS.exec(value.trim());
+    const t = Date.parse(zoneless === null ? value : `${zoneless[1]}T${zoneless[2]}Z`);
     if (Number.isFinite(t)) return t;
   }
   return undefined;
+}
+
+/**
+ * `iso` — any time a recipe can read, written as the instant a timeline's or
+ * a countdown's `at` must be: `2026-10-14T02:56:00Z`. A feed's own way of
+ * writing a time (seconds since 1970, a zone-less date and time) is otherwise
+ * refused there, because the panel will not guess a zone.
+ */
+function formatIso(value: unknown): string {
+  const ms = toEpochMs(value);
+  return ms === undefined ? asString(value) : new Date(ms).toISOString().replace('.000Z', 'Z');
 }
 
 // ---------------------------------------------------------------------------
@@ -246,8 +296,14 @@ function toEpochMs(value: unknown): number | undefined {
  * `@name` in front, into one of the recipe's named `sources` (plan item M7.7)
  * — `@name` alone is that source's whole body. Traversal only: a path can say
  * where a value is and nothing about what to do with it.
+ *
+ * `.` alone is the main answer's whole body, and a path may start with an
+ * index, `[0].kp` (plan item M7.11): a feed whose answer is a list at the top,
+ * as NOAA's space weather, USGS's volcanoes and the EPA's UV index all are,
+ * had no path to it at all.
  */
-const PATH = /^(?:@[a-z][a-z0-9_]{0,19}(?:\.[A-Za-z0-9_]+|\[\d+\])*|[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+|\[\d+\])*)$/;
+const PATH =
+  /^(?:\.|@[a-z][a-z0-9_]{0,19}(?:\.[A-Za-z0-9_]+|\[\d+\])*|(?:[A-Za-z0-9_]+|\[\d+\])(?:\.[A-Za-z0-9_]+|\[\d+\])*)$/;
 const SOURCE_REF = /^@([a-z][a-z0-9_]{0,19})(.*)$/;
 
 /** The bodies of a recipe's named sources, by name, for `@name` selectors. */

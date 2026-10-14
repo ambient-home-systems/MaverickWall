@@ -1,0 +1,37 @@
+{
+  "name": "Tide times",
+  "contract": 1,
+  "config": [
+    {
+      "key": "station",
+      "label": "NOAA station number",
+      "type": "string",
+      "default": "8518750"
+    }
+  ],
+  "secrets": [],
+  "fetch": {
+    "url": "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=predictions&station={station}&datum=MLLW&time_zone=gmt&units=metric&interval=hilo&format=json&date=today&application=maverick_wall",
+    "intervalSeconds": 21600,
+    "allowLan": false,
+    "format": "json"
+  },
+  "lookups": {
+    "tide": {
+      "H": "High tide",
+      "L": "Low tide"
+    }
+  },
+  "panel": {
+    "kind": "timeline",
+    "title": "Tides",
+    "items": {
+      "for": "predictions",
+      "at": "{t | iso}",
+      "label": "{type | map:tide}",
+      "detail": "{v | round:1} m",
+      "empty": "NOAA has no tides for this station today."
+    }
+  },
+  "signals": []
+}

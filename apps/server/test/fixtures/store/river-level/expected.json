@@ -1,0 +1,17 @@
+{
+  "panel": {
+    "kind": "readings",
+    "title": "POTOMAC RIVER NEAR WASH, DC LITTLE FALLS PUMP STA",
+    "items": [
+      {
+        "label": "Flow",
+        "value": "23700 ft³/s"
+      },
+      {
+        "label": "Height",
+        "value": "5.21 ft"
+      }
+    ]
+  },
+  "signals": []
+}

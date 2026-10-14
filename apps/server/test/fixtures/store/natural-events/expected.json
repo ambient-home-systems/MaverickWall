@@ -1,0 +1,33 @@
+{
+  "panel": {
+    "kind": "readings",
+    "title": "Going on now",
+    "items": [
+      {
+        "label": "Wildfire Buckhorn 2, Cassia, Idaho",
+        "value": "since 10 Oct"
+      },
+      {
+        "label": "Wildfire PK, Sheridan, Wyoming",
+        "value": "since 9 Oct"
+      },
+      {
+        "label": "Wildfire CYRUS, Kern, California",
+        "value": "since 9 Oct"
+      },
+      {
+        "label": "Prescribed Fire Bridger Trail Unit - KP…",
+        "value": "since 9 Oct"
+      },
+      {
+        "label": "Prescribed Fire COOPER UNIT - KPERP RX …",
+        "value": "since 8 Oct"
+      },
+      {
+        "label": "Prescribed Fire CON BSE13 RX, Covington…",
+        "value": "since 7 Oct"
+      }
+    ]
+  },
+  "signals": []
+}

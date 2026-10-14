@@ -1,0 +1,14 @@
+{
+  "panel": {
+    "kind": "readings",
+    "title": "UV today",
+    "items": [
+      {
+        "label": "Washington",
+        "value": "5 · Moderate",
+        "tone": "active"
+      }
+    ]
+  },
+  "signals": []
+}
