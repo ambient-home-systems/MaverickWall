@@ -143,7 +143,9 @@ describe('a camera over WebRTC on a wall', () => {
         for (const secret of [DOOR, TOKEN, ha.base]) expect(facts.html).not.toContain(secret);
 
         // A rebuild or two: the same video, still the one session into the house.
-        expect(asked.filter((a) => a.startsWith('POST /d/camera/'))).toHaveLength(1);
+        // (The listener above may have been attached after the offer was sent,
+        // so what is counted from here is only what the rebuilds ask for.)
+        expect(ha.webrtcSessions).toHaveLength(1);
         asked.length = 0;
         await page.waitForTimeout(16_000);
         expect(
