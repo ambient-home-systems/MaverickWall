@@ -133,6 +133,55 @@ export function checkTools(root: string, page: string, markdown: string): Proble
 }
 
 // ---------------------------------------------------------------------------
+// The companion API
+// ---------------------------------------------------------------------------
+
+/** Every route the companion API answers, read from where it is registered. */
+export function companionRoutes(root: string): string[] {
+  const source = readFileSync(join(root, 'apps/server/src/http/companion.ts'), 'utf8');
+  return [...source.matchAll(/app\.post\('(\/companion\/[a-z/-]+)'/g)].map((match) => match[1] ?? '').sort();
+}
+
+/** The requests a page shows: each ```http block's `POST /companion/…` line. */
+export function companionDocumented(markdown: string): string[] {
+  const paths = new Set<string>();
+  for (const block of markdown.matchAll(/```http\n([\s\S]*?)```/g)) {
+    const request = /^POST (\/companion\/[a-z/-]+)$/m.exec(block[1] ?? '');
+    if (request?.[1] !== undefined) paths.add(request[1]);
+  }
+  return [...paths].sort();
+}
+
+/**
+ * The page of recipes shows a request for every route, and no route the
+ * server does not answer. A recipe is copied into a phone and forgotten, so a
+ * route that is renamed or a new one nobody wrote down is found by a shortcut
+ * that stops working, months later.
+ */
+export function checkCompanion(root: string, page: string, markdown: string): Problem[] {
+  const routes = companionRoutes(root);
+  const documented = companionDocumented(markdown);
+  const problems: Problem[] = [];
+  for (const route of routes) {
+    if (!documented.includes(route)) problems.push(`${page}: POST ${route} is not shown.`);
+  }
+  for (const path of documented) {
+    if (!routes.includes(path)) problems.push(`${page}: shows POST ${path}, which the server does not answer.`);
+  }
+  return problems;
+}
+
+/** Any page that names a companion address names one the server answers. */
+export function checkCompanionMentions(root: string, page: string, markdown: string): Problem[] {
+  const routes = companionRoutes(root);
+  const problems: Problem[] = [];
+  for (const match of markdown.matchAll(/\/companion\/[a-z][a-z/-]*[a-z]/g)) {
+    if (!routes.includes(match[0])) problems.push(`${page}: names ${match[0]}, which the server does not answer.`);
+  }
+  return problems;
+}
+
+// ---------------------------------------------------------------------------
 // The names of screens
 // ---------------------------------------------------------------------------
 

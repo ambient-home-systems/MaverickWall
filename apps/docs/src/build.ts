@@ -2,6 +2,8 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, posix } from 'node:path';
 import {
   adminWords,
+  checkCompanion,
+  checkCompanionMentions,
   checkEnvironment,
   checkRetired,
   checkScreenNames,
@@ -159,6 +161,8 @@ export function buildSite(root: string): BuiltSite {
     }
     if (page.slug === 'environment') problems.push(...checkEnvironment(root, page.source, markdown));
     if (page.slug === 'command-line') problems.push(...checkTools(root, page.source, markdown));
+    if (page.slug === 'phone-and-automations') problems.push(...checkCompanion(root, page.source, markdown));
+    if (page.history !== true) problems.push(...checkCompanionMentions(root, page.source, markdown));
     rendered.push({ page, markdown, title: result.title ?? page.label, html: result.html, headings: result.headings, links });
   }
 

@@ -1,6 +1,6 @@
 # Plan: parity with Magic Frame
 
-**Status: in progress.** RFC 018 (M6.0) is built, and so are the companion token, its Home Assistant to-do add, timers and messages, and refreshing walls and showing one wall's layout on the others (M1.1–M1.5, M2.1, M2.2, M2.3, M3.1–M3.8, M4.1–M4.12, M5.1–M5.12, M6.1–M6.13, M7.1–M7.11, M8.1–M8.8, M9.1); everything else is planned. On 2026-10-05 the owner asked for a
+**Status: in progress.** RFC 018 (M6.0) is built, and so are the companion token, its Home Assistant to-do add, timers and messages, and refreshing walls and showing one wall's layout on the others (M1.1–M1.5, M2.1–M2.4, M3.1–M3.8, M4.1–M4.12, M5.1–M5.12, M6.1–M6.13, M7.1–M7.11, M8.1–M8.8, M9.1); everything else is planned. On 2026-10-05 the owner asked for a
 competitive review of [Magic Frame](https://github.com/jeremiaa/magic-frame)
 against Maverick Wall, then a deeper look at its custom widgets and its
 backgrounds. This document is that review, the decisions taken on it, and the
@@ -133,7 +133,7 @@ Magic Frame's features exist in a form we cannot ship as it is.
 | M2.1 | A per-account companion token: show, copy, rotate. **Built**: System › Phone and automations; `mwc_` tokens, sealed beside their hash. | S | Sealed at rest; redacted in logs and the diagnostics export (rule 6). `Authorization: Bearer` preferred; `?key=` accepted for iOS Shortcuts, with a warning that addresses end up in logs. Rate-limited. |
 | M2.2 | Endpoints: start and end timers, post and clear messages, add to a Todoist list or a Home Assistant to-do list. **Built**: the to-do add (`POST /companion/todo/add`) to a Home Assistant list or, since M5.7, a Todoist project, and timers and messages (`/companion/timers`, `/companion/timers/end`, `/companion/messages`, `/companion/messages/clear`). | M | Zod at every boundary. Adding to an HA list is `todo.add_item`, which RFC 018 permits from this API only (MD10), so that half waits on RFC 018's phase 1, which adds its allowlist row; Todoist works without it. |
 | M2.3 | Display-control endpoints with the token: refresh, show a layout, next picture. **Built but next picture**, which waits on photo slideshows (M3.6): `/companion/walls/refresh`, `/companion/walls/show`, `/companion/walls/show/end`. | S | The same handlers as M1.2–M1.4. |
-| M2.4 | Documented recipes: iOS Shortcuts and Home Assistant `rest_command`. | S | In the docs site (M9.1). |
+| M2.4 | Documented recipes: iOS Shortcuts and Home Assistant `rest_command`. **Built**: `docs/phone-and-automations.md` on the docs site, every request sent to a real server by `companion-docs.test.ts` and every route held to the page by the site's build. | S | In the docs site (M9.1). |
 
 ### M5 — New widgets and data sources
 

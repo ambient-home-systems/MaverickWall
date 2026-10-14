@@ -100,11 +100,14 @@ the admin says so before you allow it.
 Adding from a phone needs a companion token, which you make under **System ›
 Phone and automations** and can replace or turn off there. It can add to the
 lists you chose, start and end timers, send and clear messages, reload your
-walls and show one wall's layout on the others for up to two hours, and do
-nothing else — it cannot read your lists, tick them off or sign in
-— and a wall can never add at all. A wall can clear a finished timer or a
-message only if you turn on **Allow clearing timers and messages** for that
-wall, and it can never end a timer that is still running.
+walls, move a rotating background on to its next picture and show one wall's
+layout on the others for up to two hours, and do nothing else — it cannot read
+your lists, tick them off or sign in — and a wall can never add at all. [Phone
+and automations](https://ambient-home-systems.github.io/MaverickWall/phone-and-automations.html)
+on the docs site has recipes for an iOS Shortcut and a Home Assistant
+`rest_command`. A wall can clear a finished timer or a message only if you turn
+on **Allow clearing timers and messages** for that wall, and it can never end a
+timer that is still running.
 
 Even the tick is off until you ask for it, wall by wall. Adding a list shows it
 everywhere you have put a To-do widget; turning on **Allow ticking to-do items
