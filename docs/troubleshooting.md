@@ -80,6 +80,17 @@ line starting `[ha-live]`:
 A wall that is not on the push channel also waits for its own one-minute
 poll. A wall opened in a current browser joins it by itself.
 
+## A WebRTC camera looks like the ordinary live picture
+
+A Camera widget set to *Live, WebRTC* falls back to *Live* when WebRTC cannot
+work, so the picture keeps coming. Two things cause it. Home Assistant may not
+offer WebRTC for that camera: open the camera in Home Assistant, and if its
+own dashboard does not play it over WebRTC, neither can the wall. Or the wall
+cannot reach Home Assistant's camera server (go2rtc) on your network: the wall
+asks no outside server to help it connect, so it has to be on the same
+network as Home Assistant, and a firewall must let it reach go2rtc's port
+(8555 by default). A wall on a guest network or a VPN is the usual case.
+
 ## Weather or alerts are empty
 
 A forecast needs a location: type a town or postcode on **Weather**, or use Home

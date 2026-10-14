@@ -12567,6 +12567,50 @@ counts:** no real doorbell has rung through a real Home Assistant, and the
 supervisor's proxy of the WebSocket API has carried only M6.11's one short
 exchange, never a socket held open for hours.
 
+**A camera can be live over WebRTC, under the rule 12 exception the owner
+wrote for it (RFC 007 Tier C, Shape 1).** RFC 007 §9 refused Shape 1 because
+the answer hands the wall go2rtc's address. The owner chose WebRTC and amended
+the rule instead of building Shape 2's media relay. "Picture: Live, WebRTC"
+(`cameraMode: 'webrtc'`) is the third choice on a Camera widget.
+
+- **The wall makes the offer.** It uses `iceServers: []`, so it contacts no
+  STUN or TURN server (rule three). It gathers its own candidates for up to
+  three seconds before sending, so nothing goes from the server to the house
+  but the offer.
+- **The server signals.** `POST /d/camera/:handle/webrtc` is gated exactly as
+  the MJPEG stream is. The server opens Home Assistant's WebSocket with the
+  token and sends `camera/webrtc/offer` for the entity. It answers with the
+  SDP answer and go2rtc's candidates, each held to its shape: an SDP starts
+  `v=0` and is capped at 64 KB; a candidate line is printable ASCII and
+  nothing else, read in both of core's spellings.
+- **The socket is the session.** Home Assistant ends a WebRTC session when its
+  socket closes, so `modules/cameras/webrtc.ts` holds it. The wall's poll of
+  `GET /d/camera-session/:id` for late candidates is the heartbeat. A session
+  is closed when nobody polls it for 20 s, when the wall ends it, when the
+  wall is revoked or no longer places the camera (asked every second), and
+  after an hour.
+- **It falls back for good.** A camera Home Assistant will not stream over
+  WebRTC is refused at once (`409`). A session that draws no frame in ten
+  seconds is one this screen cannot reach. Either way the box becomes the
+  MJPEG stream, which goes through this server and so reaches any wall that
+  reaches the server.
+- **What it does not do.** The doorbell takeover still uses the MJPEG stream;
+  a takeover names no camera mode, and the hub's latency is about a second.
+  A panel ignores `cameraMode` as before.
+
+**Measured.** `camera-webrtc.test.ts` (9) runs the real app and fetcher
+against the fake house, which now answers `camera/webrtc/offer` as core does
+and records each session's socket. `browser-camera-webrtc.test.ts` (2) plays
+real WebRTC between two Chromium pages, the second standing in for go2rtc with
+a canvas flipping red and blue. Both colours are read off the wall's `<video>`
+across a rebuild, on one session and one offer, and the page holds no entity
+id, address or token. A camera that offers no WebRTC is drawn by the MJPEG
+canvas. `browser-camera.test.ts`'s editor test chooses the segment and reads
+its hint. The display's `camera.test.ts` gains 2.
+Thirteen mutations were checked and all thirteen are red. One failed to build at first and was re-aimed.
+**Still unproven where it counts:** no real go2rtc has been reached from a
+real wall.
+
 ---
 
 ## Open decisions

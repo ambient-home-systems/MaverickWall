@@ -16,6 +16,16 @@
 
 ## Unreleased
 
+**A camera can be live over WebRTC, the way Home Assistant shows it.** A
+Camera widget's Picture has a third choice, **Live, WebRTC**. The video comes
+straight from Home Assistant's own camera server to the wall, with the least
+delay and without passing through Maverick Wall. Maverick Wall still does the
+talking to Home Assistant, so the wall is never given Home Assistant's address
+or its token; it is told the address of the camera server on your network for
+that one camera, which is what WebRTC needs. A camera Home Assistant cannot
+show over WebRTC, or a wall that cannot reach the camera server, falls back to
+**Live** on its own.
+
 ## 1.8.2
 
 **A doorbell is on the wall in about a second.** Until now the wall read

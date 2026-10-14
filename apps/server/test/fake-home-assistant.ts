@@ -444,6 +444,15 @@ export interface FakeHa {
   dropSockets(): void;
   /** Refuse `subscribe_entities` the way a core too old to have it does. */
   refuseSubscribe: boolean;
+  /**
+   * What core does with `camera/webrtc/offer` (Hard rule 12's WebRTC
+   * exception): handed the entity and the offer, and a way to send the
+   * session's events (`answer`, `candidate`, `error`). Unset, every camera is
+   * refused the way core refuses one that does not offer WebRTC.
+   */
+  webrtc: ((entityId: string, offer: string, send: (event: Record<string, unknown>) => void) => void | Promise<void>) | undefined;
+  /** Every WebRTC session asked for, and whether the socket that holds it is still open. */
+  readonly webrtcSessions: { entityId: string; open: boolean }[];
   /** Stand the fake down without reaching into a module-level array. */
   close(): Promise<void>;
 }
@@ -486,6 +495,8 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
     emit: () => undefined,
     dropSockets: () => undefined,
     refuseSubscribe: false,
+    webrtc: undefined,
+    webrtcSessions: [],
     todo: {
       'todo.shopping': {
         items: [
@@ -1079,6 +1090,34 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
         }
         if (message.type === 'ping') {
           ws.send(JSON.stringify({ id: message.id, type: 'pong' }));
+          return;
+        }
+        if (message.type === 'camera/webrtc/offer') {
+          const offerMessage = message as { entity_id?: unknown; offer?: unknown };
+          const entityId = typeof offerMessage.entity_id === 'string' ? offerMessage.entity_id : '';
+          const answerer = state.webrtc;
+          if (answerer === undefined) {
+            ws.send(
+              JSON.stringify({
+                id: message.id,
+                type: 'result',
+                success: false,
+                error: { code: 'webrtc_offer_failed', message: 'Camera does not support WebRTC, frontend_stream_types={<StreamType.HLS: \'hls\'>}' },
+              }),
+            );
+            return;
+          }
+          const session = { entityId, open: true };
+          state.webrtcSessions.push(session);
+          ws.on('close', () => {
+            session.open = false;
+          });
+          ws.send(JSON.stringify({ id: message.id, type: 'result', success: true, result: null }));
+          const send = (event: Record<string, unknown>): void => {
+            if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ id: message.id, type: 'event', event }));
+          };
+          send({ type: 'session', session_id: `s${state.webrtcSessions.length}` });
+          void answerer(entityId, typeof offerMessage.offer === 'string' ? offerMessage.offer : '', send);
           return;
         }
         if (message.type === 'subscribe_entities' && !state.refuseSubscribe) {

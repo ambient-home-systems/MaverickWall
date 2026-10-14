@@ -54,7 +54,18 @@ export function refreshSeconds(config: unknown): number {
 
 /** Whether the box shows the camera's live stream rather than a picture every few seconds (plan item M6.2). */
 export function cameraIsLive(config: unknown): boolean {
-  return typeof config === 'object' && config !== null && (config as Record<string, unknown>)['cameraMode'] === 'stream';
+  if (typeof config !== 'object' || config === null) return false;
+  const mode = (config as Record<string, unknown>)['cameraMode'];
+  return mode === 'stream' || mode === 'webrtc';
+}
+
+/**
+ * Whether a live picture is asked for over WebRTC first (Hard rule 12's
+ * WebRTC exception): straight from Home Assistant's media server, with the
+ * MJPEG stream as the fallback when the camera or the browser cannot.
+ */
+export function cameraIsWebrtc(config: unknown): boolean {
+  return typeof config === 'object' && config !== null && (config as Record<string, unknown>)['cameraMode'] === 'webrtc';
 }
 
 /** Whether the picture sits whole in its box rather than filling it (cropped). */

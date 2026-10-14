@@ -6177,21 +6177,30 @@ function boot(): void {
     picker.appendChild(select);
     configPanel.appendChild(picker);
 
-    const live = cfg['cameraMode'] === 'stream';
+    const mode = cfg['cameraMode'] === 'stream' || cfg['cameraMode'] === 'webrtc' ? cfg['cameraMode'] : 'snapshot';
+    const live = mode !== 'snapshot';
     configPanel.appendChild(
       segControl(
         'Picture',
         [
           ['snapshot', 'Every few seconds'],
           ['stream', 'Live'],
+          ['webrtc', 'Live, WebRTC'],
         ],
-        live ? 'stream' : 'snapshot',
+        mode,
         // A segment's change rebuilds the panel, so the refresh below is shown
         // or hidden by the line that builds it.
-        (value) => setConfig(widget, 'cameraMode', value === 'stream' ? 'stream' : undefined),
+        (value) => setConfig(widget, 'cameraMode', value === 'stream' || value === 'webrtc' ? value : undefined),
         'cameraMode',
       ),
     );
+    if (mode === 'webrtc') {
+      const why = document.createElement('p');
+      why.className = 'hint';
+      why.textContent =
+        'Straight from Home Assistant’s camera server, with the least delay. The wall is told that server’s address on your network for this camera; it falls back to Live when the camera or this screen cannot.';
+      configPanel.appendChild(why);
+    }
     const every = typeof cfg['cameraRefreshSec'] === 'number' ? String(cfg['cameraRefreshSec']) : '3';
     const refresh = configPanel.appendChild(
       segControl(
