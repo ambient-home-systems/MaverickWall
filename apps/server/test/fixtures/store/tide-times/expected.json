@@ -1,0 +1,29 @@
+{
+  "panel": {
+    "kind": "timeline",
+    "title": "Tides",
+    "items": [
+      {
+        "at": "2026-10-14T02:56:00Z",
+        "label": "High tide",
+        "detail": "1.4 m"
+      },
+      {
+        "at": "2026-10-14T09:01:00Z",
+        "label": "Low tide",
+        "detail": "0.2 m"
+      },
+      {
+        "at": "2026-10-14T15:12:00Z",
+        "label": "High tide",
+        "detail": "1.6 m"
+      },
+      {
+        "at": "2026-10-14T21:43:00Z",
+        "label": "Low tide",
+        "detail": "0.2 m"
+      }
+    ]
+  },
+  "signals": []
+}

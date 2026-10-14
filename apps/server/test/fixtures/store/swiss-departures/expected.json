@@ -1,0 +1,33 @@
+{
+  "panel": {
+    "kind": "readings",
+    "title": "Bern",
+    "items": [
+      {
+        "label": "S7 Worb Dorf",
+        "value": "15:45"
+      },
+      {
+        "label": "S1 Fribourg/Freiburg",
+        "value": "15:45"
+      },
+      {
+        "label": "S9 Unterzollikofen",
+        "value": "15:46"
+      },
+      {
+        "label": "S31 Münchenbuchsee",
+        "value": "15:46"
+      },
+      {
+        "label": "S31 Wabern bei Bern",
+        "value": "15:47"
+      },
+      {
+        "label": "S1 Thun",
+        "value": "15:47"
+      }
+    ]
+  },
+  "signals": []
+}

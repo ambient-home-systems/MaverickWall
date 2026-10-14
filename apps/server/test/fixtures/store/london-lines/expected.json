@@ -1,0 +1,64 @@
+{
+  "panel": {
+    "kind": "readings",
+    "title": "Lines",
+    "items": [
+      {
+        "label": "Bakerloo",
+        "value": "Good Service",
+        "tone": "idle"
+      },
+      {
+        "label": "Central",
+        "value": "Minor Delays",
+        "tone": "active"
+      },
+      {
+        "label": "Circle",
+        "value": "Good Service",
+        "tone": "idle"
+      },
+      {
+        "label": "District",
+        "value": "Minor Delays",
+        "tone": "active"
+      },
+      {
+        "label": "Hammersmith & City",
+        "value": "Good Service",
+        "tone": "idle"
+      },
+      {
+        "label": "Jubilee",
+        "value": "Good Service",
+        "tone": "idle"
+      },
+      {
+        "label": "Metropolitan",
+        "value": "Good Service",
+        "tone": "idle"
+      },
+      {
+        "label": "Northern",
+        "value": "Good Service",
+        "tone": "idle"
+      },
+      {
+        "label": "Piccadilly",
+        "value": "Good Service",
+        "tone": "idle"
+      },
+      {
+        "label": "Victoria",
+        "value": "Good Service",
+        "tone": "idle"
+      },
+      {
+        "label": "Waterloo & City",
+        "value": "Good Service",
+        "tone": "idle"
+      }
+    ]
+  },
+  "signals": []
+}

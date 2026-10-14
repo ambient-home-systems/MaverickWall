@@ -1,0 +1,37 @@
+{
+  "name": "Public holidays",
+  "contract": 1,
+  "config": [
+    {
+      "key": "country",
+      "label": "Country code",
+      "type": "string",
+      "default": "GB"
+    }
+  ],
+  "secrets": [],
+  "fetch": {
+    "url": "https://date.nager.at/api/v3/NextPublicHolidays/{country}",
+    "intervalSeconds": 86400,
+    "allowLan": false,
+    "format": "json"
+  },
+  "panel": {
+    "kind": "readings",
+    "title": "Holidays",
+    "items": {
+      "for": ".",
+      "label": "{localName | truncate:40}",
+      "value": "{date | date:short} · {date | date:relative}",
+      "where": [
+        {
+          "path": "global",
+          "equals": "true"
+        }
+      ],
+      "limit": 5,
+      "empty": "Nager.Date lists no holidays for this country."
+    }
+  },
+  "signals": []
+}

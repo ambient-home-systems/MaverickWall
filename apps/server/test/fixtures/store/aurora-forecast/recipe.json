@@ -1,0 +1,51 @@
+{
+  "name": "Aurora forecast",
+  "contract": 1,
+  "config": [],
+  "secrets": [],
+  "fetch": {
+    "url": "https://services.swpc.noaa.gov/products/noaa-planetary-k-index-forecast.json",
+    "intervalSeconds": 3600,
+    "allowLan": false,
+    "format": "json"
+  },
+  "lookups": {
+    "scale": {
+      "G1": "minor storm",
+      "G2": "moderate storm",
+      "G3": "strong storm",
+      "G4": "severe storm",
+      "G5": "extreme storm",
+      "*": ""
+    }
+  },
+  "panel": {
+    "kind": "timeline",
+    "title": "Aurora (Kp)",
+    "items": {
+      "for": ".",
+      "at": "{time_tag | iso}",
+      "label": "Kp {kp | round:1}",
+      "detail": "{noaa_scale | map:scale}",
+      "where": [
+        {
+          "path": "observed",
+          "equals": "predicted"
+        }
+      ],
+      "limit": 6,
+      "empty": "NOAA has published no forecast.",
+      "tone": {
+        "from": "noaa_scale",
+        "map": {
+          "G1": "alert",
+          "G2": "alert",
+          "G3": "alert",
+          "G4": "alert",
+          "G5": "alert"
+        }
+      }
+    }
+  },
+  "signals": []
+}
