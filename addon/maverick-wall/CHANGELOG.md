@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 1.8.1
+
 **A Home Assistant alert no longer tells the wall what it is about.** When a
 "Tell me when…" rule about something in your house covered the wall or put a
 banner across it, the wall was sent that thing's Home Assistant name, such as
