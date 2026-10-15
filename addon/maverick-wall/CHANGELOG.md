@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 1.8.7
+
 **No second sidebar inside Home Assistant.** Opened from Home Assistant's
 sidebar, Maverick Wall's settings used to draw their own sidebar beside it, so
 two columns of menus took about a third of the screen. They now show their
