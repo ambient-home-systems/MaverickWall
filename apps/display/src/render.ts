@@ -51,7 +51,7 @@ import { applyStyleTokens, styleTokensOf } from './widget-style.js';
 import { encodeQr } from './qr.js';
 import { nextIndex, untilWords, whenWords } from './module-time.js';
 import { qrCaption, qrKind, qrPasswordLine, qrPayload } from './qr-payload.js';
-import { qrPaths, qrShapes, type QrShapes } from './qr-shapes.js';
+import { qrPaths, qrShapes, qrStyleFits, type QrShapes } from './qr-shapes.js';
 import { newsIndexAt, newsMode, newsShown, newsShows } from './news-view.js';
 import { envTiles, type EnvInput } from './env-tiles.js';
 import { headingDivider, headingPlace, headingSecond, headingSizesFrom, headingText } from './heading.js';
@@ -3310,7 +3310,30 @@ function qrSvgNode(
     eyes.setAttribute('class', 'qr-modules qr-eyes');
     svg.appendChild(eyes);
   }
+  if (!paths.crisp) qrSquareFallback.set(svg, { square: qrPaths(matrix, quiet, { dots: 'square', eyes: 'square' }).modules, span, size: matrix.size, quiet });
   return svg;
+}
+
+/** A styled code's square drawing, for a box too small for its style to read (`squareSmallQr`). */
+const qrSquareFallback = new WeakMap<SVGSVGElement, { readonly square: string; readonly span: number; readonly size: number; readonly quiet: number }>();
+
+/**
+ * A styled code drawn too small to read is drawn square instead: under
+ * `QR_STYLE_MIN_PX` screen pixels a module, the sweep found rounded and
+ * dotted codes failing where square ones read. Asked of the drawn square
+ * once the box is laid out, because only then is a module's size known.
+ */
+function squareSmallQr(root: HTMLElement): void {
+  for (const svg of root.querySelectorAll<SVGSVGElement>('.qr-code svg')) {
+    const fallback = qrSquareFallback.get(svg);
+    if (fallback === undefined) continue;
+    const side = Math.min(svg.getBoundingClientRect().width, svg.getBoundingClientRect().height);
+    if (side === 0 || qrStyleFits(side, fallback.size, fallback.quiet)) continue;
+    svg.querySelector('.qr-eyes')?.remove();
+    svg.querySelector('.qr-modules')?.setAttribute('d', fallback.square);
+    svg.setAttribute('shape-rendering', 'crispEdges');
+    svg.dataset['qrStyle'] = 'square';
+  }
 }
 
 /**
@@ -5021,6 +5044,8 @@ function tierQr(entry: TieredWidget): void {
     for (const line of words.slice(kept)) line.remove();
     stampRungs(entry.box, words.slice(0, kept).map((line) => line.dataset['part'] ?? ''));
   }
+  // After the words: whatever room they left is the code's.
+  squareSmallQr(entry.body);
 }
 
 /** The `range` look's primary run: its temperatures, as the strip's is. */

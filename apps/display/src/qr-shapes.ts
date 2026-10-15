@@ -56,6 +56,20 @@ const ROUND = 0.3;
 /** A dot's radius. Under a half, so two dots side by side never touch and each middle stays its own. */
 const DOT = 0.42;
 
+/**
+ * The fewest screen pixels a module may have and still be drawn in a style.
+ * Measured, not chosen by eye: decoding every style from a screenshot at
+ * nineteen sizes, rounded and dotted codes stopped reading below about 2.3
+ * pixels a module where square ones went on reading, so under 3 a styled code
+ * is drawn square (`qrStyleFits`). A code that reads matters more than its look.
+ */
+export const QR_STYLE_MIN_PX = 3;
+
+/** Whether a code drawn `side` pixels across, quiet zone included, is large enough to wear its style. */
+export function qrStyleFits(side: number, matrixSize: number, quiet: number): boolean {
+  return side / (matrixSize + quiet * 2) >= QR_STYLE_MIN_PX;
+}
+
 /** Whether a module is part of one of the three 7x7 finder patterns. */
 function inEye(size: number, row: number, column: number): boolean {
   const top = row < 7;
@@ -93,6 +107,30 @@ function eye(x: number, y: number, style: QrEyes): string {
   return `M${x} ${y}h7v7h-7z` + `M${x + 1} ${y + 1}h5v5h-5z` + `M${x + 2} ${y + 2}h3v3h-3z`;
 }
 
+/** Alignment pattern centres by version, from ISO/IEC 18004 Annex E, versions 1 to 10. */
+const ALIGNMENT: readonly (readonly number[])[] = [
+  [], [6, 18], [6, 22], [6, 26], [6, 30], [6, 34], [6, 22, 38], [6, 24, 42], [6, 26, 46], [6, 28, 50],
+];
+
+/**
+ * Whether a module is part of an alignment pattern. A decoder finds one by the
+ * runs through its middle, dark, light, dark at one module each, and a ring
+ * of separate dots breaks the outer run into gaps: the sweep found dotted
+ * codes failing at about half the sizes it tried until these were drawn whole,
+ * and reading at every one after. So the dots style draws them as rounded
+ * squares; the timing lines made no difference and stay dots.
+ */
+function inAlignment(size: number, row: number, column: number): boolean {
+  const centres = ALIGNMENT[(size - 17) / 4 - 1] ?? [];
+  for (const cy of centres) {
+    for (const cx of centres) {
+      if (inEye(size, cy, cx)) continue;
+      if (Math.abs(row - cy) <= 2 && Math.abs(column - cx) <= 2) return true;
+    }
+  }
+  return false;
+}
+
 export function qrPaths(matrix: QrMatrix, quiet: number, shapes: QrShapes): QrPaths {
   const separateEyes = shapes.eyes !== 'square' || shapes.dots !== 'square';
   let modules = '';
@@ -114,7 +152,7 @@ export function qrPaths(matrix: QrMatrix, quiet: number, shapes: QrShapes): QrPa
         continue;
       }
       modules +=
-        shapes.dots === 'dots'
+        shapes.dots === 'dots' && !inAlignment(matrix.size, row, column)
           ? circle(column + quiet + 0.5, row + quiet + 0.5, DOT)
           : roundRect(column + quiet, row + quiet, 1, 1, ROUND);
       column++;
