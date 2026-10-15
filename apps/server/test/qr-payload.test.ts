@@ -192,4 +192,11 @@ describe('the schema', () => {
     expect(ok({ ssid: 'Guests', wifiPassword: 'x'.repeat(64) }).success).toBe(false);
     expect(ok({ wifiSecurity: 'WPA3' }).success).toBe(false);
   });
+
+  it('takes the dot and corner-square styles by name, and refuses one it does not know', () => {
+    expect(ok({ ssid: 'Guests', qrDots: 'dots', qrEyes: 'circle' }).success).toBe(true);
+    expect(ok({ ssid: 'Guests', qrDots: 'rounded', qrEyes: 'rounded' }).success).toBe(true);
+    expect(ok({ ssid: 'Guests', qrDots: 'hearts' }).success).toBe(false);
+    expect(ok({ ssid: 'Guests', qrEyes: 'dots' }).success).toBe(false);
+  });
 });

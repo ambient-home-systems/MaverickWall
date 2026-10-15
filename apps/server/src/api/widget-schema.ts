@@ -499,6 +499,14 @@ const widgetConfigFields = z
       .optional(),
     showPassword: z.boolean().optional(),
     /*
+     * How the code's modules and its three eyes are drawn: square (absent),
+     * rounded, or dots and circles. Every one is a shape a camera reads, held
+     * by decoding a screenshot of each (`browser-qr.test.ts`). Still black on
+     * white: a colour or a gradient is a code some phones cannot see.
+     */
+    qrDots: z.enum(['square', 'rounded', 'dots']).optional(),
+    qrEyes: z.enum(['square', 'rounded', 'circle']).optional(),
+    /*
      * Heading (plan item M5.4). The heading itself is the `text` a note uses;
      * `subtitle` is the line under it. `textSize` is the most the heading may
      * be — small, medium (absent) or large, three of the wall's own roles —

@@ -51,6 +51,7 @@ import { applyStyleTokens, styleTokensOf } from './widget-style.js';
 import { encodeQr } from './qr.js';
 import { nextIndex, untilWords, whenWords } from './module-time.js';
 import { qrCaption, qrKind, qrPasswordLine, qrPayload } from './qr-payload.js';
+import { qrPaths, qrShapes, qrStyleFits, type QrShapes } from './qr-shapes.js';
 import { newsIndexAt, newsMode, newsShown, newsShows } from './news-view.js';
 import { envTiles, type EnvInput } from './env-tiles.js';
 import { headingDivider, headingPlace, headingSecond, headingSizesFrom, headingText } from './heading.js';
@@ -3272,14 +3273,23 @@ function renderNewsWidget(model: DisplayModel, config: unknown): HTMLElement {
  * the QR code widget and a News headline's code (plan items M5.3, M5.5). Its
  * plate and modules are painted by `display.css`, black on white on every
  * theme, because an inverted code is one some phones cannot see.
+ *
+ * The QR code widget may round its modules or its three eyes (`qr-shapes.ts`);
+ * a News headline's code and a module's are always square.
  */
-function qrSvgNode(matrix: { readonly size: number; readonly modules: readonly (readonly boolean[])[] }, label: string): SVGSVGElement {
+function qrSvgNode(
+  matrix: { readonly size: number; readonly modules: readonly (readonly boolean[])[] },
+  label: string,
+  shapes: QrShapes = { dots: 'square', eyes: 'square' },
+): SVGSVGElement {
   const ns = 'http://www.w3.org/2000/svg';
   const quiet = 4;
   const span = matrix.size + quiet * 2;
+  const paths = qrPaths(matrix, quiet, shapes);
   const svg = document.createElementNS(ns, 'svg');
   svg.setAttribute('viewBox', `0 0 ${span} ${span}`);
-  svg.setAttribute('shape-rendering', 'crispEdges');
+  // A curve under crispEdges is a staircase; only an all-square code keeps it.
+  svg.setAttribute('shape-rendering', paths.crisp ? 'crispEdges' : 'geometricPrecision');
   svg.setAttribute('role', 'img');
   svg.setAttribute('aria-label', label);
   svg.setAttribute('focusable', 'false');
@@ -3288,26 +3298,42 @@ function qrSvgNode(matrix: { readonly size: number; readonly modules: readonly (
   plate.setAttribute('height', String(span));
   plate.setAttribute('class', 'qr-plate');
   svg.appendChild(plate);
-  let d = '';
-  for (let row = 0; row < matrix.size; row++) {
-    const line = matrix.modules[row] as readonly boolean[];
-    let column = 0;
-    while (column < matrix.size) {
-      if (!line[column]) {
-        column++;
-        continue;
-      }
-      let end = column;
-      while (end < matrix.size && line[end]) end++;
-      d += `M${column + quiet} ${row + quiet}h${end - column}v1h${column - end}z`;
-      column = end;
-    }
-  }
   const modules = document.createElementNS(ns, 'path');
-  modules.setAttribute('d', d);
+  modules.setAttribute('d', paths.modules);
   modules.setAttribute('class', 'qr-modules');
   svg.appendChild(modules);
+  if (paths.eyes !== '') {
+    // Each eye is a ring and a centre: even-odd makes the hole between them.
+    const eyes = document.createElementNS(ns, 'path');
+    eyes.setAttribute('d', paths.eyes);
+    eyes.setAttribute('fill-rule', 'evenodd');
+    eyes.setAttribute('class', 'qr-modules qr-eyes');
+    svg.appendChild(eyes);
+  }
+  if (!paths.crisp) qrSquareFallback.set(svg, { square: qrPaths(matrix, quiet, { dots: 'square', eyes: 'square' }).modules, span, size: matrix.size, quiet });
   return svg;
+}
+
+/** A styled code's square drawing, for a box too small for its style to read (`squareSmallQr`). */
+const qrSquareFallback = new WeakMap<SVGSVGElement, { readonly square: string; readonly span: number; readonly size: number; readonly quiet: number }>();
+
+/**
+ * A styled code drawn too small to read is drawn square instead: under
+ * `QR_STYLE_MIN_PX` screen pixels a module, the sweep found rounded and
+ * dotted codes failing where square ones read. Asked of the drawn square
+ * once the box is laid out, because only then is a module's size known.
+ */
+function squareSmallQr(root: HTMLElement): void {
+  for (const svg of root.querySelectorAll<SVGSVGElement>('.qr-code svg')) {
+    const fallback = qrSquareFallback.get(svg);
+    if (fallback === undefined) continue;
+    const side = Math.min(svg.getBoundingClientRect().width, svg.getBoundingClientRect().height);
+    if (side === 0 || qrStyleFits(side, fallback.size, fallback.quiet)) continue;
+    svg.querySelector('.qr-eyes')?.remove();
+    svg.querySelector('.qr-modules')?.setAttribute('d', fallback.square);
+    svg.setAttribute('shape-rendering', 'crispEdges');
+    svg.dataset['qrStyle'] = 'square';
+  }
 }
 
 /**
@@ -3351,6 +3377,7 @@ function renderQrWidget(config: unknown): HTMLElement {
       : kind === 'link'
         ? `QR code for ${caption ?? 'a link'}`
         : 'QR code',
+    qrShapes(config),
   );
   code.appendChild(svg);
   body.appendChild(code);
@@ -5017,6 +5044,8 @@ function tierQr(entry: TieredWidget): void {
     for (const line of words.slice(kept)) line.remove();
     stampRungs(entry.box, words.slice(0, kept).map((line) => line.dataset['part'] ?? ''));
   }
+  // After the words: whatever room they left is the code's.
+  squareSmallQr(entry.body);
 }
 
 /** The `range` look's primary run: its temperatures, as the strip's is. */
