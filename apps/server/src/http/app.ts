@@ -7,6 +7,7 @@ import { CAMERA_HANDLE } from '../modules/cameras/index.js';
 import { cameraPlacedOn, takeoverCamera, withTakeoverCameras } from '../modules/cameras/placement.js';
 import { createSnapshots } from '../modules/cameras/snapshot.js';
 import { callStream, resolveConnection } from '../modules/homeassistant/client.js';
+import { dismissHaNotification } from '../modules/notifications/dismiss.js';
 import { websocketUrl } from '../modules/homeassistant/notifications.js';
 import { createWebrtcSessions, isSdp, MAX_SDP, type WebrtcLimits } from '../modules/cameras/webrtc.js';
 import { cameraEntityOf, cameraHandles } from '../modules/cameras/index.js';
@@ -1425,6 +1426,30 @@ export function createApp(deps: AppDeps): Hono {
     const result = await pressWebhook(
       { db: deps.db, fetcher: deps.fetcher, keyring: deps.keyring, now: (deps.now ?? Date.now)() },
       { screenId: screen.id, button, widget },
+    );
+    if (result.ok) return c.json({ ok: true });
+    return c.json({ error: result.error, message: result.message }, result.status);
+  });
+
+  /**
+   * Dismissing one of Home Assistant's persistent notifications from a wall
+   * (hard rule 12, amended 2026-10-14): behind this wall's alert switch, by a
+   * handle this server minted, one at a time. `dismissHaNotification` holds
+   * the rest — the widget placed on this wall, the handle matched against what
+   * was read, the shared press budget, and the one call through the table.
+   */
+  app.post('/d/notifications/dismiss', async (c: Context) => {
+    const screen = c.get('screen') as ScreenRow;
+    // The wall's own switch, before the body is looked at.
+    if (screen.allowDismiss !== 1) {
+      return c.json({ error: 'not-allowed', message: 'This wall cannot clear alerts.' }, 403);
+    }
+    const body = (await c.req.parseBody()) as Record<string, unknown>;
+    const key = typeof body['key'] === 'string' ? body['key'].trim() : '';
+    const result = await dismissHaNotification(
+      { db: deps.db, fetcher: deps.fetcher, keyring: deps.keyring, now: now() },
+      screen,
+      key,
     );
     if (result.ok) return c.json({ ok: true });
     return c.json({ error: result.error, message: result.message }, result.status);

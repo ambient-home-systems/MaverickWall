@@ -519,6 +519,97 @@ describe('the Notifications widget (M6.11)', () => {
   });
 });
 
+describe('dismissing a Home Assistant notification from a wall (rule 12, amended 2026-10-14)', () => {
+  const seed = (h: Harness): void => {
+    const at = new Date().toISOString();
+    h.ha.notifications.push(
+      { notification_id: 'config_entry_discovery', title: 'New devices discovered', message: 'We found 2.', created_at: at },
+      { notification_id: 'backup_failed', title: null, message: 'The backup failed.', created_at: at },
+    );
+  };
+  const handles = async (h: Harness): Promise<string[]> =>
+    ((await manifestOf(h)).manifest.panels['notifications'] as { ha?: { key: string }[] } | undefined)?.ha?.map((one) => one.key) ?? [];
+  const dismiss = (h: Harness, key: string): Promise<Response> =>
+    h.wall('/d/notifications/dismiss', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ key }).toString(),
+    });
+
+  it('dismisses the one it names, in Home Assistant, and the wall’s list loses it at once', async () => {
+    const h = await harness([]);
+    seed(h);
+    h.place('w-nf', 'notifications', {});
+    await h.poll();
+    const [first, second] = await handles(h);
+    expect(first).toBeDefined();
+    const target = ((await manifestOf(h)).manifest.panels['notifications'] as { ha: { key: string; message: string }[] }).ha.find(
+      (one) => one.message === 'We found 2.',
+    )!.key;
+
+    const response = await dismiss(h, target);
+    expect(response.status).toBe(200);
+    // One call, through the table, naming one notification and nothing else.
+    expect(h.ha.posts.map((post) => [post.path, JSON.parse(post.body)])).toEqual([
+      ['/api/services/persistent_notification/dismiss', { notification_id: 'config_entry_discovery' }],
+    ]);
+    expect(h.ha.notifications.map((one) => one.notification_id)).toEqual(['backup_failed']);
+    // Gone from the wall before the next read of Home Assistant.
+    const after = await handles(h);
+    expect(after).toHaveLength(1);
+    expect(after).not.toContain(target);
+    expect([first, second]).toContain(after[0]);
+  });
+
+  it('is refused by a wall not allowed to clear alerts, before anything is asked', async () => {
+    const h = await harness([]);
+    seed(h);
+    h.place('w-nf', 'notifications', {});
+    await h.poll();
+    const [key] = await handles(h);
+    h.db.prepare(`UPDATE screens SET allow_dismiss = 0 WHERE id = 'wall'`).run();
+    const response = await dismiss(h, key!);
+    expect(response.status).toBe(403);
+    expect(((await response.json()) as { message: string }).message).toBe('This wall cannot clear alerts.');
+    expect(h.ha.posts).toEqual([]);
+    expect(h.ha.notifications).toHaveLength(2);
+  });
+
+  it('dismisses nothing a wall was not shown: no widget, a widget that hides them, an unknown handle, or Home Assistant’s own id', async () => {
+    const h = await harness([]);
+    seed(h);
+    h.place('w-nf', 'notifications', {});
+    await h.poll();
+    const [key] = await handles(h);
+
+    // The id itself is never a handle.
+    expect((await dismiss(h, 'config_entry_discovery')).status).toBe(400);
+    // A handle shaped right that names nothing read.
+    expect((await dismiss(h, `han:${'0'.repeat(24)}`)).status).toBe(404);
+    // The widget stops showing Home Assistant's — on this wall nothing shows it now.
+    h.db.prepare(`UPDATE layout_widgets SET config = ? WHERE id = 'w-nf'`).run(JSON.stringify({ haNotifications: false }));
+    expect((await dismiss(h, key!)).status).toBe(404);
+    // And no widget at all.
+    h.db.prepare(`DELETE FROM layout_widgets WHERE id = 'w-nf'`).run();
+    expect((await dismiss(h, key!)).status).toBe(404);
+    expect(h.ha.posts).toEqual([]);
+  });
+
+  it('keeps the notification when Home Assistant cannot be reached, and says so', async () => {
+    const h = await harness([]);
+    seed(h);
+    h.place('w-nf', 'notifications', {});
+    await h.poll();
+    const [key] = await handles(h);
+    h.ha.down = true;
+    const response = await dismiss(h, key!);
+    h.ha.down = false;
+    expect(response.status).toBe(502);
+    expect(((await response.json()) as { message: string }).message).not.toBe('');
+    expect(await handles(h)).toContain(key);
+  });
+});
+
 describe('a house that watches readings', () => {
   it('is not asked for its notifications either, until a widget shows them', async () => {
     const h = await harness([PLAYER]);

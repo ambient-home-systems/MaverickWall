@@ -909,8 +909,8 @@ function start(): void {
      * click on Enter is one the OK key must leave alone, and a second handler
      * with its own copy of this rule is how the two would come to disagree.
      */
-    if (document.activeElement?.closest?.('[data-chore], [data-todo], [data-ha-act], [data-timer-clear], [data-message-clear], [data-tile-dismiss], [data-stack-swap], .hc-panel') !== null &&
-        document.activeElement?.closest?.('[data-chore], [data-todo], [data-ha-act], [data-timer-clear], [data-message-clear], [data-tile-dismiss], [data-stack-swap], .hc-panel') !== undefined) {
+    if (document.activeElement?.closest?.('[data-chore], [data-todo], [data-ha-act], [data-timer-clear], [data-message-clear], [data-tile-dismiss], [data-ha-notification-dismiss], [data-stack-swap], .hc-panel') !== null &&
+        document.activeElement?.closest?.('[data-chore], [data-todo], [data-ha-act], [data-timer-clear], [data-message-clear], [data-tile-dismiss], [data-ha-notification-dismiss], [data-stack-swap], .hc-panel') !== undefined) {
       return;
     }
     const key = dismissTarget();
@@ -962,7 +962,7 @@ function start(): void {
    * is still running, and the server is the authority on both. The handle and
    * nothing else crosses; the re-poll is what takes the row off the glass.
    */
-  const clearNote = async (path: '/d/timers/clear' | '/d/messages/clear', field: string, id: string): Promise<void> => {
+  const clearNote = async (path: '/d/timers/clear' | '/d/messages/clear' | '/d/notifications/dismiss', field: string, id: string): Promise<void> => {
     try {
       const response = await fetch(path, {
         method: 'POST',
@@ -1272,6 +1272,14 @@ function start(): void {
     const tileKey = target?.closest?.('[data-tile-dismiss]')?.getAttribute('data-tile-dismiss');
     if (tileKey !== null && tileKey !== undefined && tileKey !== '') {
       void acknowledge(tileKey);
+      return;
+    }
+
+    // A Home Assistant notification's Clear (rule 12, amended 2026-10-14): one
+    // notification, by its handle; the server decides whether this wall may.
+    const haNote = target?.closest?.('[data-ha-notification-dismiss]')?.getAttribute('data-ha-notification-dismiss');
+    if (haNote !== null && haNote !== undefined && haNote !== '') {
+      void clearNote('/d/notifications/dismiss', 'key', haNote);
       return;
     }
 
