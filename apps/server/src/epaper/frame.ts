@@ -150,8 +150,13 @@ import { canvasPanelInputs, renderFreeformEpaper, type PlacedEpaperWidget } from
  * absence of `showShifts` on a month, exactly as on the wall; off by it on a
  * week (Q2). A panel with a calendar widget and a household on a rota moves;
  * one with no rota, and the built-in layout, are byte-identical to 9.
+ *
+ * 11: a calendar widget's week strip honours "Which calendars", as the wall's
+ * week columns always did and the panel's month does since P5.4. Only a panel
+ * with a week-view calendar widget that names calendars moves; every other
+ * frame is byte-identical to 10.
  */
-export const EPAPER_RENDERER_VERSION = 10;
+export const EPAPER_RENDERER_VERSION = 11;
 
 /** Fallback panel size when a screen has no geometry — a Seeed 7.5". */
 export const DEFAULT_PANEL_WIDTH = 800;

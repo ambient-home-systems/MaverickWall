@@ -16,6 +16,11 @@
 
 ## Unreleased
 
+**An e-paper panel's week shows only the calendars you picked.** A calendar
+widget set to the week view, with **Calendars to show** ticked, now draws just
+those calendars on a panel, as it already did on a browser wall, and its "+N"
+counts only them. Before this the panel drew every calendar in the week.
+
 ## 1.8.5
 
 **The forecast has 3D weather pictures.** **Pictures** on a forecast, and on a

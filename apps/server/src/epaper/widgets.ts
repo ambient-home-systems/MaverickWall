@@ -2784,7 +2784,10 @@ function drawCalendarWidget(
    * number, whichever of the four colour looks the wall wears — three of them
    * are colour, which is `PANEL_IGNORES`'s sentence beside `shiftStyle`.
    */
-  if (view === 'week') return drawWeekBox(fb, model, m, box, { shifts: shiftsShown(config, 'week') });
+  if (view === 'week') return drawWeekBox(fb, model, m, box, {
+      shifts: shiftsShown(config, 'week'),
+      calendars: calendarsOf(config),
+    });
   if (view === 'month') {
     /*
      * `text`, `swiss` and `pills` all draw names here, and that is not a

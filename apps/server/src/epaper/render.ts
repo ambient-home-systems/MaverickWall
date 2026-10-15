@@ -405,6 +405,13 @@ export interface WeekOptions {
    * `showShifts` means off (Q2), and the wall's `shiftsShown` is what decides.
    */
   readonly shifts?: boolean;
+  /**
+   * The calendars to draw, by source id — empty or absent is every one. The
+   * wall's week columns honour the widget's "Which calendars", so a panel
+   * following that wall has to draw the same week; it is the month's filter
+   * (`keepCalendars`) one view along, so the "+N" counts only kept calendars.
+   */
+  readonly calendars?: readonly string[];
 }
 
 export function drawWeekBox(
@@ -414,8 +421,10 @@ export function drawWeekBox(
   box: Box,
   options: WeekOptions = {},
 ): void {
-  const row = model.weeks.find((week) => week.some((cell) => cell.isToday)) ?? model.weeks[0];
-  if (row === undefined) return;
+  const shown = model.weeks.find((week) => week.some((cell) => cell.isToday)) ?? model.weeks[0];
+  if (shown === undefined) return;
+  const calendars = options.calendars ?? [];
+  const row = calendars.length === 0 ? shown : shown.map((cell) => keepCalendars(cell, calendars));
   const colW = Math.floor(box.w / 7);
   const headH = m.weekHeadH;
   const small = m.small;

@@ -143,8 +143,9 @@ describe('plain is the clock a panel always drew', () => {
     // upgrade — which is the only thing the version is for. The version is
     // 10 now, moved by plan item P5.4 (the rota's code on a calendar widget)
     // and not by the clock's looks; the plain frames above are still pinned
-    // to the bytes they were, which is the clock's own claim.
-    expect(EPAPER_RENDERER_VERSION).toBe(10);
+    // to the bytes they were, which is the clock's own claim. It is 11 since
+    // the week strip honoured "Which calendars", again not the clock's doing.
+    expect(EPAPER_RENDERER_VERSION).toBe(11);
   });
 });
 
