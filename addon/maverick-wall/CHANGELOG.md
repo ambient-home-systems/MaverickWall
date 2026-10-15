@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 1.8.3
+
 **A camera can be live over WebRTC, the way Home Assistant shows it.** A
 Camera widget's Picture has a third choice, **Live, WebRTC**. The video comes
 straight from Home Assistant's own camera server to the wall, with the least
