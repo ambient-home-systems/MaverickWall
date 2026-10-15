@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { encodeQr } from '../src/qr.js';
-import { qrPaths, qrShapes } from '../src/qr-shapes.js';
+import { QR_STYLE_MIN_PX, qrPaths, qrShapes, qrStyleFits } from '../src/qr-shapes.js';
 
 /**
  * The QR code's dot and eye styles (plan item M5.3). Whether each style reads
@@ -35,6 +35,8 @@ if (matrix === undefined) throw new Error('fixture does not encode');
 const dark = matrix.modules.flat().filter(Boolean).length;
 // Each eye is 7x7: a ring of 24, a light ring of 16, a centre of 9.
 const EYE_DARK = 3 * (24 + 9);
+// A version 2 code has one alignment pattern, a 5x5 ring round a centre.
+const ALIGN_DARK = 16 + 1;
 
 describe('qrPaths', () => {
   it('draws a code nobody restyled exactly as it always was: one crisp path of runs, no separate eyes', () => {
@@ -45,8 +47,8 @@ describe('qrPaths', () => {
   it('draws each dark module outside the eyes once as a dot, and the eyes as three rings and centres', () => {
     const paths = qrPaths(matrix, 4, { dots: 'dots', eyes: 'circle' });
     expect(paths.modules.match(/M/g)?.length).toBe(dark - EYE_DARK);
-    // Two arcs a dot, and every dot centred in its own module.
-    expect(paths.modules.match(/a/g)?.length).toBe(2 * (dark - EYE_DARK));
+    // Two arcs a dot; the alignment pattern, 16 dark modules round one, is rounded squares of four.
+    expect(paths.modules.match(/a/g)?.length).toBe(2 * (dark - EYE_DARK - ALIGN_DARK) + 4 * ALIGN_DARK);
     expect(paths.eyes.match(/M/g)?.length).toBe(9);
     expect(paths.crisp).toBe(false);
   });
@@ -74,5 +76,13 @@ describe('qrShapes', () => {
     expect(qrShapes(undefined)).toEqual({ dots: 'square', eyes: 'square' });
     expect(qrShapes({ qrDots: 'hearts', qrEyes: 7 })).toEqual({ dots: 'square', eyes: 'square' });
     expect(qrShapes({ qrDots: 'dots', qrEyes: 'circle' })).toEqual({ dots: 'dots', eyes: 'circle' });
+  });
+});
+
+describe('qrStyleFits', () => {
+  it('keeps a style only while a module is at least QR_STYLE_MIN_PX screen pixels', () => {
+    // A version 2 code is 25 modules and 8 of quiet zone: 33 across.
+    expect(qrStyleFits(33 * QR_STYLE_MIN_PX, 25, 4)).toBe(true);
+    expect(qrStyleFits(33 * QR_STYLE_MIN_PX - 1, 25, 4)).toBe(false);
   });
 });

@@ -249,6 +249,28 @@ describe('a QR code drawn in each style', () => {
         }
       };
       await run(configs);
+
+      // A styled code too small for its style to read is drawn square, and reads.
+      place([{ id: 's-small', x: 0.05, y: 0.05, w: 0.12, h: 0.07, config: { ...long, qrDots: 'dots', qrEyes: 'circle' } }]);
+      const small = await loadWallSettled(link, { width: 1080, height: 1920 });
+      try {
+        const drawn = await small.page.evaluate((sel) => {
+          const svg = document.querySelector(sel) as SVGSVGElement;
+          const rect = svg.getBoundingClientRect();
+          return {
+            side: Math.min(rect.width, rect.height),
+            style: svg.dataset['qrStyle'] ?? null,
+            rendering: svg.getAttribute('shape-rendering'),
+            eyes: svg.querySelectorAll('.qr-eyes').length,
+          };
+        }, `${box('s-small')} svg`);
+        // The premise: under three pixels a module, quiet zone included (49 + 8 across).
+        expect(drawn.side / 57).toBeLessThan(3);
+        expect(drawn).toMatchObject({ style: 'square', rendering: 'crispEdges', eyes: 0 });
+        expect(await readCode(small.page, `${box('s-small')} .qr-code`)).toBe(qrPayload(long));
+      } finally {
+        await small.close();
+      }
       // And the short code in every style, where each module is largest and a rounded eye most rounded.
       await run(configs.map((one) => ({ id: `${one.id}-short`, config: { ...short, qrDots: one.config['qrDots'], qrEyes: one.config['qrEyes'] } })));
     },
