@@ -12762,6 +12762,50 @@ byte-identical to 10, and the two tests that pinned 10 now pin 11. Two
 mutations, both red: the filter not passed to the week, and the names filtered
 with the old count kept.
 
+
+**Inside Home Assistant the admin draws tabs, not a second sidebar.** Opened
+from the add-on's sidebar entry, its 264px sidebar stood beside Home
+Assistant's 256px one: two dark columns of icons and words, two brands, two
+"Overview"s, about 520px of a 1440px screen before any content. Four layouts
+were drawn and the owner chose tabs. `page()` now draws both navigations: the
+sidebar (its drawer checkbox, scrim and the app bar's menu button included)
+between `SIDENAV` markers, and a tab bar between `TABS` markers
+(`http/nav-markers.ts`). It cannot choose, because it never sees the request,
+so the ingress middleware keeps one: `chooseNavigation` drops the tab bar
+outside ingress and the sidebar inside it, and gives the body `in-ha` so the
+main column takes the whole width. That is the `SIGNOUT` markers' arrangement,
+and it means the one rewrite the middleware now makes outside ingress is
+removing the tab bar from an HTML body. It is held to `/admin` paths with a
+body, and the first draft was not: it rebuilt every HTML response, so a wall's
+304 for its own page became a `Response` that cannot carry a body, the wall
+never loaded, and the first full run timed out in every wall test it reached.
+
+The tab bar's first row is the sections, each linking to its first screen;
+the second is the screens of the current section, installed modules in front
+of the Store as the sidebar orders them, left out for a one-screen section.
+Both rows scroll sideways, and `TABS_SCRIPT` scrolls the row (never the page)
+to bring the current tab in, because on a phone Walls and System start past
+the edge. Who is signed in and the theme switch moved from the sidebar's foot
+to a `<details>` behind **⋮**, script-free like the drawer. The account line
+is filled once by `accountGate`; making that replace global was tried and
+changed nothing, because the navigation the page does not keep is gone
+before it looks, so it is not there.
+
+`browser-ingress-tabs.test.ts` plays ingress the way the supervisor does: the
+browser asks for `/api/hassio_ingress/<token>/…` and a route strips the prefix
+and sets `X-Ingress-Path`, so a tab that escaped the injected `<base>` is a
+request nobody answers. Seven mutations were checked and all seven are red.
+Three first failed to build and were re-aimed. Two were green as first written,
+and each was the test's fault:
+- **The accent bar** was read by its `::after` colour, which a pseudo-element
+  keeps with no `content`; it reads `content` now.
+- **The phone's wordmark rule** was checked on Household, which fits either
+  way; it is checked on Integrations, against the row's own edge rather than
+  the window's.
+
+**Still unproven where it counts:** nobody has opened it in a real
+supervisor's sidebar.
+
 ---
 
 ## Open decisions

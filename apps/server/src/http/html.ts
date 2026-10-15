@@ -16,6 +16,7 @@ import { COMPONENT_STYLE, pageHeader } from './components.js';
 import { ADMIN_SCHEMES, adminColorVars, adminTypeVars } from './design-tokens.js';
 import { escapeHtml } from './escape.js';
 import { icon } from './icons.js';
+import { SIDENAV_CLOSE, SIDENAV_OPEN, TABS_CLOSE, TABS_OPEN } from './nav-markers.js';
 import { SAVED_MESSAGES, type Saved } from './saved.js';
 import { contentEtag } from './static.js';
 import type { NetworkOption } from '@maverick-wall/core';
@@ -408,6 +409,72 @@ body.shell{display:grid;grid-template-columns:264px 1fr;min-height:100vh}
 /* The page's lead line. Used to sit in the topbar as .sub; moved into the
  * content so the sticky bar stays a compact kicker+title and gives ~40px back. */
 .note{color:var(--muted);font-size:var(--mw-t-h4-size);line-height:1.55;margin:0 0 calc(var(--mw-s-4) + var(--mw-s-1));max-width:64ch}
+
+/* ---- Inside Home Assistant: tabs, not a second sidebar -------------------
+ * A page opened in Home Assistant's own sidebar keeps the tab bar and loses
+ * ours (nav-markers.ts, chooseNavigation): side by side the two were one
+ * doubled column, about 520px of a 1440px screen before any content. The body
+ * takes in-ha there, and the main column takes the whole width.
+ *
+ * Both rows scroll sideways rather than wrap, so a household with several
+ * modules installed still has one row of screens, and the page under them
+ * starts at the same height on every screen. The current section is the same
+ * 2px accent bar the sidebar's current row carries, laid along the foot of
+ * the tab instead of down its edge; the current screen is the sidebar's tinted
+ * ground. The bar is not sticky: the app bar under it is, and two sticky bars
+ * would take the top 120px of every scroll. */
+body.shell.in-ha{grid-template-columns:1fr}
+.tabsbar{background:var(--mw-surface);border-bottom:1px solid var(--mw-line)}
+.tabs-row{display:flex;align-items:center;gap:var(--mw-s-2);min-height:56px;
+  padding:0 var(--mw-s-4) 0 calc(var(--mw-s-5) + var(--mw-s-1))}
+.tabs-brand{display:flex;align-items:center;gap:var(--mw-s-2);flex:0 0 auto;
+  margin-right:var(--mw-s-3);color:inherit;text-decoration:none}
+.tabs-brand svg{width:28px;height:28px;flex:0 0 auto;border-radius:var(--mw-r-3)}
+.tabs-brand b{font-family:var(--wordmark);font-weight:700;font-size:var(--mw-t-h4-size);
+  letter-spacing:.02em;line-height:1;white-space:nowrap}
+.tabs{display:flex;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none}
+.tab{position:relative;display:flex;align-items:center;flex:0 0 auto;height:56px;
+  padding:0 var(--mw-s-3);color:var(--mw-ink-2);text-decoration:none;white-space:nowrap;
+  font-size:var(--mw-t-label-size);font-weight:var(--mw-t-label-weight);
+  letter-spacing:var(--mw-t-label-tracking)}
+.tab:hover,.tab.on{color:var(--mw-ink)}
+.tab.on::after{content:"";position:absolute;left:var(--mw-s-3);right:var(--mw-s-3);bottom:0;
+  height:2px;border-radius:var(--mw-r-1);background:var(--mw-accent)}
+.subtabs{display:flex;gap:var(--mw-s-1);overflow-x:auto;scrollbar-width:thin;
+  padding:var(--mw-s-1) var(--mw-s-4) var(--mw-s-2) calc(var(--mw-s-5) + var(--mw-s-1) - var(--mw-s-3));
+  border-top:1px solid var(--mw-line)}
+.subtab{display:flex;align-items:center;gap:var(--mw-s-2);flex:0 0 auto;height:44px;
+  padding:0 var(--mw-s-3);border-radius:var(--mw-r-2);color:var(--mw-ink-2);
+  text-decoration:none;white-space:nowrap;font-size:var(--mw-t-label-size);
+  font-weight:var(--mw-t-label-weight);letter-spacing:var(--mw-t-label-tracking)}
+.subtab svg{width:18px;height:18px;flex:0 0 auto}
+.subtab:hover{color:var(--mw-ink);background:color-mix(in srgb,
+  var(--mw-ink) var(--mw-wash-hover),transparent)}
+.subtab.on{background:var(--mw-accent-soft);color:var(--mw-accent-soft-ink)}
+/* Who is signed in and the theme, from the sidebar's foot. A <details>, so it
+ * opens with no script; it floats over the page, which is what the second of
+ * the two shadows is for. */
+.tabs-more{position:relative;flex:0 0 auto}
+.tabs-more summary{list-style:none;display:grid;place-items:center;width:44px;height:44px;
+  border-radius:var(--mw-r-2);color:var(--mw-ink-2);cursor:pointer}
+.tabs-more summary::-webkit-details-marker{display:none}
+.tabs-more summary:hover,.tabs-more[open] summary{color:var(--mw-ink);background:color-mix(in srgb,
+  var(--mw-ink) var(--mw-wash-hover),transparent)}
+.tabs-more summary svg{width:22px;height:22px}
+.tabs-menu{position:absolute;right:0;top:calc(100% + var(--mw-s-1));z-index:42;width:260px;
+  display:flex;flex-direction:column;gap:var(--mw-s-3);padding:var(--mw-s-4);
+  background:var(--mw-surface-2);border:1px solid var(--mw-line-strong);
+  border-radius:var(--mw-r-3);box-shadow:var(--mw-shadow-2)}
+.tabs-menu .who b{font-size:var(--mw-t-label-size);font-weight:600;display:block;line-height:1.2}
+.tabs-menu .who small{font-size:var(--mw-t-label-xs-size);color:var(--mw-ink-muted)}
+/* On a phone the wordmark costs the row the current section's tab, so the mark
+ * stands for it there; the link keeps its name in its title. */
+@media(max-width:600px){
+  .tabs-brand b{display:none}
+  .tabs-brand{margin-right:0}
+  .tabs-row{padding-left:var(--mw-s-3)}
+  .subtabs{padding-left:var(--mw-s-1)}
+}
 
 /* ---- Compact width: the same drawer, modal ------------------------------
  * 900px, up from 820: the drawer is 264px, and the main column must keep at
@@ -2842,8 +2909,11 @@ ${COMPONENT_STYLE}
  * spec makes — their focus is the outline thickening to 2px primary, and the
  * .field rules above suppress this ring inside one. The theme-picker cards
  * hide their real radio, so the ring goes on the card via :has(). */
-:is(a.card,button,.btn,.walls a,.mw-row-link,.wall-link,.le-tool-link,.nav-item,.saved-x,a.tag,input,select,textarea):focus-visible{
+:is(a.card,button,.btn,.walls a,.mw-row-link,.wall-link,.le-tool-link,.nav-item,.tab,.subtab,.tabs-brand,.tabs-more summary,.saved-x,a.tag,input,select,textarea):focus-visible{
   outline:3px solid var(--mw-accent);outline-offset:2px}
+/* Inside a row that scrolls sideways an outward ring is clipped, so a tab's
+ * is drawn inward. */
+.tab:focus-visible,.subtab:focus-visible{outline-offset:-3px}
 .themecard:has(input:focus-visible),
 .tplpick:has(input:focus-visible),
 .seg label:has(input:focus-visible){outline:3px solid var(--mw-accent);
@@ -3065,6 +3135,22 @@ const THEME_SCRIPT =
  * inherits the control's corner so the 48px pointer-target pseudo outside it
  * keeps working; the timeout removal is the belt to animationend's braces.
  */
+/**
+ * Bring the current tab and screen into their rows (the tab bar, under Home
+ * Assistant). Both rows scroll sideways, and on a phone Walls and System start
+ * past the row's edge, so a page could open with the tab saying where you are
+ * out of sight. Scrolling the row, never the page: `scrollLeft` on the row
+ * rather than `scrollIntoView`, which would scroll every ancestor too. Without
+ * script the rows still scroll by hand.
+ */
+const TABS_SCRIPT =
+  `<script>document.addEventListener('DOMContentLoaded',function(){try{` +
+  `var s=document.querySelectorAll('.tabs .tab.on,.subtabs .subtab.on');` +
+  `for(var i=0;i<s.length;i++){var t=s[i],row=t.parentNode,` +
+  `a=t.getBoundingClientRect(),b=row.getBoundingClientRect();` +
+  `if(a.right>b.right)row.scrollLeft+=a.right-b.right+24;}` +
+  `}catch(e){}});</script>`;
+
 const RIPPLE_SCRIPT =
   `<script>(function(){try{` +
   `document.addEventListener('pointerdown',function(e){` +
@@ -3330,6 +3416,86 @@ function navBar(active: string, modules: readonly NavModule[]): string {
 }
 
 /**
+ * The same destinations as `navBar`, as tabs across the top, for a page opened
+ * inside Home Assistant's own sidebar.
+ *
+ * There the sidebar stood beside Home Assistant's: two dark columns of icons
+ * and words, two brands and two "Overview"s, and about 520px of a 1440px
+ * screen spent on navigation before any content. So the ingress middleware
+ * keeps this and drops the sidebar (nav-markers.ts).
+ *
+ * The first row is the sections — the groups, and Overview and System, which
+ * stand alone there too — each linking to its first screen. The second row is
+ * the screens in the section being looked at, installed modules included in
+ * front of the Store exactly as the sidebar orders them, and is left out where
+ * the section is one screen. Both rows scroll sideways rather than wrapping, so
+ * a household with several modules installed still has one row of them.
+ *
+ * Who is signed in and the theme toggle lived in the sidebar's foot, and move
+ * to a `<details>` at the end of the first row: script-free, like the drawer,
+ * because a household who cannot reach the navigation cannot reach anything.
+ * The account line is the sidebar's own `WHO_OPEN` block, which `accountGate`
+ * fills once. It only ever finds one: the navigation the page does not keep
+ * is removed before it looks, which a browser test holds by reading the
+ * menu's line inside Home Assistant.
+ */
+function tabsBar(active: string, modules: readonly NavModule[]): string {
+  const holds = (g: NavGroup): boolean => g.items.some((i) => i.key === active);
+  const current = GROUPS.find(holds);
+
+  const sections = GROUPS.map((g) => {
+    const first = g.items[0];
+    if (first === undefined) return '';
+    const on = g === current;
+    // A one-screen section is that screen, so its tab is the page itself.
+    const here = on && g.items.length === 1 ? ' aria-current="page"' : '';
+    return (
+      `<a class="tab${on ? ' on' : ''}" href="${first.href}"${here}>` +
+      `${escapeHtml(g.label ?? first.label)}</a>`
+    );
+  }).join('');
+
+  let screens = '';
+  if (current !== undefined && current.items.length > 1) {
+    const item = (i: NavItem): string =>
+      `<a class="subtab${i.key === active ? ' on' : ''}" href="${i.href}"` +
+      `${i.key === active ? ' aria-current="page"' : ''}>${icon(i.icon)}` +
+      `<span>${escapeHtml(i.label)}</span></a>`;
+    const moduleItem = (m: NavModule): string =>
+      `<a class="subtab" href="admin/modules#mod-${encodeURIComponent(m.id)}">${icon('module')}` +
+      `<span>${escapeHtml(m.name)}</span>` +
+      (m.enabled ? '' : `<span class="nav-badge">Off</span>`) +
+      `</a>`;
+    const store = current.items[current.items.length - 1];
+    const links =
+      modules.length > 0 && store !== undefined && store.key === 'modules'
+        ? current.items.slice(0, -1).map(item).join('') + modules.map(moduleItem).join('') + item(store)
+        : current.items.map(item).join('');
+    screens =
+      `<nav class="subtabs" aria-label="${escapeHtml(current.label ?? 'Screens')}">${links}</nav>`;
+  }
+
+  return (
+    `<div class="tabsbar">` +
+    `<div class="tabs-row">` +
+    `<a class="tabs-brand" href="admin" title="Overview">${MARK}<b>Maverick Wall</b></a>` +
+    `<nav class="tabs" aria-label="Admin">${sections}</nav>` +
+    `<details class="tabs-more">` +
+    `<summary title="Account and theme" aria-label="Account and theme">${icon('more')}</summary>` +
+    `<div class="tabs-menu">` +
+    `<div class="who">${WHO_OPEN}<b>Signed in</b><small>Maverick Wall</small>${WHO_CLOSE}</div>` +
+    `<div class="themebar" role="group" aria-label="Admin theme">` +
+    `<button type="button" class="themebtn" data-theme-set="auto">Auto</button>` +
+    `<button type="button" class="themebtn" data-theme-set="light">Light</button>` +
+    `<button type="button" class="themebtn" data-theme-set="dark">Dark</button>` +
+    `</div></div></details>` +
+    `</div>` +
+    screens +
+    `</div>`
+  );
+}
+
+/**
  * What every page needs, whichever shape it is.
  *
  * `PageOptions` below is a union of the two, discriminated on `nav`, because
@@ -3567,7 +3733,7 @@ function head(title: string, shell = false): string {
     // deliberately script-free beyond the theme script, and a census test
     // holds them to it.
     `<title>${escapeHtml(title)}</title>${styleTag}` +
-    `${THEME_SCRIPT}${shell ? RIPPLE_SCRIPT : ''}</head>`
+    `${THEME_SCRIPT}${shell ? RIPPLE_SCRIPT + TABS_SCRIPT : ''}</head>`
   );
 }
 
@@ -3627,6 +3793,9 @@ export function page(options: PageOptions): string {
      * takes it out entirely, so it is not a phantom first tab stop on a
      * desktop where the drawer is always open.
      */
+    // The sidebar, from its checkbox to its scrim, is one block the ingress
+    // middleware removes inside Home Assistant (nav-markers.ts).
+    SIDENAV_OPEN +
     `<input type="checkbox" id="mw-nav" class="nav-toggle" aria-label="Navigation menu">` +
     `<aside class="side">` +
     `<a class="brand" href="admin">${MARK}<span><b>Maverick Wall</b><small>Admin</small></span></a>` +
@@ -3654,11 +3823,17 @@ export function page(options: PageOptions): string {
     // same checkbox, drawn as the scrim. Hidden from assistive technology —
     // it is a surface to dismiss with, and the control is already named.
     `<label class="nav-scrim" for="mw-nav" aria-hidden="true"></label>` +
+    SIDENAV_CLOSE +
     // `tabindex="-1"` so the fragment can land: a browser scrolls to an element
     // that cannot hold focus and leaves focus where it was, so the next Tab
     // resumes from the top of the navigation — the skip link would move the
     // viewport and nothing else.
     `<main class="main" id="mw-main" tabindex="-1">` +
+    // The tab bar a page opened inside Home Assistant's sidebar uses instead of
+    // ours. Outside Home Assistant the ingress middleware removes it.
+    TABS_OPEN +
+    tabsBar(options.nav, options.modules ?? []) +
+    TABS_CLOSE +
     // The app bar, and the one place that decides whether a screen has a back
     // link. It is `pageHeader()` in components.ts rather than five lines here,
     // because "does this page get a back affordance, and where does it sit" is
