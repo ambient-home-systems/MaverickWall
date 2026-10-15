@@ -49,6 +49,11 @@ Bas Milius, MIT, from https://github.com/basmilius/weather-icons, through the
 @meteocons/svg-static package), copied unedited and recorded with the licence
 text in apps/server/assets/meteocons/LICENSES.md.
 
+The forecast's 3D picture set is eighteen Fluent Emoji 3D renders (© Microsoft
+Corporation, MIT, from https://github.com/microsoft/fluentui-emoji), copied
+unedited into apps/server/assets/meteocons/3d and recorded with the licence
+text, the upstream commit and each file's sha256 in the same LICENSES.md.
+
 The wall's and the e-paper panel's glyphs are drawn in this repository and are
 nobody else's work — see apps/display/src/glyphs.ts, which says why nothing off
 the shelf would do.

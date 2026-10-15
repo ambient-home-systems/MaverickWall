@@ -16,6 +16,14 @@
 
 ## Unreleased
 
+**The forecast has 3D weather pictures.** **Pictures** on a forecast, and on a
+clock's weather line, now offers **3D** beside Drawn, Colour and Outline. The
+pictures are Microsoft's Fluent Emoji in 3D and ship with the app, so nothing
+is fetched from the internet. A clear night shows tonight's moon. A 3D sun
+holds still, because turning a lit picture turns its light with it; clouds
+still sway. The set has fewer skies than Colour and Outline: drizzle is drawn
+as rain, sleet as snow, and a cloudy night as a cloud with no moon.
+
 **A QR code can have rounded modules or dots, and rounded or round corner
 squares.** Two new settings on the QR code widget, **Dots** (Square, Rounded or
 Dots) and **Corner squares** (Square, Rounded or Circles). The code is still

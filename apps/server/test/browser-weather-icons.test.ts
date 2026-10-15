@@ -55,6 +55,22 @@ const DAY_PICTURE: Readonly<Record<string, string>> = {
   wind: 'wind',
 };
 
+/** The same, for the 3D set, which is Fluent Emoji's rather than Meteocons'. */
+const DAY_PICTURE_3D: Readonly<Record<string, string>> = {
+  clear: 'sun',
+  'mostly-clear': 'sun-behind-small-cloud',
+  'partly-cloudy': 'sun-behind-cloud',
+  cloudy: 'cloud',
+  fog: 'fog',
+  drizzle: 'cloud-with-rain',
+  rain: 'cloud-with-rain',
+  showers: 'sun-behind-rain-cloud',
+  snow: 'cloud-with-snow',
+  sleet: 'cloud-with-snow',
+  thunderstorm: 'cloud-with-lightning-and-rain',
+  wind: 'leaf-fluttering-in-wind',
+};
+
 interface Drawn {
   readonly tag: string;
   readonly icon: string | null;
@@ -115,7 +131,7 @@ describe('the picture set', () => {
     SLOW,
   );
 
-  for (const set of ['fill', 'line'] as const) {
+  for (const set of ['fill', 'line', '3d'] as const) {
     it(
       `draws the ${set} pictures, bundled and loaded, each the day's sky, in the drawn glyph's own box`,
       async () => {
@@ -144,10 +160,10 @@ describe('the picture set', () => {
           expect(drawn).toHaveLength(glyphs.length);
           drawn.forEach((one, index) => {
             const glyph = ww.days[index]?.glyph ?? '';
-            const file = DAY_PICTURE[glyph];
+            const file = (set === '3d' ? DAY_PICTURE_3D : DAY_PICTURE)[glyph];
             expect(file, `day ${index} has a sky the wall knows`).toBeDefined();
             expect(one.tag).toBe('IMG');
-            expect(one.src).toBe(`/assets/meteocons/${set}/${file}.svg`);
+            expect(one.src).toBe(`/assets/meteocons/${set}/${file}.${set === '3d' ? 'png' : 'svg'}`);
             expect(one.icon).toBe(`${set}/${file}`);
             expect(one.origin).toBe(origin);
             expect(one.loaded, `${one.src} loaded`).toBe(true);
@@ -299,6 +315,30 @@ describe('in the editor', () => {
           expect(one.src).toMatch(/^assets\/meteocons\/fill\/[a-z-]+\.svg$/);
           expect(one.loaded, `${one.src} loaded`).toBe(true);
         }
+
+        // The 3D set is offered beside Meteocons' two, and the preview draws
+        // its PNGs from the same relative address.
+        await page.locator(`.le-overlay .le-widget[data-id="${ww.weather.portrait.id}"]`).click();
+        await page.click('.insp-tab:has-text("Content")');
+        const labels = await page
+          .locator('.le-cfg-field[data-cfg-key="icons"] button')
+          .evaluateAll((buttons) => buttons.map((button) => button.textContent));
+        expect(labels).toEqual(['Drawn', 'Colour', 'Outline', '3D']);
+        await page.click('.le-cfg-field[data-cfg-key="icons"] button:has-text("3D")');
+        await page.waitForFunction(
+          () => {
+            const imgs = Array.from(
+              document.querySelector<HTMLElement>('.le-preview')?.shadowRoot?.querySelectorAll<HTMLImageElement>('img.wxi') ?? [],
+            );
+            return imgs.length > 0 && imgs.every((img) => img.getAttribute('src')?.startsWith('assets/meteocons/3d/') && img.complete);
+          },
+          undefined,
+          { timeout: 20_000, polling: 50 },
+        );
+        for (const one of await read()) {
+          expect(one.src).toMatch(/^assets\/meteocons\/3d\/[a-z-]+\.png$/);
+          expect(one.loaded, `${one.src} loaded`).toBe(true);
+        }
       } finally {
         await context.close();
       }
@@ -383,6 +423,65 @@ describe('a picture moves whole, within its scope', () => {
       } finally {
         await close();
       }
+    },
+    SLOW,
+  );
+
+  it(
+    'holds a 3D sun still, because turning a lit picture turns its light, and still sways its clouds',
+    async () => {
+      measureScreen(ww, undefined);
+      const size = SIZES[0]!;
+      const id = ww.weather[size.orientation].id;
+      // The captured forecast has no clear day, so its first day is made one
+      // for this test and put back after. The rest keep their cloud.
+      const row = ww.wall.db
+        .prepare(`SELECT payload FROM weather_cache WHERE cache_key = 'openmeteo:forecast'`)
+        .get() as { payload: string };
+      const forecast = JSON.parse(row.payload) as { days: { glyph?: string }[] };
+      forecast.days[0]!.glyph = 'clear';
+      const writeForecast = (payload: string): void => {
+        ww.wall.db.prepare(`UPDATE weather_cache SET payload = ? WHERE cache_key = 'openmeteo:forecast'`).run(payload);
+      };
+      writeForecast(JSON.stringify(forecast));
+      const skies = forecast.days.map((day) => day.glyph);
+      expect(skies.some((sky) => sky !== 'clear')).toBe(true);
+      const read = async (icons: string) => {
+        await setWeather(ww, size.orientation, { icons });
+        const { page, close } = await loadWallSettled(ww.link, size);
+        try {
+          return await page.evaluate(
+            (widget) =>
+              Array.from(
+                document.querySelectorAll<HTMLImageElement>(`#wall .canvas .fw[data-widget-id="${widget}"] .wx-day img.wxi`),
+              ).map((img) => ({
+                icon: img.dataset['icon'] ?? '',
+                name: getComputedStyle(img).animationName,
+              })),
+            id,
+          );
+        } finally {
+          await close();
+        }
+      };
+      let flat: Awaited<ReturnType<typeof read>>;
+      let deep: Awaited<ReturnType<typeof read>>;
+      try {
+        flat = await read('fill');
+        deep = await read('3d');
+      } finally {
+        writeForecast(row.payload);
+      }
+      expect(deep).toHaveLength(flat.length);
+      skies.slice(0, deep.length).forEach((sky, index) => {
+        if (sky === 'clear') {
+          expect(flat[index]!.name, 'a Meteocons sun turns').not.toBe('none');
+          expect(deep[index]!.icon).toBe('3d/sun');
+          expect(deep[index]!.name, 'a 3D sun is still').toBe('none');
+        } else {
+          expect(deep[index]!.name, `a 3D ${sky} sky moves as Meteocons' does`).toBe(flat[index]!.name);
+        }
+      });
     },
     SLOW,
   );

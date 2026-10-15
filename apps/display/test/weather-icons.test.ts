@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { GLYPH_KEYS } from '../src/glyphs.js';
 import { VARIANT_HIDES } from '../src/variants.js';
 import {
+  FLUENT_3D_FILES,
   ICON_MOTION_MS,
   METEOCON_FILES,
+  MOON_PHASES_3D,
+  fluent3dFor,
   MOON_PHASES,
   iconMotion,
   iconSetOf,
@@ -22,6 +25,8 @@ describe('the picture set a widget asked for', () => {
     expect(iconSetOf({})).toBe('drawn');
     expect(iconSetOf({ icons: 'fill' })).toBe('fill');
     expect(iconSetOf({ icons: 'line' })).toBe('line');
+    expect(iconSetOf({ icons: '3d' })).toBe('3d');
+    expect(iconSetOf({ icons: '3D' })).toBe('drawn');
     expect(iconSetOf({ icons: 'animated' })).toBe('drawn');
     expect(iconSetOf({ icons: 3 })).toBe('drawn');
   });
@@ -105,6 +110,52 @@ describe('which picture a sky wears', () => {
     }
     for (const phase of MOON_PHASES) named.add(phase);
     expect([...named].sort()).toEqual([...METEOCON_FILES].sort());
+  });
+});
+
+describe('the 3D set', () => {
+  const NOON = Date.UTC(2024, 0, 25, 12);
+  it('names a picture for every sky, and tonight’s moon for a clear or mostly clear night', () => {
+    const sky = GLYPH_KEYS.slice(0, GLYPH_KEYS.indexOf('wind') + 1);
+    for (const glyph of sky) {
+      for (const isDay of [true, false]) {
+        expect(FLUENT_3D_FILES, `${glyph} ${isDay}`).toContain(fluent3dFor(glyph, isDay, NOON));
+      }
+    }
+    // 25 January 2024 is a full moon, as in the Meteocons case above.
+    expect(fluent3dFor('clear', false, NOON)).toBe('full-moon');
+    expect(fluent3dFor('mostly-clear', false, NOON)).toBe('full-moon');
+    expect(fluent3dFor('clear', true, NOON)).toBe('sun');
+    expect(fluent3dFor('partly-cloudy', true, NOON)).toBe('sun-behind-cloud');
+    expect(fluent3dFor('partly-cloudy', false, NOON)).toBe('cloud');
+    expect(fluent3dFor('showers', true, NOON)).toBe('sun-behind-rain-cloud');
+    expect(fluent3dFor('showers', false, NOON)).toBe('cloud-with-rain');
+    expect(fluent3dFor('sleet', true, NOON)).toBe('cloud-with-snow');
+    expect(fluent3dFor('thunderstorm', true, NOON)).toBe('cloud-with-lightning-and-rain');
+    expect(fluent3dFor('lock', true, NOON)).toBeUndefined();
+  });
+
+  it('draws each moon phase as the matching moon, in the same order as Meteocons', () => {
+    expect(MOON_PHASES_3D).toHaveLength(MOON_PHASES.length);
+    MOON_PHASES.forEach((phase, i) => {
+      expect(MOON_PHASES_3D[i]).toBe(phase.replace(/^moon-(.*)$/, '$1-moon'));
+    });
+  });
+
+  it('bundles nothing it never names', () => {
+    const named = new Set<string>(MOON_PHASES_3D);
+    const sky = GLYPH_KEYS.slice(0, GLYPH_KEYS.indexOf('wind') + 1);
+    for (const glyph of sky) {
+      named.add(fluent3dFor(glyph, true, 0) as string);
+      named.add(fluent3dFor(glyph, false, 0) as string);
+    }
+    expect([...named].sort()).toEqual([...FLUENT_3D_FILES].sort());
+  });
+
+  it('holds a 3D sun still, because turning it would turn its light, and still sways its clouds', () => {
+    expect(iconMotion('clear', true, '3d')).toBe('none');
+    expect(iconMotion('partly-cloudy', true, '3d')).toBe('sway');
+    expect(iconMotion('clear', true, 'line')).toBe('spin');
   });
 });
 

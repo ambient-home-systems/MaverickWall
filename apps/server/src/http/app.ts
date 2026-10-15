@@ -515,6 +515,7 @@ export function createApp(deps: AppDeps): Hono {
   const meteoconFiles = {
     fill: createStaticFiles(join(meteoconsDir, 'fill')),
     line: createStaticFiles(join(meteoconsDir, 'line')),
+    '3d': createStaticFiles(join(meteoconsDir, '3d')),
   } as const;
 
   /*
@@ -2952,8 +2953,9 @@ export function createApp(deps: AppDeps): Hono {
   /*
    * The forecast's Meteocons pictures (plan item M5.9), one directory per set.
    *
-   * The emoji route's promises one level down: the set must be one of the two
-   * and the name a `.svg`, so nothing but a picture is ever served from here.
+   * The emoji route's promises one level down: the set must be one of the three
+   * and the name a `.svg`, or a `.png` in the 3D set, so nothing but a picture
+   * is ever served from here.
    * A day's cache rather than a year's: the names are Meteocons' own rather
    * than content hashes, so a picture a later release redraws reaches a wall
    * within a day, and the ETag makes every revisit before then a 304.
@@ -2961,8 +2963,10 @@ export function createApp(deps: AppDeps): Hono {
   app.get('/assets/meteocons/:set/:name', (c: Context) => {
     const set = c.req.param('set') ?? '';
     const name = c.req.param('name') ?? '';
-    if ((set !== 'fill' && set !== 'line') || !name.endsWith('.svg')) return c.json({ error: 'not-found' }, 404);
-    const file = meteoconFiles[set].read(name);
+    // Meteocons' two sets are SVG; the 3D set, which is Fluent Emoji's, is PNG.
+    const known = set === 'fill' || set === 'line' ? name.endsWith('.svg') : set === '3d' && name.endsWith('.png');
+    if (!known) return c.json({ error: 'not-found' }, 404);
+    const file = meteoconFiles[set as keyof typeof meteoconFiles].read(name);
     if (file === undefined) return c.json({ error: 'not-found' }, 404);
     return serveWithEtag(c, file, 'public, max-age=86400');
   });

@@ -22,15 +22,25 @@ import { isGlyphKey } from './glyphs.js';
  * answered here without a DOM, so `weather-icons.test.ts` reads them.
  */
 
-/** The picture sets a forecast can wear: the drawn glyphs, and Meteocons' two. */
-export const WEATHER_ICON_SETS = ['drawn', 'fill', 'line'] as const;
+/**
+ * The picture sets a forecast can wear: the drawn glyphs, Meteocons' two, and
+ * a 3D set.
+ *
+ * **Meteocons has no 3D style**, so the 3D set is not Meteocons. Upstream
+ * draws every picture in four styles, fill, flat, line and monochrome, and
+ * none of them is 3D. The 3D pictures are Microsoft's Fluent Emoji, the 3D
+ * renders, MIT, eighteen PNGs pinned to one upstream commit and bundled
+ * beside the Meteocons sets under `apps/server/assets/meteocons/3d/`, where
+ * `LICENSES.md` records each file's source and hash.
+ */
+export const WEATHER_ICON_SETS = ['drawn', 'fill', 'line', '3d'] as const;
 export type WeatherIconSet = (typeof WEATHER_ICON_SETS)[number];
 
 /** The set a widget asked for; absent, or anything this bundle does not know, is the drawn one. */
 export function iconSetOf(config: unknown): WeatherIconSet {
   const value =
     typeof config === 'object' && config !== null ? (config as Record<string, unknown>)['icons'] : undefined;
-  return value === 'fill' || value === 'line' ? value : 'drawn';
+  return value === 'fill' || value === 'line' || value === '3d' ? value : 'drawn';
 }
 
 /** The eight names Meteocons draws the moon by, from new round to new. */
@@ -126,6 +136,76 @@ export const METEOCON_FILES: readonly string[] = [
   ...MOON_PHASES,
 ];
 
+/** The eight moons of the 3D set, from new round to new, in `MOON_PHASES`' order. */
+export const MOON_PHASES_3D = [
+  'new-moon',
+  'waxing-crescent-moon',
+  'first-quarter-moon',
+  'waxing-gibbous-moon',
+  'full-moon',
+  'waning-gibbous-moon',
+  'last-quarter-moon',
+  'waning-crescent-moon',
+] as const;
+
+/**
+ * The 3D file a sky wears.
+ *
+ * Fluent Emoji draws fewer skies than Meteocons, and the gaps are said here
+ * rather than filled with a picture of something else:
+ * - **No moon behind a cloud.** A partly cloudy night and a night shower are
+ *   the cloud and the rain cloud. A mostly clear night is tonight's moon, as a
+ *   clear one is.
+ * - **No drizzle and no sleet.** Drizzle is the rain cloud and sleet the snow
+ *   cloud, so the set has eleven skies where the drawn one has twelve.
+ * - **Fog and wind have no day or night**, as in Meteocons. Wind is the leaf
+ *   in the wind, because Fluent's other wind picture is a face.
+ */
+export function fluent3dFor(glyph: GlyphKey | undefined, isDay: boolean, instantMs: number): string | undefined {
+  const moon = (): string => MOON_PHASES_3D[MOON_PHASES.indexOf(moonPhase(instantMs))]!;
+  switch (glyph) {
+    case 'clear':
+      return isDay ? 'sun' : moon();
+    case 'mostly-clear':
+      return isDay ? 'sun-behind-small-cloud' : moon();
+    case 'partly-cloudy':
+      return isDay ? 'sun-behind-cloud' : 'cloud';
+    case 'cloudy':
+      return 'cloud';
+    case 'fog':
+      return 'fog';
+    case 'drizzle':
+    case 'rain':
+      return 'cloud-with-rain';
+    case 'showers':
+      return isDay ? 'sun-behind-rain-cloud' : 'cloud-with-rain';
+    case 'snow':
+    case 'sleet':
+      return 'cloud-with-snow';
+    case 'thunderstorm':
+      return 'cloud-with-lightning-and-rain';
+    case 'wind':
+      return 'leaf-fluttering-in-wind';
+    default:
+      return undefined;
+  }
+}
+
+/** Every file `fluent3dFor` can name, so the server's test can hold the bundle to it. */
+export const FLUENT_3D_FILES: readonly string[] = [
+  'sun',
+  'sun-behind-small-cloud',
+  'sun-behind-cloud',
+  'sun-behind-rain-cloud',
+  'cloud',
+  'cloud-with-rain',
+  'cloud-with-snow',
+  'cloud-with-lightning-and-rain',
+  'fog',
+  'leaf-fluttering-in-wind',
+  ...MOON_PHASES_3D,
+];
+
 /**
  * How a picture moves, which is whole: a sun turns, anything with cloud in it
  * sways, and the night sky is still — `skyMotion`'s rule that a still dark sky
@@ -134,9 +214,15 @@ export const METEOCON_FILES: readonly string[] = [
  */
 export type IconMotion = 'spin' | 'sway' | 'none';
 
-export function iconMotion(glyph: GlyphKey | undefined, isDay: boolean): IconMotion {
+export function iconMotion(
+  glyph: GlyphKey | undefined,
+  isDay: boolean,
+  set: WeatherIconSet = 'fill',
+): IconMotion {
   if (glyph === undefined) return 'none';
-  if (glyph === 'clear') return isDay ? 'spin' : 'none';
+  // A 3D sun is lit from one side, and turning it would turn its light with
+  // it, so in the 3D set a clear day is still. Its clouds still sway.
+  if (glyph === 'clear') return isDay && set !== '3d' ? 'spin' : 'none';
   if (!isDay && (glyph === 'mostly-clear' || glyph === 'partly-cloudy')) return 'none';
   return 'sway';
 }
@@ -185,10 +271,10 @@ export function meteoconNode(
   className: string,
 ): HTMLImageElement | null {
   if (set === 'drawn' || !isGlyphKey(glyph)) return null;
-  const file = meteoconFor(glyph, isDay, instantMs);
+  const file = set === '3d' ? fluent3dFor(glyph, isDay, instantMs) : meteoconFor(glyph, isDay, instantMs);
   if (file === undefined) return null;
   const img = document.createElement('img');
-  img.src = `${base}${set}/${file}.svg`;
+  img.src = `${base}${set}/${file}.${set === '3d' ? 'png' : 'svg'}`;
   img.alt = '';
   img.setAttribute('aria-hidden', 'true');
   img.className = className;

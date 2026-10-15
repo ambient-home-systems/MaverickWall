@@ -12702,6 +12702,51 @@ one test each in `browser-qr` and `qr-payload`. The one red is
 container as before. **Still unproven where it counts:** no real phone has
 scanned a styled code off a wall.
 
+**The forecast has a 3D picture set, and it is not Meteocons (the item the
+owner listed as "the Meteocons 3D set").** Meteocons has no 3D style. Upstream
+draws every picture in four styles, fill, flat, line and monochrome, in the
+3.0 prerelease as on its own README. So **Pictures: 3D** is Microsoft's Fluent
+Emoji 3D renders, MIT: eighteen 256px PNGs copied unedited from
+`microsoft/fluentui-emoji` at one pinned commit. They live in
+`apps/server/assets/meteocons/3d/` and are served by the Meteocons route, which
+takes `.png` in that set and only there, so the image ships them with no new
+directory or environment variable. `LICENSES.md` records each file's upstream
+path and sha256, and `meteocons.test.ts` holds every file to its hash, to the
+PNG signature and to 256x256.
+
+- **`fluent3dFor`** maps the twelve skies. Fluent draws fewer skies, and the
+  gaps are stated rather than filled with something else: no moon behind a
+  cloud (a partly cloudy night is the cloud, a mostly clear night is tonight's
+  moon), drizzle drawn as rain, sleet as snow, and wind as the leaf in the
+  wind, because Fluent's other wind picture is a face.
+- **The moon** is the same eight phases from `moonPhase`, in `MOON_PHASES`'
+  order, and a unit test holds the two lists to each other.
+- **A 3D sun is still.** `iconMotion` takes the set, because a lit 3D picture
+  turned would turn its light with it. Clouds sway as Meteocons' do.
+- The editor offers 3D on the forecast and on a clock's weather line, and a
+  panel still ignores `icons`.
+
+**Measured.** In the display, `weather-icons.test.ts` gains 4 tests. On the
+server, `meteocons.test.ts` gains 3: the files, the hashes and the route.
+`browser-weather-icons.test.ts` gains 2 cases. Every 3D picture is drawn in the
+drawn glyph's own box to the pixel, and loads same-origin. A 3D sun computes no
+animation where the Meteocons sun turns. The editor offers 3D and its preview
+loads the PNGs from the relative address. The forecast capture has no clear
+day, so that test makes its first day clear and puts the row back. Twelve
+mutations were checked and all twelve are red. Two failed to build at first,
+because each left a value unread, and were re-aimed so they built. One more
+check was a changed byte in a PNG, which the hash test catches. Not testable,
+and written down: the route's extension check in the 3D set, because the
+directory holds only PNGs. **6224 tests passing, 1 red and 2 skipped, over 469
+files**: calendar 153 (1 skipped) over 10 · core 327 over 9 · display 1114
+over 73 · docs 26 over 1 · server 4604 (1 skipped) over 376, measured with
+`pnpm test` and a real Chromium. Against the QR styles' 6215 over 469 that is
++9, this change's own count. The one red is `browser-glass`'s striped-picture
+case, red on a clean `main` in this container as before. **Still unproven
+where it counts:** nobody has looked at a 3D forecast on a kitchen wall. A
+separate solid set is not built, because Meteocons' monochrome style exists
+only in a 3.0 prerelease.
+
 ---
 
 ## Open decisions
