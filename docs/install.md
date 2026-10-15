@@ -93,6 +93,11 @@ and Home Assistant authenticates you. The wall displays connect to the add-on's
 port instead — a screen screwed to a wall has no Home Assistant session and
 cannot get one.
 
+Opened from Home Assistant's sidebar, the settings draw their sections as tabs
+across the top rather than as a second sidebar beside Home Assistant's. Who is
+signed in and the light and dark switch are under the **⋮** button at the end
+of the tabs.
+
 ## Upgrading
 
 **Docker:** pull the new image and recreate the container. The data lives in

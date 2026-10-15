@@ -16,6 +16,14 @@
 
 ## Unreleased
 
+**No second sidebar inside Home Assistant.** Opened from Home Assistant's
+sidebar, Maverick Wall's settings used to draw their own sidebar beside it, so
+two columns of menus took about a third of the screen. They now show their
+sections as tabs across the top — Overview, Household, Integrations, Walls and
+System — with the screens in the current section in a row under them. Who is
+signed in and the light and dark switch are under the **⋮** button at the end
+of the tabs. Opened any other way, the settings look as they did.
+
 ## 1.8.6
 
 **An e-paper panel's week shows only the calendars you picked.** A calendar

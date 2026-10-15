@@ -50,6 +50,7 @@
 
 import { escapeHtml } from "./escape.js";
 import { icon } from "./icons.js";
+import { SIDENAV_CLOSE, SIDENAV_OPEN } from "./nav-markers.js";
 
 /* ---- 1. pageHeader -------------------------------------------------------- */
 
@@ -112,7 +113,11 @@ export function pageHeader(options: PageHeaderOptions): string {
     // The app bar's leading icon, and the only way to the navigation below
     // 900px. It sits in the sticky bar rather than at the top of the document
     // so it is one tap away at any scroll depth; at this width it is not drawn.
+    // Inside Home Assistant there is no drawer for it to open, so it goes
+    // with the sidebar (nav-markers.ts).
+    SIDENAV_OPEN +
     `<label class="navbtn" for="mw-nav" title="Navigation menu">${icon("menu")}</label>` +
+    SIDENAV_CLOSE +
     `<div class="topbar-title">` +
     (options.back === undefined
       ? options.crumb === undefined

@@ -1,5 +1,6 @@
 import type { Context, Next } from 'hono';
 import { SIGNOUT_CLOSE, SIGNOUT_OPEN } from './html.js';
+import { SIDENAV_CLOSE, SIDENAV_OPEN, TABS_CLOSE, TABS_OPEN } from './nav-markers.js';
 
 /**
  * Running behind Home Assistant's ingress proxy.
@@ -113,6 +114,33 @@ const BASE_TAG = '<base href="/">';
 const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const SIGNOUT_RE = new RegExp(`${escapeRe(SIGNOUT_OPEN)}[\\s\\S]*?${escapeRe(SIGNOUT_CLOSE)}`, 'g');
 
+const SIDENAV_RE = new RegExp(`${escapeRe(SIDENAV_OPEN)}[\\s\\S]*?${escapeRe(SIDENAV_CLOSE)}`, 'g');
+const TABS_RE = new RegExp(`${escapeRe(TABS_OPEN)}[\\s\\S]*?${escapeRe(TABS_CLOSE)}`, 'g');
+const SHELL_BODY = '<body class="shell">';
+
+/** A 204, a 304 or a HEAD answer: nothing to rewrite, and no Response could carry a body for one. */
+function hasBody(res: Response): boolean {
+  return res.body !== null && res.status !== 204 && res.status !== 304;
+}
+
+/**
+ * Keep one of the admin's two navigations (nav-markers.ts).
+ *
+ * Inside Home Assistant's sidebar the page keeps its tab bar and loses its own
+ * sidebar, its drawer and the app bar's menu button, which opens that drawer:
+ * two sidebars side by side spent about 520px of a 1440px screen on navigation
+ * and read as one doubled column. The body takes `in-ha` so the stylesheet can
+ * give the main column the whole width. Anywhere else it is the other way
+ * round, and the page is exactly what it was before the tab bar existed.
+ *
+ * Exported so the swap can be held to that without a server.
+ */
+export function chooseNavigation(body: string, insideHomeAssistant: boolean): string {
+  if (!body.includes(TABS_OPEN) && !body.includes(SIDENAV_OPEN)) return body;
+  if (!insideHomeAssistant) return body.replace(TABS_RE, '');
+  return body.replace(SIDENAV_RE, '').replace(SHELL_BODY, '<body class="shell in-ha">');
+}
+
 /**
  * Rewrite what leaves, so nothing that builds a page has to know.
  *
@@ -125,6 +153,19 @@ export function ingress() {
     const prefix = ingressPath(c);
     if (prefix === '') {
       await next();
+      // The one rewrite outside Home Assistant: an admin page carries a tab bar
+      // only Home Assistant's sidebar uses, and it goes before it is sent. Only
+      // the admin's own pages, because they are the only ones `page()` draws
+      // a shell for, and never a bodiless answer: a wall's 304 for its own page
+      // is HTML too, and a Response with a body cannot carry a 304.
+      const path = c.req.path;
+      if (path !== '/admin' && !path.startsWith('/admin/')) return;
+      if (!hasBody(c.res) || !(c.res.headers.get('content-type') ?? '').includes('text/html')) return;
+      const body = await c.res.text();
+      c.res = new Response(chooseNavigation(body, false), {
+        status: c.res.status,
+        headers: c.res.headers,
+      });
       return;
     }
 
@@ -144,7 +185,7 @@ export function ingress() {
     }
 
     const type = c.res.headers.get('content-type') ?? '';
-    if (!type.includes('text/html')) return;
+    if (!type.includes('text/html') || !hasBody(c.res)) return;
 
     /*
      * Then the base element and the sign-out control.
@@ -163,12 +204,9 @@ export function ingress() {
      * stripped on the one path where it is wrong.
      */
     const body = await c.res.text();
-    const hasBase = body.includes(BASE_TAG);
-    const hasSignOut = body.includes(SIGNOUT_OPEN);
-    if (!hasBase && !hasSignOut) return;
-
-    let patched = hasBase ? body.replace(BASE_TAG, `<base href="${baseHref(prefix)}">`) : body;
-    if (hasSignOut) patched = patched.replace(SIGNOUT_RE, '');
+    let patched = chooseNavigation(body, true);
+    if (patched.includes(BASE_TAG)) patched = patched.replace(BASE_TAG, `<base href="${baseHref(prefix)}">`);
+    if (patched.includes(SIGNOUT_OPEN)) patched = patched.replace(SIGNOUT_RE, '');
 
     c.res = new Response(patched, {
       status: c.res.status,
