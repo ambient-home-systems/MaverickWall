@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 1.8.5
+
 **The forecast has 3D weather pictures.** **Pictures** on a forecast, and on a
 clock's weather line, now offers **3D** beside Drawn, Colour and Outline. The
 pictures are Microsoft's Fluent Emoji in 3D and ship with the app, so nothing
