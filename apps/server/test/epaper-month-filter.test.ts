@@ -112,3 +112,28 @@ describe('a panel month grid, filtered to some calendars', () => {
     expect(work).toBe(frame({}, manifest((event) => event.sourceId === 'work')));
   });
 });
+
+/**
+ * The week strip had the same gap one view along: the wall's week columns
+ * honoured "Which calendars" while a panel following that wall drew every
+ * calendar in the same week. Held the same way, byte for byte.
+ */
+describe('a panel week strip, filtered to some calendars', () => {
+  // A day in the busy week, so the strip's seven columns carry every calendar.
+  const busy = { ...manifest(), generatedAt: Date.UTC(2026, 7, 26, 10) } as Manifest;
+  const busyWithout = (keep: (event: Ev) => boolean): Manifest =>
+    ({ ...manifest(keep), generatedAt: busy.generatedAt }) as Manifest;
+
+  it('draws exactly the week of a household without the other calendars', () => {
+    const filtered = frame({ mode: 'week', calendars: ['family', 'school'] }, busy);
+    const without = frame({ mode: 'week' }, busyWithout((event) => event.sourceId !== 'work'));
+    expect(filtered).toBe(without);
+    expect(filtered, 'the filter must change something here, or the case proves nothing').not.toBe(
+      frame({ mode: 'week' }, busy),
+    );
+  });
+
+  it('draws today’s week when nothing is picked', () => {
+    expect(frame({ mode: 'week', calendars: [] }, busy)).toBe(frame({ mode: 'week' }, busy));
+  });
+});

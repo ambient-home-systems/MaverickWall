@@ -10359,9 +10359,10 @@ again — so the body was mutated instead (keep every place) and that is red.
 `wall-density` and `browser-classic-proportions` were run on a clean worktree
 of `main` and on this branch with every measurement they take written out —
 twenty-four lines — and the two sets are identical as text; no baseline moved.
-**Not changed and noted:** a panel's *week* view still ignores "Which
-calendars" while the wall's week honours it, which is the same divergence one
-view along and outside this item.
+**Not changed and noted:** a panel's *week* view still ignored "Which
+calendars" while the wall's week honoured it, which was the same divergence one
+view along and outside this item. *(Fixed since: the next paragraph but
+several, "A panel's week strip honours Which calendars".)*
 
 **The first two CI runs went red on this diff, and correctly.** `epaper-ink`'s
 "draws nothing else for calendar" probes every unhonoured key on the month
@@ -12746,6 +12747,20 @@ case, red on a clean `main` in this container as before. **Still unproven
 where it counts:** nobody has looked at a 3D forecast on a kitchen wall. A
 separate solid set is not built, because Meteocons' monochrome style exists
 only in a 3.0 prerelease.
+
+**A panel's week strip honours "Which calendars" now.** The wall's week
+columns always filtered by the widget's calendars, and since P5.4 so did the
+panel's month, but `drawWeekBox` drew every calendar: a panel following a week
+wall drew a different week from it. It takes `calendars` now, read by the same
+`calendarsOf`, and filters each column through the month's own
+`keepCalendars`, so the "+N" counts only kept calendars. Held the month's way,
+byte for byte: a week filtered to two calendars is the frame of a household
+that never had the third, and nothing ticked is the frame it always was.
+`EPAPER_RENDERER_VERSION` is 11, because a week-view calendar widget that names
+calendars draws different pixels from the same input; every other frame is
+byte-identical to 10, and the two tests that pinned 10 now pin 11. Two
+mutations, both red: the filter not passed to the week, and the names filtered
+with the old count kept.
 
 ---
 

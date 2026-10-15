@@ -199,9 +199,11 @@ describe('the renderer version', () => {
      * before the tick — and those still hold; the version itself moved to 10
      * for plan item P5.4, which draws the rota's code on a calendar widget and
      * is a pixel change on any panel with a rota. So this holds the version to
-     * the one P5.4 stated, and the frames to their hashes.
+     * the one P5.4 stated, and the frames to their hashes. It is 11 since a
+     * calendar widget's week strip honoured "Which calendars", which moves no
+     * to-do frame either.
      */
-    expect(EPAPER_RENDERER_VERSION).toBe(10);
+    expect(EPAPER_RENDERER_VERSION).toBe(11);
   });
 });
 
