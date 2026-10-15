@@ -203,15 +203,18 @@ describe('the admin navigation at compact width', () => {
     }
   });
 
-  it('needs no script to open, on a page that ships only the theme and ripple', async () => {
+  it('needs no script to open, on a page that ships only the theme, ripple and tab-row scripts', async () => {
     const h = await harness();
     await h.signedIn();
     const html = await (await h.call('/admin')).text();
 
-    // Neither shell script may be what opens the drawer: the markup names no
-    // handler, and the two scripts that do ship are the shared pair.
+    // No shell script may be what opens the drawer: the markup names no
+    // handler, and the three scripts that do ship are the theme, the ripple
+    // and the one that scrolls the tab bar's rows to the current tab (the tab
+    // bar is Home Assistant's; on this page it is removed and the script finds
+    // nothing to scroll).
     const scripts = html.match(/<script\b[^>]*>[\s\S]*?<\/script>/gi) ?? [];
-    expect(scripts.length, 'the shell ships the theme and ripple scripts only').toBe(2);
+    expect(scripts.length, 'the shell ships the theme, ripple and tab-row scripts only').toBe(3);
     for (const script of scripts) {
       expect(/\bsrc\s*=/i.test(script), 'no shell script may be loaded by src').toBe(false);
       expect(script, 'no script may drive the drawer').not.toContain('mw-nav');
