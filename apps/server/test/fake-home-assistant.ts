@@ -820,6 +820,22 @@ export async function fakeHomeAssistant(): Promise<FakeHa> {
          * only when asked for one, keyed by entity, and a type the entity does
          * not forecast refused with core's own sentence (`weather/__init__.py`).
          */
+        /*
+         * `persistent_notification.dismiss`, as core answers it: the one id
+         * dropped, and an id that is not there answered 200 all the same —
+         * core logs it and says nothing — so a fake that refused would let a
+         * caller depend on a refusal that never comes.
+         */
+        if (service === 'persistent_notification/dismiss') {
+          const id = parsed['notification_id'];
+          if (typeof id === 'string') {
+            const at = state.notifications.findIndex((one) => one.notification_id === id);
+            if (at !== -1) state.notifications.splice(at, 1);
+          }
+          json('[]');
+          return;
+        }
+
         if (service === 'weather/get_forecasts') {
           if (query !== 'return_response') {
             response.writeHead(400, { 'content-type': 'application/json' });

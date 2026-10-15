@@ -167,10 +167,12 @@ built by the server from a bounded value; **the wall never sends service data.**
 | `media_player` | `media_play_pause` | play/pause | — | Marked controllable; play and pause are in `supported_features`. |
 | `media_player` | `media_next_track`, `media_previous_track` | next, previous | — | Marked controllable; that feature is supported. |
 | `media_player` | `volume_set` | volume | `volume_level` 0.0–1.0, converted by the server from the wall's 0–100 | Marked controllable; volume set is supported. |
-| `persistent_notification` | `dismiss` | dismiss | `notification_id` | A notification shown on this wall (M6.11). |
+| `persistent_notification` | `dismiss` | dismiss | `notification_id` | A notification shown on this wall (M6.11), on a wall allowed to clear alerts; named to the wall by a handle. **Built** 2026-10-15 under Rule 12's 2026-10-14 amendment. |
 
 Every row sends `entity_id` as a single string, except the `todo` rows, which
-keep RFC 012's shape. `ha-write-boundary.test.ts` asserts this table
+keep RFC 012's shape, and the `persistent_notification` row, which sends
+`notification_id` alone because a notification has not been an entity since
+Home Assistant 2023.6. `ha-write-boundary.test.ts` asserts this table
 exactly, row by row, including the data keys.
 
 Webhook buttons are not Home Assistant service calls and have their own section
@@ -566,7 +568,7 @@ and OQ6–OQ10 took the defaults this RFC proposed. None is open.
 | OQ6 | Press-and-hold or a two-step confirm for scenes, scripts and webhooks? | **Decided:** press-and-hold, 600 ms. |
 | OQ7 | Rate limits | **Decided:** 20 presses a minute per wall; one in flight per entity. |
 | OQ8 | Audit retention | **Decided:** 14 days, admin only. |
-| OQ9 | Listing persistent notifications needs the WebSocket API. | **Decided:** build the dismiss row only when a WebSocket client exists; until then M6.11 ships rule-based tiles only. |
+| OQ9 | Listing persistent notifications needs the WebSocket API. | **Decided:** build the dismiss row only when a WebSocket client exists; until then M6.11 ships rule-based tiles only. **Built** 2026-10-15: M6.11's WebSocket read exists, the owner amended Rule 12 on 2026-10-14, and the row is `notification.dismiss`, reached from `/d/notifications/dismiss`. |
 | OQ10 | Should a signed-in admin be able to test a control from the editor? | **Decided:** yes, through the same route and checks, with the session standing in for the wall switch only. |
 
 ## 15. Non-goals

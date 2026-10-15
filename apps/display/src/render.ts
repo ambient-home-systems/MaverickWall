@@ -2039,8 +2039,10 @@ function renderMessagesWidget(model: DisplayModel): HTMLElement {
  * A tile carries an OK where this wall may acknowledge (the same switch as a
  * banner's, `allowDismiss`) and its rule said it may be cleared; the press is
  * the banner's own, `/d/interrupts/dismiss`, by the tile's handle. Home
- * Assistant's carry none: dismissing one from a wall is no verb in RFC 018's
- * table, so it goes when it is dismissed in Home Assistant.
+ * Assistant's carry a Clear on the same switch (rule 12, amended 2026-10-14),
+ * which posts the notification's handle to `/d/notifications/dismiss` and
+ * dismisses it in Home Assistant, one at a time; the server decides whether
+ * this wall may.
  */
 function renderNotificationsWidget(model: DisplayModel, config: unknown): HTMLElement {
   const showHa = widgetConfig(config)['haNotifications'] !== false;
@@ -2073,6 +2075,13 @@ function renderNotificationsWidget(model: DisplayModel, config: unknown): HTMLEl
     const ago = note.createdAt === undefined ? undefined : changedWords(note.createdAt, model.now);
     if (ago !== undefined) words.appendChild(el('span', 'nf-ago', ago));
     row.appendChild(words);
+    if (model.allowDismiss) {
+      const clear = el('button', 'nf-ok', 'Clear');
+      clear.setAttribute('type', 'button');
+      clear.setAttribute('data-ha-notification-dismiss', note.key);
+      clear.setAttribute('aria-label', `Clear: ${note.title ?? note.message}`);
+      row.appendChild(clear);
+    }
     list.appendChild(row);
   }
   return list;

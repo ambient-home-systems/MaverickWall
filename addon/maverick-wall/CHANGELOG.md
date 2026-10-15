@@ -16,6 +16,15 @@
 
 ## Unreleased
 
+**A wall can clear a Home Assistant notification.** On a wall allowed to
+clear alerts, each of Home Assistant's notifications in a Notifications widget
+now has a **Clear** button. Pressing it dismisses that one notification in
+Home Assistant, so it goes from every wall and from Home Assistant's own
+notification list too. A wall can clear only a notification it was showing,
+one at a time, and never anything else. The wall is still never told Home
+Assistant's address, its token or the notification's own name in Home
+Assistant.
+
 ## 1.8.3
 
 **A camera can be live over WebRTC, the way Home Assistant shows it.** A

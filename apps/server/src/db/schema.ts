@@ -2229,8 +2229,9 @@ export const haConditionStates = sqliteTable('ha_condition_states', {
  * only while a Notifications widget asks for them. **Replaced whole** on every
  * read that works, so one dismissed in Home Assistant leaves every wall on the
  * next; kept as they were when a read fails, because a house that is briefly
- * unreachable has not cleared its notifications. Dismissing one from a wall is
- * no verb this application has (rule 12).
+ * unreachable has not cleared its notifications. A wall allowed to clear
+ * alerts may dismiss one it was shown (rule 12, amended 2026-10-14), and the
+ * row is deleted when Home Assistant accepts.
  */
 export const haNotifications = sqliteTable('ha_notifications', {
   notificationId: text('notification_id').primaryKey(),

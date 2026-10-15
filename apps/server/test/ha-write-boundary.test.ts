@@ -362,6 +362,8 @@ const EXPECTED_TABLE: Record<string, unknown> = {
   'media_player.next': { service: 'media_player/media_next_track', kind: 'write', reach: 'wall', data: [], returnResponse: false },
   'media_player.previous': { service: 'media_player/media_previous_track', kind: 'write', reach: 'wall', data: [], returnResponse: false },
   'media_player.volume': { service: 'media_player/volume_set', kind: 'write', reach: 'wall', data: ['volume_level'], returnResponse: false },
+  // Rule 12, amended 2026-10-14: one notification a wall was shown.
+  'notification.dismiss': { service: 'persistent_notification/dismiss', kind: 'write', reach: 'wall', data: ['notification_id'], returnResponse: false },
 };
 
 /** What rule 12 never permits, as entities a table row might be steered at. */
@@ -382,7 +384,7 @@ const NEVER = [
 
 const CONTROL_KEYS = (Object.keys(HA_SERVICES) as ServiceKey[]).filter(
   (key): key is ControlKey =>
-    !['todo.read', 'todo.tick', 'todo.add', 'weather.forecasts'].includes(key),
+    !['todo.read', 'todo.tick', 'todo.add', 'weather.forecasts', 'notification.dismiss'].includes(key),
 );
 
 const MEDIA_ALL = 1 | 4 | 16 | 32 | 16384;
@@ -436,11 +438,50 @@ describe('the allowlist', () => {
     for (const domain of [...NEVER.map((id) => id.slice(0, id.indexOf('.'))), 'hassio', 'homeassistant']) {
       expect(services.some((service) => service.startsWith(`${domain}/`)), domain).toBe(false);
     }
-    // Inside `todo`, the two deletes stay out; and dismissing a persistent
-    // notification waits for a WebSocket client (RFC 018 OQ9).
-    for (const later of ['todo/remove_item', 'todo/remove_completed_items', 'persistent_notification/dismiss']) {
+    // Inside `todo`, the two deletes stay out; inside `persistent_notification`,
+    // only the dismiss is in — never `create`, and never the dismiss-all.
+    for (const later of [
+      'todo/remove_item',
+      'todo/remove_completed_items',
+      'persistent_notification/create',
+      'persistent_notification/dismiss_all',
+      'persistent_notification/mark_read',
+    ]) {
       expect(services).not.toContain(later);
     }
+    expect(services.filter((service) => service.startsWith('persistent_notification/'))).toEqual([
+      'persistent_notification/dismiss',
+    ]);
+  });
+
+  it('dismisses one notification by its id, and builds that call in one function, which only the wall route calls', () => {
+    const built = buildCall({ key: 'notification.dismiss', notificationId: 'config_entry_discovery' });
+    expect(built.ok && built.call.body).toEqual({ notification_id: 'config_entry_discovery' });
+    for (const bad of ['', 'x'.repeat(256), 'a\nb', 'a\u0000b']) {
+      expect(buildCall({ key: 'notification.dismiss', notificationId: bad }).ok, JSON.stringify(bad)).toBe(false);
+    }
+    // Nothing that names a set: the id is a string, and a list is refused.
+    expect(
+      buildCall({ key: 'notification.dismiss', notificationId: ['a', 'b'] as unknown as string }).ok,
+    ).toBe(false);
+
+    const builders: string[] = [];
+    const callers: string[] = [];
+    for (const file of filesUnder(SERVER_SRC)) {
+      const lines = readFileSync(file, 'utf8').split('\n');
+      lines.forEach((text, index) => {
+        if (/key:\s*'notification\.dismiss'/.test(text) && !text.includes('readonly key')) {
+          builders.push(`${relative(ROOT, file)}:${enclosingFunction(lines, index + 1)}`);
+        }
+        if (/\bdismissHaNotification\(/.test(text) && !/function dismissHaNotification\(/.test(text)) {
+          callers.push(relative(ROOT, file));
+        }
+      });
+    }
+    expect(builders).toEqual([`${SERVER_SRC}/modules/notifications/dismiss.ts:dismissHaNotification`]);
+    expect(callers).toEqual([`${SERVER_SRC}/http/app.ts`]);
+    const route = readFileSync(join(ROOT, `${SERVER_SRC}/http/app.ts`), 'utf8');
+    expect(route).toContain(`app.post('/d/notifications/dismiss'`);
   });
 
   it('lets only the companion API add to a list', () => {

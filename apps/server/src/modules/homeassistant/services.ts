@@ -95,12 +95,20 @@ export const HA_SERVICES = Object.freeze({
   'media_player.next': row('media_player/media_next_track', 'write', 'wall'),
   'media_player.previous': row('media_player/media_previous_track', 'write', 'wall'),
   'media_player.volume': row('media_player/volume_set', 'write', 'wall', ['volume_level']),
+  // Rule 12 (amended 2026-10-14): a wall allowed to clear alerts dismisses one
+  // persistent notification it was shown. Named by Home Assistant's own
+  // notification id, never an entity — notifications have not been entities
+  // since 2023.6 — so it is the one row whose body carries no `entity_id`.
+  'notification.dismiss': row('persistent_notification/dismiss', 'write', 'wall', ['notification_id']),
 } as const);
 
 export type ServiceKey = keyof typeof HA_SERVICES;
 
 /** The keys a wall may operate, which every take an entity's facts and maybe a value. */
-export type ControlKey = Exclude<ServiceKey, 'todo.read' | 'todo.tick' | 'todo.add' | 'weather.forecasts'>;
+export type ControlKey = Exclude<
+  ServiceKey,
+  'todo.read' | 'todo.tick' | 'todo.add' | 'weather.forecasts' | 'notification.dismiss'
+>;
 
 /**
  * The only cover device classes a wall may move: things that shade a room.
@@ -215,6 +223,11 @@ export type CallRequest =
       readonly key: 'weather.forecasts';
       readonly entityId: string;
       readonly type: 'daily' | 'hourly' | 'twice_daily';
+    }
+  | {
+      readonly key: 'notification.dismiss';
+      /** Home Assistant's own id for the notification, read from its own answer. */
+      readonly notificationId: string;
     }
   | {
       readonly key: ControlKey;
@@ -383,6 +396,21 @@ export function validateCall(request: CallRequest): Validated {
   const row = (HA_SERVICES as Record<string, ServiceRow | undefined>)[request.key];
   if (row === undefined) return refuse('unknown-service', 'That is not something this wall can do.');
 
+  /*
+   * The one row with no entity. Its body is the notification's id and nothing
+   * else — not a list, not a pattern — so one press dismisses one
+   * notification, and the id is held to the shape `notifications.ts` stored it
+   * in. Which notification a wall may name is the route's to decide; this
+   * decides only that the call is one notification and well formed.
+   */
+  if (request.key === 'notification.dismiss') {
+    const id = request.notificationId;
+    if (typeof id !== 'string' || id === '' || id.length > MAX_TEXT || CONTROL.test(id)) {
+      return refuse('bad-value', 'That notification is not there any more.');
+    }
+    return { ok: true, row, body: Object.freeze({ notification_id: id }) };
+  }
+
   const { entityId } = request;
   if (typeof entityId !== 'string' || !ENTITY_ID.test(entityId)) {
     return refuse('bad-entity', 'That is not something in your house this wall knows about.');
@@ -438,7 +466,8 @@ export function validateCall(request: CallRequest): Validated {
  *
  * The body is always `{ entity_id: <one id>, ...the row's data }` — never an
  * `area_id`, `device_id`, `label_id` or `all`, and never a key the row does not
- * name.
+ * name — except the notification dismiss, whose body is
+ * `{ notification_id: <one id> }` and nothing else.
  */
 export function buildCall(request: CallRequest): BuildResult {
   const checked = validateCall(request);

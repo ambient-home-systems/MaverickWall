@@ -12617,6 +12617,47 @@ on a clean `main` in this container as before.
 **Still unproven where it counts:** no real go2rtc has been reached from a
 real wall.
 
+**A wall clears a Home Assistant notification, one at a time, by a handle
+(rule 12, amended 2026-10-14).** On a wall allowed to clear alerts, each Home
+Assistant row in a Notifications widget carries a Clear. It posts the row's
+handle (`han:` and 24 hex) to `POST /d/notifications/dismiss`, and
+`dismissHaNotification` (`modules/notifications/dismiss.ts`) checks:
+
+- the wall's alert switch, before it reads the body;
+- that the handle is shaped right;
+- that a Notifications widget showing Home Assistant's is on a canvas this
+  wall can draw (both orientations, every named layout, a lent layout), as a
+  camera's picture is gated;
+- that the handle matches a notification this server last read.
+
+It then takes one press from the budget every press shares and makes one call
+through the frozen table: `notification.dismiss`, `persistent_notification/dismiss`,
+the one row whose body is `{ notification_id }` alone, because a notification
+has not been an entity since Home Assistant 2023.6. On success the row is
+deleted, so the wall's next poll, which it asks for at once, draws the list
+without it. A failed call keeps the row and says why. `ha-write-boundary.test.ts`
+pins the row, refuses `create`, `dismiss_all` and `mark_read`, and holds the
+call to one builder and the route to one caller. The fake house answers the
+dismiss as core does, including a 200 for an id it does not have.
+
+**Measured.** `now-playing-notifications.test.ts` gains 4, the real app against
+the fake house: the one named notification dismissed and gone from the wall,
+the switch off refusing before anything is asked, nothing dismissed that the
+wall was not shown (no widget, a widget hiding them, an unknown handle, Home
+Assistant's own id), and a down house keeping the row. `ha-write-boundary` gains
+1, and `browser-now-playing-notifications` 1: a real wall presses Clear and the
+fake's list loses exactly that id, with the id never on the page and no Clear
+drawn once the switch is off. Twelve mutations were checked. Eleven are red. The
+twelfth, the raw id accepted in the lookup, is equivalent: the shape check
+refuses it first. It was re-aimed at the shape check itself, which is red.
+**6206 tests passing, 1 red and 2 skipped, over 468 files**: calendar 153 (1
+skipped) over 10 · core 327 over 9 · display 1103 over 72 · docs 26 over 1 ·
+server 4597 (1 skipped) over 376, measured with `pnpm test` and a real
+Chromium. Against WebRTC's 6200 over 468 that is +6, this change's own count.
+The one red is `browser-glass`'s striped-picture case, red on a clean `main` in
+this container as before. **Still unproven where it counts:** no real Home
+Assistant notification has been cleared from a kitchen wall.
+
 ---
 
 ## Open decisions

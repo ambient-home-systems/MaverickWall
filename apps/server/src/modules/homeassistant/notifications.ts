@@ -21,8 +21,9 @@ import { SUPERVISOR_BASE, type Connection } from './client.js';
  *
  * **Two messages are ever sent**: the token, as the handshake asks, and
  * `persistent_notification/get`, which is a read. Nothing here can dismiss or
- * create one — dismissing from a wall is no verb in RFC 018's table, and
- * `ha-write-boundary.test.ts` holds this file to those two.
+ * create one, and `ha-write-boundary.test.ts` holds this file to those two.
+ * Dismissing from a wall (rule 12, amended 2026-10-14) is a service call, one
+ * row of `HA_SERVICES`, through the one door — `notifications/dismiss.ts`.
  *
  * **Only while a Notifications widget asks**, so a house without one is never
  * asked anything new.

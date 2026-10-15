@@ -35,6 +35,7 @@ import {
 } from './browser-harness.js';
 import { readLayoutWidgets } from '../src/api/queries.js';
 import { haReadingHandle } from '../src/api/manifest.js';
+import { TOKEN, closeFakeHomeAssistants, fakeHomeAssistant } from './fake-home-assistant.js';
 
 process.env['TZ'] = 'UTC';
 
@@ -366,6 +367,79 @@ describe('the Notifications widget on a wall (M6.11)', () => {
       );
     } finally {
       await close();
+    }
+  }, SLOW);
+});
+
+describe('clearing a Home Assistant notification from the wall (rule 12, amended 2026-10-14)', () => {
+  it('draws a Clear behind the alert switch, and the press dismisses that one in Home Assistant', async () => {
+    // Last in the file: it points the connection at a stand-in house.
+    const ha = await fakeHomeAssistant();
+    try {
+      const connected = await wall.post('/admin/home-assistant/connect', {
+        base_url: ha.base,
+        token: TOKEN,
+        allow_lan: '1',
+        accept_http: '1',
+      });
+      expect(connected.status).toBe(302);
+      const at = wall.now();
+      ha.notifications.push(
+        { notification_id: 'config_entry_discovery', title: 'New devices discovered', message: 'We found 2.', created_at: new Date(at).toISOString() },
+        { notification_id: 'backup_failed', title: null, message: 'The backup failed.', created_at: new Date(at).toISOString() },
+      );
+      const insert = wall.db.prepare(
+        `INSERT OR REPLACE INTO ha_notifications (notification_id, title, message, created_at, read_at) VALUES (?, ?, ?, ?, ?)`,
+      );
+      insert.run('config_entry_discovery', 'New devices discovered', 'We found 2.', at - 60_000, at);
+      insert.run('backup_failed', null, 'The backup failed.', at - 120_000, at);
+      await place([{ id: 'nf', type: 'notifications', config: {}, y: 0.02, h: 0.12 }]);
+
+      const { page, close } = await loadWallSettled(link, PORTRAIT);
+      try {
+        const before = await page.evaluate(() => ({
+          clears: [...document.querySelectorAll('.fw[data-widget-id="nf"] [data-ha-notification-dismiss]')].map((b) => ({
+            key: b.getAttribute('data-ha-notification-dismiss'),
+            label: b.getAttribute('aria-label'),
+            tag: b.tagName,
+          })),
+          page: document.documentElement.outerHTML,
+        }));
+        expect(before.clears).toHaveLength(2);
+        for (const clear of before.clears) {
+          expect(clear.tag).toBe('BUTTON');
+          expect(clear.key).toMatch(/^han:[0-9a-f]{24}$/);
+        }
+        // Home Assistant's id never reaches the page.
+        expect(before.page).not.toContain('config_entry_discovery');
+
+        await page.click('.fw[data-widget-id="nf"] [aria-label="Clear: New devices discovered"]');
+        await page.waitForFunction(
+          () =>
+            document.querySelectorAll('.fw[data-widget-id="nf"] [data-ha-notification-dismiss]').length === 1 &&
+            document.querySelector('.fw[data-widget-id="nf"]')?.textContent?.includes('New devices discovered') === false,
+          null,
+          { timeout: 20_000 },
+        );
+        expect(ha.posts.map((post) => [post.path, JSON.parse(post.body) as unknown])).toEqual([
+          ['/api/services/persistent_notification/dismiss', { notification_id: 'config_entry_discovery' }],
+        ]);
+        expect(ha.notifications.map((one) => one.notification_id)).toEqual(['backup_failed']);
+      } finally {
+        await close();
+      }
+
+      // With the alert switch off, no Clear is drawn.
+      wall.db.prepare('UPDATE screens SET allow_dismiss = 0 WHERE id = ?').run(screenId);
+      const off = await loadWallSettled(link, PORTRAIT);
+      try {
+        expect(await off.page.locator('[data-ha-notification-dismiss]').count()).toBe(0);
+        expect(await off.page.locator('.fw[data-widget-id="nf"]').textContent()).toContain('The backup failed.');
+      } finally {
+        await off.close();
+      }
+    } finally {
+      await closeFakeHomeAssistants();
     }
   }, SLOW);
 });
