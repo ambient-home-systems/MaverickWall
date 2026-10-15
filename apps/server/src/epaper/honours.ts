@@ -401,6 +401,24 @@ export const PANEL_IGNORES: readonly PanelIgnores[] = [
    * panel keeps its own drawn one-bit pictures whichever set the wall wears —
    * and `epaper-ink.test.ts` proves no frame moves by setting it.
    */
+  /*
+   * A QR code's dot and eye styles (plan item M5.3). A panel draws each
+   * module as a square of two pixels or more, which is the shape one bit
+   * draws most surely and a camera reads best at that size; a dot two pixels
+   * across is a square anyway. `epaper-ink.test.ts` proves neither moves ink.
+   */
+  {
+    key: 'qrDots',
+    types: ['qr'],
+    label: 'Dots',
+    why: 'a panel draws every module as a hard square, the shape a camera reads best on one bit.',
+  },
+  {
+    key: 'qrEyes',
+    types: ['qr'],
+    label: 'Corner squares',
+    why: 'a panel draws the code’s corner squares square, the shape a camera reads best on one bit.',
+  },
   {
     key: 'icons',
     types: ['weather', 'clock'],

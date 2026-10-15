@@ -197,6 +197,65 @@ describe('a QR code on the wall', () => {
   );
 });
 
+describe('a QR code drawn in each style', () => {
+  it(
+    'reads back from the glass in every pairing of dots and corner squares, short and long',
+    async () => {
+      const dots = ['square', 'rounded', 'dots'] as const;
+      const eyes = ['square', 'rounded', 'circle'] as const;
+      // A long payload is a version 8 code, 49 modules a side: the density where a dot is smallest.
+      const long = { mode: 'text', text: 'Maverick Wall '.repeat(10).trim() };
+      const short = { mode: 'link', link: 'https://example.com/menu' };
+      const configs: { id: string; config: Record<string, unknown> }[] = [];
+      for (const [i, d] of dots.entries()) {
+        for (const [j, e] of eyes.entries()) {
+          configs.push({ id: `s-${d}-${e}`, config: { ...(i + j === 0 ? short : long), qrDots: d, qrEyes: e } });
+        }
+      }
+      const run = async (payloads: typeof configs): Promise<void> => {
+        place(
+          payloads.map((one, n) => ({
+            id: one.id,
+            x: 0.02 + (n % 3) * 0.33,
+            y: 0.02 + Math.floor(n / 3) * 0.2,
+            w: 0.3,
+            h: 0.18,
+            config: one.config,
+          })),
+        );
+        const opened = await loadWallSettled(link, { width: 1080, height: 1920 });
+        try {
+          for (const one of payloads) {
+            const page = opened.page;
+            expect(await readCode(page, `${box(one.id)} .qr-code`), one.id).toBe(qrPayload(one.config));
+            const drawn = await page.evaluate((sel) => {
+              const svg = document.querySelector(sel) as SVGSVGElement;
+              return {
+                rendering: svg.getAttribute('shape-rendering'),
+                eyes: svg.querySelector('.qr-eyes')?.getAttribute('fill-rule') ?? null,
+                curves: (svg.querySelector('.qr-modules')?.getAttribute('d') ?? '').includes('a'),
+                fills: [...svg.querySelectorAll('.qr-modules')].map((p) => getComputedStyle(p).fill),
+              };
+            }, `${box(one.id)} svg`);
+            const square = one.config['qrDots'] === 'square' && one.config['qrEyes'] === 'square';
+            // Square is the code it always was: one crisp path, no separate eyes.
+            expect(drawn.rendering, one.id).toBe(square ? 'crispEdges' : 'geometricPrecision');
+            expect(drawn.eyes, one.id).toBe(square ? null : 'evenodd');
+            expect(drawn.curves, one.id).toBe(one.config['qrDots'] !== 'square');
+            expect(new Set(drawn.fills), one.id).toEqual(new Set(['rgb(0, 0, 0)']));
+          }
+        } finally {
+          await opened.close();
+        }
+      };
+      await run(configs);
+      // And the short code in every style, where each module is largest and a rounded eye most rounded.
+      await run(configs.map((one) => ({ id: `${one.id}-short`, config: { ...short, qrDots: one.config['qrDots'], qrEyes: one.config['qrEyes'] } })));
+    },
+    SLOW,
+  );
+});
+
 describe('a QR code in the editor', () => {
   it(
     'previews the network as it is typed, warns before Save, and saves what was typed',
@@ -238,10 +297,29 @@ describe('a QR code in the editor', () => {
           .toBe('That is more than one QR code can hold. Shorten it.');
         await editor.selectOption('.le-cfg-field[data-cfg-key="mode"] select', '');
 
+        // The styles: the preview takes them at once, and square is stored as nothing.
+        expect(await editor.evaluate(() => document.querySelector('.le-preview')?.shadowRoot?.querySelector('.qr-eyes') ?? null)).toBeNull();
+        await editor.click('.le-cfg-field[data-cfg-key="qrDots"] button:has-text("Dots")');
+        await editor.click('.le-cfg-field[data-cfg-key="qrEyes"] button:has-text("Circles")');
+        await expect
+          .poll(() =>
+            editor.evaluate(() => {
+              const root = document.querySelector('.le-preview')?.shadowRoot;
+              return root?.querySelector('.qr-eyes') !== null && root?.querySelector('.qr-code svg')?.getAttribute('shape-rendering');
+            }),
+          )
+          .toBe('geometricPrecision');
+        await editor.click('.le-cfg-field[data-cfg-key="qrDots"] button:has-text("Square")');
+
         await Promise.all([editor.waitForNavigation({ timeout: 20_000 }), editor.click('[data-action="save"]')]);
         const stored = app.db.prepare(`SELECT config FROM layout_widgets WHERE id = 'q-edit'`).get() as { config: string };
         // The text typed for the other kind is kept: a household switching back finds it.
-        expect(JSON.parse(stored.config)).toEqual({ ssid: 'Visitors', wifiPassword: 'come-on-in', text: 'é'.repeat(107) });
+        expect(JSON.parse(stored.config)).toEqual({
+          ssid: 'Visitors',
+          wifiPassword: 'come-on-in',
+          text: 'é'.repeat(107),
+          qrEyes: 'circle',
+        });
       } finally {
         await context.close();
       }

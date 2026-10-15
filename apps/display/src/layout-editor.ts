@@ -130,6 +130,7 @@ import { newsMode, newsRotateMs, newsShows } from './news-view.js';
 import { GLYPH_KEYS, glyphNode } from './glyphs.js';
 import { headingPlace, headingSize } from './heading.js';
 import { QR_MAX_BYTES, qrBytes, qrKind, qrPayload, wifiSecurity } from './qr-payload.js';
+import { qrShapes } from './qr-shapes.js';
 import { EMOJI_KEYS, emojiNode } from './emoji.js';
 import { TIER_NAMES, type TierName } from './tiers.js';
 import { DEFAULT_SLIDE_SECONDS, slideConfig } from './slideshow.js';
@@ -6643,6 +6644,35 @@ function boot(): void {
     }
     configPanel.appendChild(warning);
     check();
+    // How it is drawn, for every kind of code. Every shape here reads; the
+    // colours do not change, because a coloured code is one some phones miss.
+    const shapes = qrShapes(cfg);
+    configPanel.appendChild(
+      segControl(
+        'Dots',
+        [
+          ['square', 'Square'],
+          ['rounded', 'Rounded'],
+          ['dots', 'Dots'],
+        ],
+        shapes.dots,
+        (value) => setConfig(widget, 'qrDots', value === 'square' ? undefined : value),
+        'qrDots',
+      ),
+    );
+    configPanel.appendChild(
+      segControl(
+        'Corner squares',
+        [
+          ['square', 'Square'],
+          ['rounded', 'Rounded'],
+          ['circle', 'Circles'],
+        ],
+        shapes.eyes,
+        (value) => setConfig(widget, 'qrEyes', value === 'square' ? undefined : value),
+        'qrEyes',
+      ),
+    );
   }
 
   /**
