@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 1.8.6
+
 **An e-paper panel's week shows only the calendars you picked.** A calendar
 widget set to the week view, with **Calendars to show** ticked, now draws just
 those calendars on a panel, as it already did on a browser wall, and its "+N"
