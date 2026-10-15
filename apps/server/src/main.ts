@@ -562,9 +562,13 @@ async function main(): Promise<void> {
    * box, which is `meteoconNode`'s rule for a sky it has no picture for.
    */
   const meteoconsDir = defaultMeteoconsDir();
-  if (!existsSync(join(meteoconsDir, 'fill', 'clear-day.svg')) || !existsSync(join(meteoconsDir, 'line', 'clear-day.svg'))) {
-    console.warn(`[boot] the forecast's Meteocons pictures are missing from ${meteoconsDir}`);
-    console.warn('[boot] set METEOCONS_DIR to where the fill and line directories live');
+  if (
+    !existsSync(join(meteoconsDir, 'fill', 'clear-day.svg')) ||
+    !existsSync(join(meteoconsDir, 'line', 'clear-day.svg')) ||
+    !existsSync(join(meteoconsDir, '3d', 'sun.png'))
+  ) {
+    console.warn(`[boot] the forecast's pictures are missing from ${meteoconsDir}`);
+    console.warn('[boot] set METEOCONS_DIR to where the fill, line and 3d directories live');
   } else {
     console.log(`[boot] meteocons ${meteoconsDir}`);
   }

@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { randomBytes } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -41,6 +42,19 @@ function namedByTheWall(): string[] {
   };
   return [...block('METEOCON_FILES'), ...block('MOON_PHASES')].sort();
 }
+
+/** The 3D set's files, read the same way, from `FLUENT_3D_FILES` and its eight moons. */
+function named3dByTheWall(): string[] {
+  const source = readFileSync(join(ROOT, 'apps', 'display', 'src', 'weather-icons.ts'), 'utf8');
+  const block = (name: string): string[] => {
+    const open = source.indexOf('= [', source.indexOf(`export const ${name}`));
+    const body = source.slice(open, source.indexOf(']', open));
+    return [...body.matchAll(/'([a-z-]+)'/g)].map((match) => match[1] as string);
+  };
+  return [...block('FLUENT_3D_FILES'), ...block('MOON_PHASES_3D')].sort();
+}
+
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 describe('the bundled pictures', () => {
   it('are exactly the files the wall names, in both sets', () => {
@@ -91,12 +105,44 @@ describe('the bundled pictures', () => {
   });
 });
 
+describe('the bundled 3D pictures', () => {
+  /*
+   * Fluent Emoji's 3D renders, not Meteocons: Meteocons has no 3D style. A
+   * PNG cannot move, style itself or run anything, so what is held here is
+   * that each one is a real PNG, the set is exactly what the wall names, and
+   * every file is the one `LICENSES.md` says was copied from upstream.
+   */
+  it('are exactly the files the wall names', () => {
+    const named = named3dByTheWall();
+    expect(named).toHaveLength(18);
+    expect(named).toContain('full-moon');
+    const files = readdirSync(join(DIR, '3d')).map((file) => file.replace(/\.png$/, '')).sort();
+    expect(files).toEqual(named);
+  });
+
+  it('are 256-pixel PNGs, each the file LICENSES.md records by hash', () => {
+    const licences = readFileSync(join(DIR, 'LICENSES.md'), 'utf8');
+    expect(licences).toContain('Copyright (c) Microsoft Corporation.');
+    expect(licences).toMatch(/commit `[0-9a-f]{40}`/);
+    for (const file of readdirSync(join(DIR, '3d'))) {
+      const bytes = readFileSync(join(DIR, '3d', file));
+      expect(bytes.subarray(0, 8).equals(PNG_SIGNATURE), `${file} is a PNG`).toBe(true);
+      expect([bytes.readUInt32BE(16), bytes.readUInt32BE(20)], file).toEqual([256, 256]);
+      const hash = createHash('sha256').update(bytes).digest('hex');
+      expect(licences, `${file}'s hash`).toContain(`| \`3d/${file}\` |`);
+      const row = licences.split('\n').find((line) => line.startsWith(`| \`3d/${file}\` |`)) ?? '';
+      expect(row, file).toContain(hash);
+    }
+    expect(readFileSync(join(ROOT, 'NOTICE'), 'utf8')).toContain('Fluent Emoji');
+  });
+});
+
 describe('the widget setting', () => {
-  it('takes the drawn set or either Meteocons set, and refuses anything else', () => {
-    for (const icons of ['drawn', 'fill', 'line']) {
+  it('takes the drawn set, either Meteocons set or the 3D set, and refuses anything else', () => {
+    for (const icons of ['drawn', 'fill', 'line', '3d']) {
       expect(widgetConfigBody.safeParse({ icons }).success, icons).toBe(true);
     }
-    for (const icons of ['animated', 'Fill', '', 3]) {
+    for (const icons of ['animated', 'Fill', '3D', 'flat', '', 3]) {
       expect(widgetConfigBody.safeParse({ icons }).success, String(icons)).toBe(false);
     }
   });
@@ -139,6 +185,17 @@ describe('/assets/meteocons/', () => {
     }
   });
 
+  it('serves every 3D picture as a PNG, cached a day, byte for byte', async () => {
+    const served = app();
+    for (const name of named3dByTheWall()) {
+      const res = await served.fetch(new Request(`http://localhost/assets/meteocons/3d/${name}.png`));
+      expect(res.status, name).toBe(200);
+      expect(res.headers.get('content-type')).toBe('image/png');
+      expect(res.headers.get('cache-control')).toBe('public, max-age=86400');
+      expect(Buffer.from(await res.arrayBuffer()).equals(readFileSync(join(DIR, '3d', `${name}.png`)))).toBe(true);
+    }
+  });
+
   it('serves nothing from a set it does not have, nor anything but a picture', async () => {
     const served = app();
     for (const path of [
@@ -149,6 +206,10 @@ describe('/assets/meteocons/', () => {
       'fill/.hidden.svg',
       'LICENSES.md/x.svg',
       'fill/not-a-picture.svg',
+      '3d/sun.svg',
+      'fill/sun.png',
+      '3d/LICENSES.md',
+      '3d/..%2Ffill%2Fclear-day.svg',
     ]) {
       const res = await served.fetch(new Request(`http://localhost/assets/meteocons/${path}`));
       expect(res.status, path).toBe(404);

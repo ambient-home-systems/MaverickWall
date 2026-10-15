@@ -321,7 +321,7 @@ const widgetConfigFields = z
      * set, so no forecast already hanging changes. Refused rather than coerced
      * outside the three, as every enum here is.
      */
-    icons: z.enum(['drawn', 'fill', 'line']).optional(),
+    icons: z.enum(['drawn', 'fill', 'line', '3d']).optional(),
     /*
      * The clock's weather line (plan item M5.10): which readings ride beside
      * the temperature. `showWeather` is what draws the line, the agenda's own

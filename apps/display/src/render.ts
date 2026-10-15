@@ -595,7 +595,7 @@ function weatherColumn(
         pictures.set, row.text, true, pictures.now, `${WEATHER_ROW_CLASS[row.field]} gl wxi`,
       );
       if (picture !== null) {
-        movePicture(picture, row.text, true, pictures.now + pictures.step);
+        movePicture(picture, row.text, true, pictures.now + pictures.step, pictures.set);
         picture.setAttribute('data-field', row.field);
         cell.appendChild(picture);
         continue;
@@ -631,8 +631,8 @@ const PICTURE_STEP_MS = PLAYFUL_BOB_STEP_MS;
  * not move (`iconMotion`) is drawn still. Never the SVG's own motion: the
  * bundled files are the static set (MQ7).
  */
-function movePicture(picture: HTMLElement, glyph: unknown, isDay: boolean, at: number): void {
-  const motion = iconMotion(isGlyphKey(glyph) ? glyph : undefined, isDay);
+function movePicture(picture: HTMLElement, glyph: unknown, isDay: boolean, at: number, set: WeatherIconSet): void {
+  const motion = iconMotion(isGlyphKey(glyph) ? glyph : undefined, isDay, set);
   if (motion === 'none') return;
   picture.classList.add(`wxi-${motion}`);
   lockLoop(picture, ICON_MOTION_MS[motion], at);
@@ -879,7 +879,7 @@ function renderWeatherToday(
   if (card.ledeLow !== undefined) lede.appendChild(el('span', 'wt-temp-lo', card.ledeLow));
   head.appendChild(lede);
   const picture = meteoconNode(pictures, card.glyph, card.isDay, model.now, 'wt-glyph gl wxi');
-  if (picture !== null) movePicture(picture, card.glyph, card.isDay, model.now);
+  if (picture !== null) movePicture(picture, card.glyph, card.isDay, model.now, pictures);
   const glyph = pictures === 'drawn' ? glyphNode(card.glyph, 'wt-glyph gl') : picture;
   if (glyph !== null) head.appendChild(glyph);
   top.appendChild(head);
