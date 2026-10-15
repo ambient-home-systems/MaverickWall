@@ -12658,6 +12658,50 @@ The one red is `browser-glass`'s striped-picture case, red on a clean `main` in
 this container as before. **Still unproven where it counts:** no real Home
 Assistant notification has been cleared from a kitchen wall.
 
+**A QR code can wear rounded modules or dots, and rounded or round corner
+squares (plan item M5.3, the dot and eye styles).** `qrDots` (`square`, the
+absence, `rounded`, `dots`) and `qrEyes` (`square`, `rounded`, `circle`) on
+the QR widget, refused outside those. `qr-shapes.ts` in the display is the
+drawing, and it is pure. Square for both is the path every code was drawn
+with before, byte for byte, which a unit test holds against the old runs.
+Any other choice draws the three eyes as one even-odd path of rings and
+centres, and every other module as a rounded square or a dot. The code is
+still black on white: a colour or a gradient is a code some phones miss, and
+a centre icon costs it error correction, so neither is built. A panel draws
+every code square (`PANEL_IGNORES`, scoped to `qr`), and a News headline's
+code and a module's are always square.
+
+**Decoding decided the design twice.** A sweep read every style back with
+`jsqr` from Chromium screenshots at nineteen sizes and two code lengths:
+- **Dotted codes failed at about half the sizes** whatever the eyes. Drawing
+  the alignment patterns whole, as rounded squares, made them read at every
+  size; the timing lines made no difference and stay dots. A larger dot did
+  not fix it, and once the fallback below existed it changed nothing a test
+  could see, so the dot stays at 0.42.
+- **Every styled code failed below about 2.3 screen pixels a module**, where
+  square ones went on reading. So `squareSmallQr`, run in the QR widget's
+  tier pass once the box is laid out, draws a styled code square under
+  `QR_STYLE_MIN_PX` (3) a module: a code that reads matters more than its look.
+
+**Measured.** `browser-qr.test.ts` decodes a screenshot of all nine pairings
+on a real wall, on a long code and a short one, reads each one's rendering,
+eyes and fill, and decodes a styled code in a box too small for it, drawn
+square. It also drives the editor's two controls through the preview to Save.
+`qr-shapes.test.ts` (6, display) holds the paths, and `qr-payload.test.ts`
+the schema. Fifteen mutations were counted and fourteen are red. Six first
+failed to build, because each left a value unread, and were re-aimed so they
+built. The fifteenth, the larger dot, stayed green and was reverted, for the
+reason above. **6215 tests passing, 1 red and 2 skipped, over 469 files**:
+calendar 153 (1 skipped) over 10 · core 327 over 9 · display 1110 over 73 ·
+docs 26 over 1 · server 4599 (1 skipped) over 376, measured with `pnpm test`
+and a real Chromium, with the changelog test re-run after fetching the new
+tag. Against the notification dismiss's 6206 over 468 that is +9 and +1: the
+new display file's 6, the row `motion.test.ts` generates for its module, and
+one test each in `browser-qr` and `qr-payload`. The one red is
+`browser-glass`'s striped-picture case, red on a clean `main` in this
+container as before. **Still unproven where it counts:** no real phone has
+scanned a styled code off a wall.
+
 ---
 
 ## Open decisions
