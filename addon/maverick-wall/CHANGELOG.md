@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 1.8.4
+
 **A wall can clear a Home Assistant notification.** On a wall allowed to
 clear alerts, each of Home Assistant's notifications in a Notifications widget
 now has a **Clear** button. Pressing it dismisses that one notification in
