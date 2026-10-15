@@ -16,6 +16,14 @@
 
 ## Unreleased
 
+**A QR code can have rounded modules or dots, and rounded or round corner
+squares.** Two new settings on the QR code widget, **Dots** (Square, Rounded or
+Dots) and **Corner squares** (Square, Rounded or Circles). The code is still
+black on white, because a coloured code is one some phones cannot read. Every
+style was checked by reading the code back from a picture of the wall at many
+sizes. When a code is too small for its style to read reliably, it is drawn
+square instead. An e-paper panel always draws the code square.
+
 ## 1.8.4
 
 **A wall can clear a Home Assistant notification.** On a wall allowed to
