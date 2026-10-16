@@ -12806,6 +12806,55 @@ and each was the test's fault:
 **Still unproven where it counts:** nobody has opened it in a real
 supervisor's sidebar.
 
+**The wall editor has a full-window preview.** **Preview**, in the caption
+under the canvas, opens the layout drawn by the wall's own `renderFreeform`
+as large as the window allows, with none of the editor's boxes, handles or
+name chips. It draws the **unsaved** canvas, because it is the same
+`paintWall` the preview behind the boxes uses, split out of `renderPreview`
+for this. It has its own shadow root, so the two cannot come to draw one
+canvas two ways. It redraws on the wall's fifteen-second tick and on a resize
+from a model built at that moment, so its clock moves. While a wall chip
+(M8.8) is pressed, it is framed in that wall's shape. The bands are that
+wall's theme `--bg`, read off the preview wall, because a wall letterboxes on
+its body's `--bg`. **Expand** is the browser's full-screen mode on the
+preview, which drops the bar. While it is open it owns the keyboard. A
+capture-phase listener on the document stops every keydown before the
+editor's own handlers, so Ctrl+Z or a nudge cannot edit a canvas nobody can
+see. Escape closes it, Tab stays on its two buttons, and focus goes back to
+the button that opened it. A panel's editor does not get the button, because
+its preview is the server's frame. Below 560px the caption is hidden, and the
+button with it.
+
+**Two faults came out of building it.**
+
+- The fit used the stage's `clientHeight`, which counts its padding, so the
+  picture overran the room by the padding. The browser test's "fills the stage
+  less its padding" is what said so.
+- "Full screen" was the first label. `admin-vocabulary` refused it, because
+  "screen" is the retired noun for a wall, so the button is **Expand**, with
+  the full sentence in its title.
+
+**Measured.** `browser-fullview-preview.test.ts` (1, a real paired Classic
+wall at 1440×1000) checks:
+
+- the preview fills its stage on the binding side at the layout's shape;
+- it draws the same widget boxes, as fractions, as the editor's preview after
+  an unsaved removal;
+- it contains no editing boxes;
+- Ctrl+Z does nothing behind it, and Tab stays inside;
+- Escape hands focus back;
+- the clock moves when the clock does;
+- in the Hall chip's 64:27 it frames the canvas at 16:9 with bands in the
+  theme's ground;
+- Expand drops the bar;
+- nothing is saved.
+
+Five mutations were checked and all five are red: the keyboard not stopped,
+the chip's shape ignored, the bands left unset, focus not restored, and a
+model frozen at load. The last was green at first, until the test moved the
+clock. **Still unproven where it counts:** nobody has looked at it on a real
+monitor.
+
 ---
 
 ## Open decisions

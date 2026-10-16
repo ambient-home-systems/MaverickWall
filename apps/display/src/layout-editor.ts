@@ -1022,6 +1022,8 @@ function boot(): void {
   let epaperTimer: number | undefined;
   let epaperPending = false;
   let previewWall: HTMLElement | undefined;
+  // The display's stylesheet as fetched, for the full-window preview's own shadow root.
+  let previewCssText: string | undefined;
 
   // ---- structure, built once -------------------------------------------
 
@@ -2546,6 +2548,7 @@ function boot(): void {
       if (!manifestRes.ok || !cssRes.ok) return;
       manifest = (await manifestRes.json()) as Manifest;
       const css = await cssRes.text();
+      previewCssText = css;
 
       const shadow = preview.attachShadow({ mode: 'open' });
       const styleEl = document.createElement('style');
@@ -2603,6 +2606,7 @@ function boot(): void {
       const at = Date.now();
       model = buildModel({ manifest, now: at, lastConfirmedAt: at, offline: false });
       renderPreview();
+      enableFullview();
     } catch {
       // Leave the labelled overlay; it is a complete editor without the preview.
     }
@@ -2619,6 +2623,63 @@ function boot(): void {
       if (parent !== undefined && groupLayoutOf(parent.config) === 'stack') out[parentId] = widget.id;
     }
     return out;
+  }
+
+  /**
+   * Draw the canvas being edited into one shadow wall, as the wall would.
+   *
+   * The editor's preview behind the boxes and the full-window preview are two
+   * calls of this, so the two cannot come to draw one canvas two ways: the
+   * unsaved widgets, background, ground and gutter go into both.
+   */
+  function paintWall(
+    wall: HTMLElement,
+    sheet: CustomCssSheet | undefined,
+    box: { readonly width: number; readonly height: number },
+    drawFrom: DisplayModel,
+  ): void {
+    const shown = manifest;
+    if (shown === undefined) return;
+    layoutPreviewRoot(wall, box, state.aspect);
+    // With the resolved tokens, so a custom theme previews as itself rather
+    // than as the bundle's fallback — and so the style lane's seeded values
+    // (`styleBase`) and the preview describe the same wall.
+    applyTheme(
+      wall,
+      shown.theme.active,
+      shown.theme.activeTokens,
+      shown.theme.activeShape,
+      shown.screen?.eink === true,
+    );
+
+    // The wall as it will actually draw — always free-form now. It draws straight
+    // into the shadow wall: the reused sections measure themselves and scale to
+    // their box, so they are indifferent to the shadow root having no root
+    // font-size of its own.
+    const drawn = previewWidgets();
+    const drawnBackground = state.background === undefined ? undefined : previewBackground(state.background);
+    // A widget ground chosen but not yet saved is drawn as the wall will draw it.
+    // A widget selected inside a stack is the one its preview shows (M6.6),
+    // so choosing it in Layers shows what is being edited.
+    const stacked = previewStacks();
+    const drawnModel = {
+      ...drawFrom,
+      ...(Object.keys(stacked).length > 0 ? { stacks: stacked } : {}),
+      ...(groundChoice !== undefined ? { widgetGround: groundChoice } : {}),
+      ...(gutterChoice !== undefined ? { layoutGutter: gutterChoice } : {}),
+    };
+    renderFreeform(wall, drawnModel, {
+      aspect: state.aspect,
+      widgets: drawn,
+      ...(drawnBackground !== undefined ? { background: drawnBackground } : {}),
+    }, EDITOR_MEDIA_BASE, { wallpaperBase: ADMIN_WALLPAPER_BASE });
+    // Then the household's CSS, for the boxes on this canvas that carry one.
+    sheet?.apply(
+      customCssBlocks(
+        shown.screen?.customCss,
+        drawn.map((widget) => ({ customCss: customCssById.get(widget.id) })),
+      ),
+    );
   }
 
   function renderPreview(): void {
@@ -2649,46 +2710,7 @@ function boot(): void {
      * its spacing scale and its theme's display face. `previewStylesheet` is the
      * other half, and it is why this is now two calls rather than fifteen lines.
      */
-    layoutPreviewRoot(previewWall, { width: rect.width, height: rect.height }, state.aspect);
-    // With the resolved tokens, so a custom theme previews as itself rather
-    // than as the bundle's fallback — and so the style lane's seeded values
-    // (`styleBase`) and the preview describe the same wall.
-    applyTheme(
-      previewWall,
-      manifest.theme.active,
-      manifest.theme.activeTokens,
-      manifest.theme.activeShape,
-      manifest.screen?.eink === true,
-    );
-
-    // The wall as it will actually draw — always free-form now. It draws straight
-    // into the shadow wall: the reused sections measure themselves and scale to
-    // their box, so they are indifferent to the shadow root having no root
-    // font-size of its own.
-    const drawn = previewWidgets();
-    const drawnBackground = state.background === undefined ? undefined : previewBackground(state.background);
-    // A widget ground chosen but not yet saved is drawn as the wall will draw it.
-    // A widget selected inside a stack is the one its preview shows (M6.6),
-    // so choosing it in Layers shows what is being edited.
-    const stacked = previewStacks();
-    const drawnModel = {
-      ...model,
-      ...(Object.keys(stacked).length > 0 ? { stacks: stacked } : {}),
-      ...(groundChoice !== undefined ? { widgetGround: groundChoice } : {}),
-      ...(gutterChoice !== undefined ? { layoutGutter: gutterChoice } : {}),
-    };
-    renderFreeform(previewWall, drawnModel, {
-      aspect: state.aspect,
-      widgets: drawn,
-      ...(drawnBackground !== undefined ? { background: drawnBackground } : {}),
-    }, EDITOR_MEDIA_BASE, { wallpaperBase: ADMIN_WALLPAPER_BASE });
-    // Then the household's CSS, for the boxes on this canvas that carry one.
-    previewCss?.apply(
-      customCssBlocks(
-        manifest.screen?.customCss,
-        drawn.map((widget) => ({ customCss: customCssById.get(widget.id) })),
-      ),
-    );
+    paintWall(previewWall, previewCss, { width: rect.width, height: rect.height }, model);
 
     // The ladder's cut marker is read back out of what was just drawn, so the
     // editor and the wall cannot disagree about what fits. The tier note is the
@@ -2697,6 +2719,172 @@ function boot(): void {
     markLadderCut();
     refreshDensityNote();
   }
+
+  /*
+   * The full-window preview: the canvas as the wall draws it, as large as the
+   * browser window allows, with none of the editor's boxes, handles or name
+   * chips. It is the same `paintWall` the preview behind the boxes uses, into a
+   * shadow root of its own, so it draws the unsaved canvas exactly as the
+   * editor does. While a wall chip is pressed (M8.8) it draws inside that
+   * wall's shape, with the bands the wall itself would show.
+   *
+   * It redraws on the wall's own fifteen-second tick from a model built at
+   * that moment, so a clock in it moves; nothing is fetched and nothing saved.
+   */
+  const fullview = document.createElement('div');
+  fullview.className = 'le-fullview';
+  fullview.hidden = true;
+  fullview.setAttribute('role', 'dialog');
+  fullview.setAttribute('aria-modal', 'true');
+  fullview.setAttribute('aria-label', 'Preview of this layout');
+  const fullviewBar = document.createElement('div');
+  fullviewBar.className = 'le-fullview-bar';
+  const fullviewTitle = document.createElement('span');
+  fullviewTitle.className = 'le-fullview-title';
+  const fullscreenButton = document.createElement('button');
+  fullscreenButton.type = 'button';
+  fullscreenButton.className = 'le-tool-btn';
+  fullscreenButton.textContent = 'Expand';
+  fullscreenButton.title = 'Fill your monitor with the wall alone. Esc comes back.';
+  // Only where the browser can put an element full screen.
+  fullscreenButton.hidden = typeof fullview.requestFullscreen !== 'function';
+  const fullviewClose = document.createElement('button');
+  fullviewClose.type = 'button';
+  fullviewClose.className = 'le-tool-btn is-on le-fullview-close';
+  fullviewClose.textContent = 'Close';
+  fullviewBar.append(fullviewTitle, fullscreenButton, fullviewClose);
+  const fullviewStage = document.createElement('div');
+  fullviewStage.className = 'le-fullview-stage';
+  const fullviewDevice = document.createElement('div');
+  fullviewDevice.className = 'le-fullview-device';
+  const fullviewCanvas = document.createElement('div');
+  fullviewCanvas.className = 'le-fullview-canvas';
+  fullviewDevice.appendChild(fullviewCanvas);
+  fullviewStage.appendChild(fullviewDevice);
+  fullview.append(fullviewBar, fullviewStage);
+  document.body.appendChild(fullview);
+
+  let fullviewWall: HTMLElement | undefined;
+  let fullviewCss: CustomCssSheet | undefined;
+  let fullviewTimer: number | undefined;
+  let fullviewOpener: HTMLElement | null = null;
+
+  const fullviewButton = document.createElement('button');
+  fullviewButton.type = 'button';
+  fullviewButton.className = 'le-tool-btn le-fullview-btn';
+  fullviewButton.textContent = 'Preview';
+  fullviewButton.title = 'See this layout as the wall shows it, as large as the window allows';
+  fullviewButton.disabled = true;
+  fullviewButton.addEventListener('click', () => openFullview());
+  if (!epaperHost) {
+    document.querySelector<HTMLElement>('[data-preview-dims]')?.parentElement?.appendChild(fullviewButton);
+  }
+
+  /** Called once the manifest and the stylesheet are in, which is when it can draw. */
+  function enableFullview(): void {
+    fullviewButton.disabled = false;
+  }
+
+  /** The largest box of `aspect` (width over height) inside `room`. */
+  function fitBox(room: { readonly width: number; readonly height: number }, aspect: number): { width: number; height: number } {
+    const width = Math.min(room.width, room.height * aspect);
+    return { width, height: width / aspect };
+  }
+
+  function paintFullview(): void {
+    if (fullview.hidden || manifest === undefined || previewCssText === undefined) return;
+    if (fullviewWall === undefined) {
+      const shadow = fullviewCanvas.attachShadow({ mode: 'open' });
+      const styleEl = document.createElement('style');
+      styleEl.textContent = previewStylesheet(previewCssText);
+      const wall = document.createElement('div');
+      wall.className = PREVIEW_ROOT_CLASS;
+      shadow.append(styleEl, wall);
+      fullviewWall = wall;
+      fullviewCss = createCustomCssSheet(() => styleEl.sheet ?? undefined);
+    }
+    // The stage's content box: its client size counts the padding, which is
+    // room the picture must leave.
+    const pad = getComputedStyle(fullviewStage);
+    const room = {
+      width: fullviewStage.clientWidth - parseFloat(pad.paddingLeft) - parseFloat(pad.paddingRight),
+      height: fullviewStage.clientHeight - parseFloat(pad.paddingTop) - parseFloat(pad.paddingBottom),
+    };
+    if (room.width <= 0 || room.height <= 0) return;
+    const device = previewOn === undefined ? undefined : connectedWalls[previewOn];
+    // A pressed chip frames the canvas in that wall's own shape; otherwise the
+    // canvas is the whole picture, as on a wall of exactly its shape.
+    const outer = fitBox(room, device === undefined ? state.aspect : device.w / device.h);
+    const inner = device === undefined ? outer : fitBox(outer, state.aspect);
+    fullviewDevice.style.width = `${outer.width}px`;
+    fullviewDevice.style.height = `${outer.height}px`;
+    fullviewCanvas.style.width = `${inner.width}px`;
+    fullviewCanvas.style.height = `${inner.height}px`;
+    fullviewTitle.textContent =
+      device === undefined
+        ? `${canvasSizeLabel()}, as the wall shows it. Nothing here is saved.`
+        : `As ${device.name} shows it, at ${device.w}×${device.h}. Nothing here is saved.`;
+    const at = Date.now();
+    paintWall(fullviewWall, fullviewCss, inner, buildModel({ manifest, now: at, lastConfirmedAt: at, offline: false }));
+    // The bands are the wall's own ground: a wall letterboxes its canvas on
+    // the theme's `--bg`, which the preview wall now carries.
+    fullviewDevice.style.background =
+      device === undefined ? '' : getComputedStyle(fullviewWall).getPropertyValue('--bg').trim();
+  }
+
+  function openFullview(): void {
+    if (manifest === undefined || previewCssText === undefined) return;
+    fullviewOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    fullview.hidden = false;
+    document.documentElement.classList.add('le-fullview-open');
+    paintFullview();
+    fullviewTimer = window.setInterval(paintFullview, 15_000);
+    fullviewClose.focus();
+  }
+
+  function closeFullview(): void {
+    if (fullview.hidden) return;
+    if (document.fullscreenElement === fullview) void document.exitFullscreen().catch(() => undefined);
+    fullview.hidden = true;
+    document.documentElement.classList.remove('le-fullview-open');
+    if (fullviewTimer !== undefined) window.clearInterval(fullviewTimer);
+    fullviewTimer = undefined;
+    (fullviewOpener ?? fullviewButton).focus();
+  }
+
+  fullviewClose.addEventListener('click', () => closeFullview());
+  fullscreenButton.addEventListener('click', () => {
+    void fullview.requestFullscreen().catch(() => undefined);
+  });
+  // Full screen and back change the room, and so does the window.
+  document.addEventListener('fullscreenchange', () => paintFullview());
+  window.addEventListener('resize', () => paintFullview());
+  /*
+   * While it is open the preview owns the keyboard: Escape closes it, Tab stays
+   * on its two buttons, and nothing reaches the editor's own shortcuts — an
+   * undo or a nudge behind a picture nobody can see would be saved by the next
+   * Save. Capture on the document runs before every handler the editor added.
+   */
+  document.addEventListener(
+    'keydown',
+    (event) => {
+      if (fullview.hidden) return;
+      event.stopImmediatePropagation();
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeFullview();
+        return;
+      }
+      if (event.key === 'Tab') {
+        const stops = [fullscreenButton, fullviewClose].filter((button) => !button.hidden);
+        const at = stops.indexOf(document.activeElement as HTMLButtonElement);
+        event.preventDefault();
+        const next = event.shiftKey ? (at <= 0 ? stops.length - 1 : at - 1) : (at + 1) % stops.length;
+        stops[next]?.focus();
+      }
+    },
+    true,
+  );
 
   /**
    * The panel's own frame, behind the drag overlay.

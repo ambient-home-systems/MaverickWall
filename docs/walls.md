@@ -11,6 +11,14 @@ separate layouts. Use the **Background** button beside **Layout** to choose
 the wall's theme colour, a solid colour, gradient, uploaded image or wallpaper
 for the layout currently on screen.
 
+To see the layout as the wall will show it, choose **Preview** under the
+layout. It draws the wall as large as your browser window allows, without the
+boxes and handles you move, and includes changes you have not saved yet.
+**Expand** fills your monitor with it; Esc or **Close** comes back. If you
+picked a wall under **Size & grid**, the preview is drawn in that wall's own
+shape. On a phone the editor is already close to full size, so the button is
+not shown there.
+
 A wall can hold more than one layout and change between them by the clock — a
 morning layout before school, say. The first button in the layout toolbar
 names the layout on screen ("Everyday ▾"); its menu lists every layout with

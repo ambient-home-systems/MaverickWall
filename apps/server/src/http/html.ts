@@ -1742,6 +1742,22 @@ pre.code{background:var(--mw-surface-2);
   border-radius:var(--mw-r-2);padding:var(--mw-s-1) var(--mw-s-3);font-size:var(--mw-t-label-sm-size);cursor:pointer}
 .le-wall-chip:hover,.le-wall-chip:active{background:var(--panel2);color:var(--mw-ink)}
 .le-wall-chip[aria-pressed=true]{border-color:var(--accent);background:var(--panel2)}
+/* The full-window preview: the layout as the wall draws it, as large as the
+ * window allows, with no editing boxes. The canvas sits in a connected wall's
+ * shape while a chip is pressed, so the bands are the wall's own, in its
+ * theme's ground. Expand (the browser's full-screen mode) drops the bar, so
+ * what is left is the wall. */
+.le-fullview{position:fixed;inset:0;z-index:55;display:flex;flex-direction:column;background:var(--mw-surface)}
+.le-fullview[hidden],.le-fullview [hidden]{display:none}
+.le-fullview-bar{display:flex;align-items:center;gap:var(--mw-s-3);padding:var(--mw-s-2) var(--mw-s-4);
+  background:var(--mw-surface-2);border-bottom:var(--mw-hairline) solid var(--mw-line-strong);color:var(--mw-ink)}
+.le-fullview-title{flex:1;min-width:0;font-size:var(--mw-t-label-size);color:var(--mw-ink-2)}
+.le-fullview-stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:var(--mw-s-4)}
+.le-fullview:fullscreen .le-fullview-bar{display:none}
+.le-fullview:fullscreen .le-fullview-stage{padding:0}
+.le-fullview-device{display:flex;align-items:center;justify-content:center}
+.le-fullview-canvas{position:relative;overflow:hidden;background:var(--bg)}
+html.le-fullview-open{overflow:hidden}
 /* The snap grid, on the overlay so it sits over the live preview but under the
  * draggable boxes. Shown only while snapping; background-size is set in script to
  * the snap step as a percentage. A placement aid, never on the wall. */
