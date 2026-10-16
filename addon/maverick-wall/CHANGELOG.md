@@ -16,6 +16,13 @@
 
 ## Unreleased
 
+**See a layout full size before you save it.** A new **Preview** button under
+the layout editor shows the wall as it will look, as large as your browser
+window allows, without the boxes and handles you drag. It includes changes you
+have not saved, keeps its clock moving, and **Expand** fills your whole monitor
+with it. If you picked one of your walls under **Size & grid**, the preview
+uses that wall's shape, with the edges it would show.
+
 ## 1.8.7
 
 **No second sidebar inside Home Assistant.** Opened from Home Assistant's
