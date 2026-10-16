@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 1.8.8
+
 **See a layout full size before you save it.** A new **Preview** button under
 the layout editor shows the wall as it will look, as large as your browser
 window allows, without the boxes and handles you drag. It includes changes you
