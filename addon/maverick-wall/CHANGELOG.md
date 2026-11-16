@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 1.8.9
+
 **The Android app reads the right way up on a television hung on its end.**
 The first time it opens on a television it asks **Is this the right way up?**:
 press Left or Right on the remote to turn the picture, then OK. Setting up, the
