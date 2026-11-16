@@ -16,6 +16,8 @@
 
 ## Unreleased
 
+## 1.8.10
+
 **The Android app comes back on its own if the wall stops.** The page that
 draws the calendar runs in a process of its own, and a TV box short of memory
 can end it, or it can crash. Until now that closed the whole app, and the
