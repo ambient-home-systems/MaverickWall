@@ -12902,7 +12902,14 @@ JUnit summary, which a compile failure would also produce, so they were counted
 only once a runner printed JUnit's own failures. **The Android code was not compiled here**: this environment reaches
 Maven Central but not Google's SDK or Maven hosts, so the pure Kotlin was
 compiled and run with a compiler fetched from Maven Central, and CI's
-`assembleDebug` is the compile check for the rest. **Still
+`assembleDebug` is the compile check for the rest. It passed on the first push,
+and CI's log shows `testDebugUnitTest` compiling and running the unit tests
+rather than reporting no source. **6238 tests passing and 2 skipped, over 472
+files**: calendar 153 (1 skipped) over 10 · core 327 over 9 · display 1114 over
+73 · docs 26 over 1 · server 4618 (1 skipped) over 379, measured with
+`pnpm test` and a real Chromium, every file green. `browser-glass`'s
+striped-picture case, recorded above as red in this container, passed here: the
+provisioned Chromium is now the revision `playwright-core` expects. **Still
 unproven where it counts:** no real television hung on its end has run it.
 
 ---
