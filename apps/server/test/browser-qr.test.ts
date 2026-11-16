@@ -59,11 +59,25 @@ afterAll(async () => {
 
 /**
  * What a box's code says, read off the pixels the browser drew: a screenshot
- * of the code's own element, decoded by drawing it into a canvas and handing
- * the canvas's pixels to an independent decoder.
+ * of where the code is, decoded by drawing it into a canvas and handing the
+ * canvas's pixels to an independent decoder.
+ *
+ * The screenshot is of the code's place, not of its element. The wall empties
+ * and rebuilds itself every fifteen seconds, which replaces the element, and a
+ * test reading eighteen codes on one page on a busy runner outlasts a tick: a
+ * screenshot of the element then fails as "not attached to the DOM" (CI did,
+ * once). The rebuild puts an identical code in the identical place, which is
+ * the wall's own promise (`reflow-stability.test.ts`), and it happens inside
+ * one task, so no frame ever shows a half-built wall. The place is measured in
+ * one synchronous read for the same reason.
  */
 async function readCode(page: Page, selector: string): Promise<string | undefined> {
-  const png = await page.locator(selector).screenshot();
+  const clip = await page.evaluate((sel) => {
+    const rect = document.querySelector(sel)?.getBoundingClientRect();
+    return rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null;
+  }, selector);
+  if (!clip) throw new Error(`nothing on the wall matches ${selector}`);
+  const png = await page.screenshot({ clip });
   const pixels = await page.evaluate(async (b64) => {
     const image = new Image();
     image.src = `data:image/png;base64,${b64}`;
