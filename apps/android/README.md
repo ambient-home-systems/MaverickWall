@@ -78,6 +78,31 @@ full design and the reasoning behind "the one thing we do not build."
   install can pin the wall with lock-task. A plain sideload never provisions it
   and runs unpinned, deliberately.
 
+**Which way up — a television hung on its end:**
+
+- **The app's own screens turn.** A Google TV box outputs landscape whatever
+  you did with the television, and no app can turn the system's own screens.
+  What this app can turn is its own: setup, the pairing code and the
+  "connecting…" status are drawn through `Rotated`, which lays them out at the
+  panel's height by its width and turns them, so they fill the glass the right
+  way up and the remote's arrows move the way things look.
+- **Asked once, on the screen.** On a television that has never been asked,
+  setup opens with "Is this the right way up?": Left and Right on the remote
+  turn the picture, OK keeps it. A tablet is not asked (it turns itself); a
+  "Turn this screen" link under the server chooser is there on every device.
+- **Carried into pairing.** The device flow reports the answer
+  (`rotation=` on `/d/pair/device-start`) and approval writes it onto the wall,
+  so the calendar starts the same way up and the approve page says so. An
+  older server ignores the field.
+- **The server stays the one place to change it.** Once paired, the app copies
+  the wall's **Wall mounting** back from the page every 20 seconds through the
+  bridge's `rotation()`, so its own screens follow a change made on the wall's
+  page. A page with no manifest yet, the server's stand-in, or an older bundle
+  answers nothing, and the app keeps what it had.
+- **Not covered:** the wall's own on-screen pairing form (the "Pair on the
+  screen instead" fallback) draws before the server knows the wall, so it is
+  not turned. Neither is anything Google TV draws itself.
+
 ### Not yet (later phases)
 
 - Play Store / TV store listing (adds review/policy work; not on the path to a
@@ -190,14 +215,19 @@ screen-pinning prompt. Unpinned kiosk works today without any of this.
 
 ## Verifying
 
-Phase 1 has no automated tests yet — the meaningful checks are on real hardware,
-per the project's doctrine:
+The logic with no Android in it has JVM unit tests (`app/src/test`, run in CI
+with `./gradlew testDebugUnitTest`): which way up the screen is, and how the
+page's answer is read. Everything else is checked on real hardware, per the
+project's doctrine:
 
 - A TV box cold-booting straight into the wall.
 - Pulling the server (or the network) and watching the native "connecting…"
   status appear and then clear on its own when the server returns.
 - A wall that was loaded staying up (its cached calendar) while the server
   restarts underneath it.
+- A television hung on its end: setup, the pairing code and "connecting…"
+  reading the right way up, and the remote's arrows moving between buttons the
+  way they look.
 
 Instrumented tests that pair against a real running server land alongside the
 Phase 2 socket work, where there is behaviour worth asserting on a device.
@@ -213,8 +243,11 @@ app/src/main/
     HealthProbe.kt                    polls /healthz with backoff
     BootReceiver.kt                   relaunch on boot
     KioskDeviceAdminReceiver.kt       device-owner hook for lock-task pinning (Phase 4)
-    SetupActivity.kt                  server chooser: mDNS list + typed address (Compose)
-    ServerConfig.kt                   the one stored fact: which box to talk to
+    SetupActivity.kt                  which way up (on a TV), then the server chooser (Compose)
+    ServerConfig.kt                   which box to talk to, and which way up this screen is
+    ScreenRotation.kt                 the four quarter turns, and reading the page's answer (pure)
+    Rotated.kt                        draws a native screen turned, filling the panel
+    ConnectingScreen.kt               the native "connecting…" status (Compose)
     Theme.kt                          dark Board-ish chrome for setup/status
     net/ServerFinder.kt               mDNS discovery of _maverickwall._tcp (NsdManager)
     net/TlsPinning.kt                 trust-on-pairing cert pinning (WebView + OkHttp)

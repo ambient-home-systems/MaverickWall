@@ -16,6 +16,20 @@
 
 ## Unreleased
 
+**The Android app reads the right way up on a television hung on its end.**
+The first time it opens on a television it asks **Is this the right way up?**:
+press Left or Right on the remote to turn the picture, then OK. Setting up, the
+pairing code and the "connecting…" message are then drawn that way, and the
+wall it pairs starts with the same **Wall mounting**, so the calendar is
+upright from the first moment. The page where you approve the wall says how it
+reported being hung. Change it later on the wall's page, under **Device and
+time**, and the app follows. Google TV's own home screen and settings stay
+sideways: no app can turn those. Install the new APK from this release to get
+it.
+
+On the "connecting…" message, the remote's OK now presses **Retry now**. It
+used to be passed to the wall hidden behind the message instead.
+
 ## 1.8.8
 
 **See a layout full size before you save it.** A new **Preview** button under

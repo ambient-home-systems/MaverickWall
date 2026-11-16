@@ -7,6 +7,7 @@ import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
+import systems.ambienthome.maverickwall.ScreenRotation
 import systems.ambienthome.maverickwall.net.TlsPinning
 import java.util.concurrent.TimeUnit
 
@@ -49,11 +50,22 @@ class DeviceFlowClient(context: Context, private val baseUrl: String) {
             .build(),
     )
 
-    /** Begin a flow. Runs off the main thread; safe to call from a coroutine. */
-    suspend fun start(): StartResult = withContext(Dispatchers.IO) {
+    /**
+     * Begin a flow. Runs off the main thread; safe to call from a coroutine.
+     *
+     * [rotation] is which way up the household said this screen is hung, if
+     * they were asked. The server holds it with the flow and writes it onto the
+     * wall approval creates, so the wall draws upright from its first poll. A
+     * server from before it read the field ignores it — the body was always a
+     * form and an extra field in one changes nothing there — and an unanswered
+     * question sends nothing, which the server reads as the right way up.
+     */
+    suspend fun start(rotation: Int? = null): StartResult = withContext(Dispatchers.IO) {
+        val form = FormBody.Builder()
+        rotation?.let(ScreenRotation::of)?.let { form.add("rotation", it.toString()) }
         val request = Request.Builder()
             .url("$baseUrl/d/pair/device-start")
-            .post(FormBody.Builder().build())
+            .post(form.build())
             .build()
         try {
             http.newCall(request).execute().use { response ->

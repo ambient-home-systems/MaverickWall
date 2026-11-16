@@ -10,9 +10,9 @@ import android.net.Uri
  * it must not forget is which box to talk to. That is a single string — the
  * server's origin — kept in shared preferences. Everything else (the display
  * token, the manifest, the theme) lives on the server and travels in the
- * manifest; the app stores none of it. In Phase 3 mDNS discovery fills this in
- * automatically, but manual entry is the always-available fallback and the only
- * path in Phase 1.
+ * manifest; the app stores none of it, with one exception, [rotation], which it
+ * needs before a server exists to ask. In Phase 3 mDNS discovery fills the
+ * origin in automatically, but manual entry is the always-available fallback.
  */
 class ServerConfig(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -29,9 +29,32 @@ class ServerConfig(context: Context) {
     val isConfigured: Boolean
         get() = !baseUrl.isNullOrBlank()
 
+    /**
+     * Which way up this screen is hung, or null if nobody has said.
+     *
+     * The second thing the app keeps, and the reason is that it is needed
+     * before there is a server to ask: a television hung on its end draws the
+     * app's own screens — setup, the pairing code, "connecting…" — sideways
+     * until it knows. The household answers on first run; pairing reports the
+     * answer so the wall starts the same way up; and once the wall is paired the
+     * app copies the server's Wall mounting back into here, so the server stays
+     * the one place it is changed. Null rather than `0` until then, because a
+     * television that has never been asked is not the same as one that said it
+     * is the right way up — only the first gets the question.
+     */
+    var rotation: Int?
+        get() = if (prefs.contains(KEY_ROTATION)) ScreenRotation.of(prefs.getInt(KEY_ROTATION, 0)) else null
+        set(value) {
+            val turn = value?.let(ScreenRotation::of)
+            prefs.edit().apply {
+                if (turn == null) remove(KEY_ROTATION) else putInt(KEY_ROTATION, turn)
+            }.apply()
+        }
+
     companion object {
         private const val PREFS = "maverick_wall"
         private const val KEY_BASE_URL = "base_url"
+        private const val KEY_ROTATION = "rotation"
 
         /**
          * Turn what a household typed into an origin, or null if it cannot be one.

@@ -49,6 +49,14 @@ have hung it on its end, set the rotation on the wall's own settings rather
 than fighting the television's — plenty of panels cannot rotate and plenty of
 the ones that can forget after a power cut.
 
+The app asks for you. The first time it opens on a television it asks **Is this
+the right way up?**: press Left or Right on the remote until the arrow points
+up, then OK. Its own screens are drawn that way from then on — setting up,
+the pairing code, and "connecting…" when the server is down — and the wall it
+pairs starts with the same **Wall mounting**. Change it later on the wall's
+page, under **Device and time**; the app follows. Google TV's own home screen
+and settings stay sideways: no app can turn those.
+
 ## Raspberry Pi
 
 A Pi 4 or 5 driving a monitor, if you want something you fully control.

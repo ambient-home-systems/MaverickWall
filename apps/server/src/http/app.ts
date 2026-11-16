@@ -116,7 +116,7 @@ import {
   page,
   textField,
 } from './html.js';
-import { parse, parseJsonOr, text, z } from '../validation.js';
+import { parse, parseJsonOr, quarterTurn, text, z } from '../validation.js';
 import type { Fetcher, Interrupt } from '@maverick-wall/core';
 import type { Keyring } from '../secrets/keyring.js';
 import {
@@ -502,6 +502,14 @@ export function displayCsp(origin: string): string {
     "object-src 'none'",
   ].join('; ');
 }
+
+/**
+ * What a screen may send when it begins device-flow pairing: which way up it is
+ * hung, and nothing else. Absent or blank is `0`, so a body from an app that
+ * never asked — the empty form every release before this posted — starts the
+ * flow it always started.
+ */
+const deviceStartBody = z.object({ rotation: quarterTurn(0) });
 
 export function createApp(deps: AppDeps): Hono {
   const app = new Hono();
@@ -2764,14 +2772,26 @@ export function createApp(deps: AppDeps): Hono {
    * no credential yet. The token is never handed out here — only once the
    * household has approved, and only to the holder of the 32-byte device code.
    */
-  app.post('/d/pair/device-start', (c: Context) => {
+  app.post('/d/pair/device-start', async (c: Context) => {
     if (deviceStartRateLimited(clientAddress(c), now())) {
       return c.json(
         { error: 'rate-limited', message: 'Too many pairing attempts. Wait a few minutes.' },
         429,
       );
     }
-    const started = deviceFlow.start(now());
+    /*
+     * Which way up the screen says it is hung, so approval can write it onto
+     * the wall it creates. Optional, because an app from before it asked sends
+     * nothing and that is a wall the right way up — `0`, the column's default.
+     * Anything sent that is not a quarter turn is refused rather than turned
+     * into one (rule five): a screen that cannot say which way up it is should
+     * hear so, not be stood the wrong way up by a guess.
+     */
+    const shaped = parse(deviceStartBody, (await c.req.parseBody()) as Record<string, unknown>);
+    if (!shaped.ok) {
+      return c.json({ error: 'bad-rotation', message: shaped.message }, 400);
+    }
+    const started = deviceFlow.start(now(), shaped.value.rotation);
     // The store is full of live pending flows — vanishingly rare for a
     // household, and it clears itself as they expire. Ask the app to retry
     // rather than fail the screen; polling and manual entry are both still there.

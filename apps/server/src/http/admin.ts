@@ -3026,7 +3026,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
           'on it and type the new code.',
       ), 409);
     }
-    return c.html(approvePromptPage(c, flow.userCode));
+    return c.html(approvePromptPage(c, flow.userCode, undefined, undefined, flow.rotation));
   });
 
   app.post('/admin/screens/approve', async (c: Context) => {
@@ -3055,8 +3055,25 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
      */
     const theme = shaped.value.theme ?? '';
     if (theme === '' || !isValidThemeRef(deps.db, theme, themeKeys)) {
-      return c.html(approvePromptPage(c, code, name, 'Choose a theme for this wall.'), 400);
+      return c.html(
+        approvePromptPage(
+          c,
+          code,
+          name,
+          'Choose a theme for this wall.',
+          deps.deviceFlow.lookupByUserCode(code, at)?.rotation,
+        ),
+        400,
+      );
     }
+
+    /*
+     * Which way up the screen said it is hung, read before the flow is bound,
+     * because a bound flow is consumed by the screen's next poll and there is
+     * no reading it after. Nothing is awaited between this and `approve`, so
+     * the two see the same entry.
+     */
+    const rotation = deps.deviceFlow.lookupByUserCode(code, at)?.rotation ?? 0;
 
     // Issue the token first, then try to bind it to the still-pending flow.
     // Binding before creating the screen row is what prevents an orphan: if the
@@ -3076,6 +3093,21 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
     }
     const id = randomBytes(6).toString('hex');
     createScreen(deps.db, id, name, pairingSecret(issued), theme);
+    /*
+     * The way up the screen reported, written before the seed for the reason
+     * the add page gives: the hardware facts first, then the canvas. A
+     * television hung on its end and answered once on its own first-run screen
+     * then draws upright from its first poll, rather than sideways until the
+     * household finds Rotation on a page the wall is drawn too sideways to
+     * explain. No size is known here, so the three millimetre columns stay the
+     * nulls a new row already holds.
+     */
+    writeScreenHardware(deps.db, id, {
+      rotation,
+      panelWidthMm: null,
+      panelHeightMm: null,
+      readDistanceMm: null,
+    });
     /*
      * Seed it, like every other door that makes a wall.
      *
@@ -5035,7 +5067,13 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
    * the code at the Walls page. The code travels in a hidden field so the one
    * form carries it to whichever button the household presses.
    */
-  function approvePromptPage(c: Context, userCode: string, name = 'New wall', problem?: string): string {
+  function approvePromptPage(
+    c: Context,
+    userCode: string,
+    name = 'New wall',
+    problem?: string,
+    rotation = 0,
+  ): string {
     return page({
       modules: navModules(deps.db),
       title: 'Approve this wall',
@@ -5049,6 +5087,7 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         (problem === undefined ? '' : errorBlock(problem)) +
         `<p class="hint">Pairing code from the wall: ` +
         `<span class="code">${escapeHtml(formatShortCode(userCode))}</span></p>` +
+        mountingNote(rotation) +
         `<form method="post" action="admin/screens/approve">` +
         `<input type="hidden" name="code" value="${escapeHtml(userCode)}">` +
         textField({
@@ -5075,6 +5114,27 @@ export function registerAdminRoutes(app: Hono, deps: AdminDeps): void {
         `formnovalidate>Decline</button>` +
         `</form>`,
     });
+  }
+
+  /**
+   * What the wall said about how it is hung, when it is not the right way up.
+   *
+   * The household approving from a phone is usually not standing at the wall,
+   * and approving writes this onto it, so the page says so — in the words of
+   * the wall's own Wall mounting control, which is where it changes later.
+   * Nothing for a wall the right way up: that is every wall that never asked.
+   */
+  function mountingNote(rotation: number): string {
+    const said =
+      rotation === 90 ? 'turned 90° clockwise'
+        : rotation === 180 ? 'upside down'
+          : rotation === 270 ? 'turned 270° clockwise'
+            : undefined;
+    if (said === undefined) return '';
+    return (
+      `<p class="hint">The wall says it is mounted ${said}, and it will be drawn that way. ` +
+      `You can change this later under Wall mounting on the wall's page.</p>`
+    );
   }
 
   /** A plain outcome page for the approve/decline actions. */

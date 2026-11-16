@@ -10,15 +10,21 @@ import android.view.View
 import android.view.WindowManager
 import android.webkit.WebSettings
 import android.webkit.WebView
-import android.widget.Button
-import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.ComposeView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import systems.ambienthome.maverickwall.push.PushBus
 import systems.ambienthome.maverickwall.push.PushService
@@ -48,8 +54,18 @@ import systems.ambienthome.maverickwall.push.PushService
 class KioskActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
-    private lateinit var connecting: View
+    private lateinit var connecting: ComposeView
     private lateinit var baseUrl: String
+
+    /**
+     * Whether the native status is up — Compose state, so the status is only
+     * composed (and only takes focus) while it is showing, and read by the key
+     * handler, which must not hand the remote's OK to a wall nobody can see.
+     */
+    private var connectingShown by mutableStateOf(false)
+
+    /** The turn the status is drawn at, read from [ServerConfig.rotation] as it appears. */
+    private var connectingRotation by mutableIntStateOf(0)
 
     /** True once we have already fallen back to the disk cache for this load. */
     private var triedCache = false
@@ -87,17 +103,28 @@ class KioskActivity : AppCompatActivity() {
         setContentView(R.layout.activity_kiosk)
         webView = findViewById(R.id.web_view)
         connecting = findViewById(R.id.connecting)
-        findViewById<TextView>(R.id.connecting_host).text = getString(R.string.connecting_to, baseUrl)
-        findViewById<Button>(R.id.retry).setOnClickListener {
-            triedCache = false
-            loadWall(useCache = false)
+        connecting.setContent {
+            MaverickWallTheme {
+                if (connectingShown) {
+                    Rotated(connectingRotation) {
+                        ConnectingScreen(
+                            host = baseUrl,
+                            onRetry = {
+                                triedCache = false
+                                loadWall(useCache = false)
+                            },
+                            onChangeServer = ::openSetup,
+                        )
+                    }
+                }
+            }
         }
-        findViewById<Button>(R.id.change_server).setOnClickListener { openSetup() }
 
         applyImmersive()
         configureWebView()
         consumeBackButton()
         tryEnterLockTask()
+        mirrorWallRotation()
 
         // Hold the push socket open so a warning can wake this screen when it is
         // dark. A foreground service, because the socket must outlive the moment
@@ -237,11 +264,53 @@ class KioskActivity : AppCompatActivity() {
     }
 
     private fun showConnecting() {
+        // Read as it appears: the household may have answered on setup, or the
+        // wall's own Wall mounting may have been copied in since the last time.
+        connectingRotation = ServerConfig(this).rotation ?: 0
+        connectingShown = true
         connecting.visibility = View.VISIBLE
+        connecting.requestFocus()
     }
 
     private fun hideConnecting() {
+        connectingShown = false
         connecting.visibility = View.GONE
+        // Hand focus back to the wall, so a code being typed into the page's
+        // own pairing form lands there rather than nowhere.
+        webView.requestFocus()
+    }
+
+    /**
+     * Keep this screen's rotation in step with the wall's Wall mounting.
+     *
+     * The server is where a household changes which way up a wall is drawn,
+     * and the page already knows the answer, so the app asks it — through the
+     * same bridge it presses `poll` and `acknowledge` on — and keeps a copy for
+     * the moments it cannot ask: the "connecting…" status is shown exactly when
+     * the page is gone. Asked every [MIRROR_INTERVAL_MS] while the wall is on
+     * screen, because the page's first answer waits on its first manifest and a
+     * change made on the settings page reaches the page on its next poll, not
+     * at load. Never while the status is up: the page behind it is not the wall.
+     *
+     * A page that does not answer with a quarter turn — no manifest yet, the
+     * server's stand-in, an older bundle with no `rotation()` — leaves the copy
+     * alone. That is what keeps a television answered on first run the right
+     * way up while it is still pairing.
+     */
+    private fun mirrorWallRotation() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    delay(MIRROR_INTERVAL_MS)
+                    if (connectingShown || !::webView.isInitialized) continue
+                    webView.evaluateJavascript(ROTATION_QUERY) { result ->
+                        val turn = ScreenRotation.fromPage(result) ?: return@evaluateJavascript
+                        val config = ServerConfig(this@KioskActivity)
+                        if (config.rotation != turn) config.rotation = turn
+                    }
+                }
+            }
+        }
     }
 
     private fun openSetup() {
@@ -281,7 +350,11 @@ class KioskActivity : AppCompatActivity() {
      * warning nobody has read.
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (event.action == KeyEvent.ACTION_UP && isOkKey(event.keyCode) && ::webView.isInitialized) {
+        // Not while the native status is up: there, OK is for its Retry button,
+        // and the wall behind it is not what anybody is looking at.
+        if (event.action == KeyEvent.ACTION_UP && isOkKey(event.keyCode) && ::webView.isInitialized &&
+            !connectingShown
+        ) {
             webView.evaluateJavascript(
                 "window.maverickWall && window.maverickWall.acknowledge()",
                 null,
@@ -363,5 +436,17 @@ class KioskActivity : AppCompatActivity() {
          * as an already-paired screen.
          */
         const val EXTRA_PAIR_TOKEN = "systems.ambienthome.maverickwall.PAIR_TOKEN"
+
+        /** How often the wall's Wall mounting is copied in while the wall is showing. */
+        private const val MIRROR_INTERVAL_MS = 20_000L
+
+        /**
+         * The page's answer, or `null` from a page with no such bridge — an older
+         * display bundle, or the WebView's own error page. Guarded so neither
+         * throws into the console of a wall that is otherwise fine.
+         */
+        private const val ROTATION_QUERY =
+            "(function(){var b=window.maverickWall;" +
+                "return b&&typeof b.rotation==='function'?b.rotation():null})()"
     }
 }

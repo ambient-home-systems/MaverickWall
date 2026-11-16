@@ -246,6 +246,75 @@ describe('device-authorization pairing, end to end', () => {
     expect(start.verifyUrl).not.toContain('a0d7b954-maverick-wall');
   });
 
+  /*
+   * Which way up a screen is hung, said once on the screen itself.
+   *
+   * The Android app asks on first run, before it knows a server, because every
+   * native screen it draws is sideways on a television hung on its end. It
+   * reports the answer when it starts pairing, and approval writes it onto the
+   * wall it creates, so the household is not asked a second time on a settings
+   * page the wall is drawn too sideways to read.
+   */
+  it('writes the rotation a screen reported onto the wall approval creates', async () => {
+    const h = await harness();
+    const res = await h.screenPost(`${PORT}/d/pair/device-start`, { rotation: '90' });
+    expect(res.status).toBe(200);
+    const start = (await res.json()) as StartReply;
+
+    // The person approving is told, in the wall page's own words.
+    const prompt = await (await h.call(start.verifyUrl)).text();
+    expect(prompt).toContain('mounted turned 90° clockwise');
+    expect(prompt).toContain('Wall mounting');
+
+    // A refused approve (no theme) keeps saying it, since the code is still pending.
+    const noTheme = await h.post(`${PORT}/admin/screens/approve`, {
+      code: start.userCode, name: 'Hall TV', action: 'approve',
+    });
+    expect(noTheme.status).toBe(400);
+    expect(await noTheme.text()).toContain('mounted turned 90° clockwise');
+
+    await h.post(`${PORT}/admin/screens/approve`, {
+      code: start.userCode, name: 'Hall TV', action: 'approve', theme: 'panels',
+    });
+    const row = h.db.prepare('SELECT rotation FROM screens').get() as { rotation: number };
+    expect(row.rotation).toBe(90);
+
+    // And it reaches the wall: the manifest it polls carries the turn.
+    const deliver = await poll(h, start.deviceCode);
+    const manifest = await h.screenGet(`${PORT}/d/manifest`, {
+      authorization: `Bearer ${deliver.token as string}`,
+    });
+    const body = (await manifest.json()) as { screen?: { rotation?: number } };
+    expect(body.screen?.rotation).toBe(90);
+  });
+
+  it('pairs a screen that reports no rotation the right way up, and says nothing about it', async () => {
+    // The empty form every app before this one posted. It must start the flow
+    // it always started and make the wall it always made.
+    const h = await harness();
+    const start = await startFlow(h);
+    const prompt = await (await h.call(start.verifyUrl)).text();
+    expect(prompt).not.toContain('Wall mounting');
+    await h.post(`${PORT}/admin/screens/approve`, {
+      code: start.userCode, name: 'Kitchen', action: 'approve', theme: 'panels',
+    });
+    const row = h.db.prepare('SELECT rotation FROM screens').get() as { rotation: number };
+    expect(row.rotation).toBe(0);
+  });
+
+  it('refuses a rotation that is not a quarter turn rather than guessing one', async () => {
+    const h = await harness();
+    for (const rotation of ['45', '-90', '360', 'sideways', '90.0']) {
+      const res = await h.screenPost(`${PORT}/d/pair/device-start`, { rotation });
+      expect(res.status, rotation).toBe(400);
+      expect(((await res.json()) as { error: string }).error).toBe('bad-rotation');
+    }
+    // The other quarter turns start a flow, from the same address.
+    for (const rotation of ['0', '180', '270']) {
+      expect((await h.screenPost(`${PORT}/d/pair/device-start`, { rotation })).status).toBe(200);
+    }
+  });
+
   it('rate-limits a burst of device-start calls from one address', async () => {
     const h = await harness();
     // Twenty are allowed per window; the twenty-first is turned away, so a script
