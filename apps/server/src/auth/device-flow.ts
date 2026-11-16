@@ -98,6 +98,20 @@ interface PendingDevice {
   token?: string;
   /** The name the household gave the screen at approval, for the poll reply. */
   screenName?: string;
+  /**
+   * Which way up the screen says it is hung, in clockwise quarter turns — the
+   * same `0 | 90 | 180 | 270` the wall's own Rotation setting holds.
+   *
+   * The screen is the only thing in the room that knows. A television hung on
+   * its end draws every native screen sideways until somebody says so, and the
+   * app asks on first run, before it has a server to tell. Carrying the answer
+   * here lets approval write it onto the wall it creates, so the household
+   * answers once, on the screen, rather than again on the wall's settings page
+   * with a calendar drawn sideways in front of them. A fact the screen states
+   * about itself rather than a credential, so it is held beside the codes and
+   * goes nowhere else.
+   */
+  readonly rotation: number;
 }
 
 /** What `start` hands the screen. */
@@ -121,11 +135,19 @@ export interface DeviceFlowPending {
   readonly createdAt: number;
   readonly expiresAt: number;
   readonly state: DeviceState;
+  /** The rotation the screen said it is hung at, for approval to write. */
+  readonly rotation: number;
 }
 
 export interface DeviceFlowStore {
-  /** Begin a flow. Returns the codes, or `undefined` if the store is full. */
-  start(now: number): DeviceFlowStart | undefined;
+  /**
+   * Begin a flow. Returns the codes, or `undefined` if the store is full.
+   *
+   * `rotation` is the screen's own statement of which way up it is hung; the
+   * route has already refused anything but a quarter turn, and a screen that
+   * said nothing (an app from before it asked) is `0`, the wall's default.
+   */
+  start(now: number, rotation?: number): DeviceFlowStart | undefined;
   /** The screen's poll, by device code. Delivers and consumes an approval. */
   poll(deviceCode: string, now: number): DeviceFlowPoll;
   /** Look up a live pending flow by user code, for the approve page. */
@@ -160,7 +182,7 @@ export function createDeviceFlowStore(): DeviceFlowStore {
   };
 
   return {
-    start(now: number): DeviceFlowStart | undefined {
+    start(now: number, rotation = 0): DeviceFlowStart | undefined {
       prune(now);
       if (pending.size >= MAX_PENDING) return undefined;
 
@@ -173,7 +195,14 @@ export function createDeviceFlowStore(): DeviceFlowStore {
       }
 
       const expiresAt = now + DEVICE_FLOW_TTL_MS;
-      pending.set(deviceCode, { deviceCode, userCode, createdAt: now, expiresAt, state: 'pending' });
+      pending.set(deviceCode, {
+        deviceCode,
+        userCode,
+        createdAt: now,
+        expiresAt,
+        state: 'pending',
+        rotation,
+      });
       return { deviceCode, userCode, expiresAt, pollIntervalSec: DEVICE_FLOW_POLL_INTERVAL_SEC };
     },
 
@@ -205,6 +234,7 @@ export function createDeviceFlowStore(): DeviceFlowStore {
         createdAt: entry.createdAt,
         expiresAt: entry.expiresAt,
         state: entry.state,
+        rotation: entry.rotation,
       };
     },
 

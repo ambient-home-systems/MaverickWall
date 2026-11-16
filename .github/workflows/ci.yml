@@ -180,6 +180,12 @@ jobs:
       - name: Build the debug APK
         working-directory: apps/android
         run: ./gradlew assembleDebug --no-daemon --no-configuration-cache
+      # The JVM unit tests, for the logic with no Android in it — which way up
+      # the screen is, and reading what the page answers about it. No device:
+      # the layout and the remote's arrows are a real-hardware check.
+      - name: Run the JVM unit tests
+        working-directory: apps/android
+        run: ./gradlew testDebugUnitTest --no-daemon --no-configuration-cache
 
   # The one-liner from the README, run exactly as written against a clean
   # volume. It is the first thing a stranger does and the only claim on the

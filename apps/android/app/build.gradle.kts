@@ -115,4 +115,8 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+
+    // JVM unit tests (`src/test`), for the logic with no Android in it. Run in
+    // CI beside `assembleDebug`; never packaged.
+    testImplementation(libs.junit)
 }

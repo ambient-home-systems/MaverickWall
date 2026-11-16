@@ -12855,6 +12855,56 @@ model frozen at load. The last was green at first, until the test moved the
 clock. **Still unproven where it counts:** nobody has looked at it on a real
 monitor.
 
+**The Android app's own screens are drawn the right way up on a television hung
+on its end.** A Google TV box outputs landscape whatever the household did with
+the panel, and no app can turn the system's own screens. The wall always turned
+itself, in the page. But setup, the pairing code and the "connecting…" status
+are native, and they were sideways. Those are also the screens shown exactly
+when the server can tell the app nothing: before pairing, and when it is gone.
+RFC 003's "own nothing about layout" is narrowed rather than reversed, and the
+RFC says so where the rule sits.
+
+- **`Rotated`** lays a native screen out at the panel's height by its width and
+  turns it with a graphics layer. Compose carries the layer through hit testing
+  and focus search, so the remote's arrows move the way the screen looks. The
+  "connecting…" status moved from XML views to Compose for that reason: a
+  turned view tree keeps its focus search in the unturned layout.
+- **Asked once, on the screen.** On a television nobody has asked, setup opens
+  with "Is this the right way up?". Left and Right turn the picture and OK keeps
+  it. A tablet is not asked, because it turns itself. `ServerConfig.rotation` is
+  null until somebody answers, which is what tells "never asked" from "the
+  right way up".
+- **Carried into pairing.** `device-start` takes an optional `rotation`, refused
+  unless it is a quarter turn (`quarterTurn(0)`, so an older app's empty form
+  still pairs upright). The flow holds it, the approve page says how the wall
+  reported being hung, and approval writes it with `writeScreenHardware` before
+  the seed.
+- **The server stays the one source.** Once paired, the app reads the page's
+  `maverickWall.rotation()` every 20 seconds and copies a quarter turn into its
+  preferences. The bridge answers `null` with no manifest and on the server's
+  stand-in (`heldIsReal`), because a guessed `0` there would stand a sideways
+  wall's own screens back up.
+- **One fault fixed on the way.** The kiosk forwarded every OK key-up to the
+  wall, including while the status was showing, so OK on a remote never pressed
+  Retry.
+
+Not covered, and said in the app's README: the display's own on-screen pairing
+form, which draws before the server knows the wall, and anything Google TV
+draws itself.
+
+**Measured.** `device-flow.test.ts` gains 3 tests, `browser-android-rotation.test.ts`
+is 3 (a real Chromium: a paired wall's answer and a change to it, a page with
+no manifest, and a stand-in), and `ScreenRotationTest.kt` is 5 JVM tests, now run
+in CI by `testDebugUnitTest`. Eleven mutations were checked and all eleven are
+red: five on the server, three on the bridge (each on a rebuilt bundle), and
+three on the Kotlin rotation logic. The Kotlin ones first read red with no
+JUnit summary, which a compile failure would also produce, so they were counted
+only once a runner printed JUnit's own failures. **The Android code was not compiled here**: this environment reaches
+Maven Central but not Google's SDK or Maven hosts, so the pure Kotlin was
+compiled and run with a compiler fetched from Maven Central, and CI's
+`assembleDebug` is the compile check for the rest. **Still
+unproven where it counts:** no real television hung on its end has run it.
+
 ---
 
 ## Open decisions

@@ -184,6 +184,19 @@ per screen.
 `screens.rotation` and `screens.orientation`; the app lets the WebView fill the
 panel and does no rotation logic of its own. One source of truth.
 
+*(Amended 2026-11-16, and it is a narrowing rather than a reversal.)* It still
+owns nothing about the **wall's** layout: the WebView is never turned, and the
+page turns itself. What it does own now is which way up its **own** screens are
+drawn — setup, the pairing code and the "connecting…" status — because on a
+television hung on its end those were sideways, and they appear exactly when
+the server cannot tell the app anything: before pairing, and when the server is
+gone. So the app asks once on first run on a television, reports the answer
+when it starts pairing (`rotation` on `device-start`, written onto the wall at
+approval), and from then on copies the server's `screens.rotation` back from
+the page through the bridge (`maverickWall.rotation()`). The server is still
+the one place a household changes it; the app keeps a copy for the moments it
+cannot ask.
+
 ## Discovery and pairing
 
 The owner's standing objection (memory: *pairing must be frictionless*) is no

@@ -1339,12 +1339,26 @@ function start(): void {
    * `acknowledge()` clears whatever is showing, exactly as the OK key does, and
    * a rule the server marked non-dismissible is still refused server-side (a
    * 403), so the bridge cannot clear what a button could not.
+   *
+   * And one read: `rotation()`, the wall's Wall mounting as the manifest states
+   * it. The app draws a few screens of its own — the "connecting…" status when
+   * the server is gone, and setup if the household changes server — and on a
+   * television hung on its end those are sideways unless the app knows which
+   * way up it is. The server is the one source of that fact, so the app asks
+   * the page rather than keeping a second copy somebody would have to change
+   * twice. It answers `null` until a manifest has stated one: the server's
+   * stand-in for a database it cannot read says nothing about this wall, and a
+   * guess of `0` there would stand a sideways wall's own screens back up.
    */
   const bridge = {
     poll: (): void => void poll(),
     acknowledge: (): void => {
       const key = dismissTarget();
       if (key !== undefined) void acknowledge(key);
+    },
+    rotation: (): number | null => {
+      const stated = manifest?.screen?.rotation;
+      return typeof stated === 'number' && heldIsReal ? normaliseRotation(stated) : null;
     },
   };
   (window as unknown as { maverickWall?: typeof bridge }).maverickWall = bridge;

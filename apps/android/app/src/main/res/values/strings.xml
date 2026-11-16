@@ -11,6 +11,16 @@
     <string name="setup_save">Connect</string>
     <string name="setup_found_label">Found on your network</string>
     <string name="setup_or_type">Or type the address instead</string>
+    <string name="setup_turn_screen">Turn this screen</string>
+
+    <!-- Which way up (asked first on a television, and from setup any time) -->
+    <string name="rotate_title">Is this the right way up?</string>
+    <string name="rotate_description">If your television is hung on its side, turn this picture until the arrow points up and you can read this.</string>
+    <string name="rotate_remote_hint">On the remote, Left and Right turn it. Press OK when it reads the right way up.</string>
+    <string name="rotate_left">Turn left</string>
+    <string name="rotate_keep">This way up</string>
+    <string name="rotate_right">Turn right</string>
+    <string name="rotate_later">Your wall starts the same way up. Once it is paired, you can change this under Wall mounting on the wall\'s page.</string>
 
     <!-- Pairing (device-authorization flow) -->
     <string name="pair_preparing">Preparing to pair…</string>

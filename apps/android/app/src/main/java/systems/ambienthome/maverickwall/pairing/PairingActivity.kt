@@ -37,6 +37,7 @@ import kotlinx.coroutines.withContext
 import systems.ambienthome.maverickwall.KioskActivity
 import systems.ambienthome.maverickwall.MaverickWallTheme
 import systems.ambienthome.maverickwall.R
+import systems.ambienthome.maverickwall.Rotated
 import systems.ambienthome.maverickwall.ServerConfig
 import systems.ambienthome.maverickwall.SetupActivity
 
@@ -67,6 +68,10 @@ class PairingActivity : ComponentActivity() {
             return
         }
         val client = DeviceFlowClient(this, baseUrl)
+        // Which way up this screen is hung, as the household answered on setup:
+        // the pairing code is drawn that way, and the flow reports it so the
+        // wall approval creates starts the same way up.
+        val rotation = ServerConfig(this).rotation
 
         setContent {
             MaverickWallTheme {
@@ -76,7 +81,7 @@ class PairingActivity : ComponentActivity() {
                 // server's interval until a terminal answer. Cancelling the
                 // composition (the activity leaving) cancels the loop.
                 LaunchedEffect(Unit) {
-                    when (val started = client.start()) {
+                    when (val started = client.start(rotation)) {
                         StartResult.Unsupported -> openKiosk(baseUrl, null)
                         is StartResult.Failed -> state = PairingUi.Problem(started.reason)
                         is StartResult.Started -> {
@@ -111,11 +116,13 @@ class PairingActivity : ComponentActivity() {
                     }
                 }
 
-                PairingScreen(
-                    state = state,
-                    onPairOnScreen = { openKiosk(baseUrl, null) },
-                    onRetry = { recreate() },
-                )
+                Rotated(rotation ?: 0) {
+                    PairingScreen(
+                        state = state,
+                        onPairOnScreen = { openKiosk(baseUrl, null) },
+                        onRetry = { recreate() },
+                    )
+                }
             }
         }
     }
