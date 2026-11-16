@@ -5,11 +5,15 @@ import android.app.admin.DevicePolicyManager
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
+import android.util.Log
 import android.view.KeyEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.WebSettings
 import android.webkit.WebView
+import android.widget.FrameLayout
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.runtime.getValue
@@ -23,6 +27,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.withStarted
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -50,10 +55,15 @@ import systems.ambienthome.maverickwall.push.PushService
  *   3. If even that cannot draw, the native "connecting…" status shows — a
  *      branded screen, never a blank one — and hands back the instant
  *      `/healthz` answers.
+ *
+ * And the page's own process dying is survived rather than fatal: the dead
+ * WebView is replaced and the wall loaded again ([onRendererGone]), so a crash
+ * or a box short of memory does not leave a television on its own home screen.
  */
 class KioskActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
+    private lateinit var wallFrame: FrameLayout
     private lateinit var connecting: ComposeView
     private lateinit var baseUrl: String
 
@@ -66,6 +76,19 @@ class KioskActivity : AppCompatActivity() {
 
     /** The turn the status is drawn at, read from [ServerConfig.rotation] as it appears. */
     private var connectingRotation by mutableIntStateOf(0)
+
+    /** Why the status is up, so it says what is actually happening. */
+    private var connectingReason by mutableStateOf(ConnectingReason.SERVER)
+
+    /**
+     * When the page's process died recently, on the monotonic clock, as
+     * [RendererRecovery.record] keeps them. In memory only: the app outlives
+     * those deaths, which is the point, and a restart of the app is a fresh start.
+     */
+    private var rendererDeaths by mutableStateOf(emptyList<Long>())
+
+    /** The reload waiting after the page died; cancelled by a load that succeeds first. */
+    private var reloadJob: Job? = null
 
     /** True once we have already fallen back to the disk cache for this load. */
     private var triedCache = false
@@ -101,6 +124,7 @@ class KioskActivity : AppCompatActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         setContentView(R.layout.activity_kiosk)
+        wallFrame = findViewById(R.id.wall_frame)
         webView = findViewById(R.id.web_view)
         connecting = findViewById(R.id.connecting)
         connecting.setContent {
@@ -109,7 +133,11 @@ class KioskActivity : AppCompatActivity() {
                     Rotated(connectingRotation) {
                         ConnectingScreen(
                             host = baseUrl,
+                            reason = connectingReason,
+                            deaths = rendererDeaths.size,
                             onRetry = {
+                                reloadJob?.cancel()
+                                reloadJob = null
                                 triedCache = false
                                 loadWall(useCache = false)
                             },
@@ -137,7 +165,7 @@ class KioskActivity : AppCompatActivity() {
 
         // Show the native status straight away, so a cold boot is never blank
         // for the moment before the page paints; a good load takes it down.
-        showConnecting()
+        showConnecting(ConnectingReason.SERVER)
         loadWall(useCache = false)
     }
 
@@ -202,7 +230,76 @@ class KioskActivity : AppCompatActivity() {
             allowedOrigin = baseUrl,
             onPageError = ::onLoadError,
             onPageOk = ::onLoadOk,
+            onRendererGone = ::onRendererGone,
         )
+    }
+
+    /**
+     * The page's process died, and Android is waiting to see whether this app
+     * deals with it before ending the app too.
+     *
+     * Three things, in this order. The dead WebView leaves the window and is
+     * destroyed now, before the callback returns — Android ends the app if it
+     * is still there. A fresh one takes its place at once, under the status, so
+     * every other piece of the kiosk (the push re-poll, the rotation mirror,
+     * Retry) always has a live WebView to talk to. And the wall is loaded into
+     * it: straight away the first time, later if it keeps dying
+     * ([RendererRecovery]), and never while the screen is off — a box that
+     * ended the page to free memory in the background would only end the next
+     * one too. The display draws its stored calendar before its first poll, so
+     * a reload is back on the glass in moments, and the cookie that pairs this
+     * wall lives in the WebView's shared store rather than in the dead view.
+     */
+    private fun onRendererGone(dead: WebView, crashed: Boolean) {
+        // An older view that has already been replaced: nothing left to do.
+        if (dead !== webView) return
+
+        wallFrame.removeView(dead)
+        dead.destroy()
+        // The cause, and never the page: what was on it is the household's.
+        Log.w(
+            TAG,
+            if (crashed) {
+                "the page crashed; loading the wall again"
+            } else {
+                "Android ended the page to free memory; loading the wall again"
+            },
+        )
+
+        rendererDeaths = RendererRecovery.record(rendererDeaths, SystemClock.elapsedRealtime())
+        val wait = RendererRecovery.delayFor(rendererDeaths)
+
+        replaceWebView()
+        healthJob?.cancel()
+        healthJob = null
+        showConnecting(if (wait > 0) ConnectingReason.RESTING else ConnectingReason.RESTARTING)
+
+        reloadJob?.cancel()
+        reloadJob = lifecycleScope.launch {
+            delay(wait)
+            lifecycle.withStarted {
+                triedCache = false
+                loadWall(useCache = false)
+            }
+        }
+    }
+
+    /** A new WebView where the dead one was: under the status, filling the frame. */
+    private fun replaceWebView() {
+        val fresh = WebView(this).apply { id = R.id.web_view }
+        wallFrame.addView(
+            fresh,
+            0,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ),
+        )
+        webView = fresh
+        configureWebView()
+        // A WebView starts running; one made while the wall is not in front
+        // waits, like the one it replaces, for onResume.
+        if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) fresh.onPause()
     }
 
     /**
@@ -231,6 +328,9 @@ class KioskActivity : AppCompatActivity() {
         hideConnecting()
         healthJob?.cancel()
         healthJob = null
+        // Retry beat a waiting reload to it: the wall is up, so do not load it again.
+        reloadJob?.cancel()
+        reloadJob = null
         // A successful load is exactly when the display token cookie is fresh —
         // most importantly right after pairing, which reloads the page. The push
         // service started before pairing and would otherwise wait out its
@@ -248,7 +348,7 @@ class KioskActivity : AppCompatActivity() {
         }
         // Cache could not draw either: the honest, branded status, and poll for
         // the server to come back.
-        showConnecting()
+        showConnecting(ConnectingReason.SERVER)
         startHealthPolling()
     }
 
@@ -263,7 +363,8 @@ class KioskActivity : AppCompatActivity() {
         }
     }
 
-    private fun showConnecting() {
+    private fun showConnecting(reason: ConnectingReason) {
+        connectingReason = reason
         // Read as it appears: the household may have answered on setup, or the
         // wall's own Wall mounting may have been copied in since the last time.
         connectingRotation = ServerConfig(this).rotation ?: 0
@@ -420,6 +521,7 @@ class KioskActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         healthJob?.cancel()
+        reloadJob?.cancel()
         if (::webView.isInitialized) {
             // Detach before destroy so the view hierarchy is not left holding a
             // dead WebView.
@@ -430,6 +532,8 @@ class KioskActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val TAG = "MaverickKiosk"
+
         /**
          * A one-shot device-flow pairing token (Phase 3). When present, the wall
          * loads `/pair?token=…` first to claim its cookie, then behaves exactly

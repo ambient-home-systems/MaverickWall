@@ -40,6 +40,10 @@ See [`apps/android/README.md`](../apps/android/README.md) for the app, and
 managed install can pin it as a locked-down kiosk (device-owner provisioning);
 a plain sideload runs unpinned, which is fine for most walls.
 
+If the page that draws the calendar stops — a TV box ending it to free memory,
+or a crash — the app loads the wall again by itself rather than closing and
+leaving the television on its own home screen.
+
 No app? Any browser that can be pinned — **Fully Kiosk** is the usual pick —
 works too: open the pairing link once and it becomes a cookie. You lose only the
 native wake and boot-start.

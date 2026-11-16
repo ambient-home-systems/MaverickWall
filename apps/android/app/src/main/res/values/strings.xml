@@ -36,6 +36,16 @@
     <!-- %1$s is the server address the wall is trying to reach. -->
     <string name="connecting_to">Connecting to %1$s…</string>
     <string name="connecting_hint">Waiting for the server. This will clear on its own once it answers.</string>
+    <!-- The page's own process died (it crashed, or the box ended it to free
+         memory) and the wall is loading again. Not "waiting for the server":
+         the server may be answering perfectly well. -->
+    <string name="restarting_title">Starting the wall again…</string>
+    <string name="restarting_hint">It stopped unexpectedly. This will clear on its own in a moment.</string>
+    <string name="resting_title">The wall keeps stopping</string>
+    <plurals name="resting_hint">
+        <item quantity="one">It has stopped %1$d time in the last ten minutes, so it waits a little before trying again by itself. Press Retry to try now.</item>
+        <item quantity="other">It has stopped %1$d times in the last ten minutes, so it waits a little before trying again by itself. Press Retry to try now.</item>
+    </plurals>
     <string name="retry">Retry now</string>
     <string name="change_server">Change server</string>
 
