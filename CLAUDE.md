@@ -12908,8 +12908,10 @@ rather than reporting no source. **6238 tests passing and 2 skipped, over 472
 files**: calendar 153 (1 skipped) over 10 · core 327 over 9 · display 1114 over
 73 · docs 26 over 1 · server 4618 (1 skipped) over 379, measured with
 `pnpm test` and a real Chromium, every file green. `browser-glass`'s
-striped-picture case, recorded above as red in this container, passed here: the
-provisioned Chromium is now the revision `playwright-core` expects. **Still
+striped-picture case, recorded above as red in containers like this one, passed
+in this one. Its Chromium is revision 1243 where `playwright-core` expects 1234,
+the same kind of mismatch as before, so why it passed is not known and it is not
+claimed as fixed. **Still
 unproven where it counts:** no real television hung on its end has run it.
 
 ---
