@@ -22,6 +22,15 @@ full design and the reasoning behind "the one thing we do not build."
   display's own IndexedDB manifest, then the WebView disk cache, then a native
   "connecting to `<server>`…" status that hands back the instant `/healthz`
   answers.
+- **Surviving the page's own process dying** (`onRenderProcessGone`, Android
+  8.0 and later). The WebView draws in a separate process, which crashes now
+  and then and which a TV box short of memory ends. Unhandled, Android ends the
+  whole app with it and the television sits on its own home screen. The kiosk
+  instead destroys the dead WebView, puts a fresh one in its place and loads the
+  wall again: at once the first time, then after 5 s, 30 s and 5 minutes if it
+  keeps dying within ten minutes (`RendererRecovery`), and never while the
+  screen is off. The status says which of these is happening rather than
+  "waiting for the server".
 - **Manual server-address entry** (`SetupActivity`). Pairing is then done by the
   display itself: read the code off the server's `/admin/screens` and type it on
   the wall.
@@ -217,8 +226,8 @@ screen-pinning prompt. Unpinned kiosk works today without any of this.
 
 The logic with no Android in it has JVM unit tests (`app/src/test`, run in CI
 with `./gradlew testDebugUnitTest`): which way up the screen is, and how the
-page's answer is read. Everything else is checked on real hardware, per the
-project's doctrine:
+page's answer is read, and how soon the wall comes back after its page dies.
+Everything else is checked on real hardware, per the project's doctrine:
 
 - A TV box cold-booting straight into the wall.
 - Pulling the server (or the network) and watching the native "connecting…"
@@ -228,6 +237,9 @@ project's doctrine:
 - A television hung on its end: setup, the pairing code and "connecting…"
   reading the right way up, and the remote's arrows moving between buttons the
   way they look.
+- The page's process dying, and the wall coming back by itself rather than the
+  box falling to its home screen. Nothing in the app can make it die on demand,
+  so this waits for a box short of memory, or a crash.
 
 Instrumented tests that pair against a real running server land alongside the
 Phase 2 socket work, where there is behaviour worth asserting on a device.
@@ -239,7 +251,8 @@ app/src/main/
   AndroidManifest.xml                 LAUNCHER + LEANBACK_LAUNCHER, boot receiver, cleartext config
   java/systems/ambienthome/maverickwall/
     KioskActivity.kt                  the WebView host: keep-awake, immersive, offline fallback
-    WallWebViewClient.kt              URL allowlist + load-error → native status
+    WallWebViewClient.kt              URL allowlist, load-error → native status, page process died
+    RendererRecovery.kt               how soon the wall reloads after its page dies (pure)
     HealthProbe.kt                    polls /healthz with backoff
     BootReceiver.kt                   relaunch on boot
     KioskDeviceAdminReceiver.kt       device-owner hook for lock-task pinning (Phase 4)

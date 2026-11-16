@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -40,10 +41,18 @@ import androidx.compose.ui.unit.sp
  *
  * Retry takes focus when the status appears, so the remote's OK — which the
  * kiosk otherwise forwards to the wall — presses it.
+ *
+ * It says why it is up ([reason]), because "waiting for the server" over a
+ * server that is answering is a sentence the household would check and find
+ * false. [deaths] is how many times the page has died in the window
+ * [RendererRecovery] counts, and is read only while [reason] is
+ * [ConnectingReason.RESTING].
  */
 @Composable
 fun ConnectingScreen(
     host: String,
+    reason: ConnectingReason,
+    deaths: Int,
     onRetry: () -> Unit,
     onChangeServer: () -> Unit,
 ) {
@@ -69,7 +78,11 @@ fun ConnectingScreen(
                 modifier = Modifier.padding(top = 24.dp),
             )
             Text(
-                text = stringResource(R.string.connecting_to, host),
+                text = when (reason) {
+                    ConnectingReason.SERVER -> stringResource(R.string.connecting_to, host)
+                    ConnectingReason.RESTARTING -> stringResource(R.string.restarting_title)
+                    ConnectingReason.RESTING -> stringResource(R.string.resting_title)
+                },
                 color = MaterialTheme.colorScheme.onBackground,
                 fontSize = 16.sp,
                 textAlign = TextAlign.Center,
@@ -78,7 +91,12 @@ fun ConnectingScreen(
                     .padding(top = 24.dp),
             )
             Text(
-                text = stringResource(R.string.connecting_hint),
+                text = when (reason) {
+                    ConnectingReason.SERVER -> stringResource(R.string.connecting_hint)
+                    ConnectingReason.RESTARTING -> stringResource(R.string.restarting_hint)
+                    ConnectingReason.RESTING ->
+                        pluralStringResource(R.plurals.resting_hint, deaths, deaths)
+                },
                 // `wall_text_dim`, the quieter ink the XML status used.
                 color = Color(0xFF9AA6B2),
                 fontSize = 13.sp,
@@ -100,4 +118,16 @@ fun ConnectingScreen(
             }
         }
     }
+}
+
+/** Why the native status is up, which decides what it says. */
+enum class ConnectingReason {
+    /** The server has not answered: a cold boot, or a load that failed. */
+    SERVER,
+
+    /** The page's process died and the wall is loading again now. */
+    RESTARTING,
+
+    /** It has died more than once in a few minutes, so the reload is waiting. */
+    RESTING,
 }

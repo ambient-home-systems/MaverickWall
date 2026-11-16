@@ -12914,6 +12914,38 @@ the same kind of mismatch as before, so why it passed is not known and it is not
 claimed as fixed. **Still
 unproven where it counts:** no real television hung on its end has run it.
 
+**The Android app survives its page's process dying.** The question that found
+it was whether the app should be the box's home screen. That would only hide the
+Google TV launcher, and the commonest way a wall ended up on that launcher was
+this. The WebView draws in a process of its own on Android 8.0 and later, which
+crashes now and then and which a TV box short of memory ends. The app did not
+override `onRenderProcessGone`, so Android ended the whole app with it, and the
+television sat on its own home screen until somebody opened the wall again.
+
+- `WallWebViewClient.onRenderProcessGone` hands the dead WebView to the activity
+  and returns true. Android holds the app to one condition: the dead view must be
+  out of the window and destroyed before the callback returns, or it ends the
+  app anyway.
+- `KioskActivity.onRendererGone` does that, then puts a fresh WebView in at index
+  0 of `wall_frame`, under the status, at once. So the push re-poll, the rotation
+  mirror and Retry always have a live view to talk to. The pairing cookie is in
+  the WebView's shared store, and the display draws its IndexedDB copy before
+  its first poll, so the wall is back in moments.
+- `RendererRecovery` (pure) decides when to load: at once for the first death in
+  ten minutes, then after 5 s, 30 s and 5 minutes, on the monotonic clock. The
+  load waits for the activity to be started (`withStarted`), because a box that
+  ended the page to free memory in the background would end the next one too.
+- The status says which of these is happening (`ConnectingReason`). "Waiting for
+  the server" over a server that is answering would be a sentence the household
+  checks and finds false.
+
+Not covered: a crash of the app's own Kotlin code, which still ends the app, and
+Android 7, where the page shares the app's process. 6 JVM tests are new (11 in
+the app), and 5 mutations of the policy are red. The Android code is compiled
+only by CI's `assembleDebug`, because this environment cannot reach Google's
+Maven. **Still unproven where it counts:** nothing in the app can make its page
+die on demand, so no real box has been watched coming back.
+
 ---
 
 ## Open decisions

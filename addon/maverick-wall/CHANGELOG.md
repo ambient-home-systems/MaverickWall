@@ -16,6 +16,15 @@
 
 ## Unreleased
 
+**The Android app comes back on its own if the wall stops.** The page that
+draws the calendar runs in a process of its own, and a TV box short of memory
+can end it, or it can crash. Until now that closed the whole app, and the
+television sat on its own home screen until somebody opened the wall again.
+Now the app loads the wall again by itself: the screen says **Starting the
+wall again…** for a moment, then shows your calendar. If it keeps stopping, it
+waits a little longer each time before trying again, and says so; **Retry**
+still tries at once. Install the new APK from this release to get it.
+
 ## 1.8.9
 
 **The Android app reads the right way up on a television hung on its end.**

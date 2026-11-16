@@ -5,18 +5,20 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.net.http.SslError
 import android.os.Build
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.SslErrorHandler
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.annotation.RequiresApi
 import systems.ambienthome.maverickwall.net.TlsPinning
 
 /**
  * The WebView's gatekeeper: it may only ever be the household's own wall.
  *
- * Two jobs, both from the RFC's security posture:
+ * Three jobs, the first two from the RFC's security posture:
  *
  *   1. **A URL allowlist.** The WebView is locked to the configured server
  *      origin. Event titles come from calendars the household does not control,
@@ -28,6 +30,9 @@ import systems.ambienthome.maverickwall.net.TlsPinning
  *      or a server 5xx on the document means the wall could not be reached;
  *      `onPageError` lets the activity show the "connecting…" status and start
  *      polling. A clean load calls `onPageOk`, which takes the status away.
+ *   3. **Reporting that the page's process died.** `onRendererGone` hands the
+ *      dead WebView to the activity, which replaces it, so the app outlives its
+ *      page rather than being ended with it.
  *
  * Sub-resource errors (a missing image, one panel's fetch) are ignored on
  * purpose: the display copes with those itself and must keep drawing. Only the
@@ -38,6 +43,7 @@ class WallWebViewClient(
     private val allowedOrigin: String,
     private val onPageError: () -> Unit,
     private val onPageOk: () -> Unit,
+    private val onRendererGone: (view: WebView, crashed: Boolean) -> Unit,
 ) : WebViewClient() {
 
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
@@ -88,6 +94,26 @@ class WallWebViewClient(
         } else {
             handler.cancel()
         }
+    }
+
+    /**
+     * The process drawing the page has gone: it crashed, or Android ended it to
+     * free memory.
+     *
+     * Not handling this is the bug: Android then ends the whole app with it, and
+     * a television falls back to its own home screen and stays there until
+     * somebody opens the wall again. Returning true keeps the app alive, on one
+     * condition Android enforces by ending the app anyway: the dead WebView must
+     * be out of the window and destroyed before this returns. `onRendererGone`
+     * does both, and puts a fresh one in its place.
+     *
+     * Android 8.0 and later only. Before that the page shares the app's own
+     * process, so there is no separate death to survive.
+     */
+    @RequiresApi(Build.VERSION_CODES.O)
+    override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+        onRendererGone(view, detail.didCrash())
+        return true
     }
 
     override fun onPageFinished(view: WebView, url: String) {

@@ -9,8 +9,13 @@
   drawn the right way up on a television hung on its end with the remote's
   arrows still moving the way they look — see `Rotated`. The WebView is never
   turned here: the wall turns itself, in the page, from its own settings.
+
+  The frame has an id because the WebView is not permanent: if the page's own
+  process dies, the activity takes the dead WebView out and puts a fresh one in
+  at index 0, under the status, where this one is.
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/wall_frame"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/wall_background">
